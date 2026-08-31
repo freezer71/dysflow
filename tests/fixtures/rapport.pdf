@@ -1,0 +1,137 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [10 0 R 12 0 R 14 0 R] /Count 3 >>
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+10 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 11 0 R /Resources << /Font << /F1 5 0 R >> >> >>
+endobj
+11 0 obj
+<< /Length 356 >>
+stream
+BT
+/F1 11 Tf
+60 740 Td
+13 TL
+(Spécification technique — Confidentiel) Tj
+T*
+() Tj
+T*
+(1. Contexte) Tj
+T*
+() Tj
+T*
+(Le service de paiement doit gérer les règlements diffé-) Tj
+T*
+(rés sur trente jours. Chaque opération est enregistrée) Tj
+T*
+(à l'état « en attente », puis confirmée par le presta-) Tj
+T*
+(taire externe.) Tj
+T*
+() Tj
+T*
+(Page 1 sur 3) Tj
+ET
+endstream
+endobj
+12 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 13 0 R /Resources << /Font << /F1 5 0 R >> >> >>
+endobj
+13 0 obj
+<< /Length 443 >>
+stream
+BT
+/F1 11 Tf
+60 740 Td
+13 TL
+(Spécification technique — Confidentiel) Tj
+T*
+() Tj
+T*
+(2. Contraintes) Tj
+T*
+() Tj
+T*
+(Les contraintes retenues sont les suivantes :) Tj
+T*
+() Tj
+T*
+(• latence maximale de 250 ms) Tj
+T*
+(• disponibilité de 99,9 %) Tj
+T*
+(• journalisation intégrale) Tj
+T*
+() Tj
+T*
+(2.1 Latence) Tj
+T*
+() Tj
+T*
+(La mesure est prise au percentile 95. Le seuil ne) Tj
+T*
+(s'applique pas aux opérations de) Tj
+T*
+(Page 2 sur 3) Tj
+ET
+endstream
+endobj
+14 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 15 0 R /Resources << /Font << /F1 5 0 R >> >> >>
+endobj
+15 0 obj
+<< /Length 244 >>
+stream
+BT
+/F1 11 Tf
+60 740 Td
+13 TL
+(Spécification technique — Confidentiel) Tj
+T*
+() Tj
+T*
+(remboursement, traitées en différé.) Tj
+T*
+() Tj
+T*
+(3. Interfaces) Tj
+T*
+() Tj
+T*
+(L'API expose deux routes documentées.) Tj
+T*
+() Tj
+T*
+(Page 3 sur 3) Tj
+ET
+endstream
+endobj
+xref
+0 16
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000000 00000 n 
+0000000000 00000 n 
+0000000130 00000 n 
+0000000000 00000 n 
+0000000000 00000 n 
+0000000000 00000 n 
+0000000000 00000 n 
+0000000227 00000 n 
+0000000355 00000 n 
+0000000763 00000 n 
+0000000891 00000 n 
+0000001386 00000 n 
+0000001514 00000 n 
+trailer
+<< /Size 16 /Root 1 0 R >>
+startxref
+1810
+%%EOF
