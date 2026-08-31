@@ -5,6 +5,8 @@
 
 pub mod kind;
 pub mod layout;
+#[cfg(feature = "ocr")]
+pub mod ocr;
 pub mod pdf;
 
 use anyhow::{bail, Context, Result};
