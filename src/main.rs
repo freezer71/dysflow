@@ -88,6 +88,10 @@ struct Args {
     #[arg(long)]
     show_config: bool,
 
+    /// Écrit le markdown extrait du fichier puis quitte.
+    #[arg(long)]
+    to_markdown: bool,
+
     /// Ouvre directement l'écran de configuration.
     #[arg(long)]
     config: bool,
@@ -115,8 +119,11 @@ fn main() -> Result<()> {
         Some(path) => {
             // Un fichier est analysé d'emblée : sommaire et durée sont
             // disponibles dès l'ouverture.
-            let text = std::fs::read_to_string(path)
-                .with_context(|| format!("lecture de {}", path.display()))?;
+            let text = rs_reader::source::load(path)?;
+            if args.to_markdown {
+                print!("{text}");
+                return Ok(());
+            }
             for block in input::split_blocks(&text) {
                 builder.push_block(&block);
             }
