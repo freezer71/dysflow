@@ -26,19 +26,144 @@ pub fn pages(path: &Path) -> Result<Vec<Page>> {
     if doc.get_pages().is_empty() {
         bail!("{} ne contient aucune page lisible", path.display());
     }
+    let numbered: Vec<(u32, ObjectId)> = doc.get_pages().into_iter().collect();
+    let numbers: Vec<ObjectId> = numbered.iter().map(|(_, id)| *id).collect();
     let mut out = Vec::new();
-    for (number, _) in doc.get_pages() {
+    for (number, _) in &numbered {
         let mut text = String::new();
         {
             let mut sink = PlainTextOutput::new(&mut text);
-            output_doc_page(&doc, &mut sink, number)
+            output_doc_page(&doc, &mut sink, *number)
                 .with_context(|| format!("page {number} de {}", path.display()))?;
         }
         out.push(Page {
             lines: text.lines().map(|line| line.trim_end().to_string()).collect(),
         });
     }
+
+    // Une page sans couche texte n'est pas vide : son contenu est une image.
+    let blank: Vec<usize> = out
+        .iter()
+        .enumerate()
+        .filter(|(_, page)| looks_scanned(page))
+        .map(|(i, _)| i)
+        .collect();
+    if !blank.is_empty() {
+        recognise_scanned(&doc, &numbers, &blank, &mut out, path)?;
+    }
     Ok(out)
+}
+
+/// Caractères imprimables en deçà desquels une page est réputée scannée.
+///
+/// Sous ce seuil, ce qui reste est un artefact — un numéro de page isolé, une
+/// légende — et non du contenu lisible.
+const SCANNED_BELOW: usize = 30;
+
+/// Vrai si la page ne porte pas de couche texte exploitable.
+fn looks_scanned(page: &Page) -> bool {
+    page.lines
+        .iter()
+        .flat_map(|l| l.chars())
+        .filter(|c| !c.is_whitespace())
+        .count()
+        < SCANNED_BELOW
+}
+
+/// Reconnaît les pages sans couche texte, en parallèle.
+///
+/// Le parallélisme remplace ici la lecture en flux : `layout` a besoin du
+/// document entier pour reconnaître les en-têtes courants, mais rien n'oblige
+/// à lire les pages l'une après l'autre.
+#[cfg(feature = "ocr")]
+fn recognise_scanned(
+    doc: &Document,
+    numbers: &[ObjectId],
+    blank: &[usize],
+    out: &mut [Page],
+    path: &Path,
+) -> Result<()> {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Mutex;
+
+    // Une image par page suffit : un scan n'en porte qu'une, et deux
+    // reconnaissances sur la même page se recouvriraient.
+    let work: Vec<(usize, Vec<u8>)> = blank
+        .iter()
+        .filter_map(|&i| {
+            let image = page_images(doc, *numbers.get(i)?).into_iter().next()?;
+            Some((i, image))
+        })
+        .collect();
+    if work.is_empty() {
+        return Ok(());
+    }
+
+    // Autant de fils que de cœurs, sans dépasser le nombre de pages : ouvrir un
+    // moteur coûte moins que de lire une page, mais pas moins que rien.
+    let threads = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(1)
+        .min(work.len());
+    let next = AtomicUsize::new(0);
+    let done: Mutex<Vec<(usize, Page)>> = Mutex::new(Vec::new());
+
+    std::thread::scope(|scope| -> Result<()> {
+        let mut handles = Vec::with_capacity(threads);
+        for _ in 0..threads {
+            handles.push(scope.spawn(|| -> Result<()> {
+                let engine = super::ocr::Ocr::new()?;
+                loop {
+                    let i = next.fetch_add(1, Ordering::Relaxed);
+                    let Some((index, bytes)) = work.get(i) else {
+                        return Ok(());
+                    };
+                    let image = image::load_from_memory(bytes)
+                        .with_context(|| format!("image de la page {}", index + 1))?;
+                    let page = engine.read(&image)?;
+                    done.lock()
+                        .map_err(|_| anyhow::anyhow!("fil de reconnaissance interrompu"))?
+                        .push((*index, page));
+                }
+            }));
+        }
+        for handle in handles {
+            handle.join().map_err(|_| {
+                anyhow::anyhow!("reconnaissance de {} interrompue", path.display())
+            })??;
+        }
+        Ok(())
+    })?;
+
+    for (index, page) in done
+        .into_inner()
+        .map_err(|_| anyhow::anyhow!("fil de reconnaissance interrompu"))?
+    {
+        out[index] = page;
+    }
+    Ok(())
+}
+
+/// Sans l'option `ocr`, une page scannée le dit plutôt que de rester vide.
+#[cfg(not(feature = "ocr"))]
+fn recognise_scanned(
+    doc: &Document,
+    numbers: &[ObjectId],
+    blank: &[usize],
+    _out: &mut [Page],
+    path: &Path,
+) -> Result<()> {
+    let has_image = blank
+        .iter()
+        .filter_map(|&i| numbers.get(i))
+        .any(|id| !page_images(doc, *id).is_empty());
+    if has_image {
+        bail!(
+            "{} est un document scanné : ce binaire a été compilé sans l'option `ocr`",
+            path.display()
+        );
+    }
+    Ok(())
 }
 
 /// Images embarquées d'une page, dans leur forme d'origine.
@@ -103,6 +228,27 @@ mod tests {
         Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("tests/fixtures")
             .join(name)
+    }
+
+    #[cfg(feature = "ocr")]
+    #[test]
+    fn a_scanned_page_is_read_by_the_recogniser() {
+        let read = pages(&fixture("scanne.pdf")).expect("la fixture doit se lire");
+        let text = read[0].lines.join("\n");
+        assert!(
+            text.contains("Spécification"),
+            "la page scannée est restée vide : {text:?}"
+        );
+    }
+
+    #[cfg(not(feature = "ocr"))]
+    #[test]
+    fn a_scanned_page_says_what_is_missing() {
+        let err = pages(&fixture("scanne.pdf")).unwrap_err();
+        assert!(
+            err.to_string().contains("ocr"),
+            "l'erreur doit nommer l'option manquante : {err}"
+        );
     }
 
     #[test]
