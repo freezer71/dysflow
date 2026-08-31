@@ -4,6 +4,8 @@
 //! quelles ferait de chaque ligne un bloc, et la navigation deviendrait
 //! inutilisable. Ce module leur redonne une structure.
 
+use std::collections::HashMap;
+
 use super::pdf::Page;
 
 /// Assemble des pages en un markdown que `input::split_blocks` sait découper.
@@ -94,6 +96,70 @@ fn join_hyphenated(lines: Vec<String>) -> Vec<String> {
     out
 }
 
+/// Nombre de pages au-delà duquel une ligne répétée est tenue pour courante.
+///
+/// Deux occurrences peuvent être une coïncidence ; trois font une habitude.
+const RUNNING_THRESHOLD: usize = 3;
+
+/// Réduit une ligne à sa forme comparable d'une page à l'autre.
+///
+/// Le numéro change à chaque page : il ne doit pas empêcher de reconnaître
+/// « Page 1 sur 40 » et « Page 2 sur 40 » comme le même pied.
+fn normalise_running(line: &str) -> String {
+    let mut out = String::with_capacity(line.len());
+    let mut in_digits = false;
+    for c in line.chars() {
+        if c.is_ascii_digit() {
+            if !in_digits {
+                out.push('#');
+                in_digits = true;
+            }
+        } else {
+            in_digits = false;
+            out.push(c);
+        }
+    }
+    out.trim().to_string()
+}
+
+/// Retire les lignes que chaque page répète en tête ou en pied.
+fn strip_running_heads(pages: &[Page]) -> Vec<Vec<String>> {
+    let mut kept: Vec<Vec<String>> = pages.iter().map(|p| p.lines.clone()).collect();
+    if kept.len() < RUNNING_THRESHOLD {
+        return kept;
+    }
+
+    let mut heads: HashMap<String, usize> = HashMap::new();
+    let mut feet: HashMap<String, usize> = HashMap::new();
+    for lines in &kept {
+        if let Some(line) = lines.iter().find(|l| !l.trim().is_empty()) {
+            *heads.entry(normalise_running(line)).or_default() += 1;
+        }
+        if let Some(line) = lines.iter().rev().find(|l| !l.trim().is_empty()) {
+            *feet.entry(normalise_running(line)).or_default() += 1;
+        }
+    }
+    let running = |seen: &HashMap<String, usize>, line: &str| {
+        seen.get(&normalise_running(line))
+            .is_some_and(|&n| n >= RUNNING_THRESHOLD)
+    };
+
+    for lines in &mut kept {
+        // Le pied d'abord : le retirer ne déplace pas l'en-tête.
+        if let Some(i) = lines.iter().rposition(|l| !l.trim().is_empty()) {
+            if running(&feet, &lines[i]) {
+                lines.remove(i);
+            }
+        }
+        if let Some(i) = lines.iter().position(|l| !l.trim().is_empty()) {
+            if running(&heads, &lines[i]) {
+                lines.remove(i);
+            }
+        }
+    }
+    kept
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -106,6 +172,64 @@ mod tests {
 
     fn lines(items: &[&str]) -> Vec<String> {
         items.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn a_header_repeated_on_every_page_disappears() {
+        let doc = [
+            page(&["Confidentiel", "", "Un"]),
+            page(&["Confidentiel", "", "Deux"]),
+            page(&["Confidentiel", "", "Trois"]),
+        ];
+        let kept = strip_running_heads(&doc);
+        assert!(
+            !kept.iter().flatten().any(|l| l == "Confidentiel"),
+            "l'en-tête courant subsiste : {kept:?}"
+        );
+        assert!(kept.iter().flatten().any(|l| l == "Deux"), "le texte a été emporté");
+    }
+
+    #[test]
+    fn a_page_number_that_changes_is_still_recognised() {
+        let doc = [
+            page(&["Un", "", "Page 1 sur 3"]),
+            page(&["Deux", "", "Page 2 sur 3"]),
+            page(&["Trois", "", "Page 3 sur 3"]),
+        ];
+        let kept = strip_running_heads(&doc);
+        assert!(
+            !kept.iter().flatten().any(|l| l.starts_with("Page ")),
+            "le pied courant subsiste : {kept:?}"
+        );
+    }
+
+    #[test]
+    fn a_line_that_only_looks_repeated_is_kept() {
+        // Deux pages sur cinq ne font pas une ligne courante.
+        let doc = [
+            page(&["Confidentiel", "", "Un"]),
+            page(&["Confidentiel", "", "Deux"]),
+            page(&["Trois"]),
+            page(&["Quatre"]),
+            page(&["Cinq"]),
+        ];
+        let kept = strip_running_heads(&doc);
+        assert_eq!(
+            kept.iter().flatten().filter(|l| *l == "Confidentiel").count(),
+            2,
+            "une ligne vue deux fois n'est pas courante"
+        );
+    }
+
+    #[test]
+    fn a_short_document_keeps_everything() {
+        // Sur deux pages, rien ne prouve qu'une ligne est courante.
+        let doc = [page(&["Confidentiel", "Un"]), page(&["Confidentiel", "Deux"])];
+        let kept = strip_running_heads(&doc);
+        assert_eq!(
+            kept.iter().flatten().filter(|l| *l == "Confidentiel").count(),
+            2
+        );
     }
 
     #[test]
