@@ -75,6 +75,19 @@ fn build_audio_cpp() {
     println!("cargo:rustc-link-search=native={}", lib_dir.display());
     println!("cargo:rustc-link-lib=dylib=audiocpp_shim");
     // Le binaire doit retrouver le shim sans variable d'environnement.
+    //
+    // Trois chemins, du plus portable au plus commode : à côté du binaire et
+    // dans un `lib/` voisin, pour un binaire distribué ; puis l'arbre de
+    // compilation, pour que `cargo run` marche sans rien copier. Sans les deux
+    // premiers, déplacer le binaire le casse — et aucune distribution n'est
+    // possible.
+    if cfg!(target_os = "macos") {
+        println!("cargo:rustc-link-arg=-Wl,-rpath,@executable_path");
+        println!("cargo:rustc-link-arg=-Wl,-rpath,@executable_path/../lib");
+    } else {
+        println!("cargo:rustc-link-arg=-Wl,-rpath,$ORIGIN");
+        println!("cargo:rustc-link-arg=-Wl,-rpath,$ORIGIN/../lib");
+    }
     println!("cargo:rustc-link-arg=-Wl,-rpath,{}", lib_dir.display());
     println!("cargo:audiocpp_lib={}", lib_dir.display());
 }

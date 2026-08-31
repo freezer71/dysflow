@@ -44,6 +44,20 @@ permanence.
 cargo install --path .          # voix du système, build en quelques secondes
 ```
 
+### Distribuer le binaire
+
+Le shim audio.cpp est une bibliothèque partagée, que le binaire charge au
+démarrage. `scripts/package.sh` assemble les deux dans `dist/` et vérifie que
+l'ensemble s'exécute hors de l'arbre de compilation :
+
+```bash
+./scripts/package.sh                 # audio-cpp + ocr par défaut
+FEATURES=audio-cpp ./scripts/package.sh
+```
+
+Distribuez le dossier entier : le binaire cherche la bibliothèque à côté de
+lui, puis dans un `lib/` voisin. Un binaire copié seul ne démarre pas.
+
 Pour la **reconnaissance de texte** — images, dossiers de scans,
 presse-papiers —, Tesseract est compilé dans le binaire. Comptez une minute au
 premier build ; ensuite rien n'est à installer, les données de langue
