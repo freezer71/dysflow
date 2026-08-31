@@ -21,6 +21,9 @@ permanence.
 - **Accepte un PDF** qui porte une couche texte, et le reconstruit : titres
   rendus au sommaire, mots coupés recollés, en-têtes et pieds de page retirés.
   `--to-markdown` écrit le texte extrait sans lancer la lecture.
+- **Lit aussi les images**, avec reconnaissance de texte : une capture d'écran,
+  une photo de page, un dossier de scans, ou le presse-papiers avec `--clip`.
+  Demande l'option de compilation `ocr`.
 - **Synthétise en parallèle**, sur plusieurs sessions, dans une fenêtre glissante
   autour du curseur — ce qui rend l'avance et le recul immédiats et borne la
   mémoire.
@@ -39,6 +42,15 @@ permanence.
 
 ```bash
 cargo install --path .          # voix du système, build en quelques secondes
+```
+
+Pour la **reconnaissance de texte** — images, dossiers de scans,
+presse-papiers —, Tesseract est compilé dans le binaire. Comptez une minute au
+premier build ; ensuite rien n'est à installer, les données de langue
+(français et anglais) sont embarquées :
+
+```bash
+cargo build --release --features ocr
 ```
 
 Pour la synthèse par **audio.cpp**, liée directement dans le binaire :
