@@ -58,6 +58,42 @@ fn unligature(text: &str) -> String {
     out
 }
 
+/// Recolle les mots que la mise en page a coupés en fin de ligne.
+///
+/// Un mot composé garde son trait : on le reconnaît à ce que la suite en porte
+/// un elle-même — `arc-` suivi de `en-ciel`.
+fn join_hyphenated(lines: Vec<String>) -> Vec<String> {
+    let mut out: Vec<String> = Vec::with_capacity(lines.len());
+    for line in lines {
+        let Some(previous) = out.last_mut() else {
+            out.push(line);
+            continue;
+        };
+        let cut = previous
+            .strip_suffix('-')
+            .filter(|head| head.chars().last().is_some_and(|c| c.is_alphabetic()));
+        let follows = line
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_alphabetic() && c.is_lowercase());
+        let Some(head) = cut.filter(|_| follows) else {
+            out.push(line);
+            continue;
+        };
+        let head = head.to_string();
+        let compound = line
+            .split_whitespace()
+            .next()
+            .is_some_and(|word| word.contains('-'));
+        *previous = if compound {
+            format!("{head}-{line}")
+        } else {
+            format!("{head}{line}")
+        };
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -66,6 +102,52 @@ mod tests {
         Page {
             lines: lines.iter().map(|l| l.to_string()).collect(),
         }
+    }
+
+    fn lines(items: &[&str]) -> Vec<String> {
+        items.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn a_word_split_across_lines_is_made_whole() {
+        assert_eq!(
+            join_hyphenated(lines(&["les règlements diffé-", "rés sur trente jours"])),
+            lines(&["les règlements différés sur trente jours"])
+        );
+    }
+
+    #[test]
+    fn a_compound_word_keeps_its_hyphen() {
+        assert_eq!(
+            join_hyphenated(lines(&["il voit un arc-", "en-ciel superbe"])),
+            lines(&["il voit un arc-en-ciel superbe"])
+        );
+    }
+
+    #[test]
+    fn a_dash_before_a_capital_is_left_alone() {
+        // Un tiret suivi d'une majuscule termine une énumération, il ne coupe
+        // pas un mot.
+        assert_eq!(
+            join_hyphenated(lines(&["voir annexe -", "Tableau des seuils"])),
+            lines(&["voir annexe -", "Tableau des seuils"])
+        );
+    }
+
+    #[test]
+    fn a_blank_line_stops_the_join() {
+        assert_eq!(
+            join_hyphenated(lines(&["fin de section diffé-", "", "rés"])),
+            lines(&["fin de section diffé-", "", "rés"])
+        );
+    }
+
+    #[test]
+    fn several_hyphenations_in_a_row_all_close() {
+        assert_eq!(
+            join_hyphenated(lines(&["pre-", "mier deu-", "xième"])),
+            lines(&["premier deuxième"])
+        );
     }
 
     #[test]
