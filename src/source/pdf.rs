@@ -4,7 +4,7 @@
 //! reconstruction ont besoin de savoir où une page finit.
 
 use anyhow::{bail, Context, Result};
-use pdf_extract::{output_doc_page, Document, PlainTextOutput};
+use pdf_extract::{output_doc_page, Document, ObjectId, PlainTextOutput};
 use std::path::Path;
 
 /// Une page telle que le PDF la livre, avant toute reconstruction.
@@ -41,6 +41,60 @@ pub fn pages(path: &Path) -> Result<Vec<Page>> {
     Ok(out)
 }
 
+/// Images embarquées d'une page, dans leur forme d'origine.
+///
+/// Seul `/DCTDecode` est rendu : ses octets sont un JPEG complet. Les
+/// télécopies en CCITT ou JBIG2 demanderaient un décodeur que le pur Rust
+/// n'offre pas — mieux vaut une page vide qu'un texte inventé.
+fn page_images(doc: &Document, page: ObjectId) -> Vec<Vec<u8>> {
+    let Ok((own, inherited)) = doc.get_page_resources(page) else {
+        return Vec::new();
+    };
+    let mut tables = Vec::new();
+    if let Some(dict) = own {
+        if let Ok(x) = dict.get(b"XObject") {
+            tables.push(x.clone());
+        }
+    }
+    for id in inherited {
+        if let Ok(dict) = doc.get_dictionary(id) {
+            if let Ok(x) = dict.get(b"XObject") {
+                tables.push(x.clone());
+            }
+        }
+    }
+
+    let mut images = Vec::new();
+    for table in tables {
+        let Ok((_, object)) = doc.dereference(&table) else {
+            continue;
+        };
+        let Ok(entries) = object.as_dict() else {
+            continue;
+        };
+        for (_, value) in entries.iter() {
+            let Ok((_, object)) = doc.dereference(value) else {
+                continue;
+            };
+            let Ok(stream) = object.as_stream() else {
+                continue;
+            };
+            let named = |key: &[u8], expected: &[u8]| {
+                stream
+                    .dict
+                    .get(key)
+                    .ok()
+                    .and_then(|o| o.as_name().ok())
+                    .is_some_and(|name| name == expected)
+            };
+            if named(b"Subtype", b"Image") && named(b"Filter", b"DCTDecode") {
+                images.push(stream.content.clone());
+            }
+        }
+    }
+    images
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -49,6 +103,22 @@ mod tests {
         Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("tests/fixtures")
             .join(name)
+    }
+
+    #[test]
+    fn a_scanned_page_yields_its_embedded_image() {
+        let doc = Document::load(fixture("scanne.pdf")).expect("la fixture doit se lire");
+        let (_, page) = doc.get_pages().into_iter().next().expect("une page");
+        let images = page_images(&doc, page);
+        assert_eq!(images.len(), 1, "la page porte une image");
+        assert_eq!(&images[0][..2], &[0xFF, 0xD8], "ce doit être un JPEG");
+    }
+
+    #[test]
+    fn a_text_page_yields_no_image() {
+        let doc = Document::load(fixture("spec.pdf")).expect("la fixture doit se lire");
+        let (_, page) = doc.get_pages().into_iter().next().expect("une page");
+        assert!(page_images(&doc, page).is_empty());
     }
 
     #[test]
