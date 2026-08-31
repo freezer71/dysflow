@@ -51,3 +51,55 @@ fn a_pdf_produces_sentences_to_speak() {
         "le texte du PDF n'a pas atteint la synthèse : {spoken}"
     );
 }
+
+#[test]
+fn a_laid_out_pdf_is_rebuilt_into_readable_markdown() {
+    let markdown = rs_reader::source::load(&fixture("rapport.pdf")).expect("le PDF doit se lire");
+
+    assert!(
+        !markdown.contains("Confidentiel"),
+        "l'en-tête courant subsiste : {markdown}"
+    );
+    assert!(
+        !markdown.contains("Page 1 sur"),
+        "le pied courant subsiste : {markdown}"
+    );
+    assert!(
+        markdown.contains("règlements différés sur trente jours"),
+        "la césure n'a pas été recollée : {markdown}"
+    );
+    assert!(
+        markdown.contains("par le prestataire externe"),
+        "la seconde césure n'a pas été recollée : {markdown}"
+    );
+    assert!(
+        markdown.contains("## 1. Contexte"),
+        "le titre n'est pas devenu un titre : {markdown}"
+    );
+    assert!(
+        markdown.contains("### 2.1 Latence"),
+        "le sous-titre n'a pas son niveau : {markdown}"
+    );
+    assert!(
+        markdown.contains("- latence maximale de 250 ms"),
+        "la puce n'est pas devenue une liste : {markdown}"
+    );
+    assert!(
+        markdown.contains("aux opérations de remboursement"),
+        "la phrase coupée par le saut de page n'a pas été refermée : {markdown}"
+    );
+}
+
+#[test]
+fn the_rebuilt_pdf_fills_the_table_of_contents() {
+    use rs_reader::doc::builder::{parse_document, CodePolicy};
+
+    let markdown = rs_reader::source::load(&fixture("rapport.pdf")).expect("le PDF doit se lire");
+    let doc = parse_document(&markdown, CodePolicy::Announce);
+    assert!(
+        doc.sections.len() >= 4,
+        "le sommaire doit porter les quatre titres, obtenu {} : {:?}",
+        doc.sections.len(),
+        doc.sections.iter().map(|s| &s.title).collect::<Vec<_>>()
+    );
+}

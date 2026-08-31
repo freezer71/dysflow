@@ -18,7 +18,8 @@ permanence.
 
 - **Lit un flux au fil de l'eau.** Le texte est mis en voix bloc par bloc ; il
   n'attend ni la fin de l'entrée, ni la fin de la synthèse.
-- **Accepte un PDF** qui porte une couche texte, aussi bien qu'un markdown.
+- **Accepte un PDF** qui porte une couche texte, et le reconstruit : titres
+  rendus au sommaire, mots coupés recollés, en-têtes et pieds de page retirés.
   `--to-markdown` écrit le texte extrait sans lancer la lecture.
 - **Synthétise en parallèle**, sur plusieurs sessions, dans une fenêtre glissante
   autour du curseur — ce qui rend l'avance et le recul immédiats et borne la
