@@ -32,6 +32,32 @@ pub fn to_markdown(pages: &[Page]) -> String {
     out.join("\n")
 }
 
+/// Rend leurs lettres aux ligatures typographiques.
+///
+/// Un moteur de synthèse ne reconnaît pas `ﬁ` comme `fi`, et le trait d'union
+/// conditionnel se glisse dans le texte sans se voir à l'écran.
+fn unligature(text: &str) -> String {
+    // La très grande majorité des lignes n'a aucune ligature : ne rien
+    // reconstruire quand il n'y a rien à changer.
+    if text.is_ascii() {
+        return text.to_string();
+    }
+    let mut out = String::with_capacity(text.len());
+    for c in text.chars() {
+        match c {
+            'ﬁ' => out.push_str("fi"),
+            'ﬂ' => out.push_str("fl"),
+            'ﬀ' => out.push_str("ff"),
+            'ﬃ' => out.push_str("ffi"),
+            'ﬄ' => out.push_str("ffl"),
+            'ﬅ' | 'ﬆ' => out.push_str("st"),
+            '\u{ad}' => {}
+            other => out.push(other),
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -40,6 +66,25 @@ mod tests {
         Page {
             lines: lines.iter().map(|l| l.to_string()).collect(),
         }
+    }
+
+    #[test]
+    fn ligatures_become_plain_letters() {
+        assert_eq!(unligature("ﬁchier de conﬁguration"), "fichier de configuration");
+        assert_eq!(unligature("aﬄux et eﬀort"), "afflux et effort");
+    }
+
+    #[test]
+    fn a_soft_hyphen_leaves_no_trace() {
+        assert_eq!(unligature("exem\u{ad}ple"), "exemple");
+    }
+
+    #[test]
+    fn ordinary_text_passes_through_untouched() {
+        assert_eq!(
+            unligature("Spécification — « en attente »"),
+            "Spécification — « en attente »"
+        );
     }
 
     #[test]
