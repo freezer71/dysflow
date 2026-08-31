@@ -12,29 +12,91 @@ use regex::Regex;
 use super::pdf::Page;
 
 /// Assemble des pages en un markdown que `input::split_blocks` sait découper.
+///
+/// L'ordre compte : les lignes courantes partent avant que les pages ne soient
+/// soudées, et les césures se referment avant qu'on ne juge de la longueur des
+/// lignes.
 pub fn to_markdown(pages: &[Page]) -> String {
+    let lines = join_hyphenated(weld_pages(strip_running_heads(pages)));
+    let lines: Vec<String> = lines.iter().map(|l| unligature(l.trim())).collect();
+    let short = short_line_width(&lines);
+
     let mut out: Vec<String> = Vec::new();
-    for page in pages {
-        // Une page qui s'ouvre ne colle pas à la précédente, mais ne creuse
-        // pas non plus un second blanc là où il y en a déjà un.
-        if out.last().is_some_and(|last| !last.is_empty()) {
-            out.push(String::new());
+    let mut para: Vec<String> = Vec::new();
+    let mut in_list = false;
+
+    for (i, line) in lines.iter().enumerate() {
+        if line.is_empty() {
+            flush(&mut para, &mut out);
+            in_list = false;
+            continue;
         }
-        for line in &page.lines {
-            let line = line.trim_end();
-            if line.is_empty() {
-                if out.last().is_some_and(|last| !last.is_empty()) {
-                    out.push(String::new());
-                }
-            } else {
-                out.push(line.to_string());
+        // Un titre se tient seul : entouré de blanc, ou en bord de document.
+        let alone = lines[..i].last().map_or(true, |l| l.is_empty())
+            && lines.get(i + 1).map_or(true, |l| l.is_empty());
+        if alone {
+            if let Some(level) = heading_level(line) {
+                flush(&mut para, &mut out);
+                separate(&mut out);
+                out.push(format!("{} {line}", "#".repeat(level as usize)));
+                in_list = false;
+                continue;
             }
         }
+        if let Some(rest) = list_item(line) {
+            flush(&mut para, &mut out);
+            // Une liste s'ouvre après un blanc, mais ses items se suivent.
+            if !in_list {
+                separate(&mut out);
+            }
+            out.push(format!("- {rest}"));
+            in_list = true;
+            continue;
+        }
+        in_list = false;
+        para.push(line.clone());
+        // Sans ligne vide, une ligne nettement plus courte que les autres et
+        // refermée par une ponctuation marque la fin du paragraphe.
+        if line.chars().count() < short && line.ends_with(CLOSING) {
+            flush(&mut para, &mut out);
+        }
     }
-    while out.last().is_some_and(|last| last.is_empty()) {
-        out.pop();
-    }
+    flush(&mut para, &mut out);
     out.join("\n")
+}
+
+/// Largeur en deçà de laquelle une ligne est tenue pour une fin de paragraphe.
+///
+/// La médiane sert de référence : elle résiste aux titres courts comme aux
+/// lignes exceptionnellement longues.
+fn short_line_width(lines: &[String]) -> usize {
+    let mut widths: Vec<usize> = lines
+        .iter()
+        .filter(|l| !l.is_empty())
+        .map(|l| l.chars().count())
+        .collect();
+    if widths.is_empty() {
+        return 0;
+    }
+    widths.sort_unstable();
+    widths[widths.len() / 2] * 3 / 5
+}
+
+/// Sépare d'une ligne vide ce qui va suivre.
+fn separate(out: &mut Vec<String>) {
+    if out.last().is_some_and(|l| !l.is_empty()) {
+        out.push(String::new());
+    }
+}
+
+/// Ferme le paragraphe en cours.
+fn flush(para: &mut Vec<String>, out: &mut Vec<String>) {
+    if para.is_empty() {
+        return;
+    }
+    separate(out);
+    out.push(para.join(" "));
+    para.clear();
 }
 
 /// Rend leurs lettres aux ligatures typographiques.
@@ -274,6 +336,57 @@ mod tests {
     }
 
     #[test]
+    fn a_numbered_title_becomes_a_heading() {
+        let out = to_markdown(&[page(&["1. Contexte", "", "Du texte."])]);
+        assert_eq!(out, "## 1. Contexte\n\nDu texte.");
+    }
+
+    #[test]
+    fn a_sub_numbered_title_goes_one_level_deeper() {
+        let out = to_markdown(&[page(&["2.1 Latence", "", "Du texte."])]);
+        assert_eq!(out, "### 2.1 Latence\n\nDu texte.");
+    }
+
+    #[test]
+    fn bullets_become_a_markdown_list_without_gaps() {
+        let out = to_markdown(&[page(&["• un", "• deux"])]);
+        assert_eq!(out, "- un\n- deux", "les items d'une liste se suivent");
+    }
+
+    #[test]
+    fn the_lines_of_a_paragraph_are_joined() {
+        let out = to_markdown(&[page(&[
+            "Le service doit gérer les règlements",
+            "sur trente jours.",
+        ])]);
+        assert_eq!(out, "Le service doit gérer les règlements sur trente jours.");
+    }
+
+    #[test]
+    fn a_heading_is_only_a_heading_when_it_stands_alone() {
+        // Au milieu d'un paragraphe, « 1. » ouvre une énumération, pas une
+        // section.
+        let out = to_markdown(&[page(&["Les étapes sont :", "1. Ouvrir", "2. Fermer"])]);
+        assert!(!out.contains('#'), "un titre a été inventé : {out}");
+    }
+
+    #[test]
+    fn a_short_closing_line_ends_its_paragraph() {
+        // Sans ligne vide, un PDF dense ferait un seul bloc géant : une ligne
+        // nettement plus courte que les autres et refermée marque la fin.
+        let out = to_markdown(&[page(&[
+            "Le service de paiement traite les règlements différés",
+            "et les remboursements sur trente jours au plus tard.",
+            "La règle s'arrête là.",
+            "Une autre partie commence ici et court sur toute la ligne",
+        ])]);
+        assert!(
+            out.contains("au plus tard. La règle s'arrête là.\n\nUne autre partie"),
+            "le paragraphe n'a pas été fermé : {out}"
+        );
+    }
+
+    #[test]
     fn a_numbered_line_is_a_heading_of_its_depth() {
         assert_eq!(heading_level("1. Contexte"), Some(2));
         assert_eq!(heading_level("2) Contraintes"), Some(2));
@@ -462,9 +575,13 @@ mod tests {
     }
 
     #[test]
-    fn a_single_page_keeps_its_lines_in_order() {
-        let out = to_markdown(&[page(&["1. Contexte", "", "Le service expose deux routes."])]);
-        assert_eq!(out, "1. Contexte\n\nLe service expose deux routes.");
+    fn a_single_page_keeps_its_content_in_order() {
+        let out = to_markdown(&[page(&[
+            "Contexte du service",
+            "",
+            "Le service expose deux routes.",
+        ])]);
+        assert_eq!(out, "Contexte du service\n\nLe service expose deux routes.");
     }
 
     #[test]
@@ -475,20 +592,20 @@ mod tests {
 
     #[test]
     fn right_padding_disappears() {
-        let out = to_markdown(&[page(&["Titre    ", "Suite\t"])]);
-        assert_eq!(out, "Titre\nSuite");
+        let out = to_markdown(&[page(&["Titre    ", "", "Suite\t"])]);
+        assert_eq!(out, "Titre\n\nSuite");
     }
 
     #[test]
-    fn two_pages_are_separated_by_a_blank_line() {
-        let out = to_markdown(&[page(&["fin de page"]), page(&["début de page"])]);
-        assert_eq!(out, "fin de page\n\ndébut de page");
+    fn two_pages_are_separated_when_the_sentence_is_closed() {
+        let out = to_markdown(&[page(&["Fin de page."]), page(&["Début de page."])]);
+        assert_eq!(out, "Fin de page.\n\nDébut de page.");
     }
 
     #[test]
     fn a_page_break_never_doubles_an_existing_blank() {
-        let out = to_markdown(&[page(&["fin", ""]), page(&["suite"])]);
-        assert_eq!(out, "fin\n\nsuite", "le saut de page a ajouté un blanc de trop");
+        let out = to_markdown(&[page(&["Fin.", ""]), page(&["Suite."])]);
+        assert_eq!(out, "Fin.\n\nSuite.", "le saut de page a ajouté un blanc de trop");
     }
 
     #[test]
