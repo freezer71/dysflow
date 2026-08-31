@@ -93,6 +93,77 @@ pub fn pages(path: &Path) -> Result<Vec<Page>> {
     Ok(vec![Ocr::new()?.read(&image)?])
 }
 
+/// Fragment d'un nom de fichier, pour un tri qui compte comme un humain.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+enum Natural {
+    Text(String),
+    Number(u64),
+}
+
+/// Découpe un nom en fragments comparables : les chiffres comptent comme des
+/// nombres, pas comme des lettres.
+///
+/// Un tri alphabétique placerait `page10` avant `page9`, et le document serait
+/// dans le désordre.
+fn natural_key(name: &str) -> Vec<Natural> {
+    let mut out = Vec::new();
+    let mut text = String::new();
+    let mut digits = String::new();
+    let mut close_digits = |digits: &mut String, out: &mut Vec<Natural>| {
+        if digits.is_empty() {
+            return;
+        }
+        // Un nombre trop long pour tenir dans un u64 reste du texte.
+        match digits.parse() {
+            Ok(number) => out.push(Natural::Number(number)),
+            Err(_) => out.push(Natural::Text(digits.clone())),
+        }
+        digits.clear();
+    };
+    for c in name.chars() {
+        if c.is_ascii_digit() {
+            if !text.is_empty() {
+                out.push(Natural::Text(std::mem::take(&mut text)));
+            }
+            digits.push(c);
+        } else {
+            close_digits(&mut digits, &mut out);
+            text.push(c.to_ascii_lowercase());
+        }
+    }
+    if !text.is_empty() {
+        out.push(Natural::Text(text));
+    }
+    close_digits(&mut digits, &mut out);
+    out
+}
+
+/// Reconnaît le texte de toutes les images d'un dossier, dans l'ordre.
+pub fn directory_pages(dir: &Path) -> Result<Vec<Page>> {
+    let mut files: Vec<PathBuf> = std::fs::read_dir(dir)
+        .with_context(|| format!("lecture de {}", dir.display()))?
+        .filter_map(|entry| entry.ok().map(|e| e.path()))
+        .filter(|path| matches!(super::kind::of_path(path), Ok(super::Kind::Image)))
+        .collect();
+    if files.is_empty() {
+        anyhow::bail!("{} ne contient aucune image lisible", dir.display());
+    }
+    files.sort_by_key(|path| {
+        natural_key(&path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default())
+    });
+
+    // Un seul moteur pour tout le dossier : son ouverture coûte plus que la
+    // lecture d'une page.
+    let engine = Ocr::new()?;
+    let mut pages = Vec::with_capacity(files.len());
+    for file in files {
+        let image = image::open(&file)
+            .with_context(|| format!("lecture de l'image {}", file.display()))?;
+        pages.push(engine.read(&image)?);
+    }
+    Ok(pages)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -101,6 +172,46 @@ mod tests {
         Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("tests/fixtures")
             .join(name)
+    }
+
+    #[test]
+    fn page_ten_comes_after_page_nine() {
+        let mut names = ["page10.png", "page9.png", "page1.png"];
+        names.sort_by_key(|n| natural_key(n));
+        assert_eq!(names, ["page1.png", "page9.png", "page10.png"]);
+    }
+
+    #[test]
+    fn names_without_numbers_stay_alphabetical() {
+        let mut names = ["avant.png", "zeta.png", "beta.png"];
+        names.sort_by_key(|n| natural_key(n));
+        assert_eq!(names, ["avant.png", "beta.png", "zeta.png"]);
+    }
+
+    #[test]
+    fn a_directory_of_captures_is_read_in_order() {
+        let dir = std::env::temp_dir().join("rs-reader-scans");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("création du dossier");
+        // La même capture deux fois : l'ordre est vérifiable, le contenu connu.
+        for name in ["page2.png", "page1.png"] {
+            std::fs::copy(fixture("capture.png"), dir.join(name)).expect("copie");
+        }
+        let read = directory_pages(&dir);
+        let _ = std::fs::remove_dir_all(&dir);
+        let read = read.expect("le dossier doit se lire");
+        assert_eq!(read.len(), 2, "une image par page");
+        assert!(read[0].lines.join("\n").contains("Spécification"));
+    }
+
+    #[test]
+    fn a_directory_without_images_says_so() {
+        let dir = std::env::temp_dir().join("rs-reader-vide");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("création du dossier");
+        let err = directory_pages(&dir);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(err.is_err(), "un dossier sans image doit le dire");
     }
 
     #[test]

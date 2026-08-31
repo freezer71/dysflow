@@ -28,8 +28,11 @@ pub fn load(path: &Path) -> Result<String> {
             "{} est une image : ce binaire a été compilé sans l'option `ocr`",
             path.display()
         ),
+        #[cfg(feature = "ocr")]
+        Kind::Directory => Ok(layout::to_markdown(&ocr::directory_pages(path)?)),
+        #[cfg(not(feature = "ocr"))]
         Kind::Directory => bail!(
-            "{} est un dossier : la lecture d'un dossier d'images n'est pas encore disponible",
+            "{} est un dossier : ce binaire a été compilé sans l'option `ocr`",
             path.display()
         ),
     }
@@ -88,11 +91,14 @@ mod tests {
     }
 
     #[test]
-    fn a_directory_says_so_too() {
+    fn a_directory_without_images_says_so() {
+        // Le dossier temporaire du système ne contient pas d'images de page ;
+        // le message diffère selon que l'OCR est compilé, la plainte non.
         let err = load(&std::env::temp_dir()).unwrap_err();
+        let message = err.to_string();
         assert!(
-            err.to_string().contains("dossier"),
-            "l'erreur doit dire ce qui bloque : {err}"
+            message.contains("dossier") || message.contains("aucune image"),
+            "l'erreur doit dire ce qui bloque : {message}"
         );
     }
 }
