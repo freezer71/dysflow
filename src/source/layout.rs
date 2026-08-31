@@ -5,6 +5,9 @@
 //! inutilisable. Ce module leur redonne une structure.
 
 use std::collections::HashMap;
+use std::sync::LazyLock;
+
+use regex::Regex;
 
 use super::pdf::Page;
 
@@ -199,6 +202,56 @@ fn weld_pages(pages: Vec<Vec<String>>) -> Vec<String> {
     out
 }
 
+/// Longueur au-delà de laquelle une ligne est un paragraphe, pas un titre.
+const HEADING_MAX: usize = 80;
+
+/// Niveau de titre d'une ligne isolée, s'il y en a un.
+///
+/// Le niveau 1 est laissé au titre du document : une numérotation de premier
+/// rang ouvre donc un niveau 2.
+fn heading_level(line: &str) -> Option<u8> {
+    // Même motif que `text::numerals` : un rang suivi de sa ponctuation, ou
+    // une numérotation à plusieurs composantes. « 250 ms » n'en est pas un.
+    static NUMBERED: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"^(?:(?P<deep>\d+(?:\.\d+)+)\.?|(?P<flat>\d+)[.)])[ \t]+\S")
+            .expect("motif constant")
+    });
+
+    let line = line.trim();
+    if line.is_empty() || line.chars().count() > HEADING_MAX {
+        return None;
+    }
+    // Un titre n'est pas une phrase : il ne se referme pas.
+    if line.ends_with(['.', ',', ';']) {
+        return None;
+    }
+    if let Some(caps) = NUMBERED.captures(line) {
+        let number = caps.name("deep").or_else(|| caps.name("flat"))?;
+        let depth = number.as_str().split('.').count() as u8;
+        return Some((depth + 1).min(6));
+    }
+    let mut count = 0;
+    for c in line.chars().filter(|c| c.is_alphabetic()) {
+        if c.is_lowercase() {
+            return None;
+        }
+        count += 1;
+    }
+    (count >= 3).then_some(2)
+}
+
+/// Contenu d'un item de liste, si la ligne en est un.
+fn list_item(line: &str) -> Option<&str> {
+    let line = line.trim();
+    let rest = ['•', '●', '▪', '◦', '·', '–', '—', '*', '-']
+        .iter()
+        .find_map(|bullet| line.strip_prefix(*bullet))?;
+    // Sans espace, le tiret appartient au mot qui suit.
+    rest.starts_with([' ', '\t'])
+        .then(|| rest.trim())
+        .filter(|rest| !rest.is_empty())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -218,6 +271,51 @@ mod tests {
             .iter()
             .map(|p| p.iter().map(|l| l.to_string()).collect())
             .collect()
+    }
+
+    #[test]
+    fn a_numbered_line_is_a_heading_of_its_depth() {
+        assert_eq!(heading_level("1. Contexte"), Some(2));
+        assert_eq!(heading_level("2) Contraintes"), Some(2));
+        assert_eq!(heading_level("2.1 Latence"), Some(3));
+        assert_eq!(heading_level("4.10.2 Repli"), Some(4));
+    }
+
+    #[test]
+    fn a_line_in_capitals_is_a_heading() {
+        assert_eq!(heading_level("ANNEXE TECHNIQUE"), Some(2));
+    }
+
+    #[test]
+    fn ordinary_prose_is_not_a_heading() {
+        assert_eq!(heading_level("250 ms de latence maximale"), None);
+        assert_eq!(heading_level("Le service expose deux routes."), None);
+        assert_eq!(heading_level(""), None);
+    }
+
+    #[test]
+    fn a_long_line_is_never_a_heading() {
+        let long = format!("1. {}", "mot ".repeat(40));
+        assert_eq!(heading_level(&long), None, "un titre ne fait pas un paragraphe");
+    }
+
+    #[test]
+    fn a_sentence_that_ends_in_a_full_stop_is_not_a_heading() {
+        assert_eq!(heading_level("1. Le service traite les paiements."), None);
+    }
+
+    #[test]
+    fn the_usual_bullets_are_recognised() {
+        assert_eq!(list_item("• latence maximale"), Some("latence maximale"));
+        assert_eq!(list_item("– disponibilité"), Some("disponibilité"));
+        assert_eq!(list_item("- journalisation"), Some("journalisation"));
+        assert_eq!(list_item("* trace"), Some("trace"));
+    }
+
+    #[test]
+    fn a_bullet_needs_a_space_after_it() {
+        assert_eq!(list_item("-sans espace"), None);
+        assert_eq!(list_item("Une phrase - avec tiret"), None);
     }
 
     #[test]
