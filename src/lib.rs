@@ -15,6 +15,7 @@ pub mod doc;
 pub mod input;
 pub mod logging;
 pub mod models;
+pub mod source;
 pub mod text;
 pub mod tts;
 pub mod tui;
