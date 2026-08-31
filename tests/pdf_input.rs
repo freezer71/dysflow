@@ -103,3 +103,19 @@ fn the_rebuilt_pdf_fills_the_table_of_contents() {
         doc.sections.iter().map(|s| &s.title).collect::<Vec<_>>()
     );
 }
+
+#[cfg(feature = "ocr")]
+#[test]
+fn a_scanned_pdf_is_recognised_and_rebuilt() {
+    // Le cache est écarté : un test doit mesurer la chaîne, pas un souvenir.
+    let markdown = rs_reader::source::load_with_cache(&fixture("scanne.pdf"), false)
+        .expect("le scan doit se lire");
+    assert!(
+        markdown.contains("Spécification"),
+        "le scan est resté vide : {markdown}"
+    );
+    assert!(
+        markdown.contains("## 1. Contexte"),
+        "la reconstruction ne s'est pas appliquée : {markdown}"
+    );
+}

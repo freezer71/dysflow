@@ -96,6 +96,10 @@ struct Args {
     #[arg(long)]
     clip: bool,
 
+    /// Refait l'extraction sans consulter le cache.
+    #[arg(long)]
+    no_cache: bool,
+
     /// Ouvre directement l'écran de configuration.
     #[arg(long)]
     config: bool,
@@ -134,7 +138,7 @@ fn main() -> Result<()> {
         Some(path) => {
             // Un fichier est analysé d'emblée : sommaire et durée sont
             // disponibles dès l'ouverture.
-            let text = rs_reader::source::load(path)?;
+            let text = rs_reader::source::load_with_cache(path, !args.no_cache)?;
             if args.to_markdown {
                 print!("{text}");
                 return Ok(());

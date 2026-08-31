@@ -22,8 +22,10 @@ permanence.
   rendus au sommaire, mots coupés recollés, en-têtes et pieds de page retirés.
   `--to-markdown` écrit le texte extrait sans lancer la lecture.
 - **Lit aussi les images**, avec reconnaissance de texte : une capture d'écran,
-  une photo de page, un dossier de scans, ou le presse-papiers avec `--clip`.
-  Demande l'option de compilation `ocr`.
+  une photo de page, un dossier de scans, un **PDF photocopié**, ou le
+  presse-papiers avec `--clip`. Les pages sont reconnues en parallèle et le
+  résultat mémorisé : la deuxième ouverture est immédiate. `--no-cache` refait
+  l'extraction. Demande l'option de compilation `ocr`.
 - **Synthétise en parallèle**, sur plusieurs sessions, dans une fenêtre glissante
   autour du curseur — ce qui rend l'avance et le recul immédiats et borne la
   mémoire.
