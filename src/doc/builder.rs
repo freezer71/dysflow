@@ -1,0 +1,730 @@
+//! Construction incrémentale du document à partir de markdown.
+//!
+//! Le constructeur est nourri bloc par bloc, ce qui permet de commencer à lire
+//! un flux avant d'en avoir vu la fin. L'état de section survit d'un bloc à
+//! l'autre, si bien que le résultat est identique que le document arrive d'un
+//! coup ou par morceaux.
+
+use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
+
+use super::{Block, BlockKind, Document, Punctuation, Section, Sentence, Word};
+use crate::text::numerals::verbalize_section_number;
+use crate::text::{sanitize, split_sentences};
+
+/// Traitement réservé aux blocs de code.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CodePolicy {
+    /// Annonce « bloc de code <langage> » sans en lire le contenu.
+    Announce,
+    /// Ignore le bloc entièrement.
+    Skip,
+    /// Lit le code tel quel.
+    Read,
+}
+
+impl CodePolicy {
+    pub fn parse(value: &str) -> Option<Self> {
+        match value.to_ascii_lowercase().as_str() {
+            "announce" | "annonce" => Some(CodePolicy::Announce),
+            "skip" | "ignore" => Some(CodePolicy::Skip),
+            "read" | "lire" => Some(CodePolicy::Read),
+            _ => None,
+        }
+    }
+}
+
+/// Largeur de chaque colonne, en caractères.
+fn column_widths(rows: &[(bool, Vec<String>)]) -> Vec<usize> {
+    let mut widths: Vec<usize> = Vec::new();
+    for (_, cells) in rows {
+        for (i, cell) in cells.iter().enumerate() {
+            let len = cell.chars().count();
+            match widths.get_mut(i) {
+                Some(width) => *width = (*width).max(len),
+                None => widths.push(len),
+            }
+        }
+    }
+    widths
+}
+
+/// Aligne une ligne sur les largeurs données, sans remplir la dernière colonne.
+fn align_row(cells: &[String], widths: &[usize]) -> String {
+    let last = cells.len().saturating_sub(1);
+    let mut line = String::new();
+    for (i, cell) in cells.iter().enumerate() {
+        line.push_str(cell);
+        if i < last {
+            let pad = widths.get(i).copied().unwrap_or(0).saturating_sub(cell.chars().count());
+            line.push_str(&" ".repeat(pad));
+            line.push_str("  ");
+        }
+    }
+    line
+}
+
+/// Découpe un source en lignes affichables, sans les vides de bordure.
+fn source_lines(raw: &str) -> Vec<String> {
+    let mut lines: Vec<String> = raw
+        .trim_end_matches('\n')
+        .lines()
+        .map(|l| l.trim_end().to_string())
+        .collect();
+    while lines.first().is_some_and(|l| l.trim().is_empty()) {
+        lines.remove(0);
+    }
+    while lines.last().is_some_and(|l| l.trim().is_empty()) {
+        lines.pop();
+    }
+    lines
+}
+
+/// Bloc en cours d'assemblage.
+struct Pending {
+    kind: BlockKind,
+    text: String,
+}
+
+impl Pending {
+    /// Ajoute un fragment tel quel, sans espace implicite.
+    ///
+    /// Les fragments d'un même bloc sont adjacents dans la source : les séparer
+    /// coupe les mots. La ponctuation intelligente rend l'apostrophe sous forme
+    /// d'événement distinct, si bien que « s'y greffe » devenait « s ’ y
+    /// greffe » — trois morceaux, et la liaison perdue à la synthèse.
+    ///
+    /// Les espaces qui manquent vraiment sont poussés explicitement : les sauts
+    /// de ligne souples et durs, et la fin d'un paragraphe interne à un item.
+    fn push_text(&mut self, value: &str) {
+        self.text.push_str(value);
+    }
+}
+
+pub struct DocumentBuilder {
+    doc: Document,
+    code_policy: CodePolicy,
+    current_section: usize,
+    /// Profondeur de liste courante, pour l'indentation des items.
+    list_stack: Vec<Option<u64>>,
+    quote_depth: usize,
+    pending: Option<Pending>,
+    /// Cellules de la ligne de tableau en cours.
+    table_cells: Vec<String>,
+    /// Lignes du tableau en cours, retenues jusqu'à sa fermeture.
+    ///
+    /// L'alignement des colonnes ne se connaît qu'une fois toutes les lignes
+    /// vues : les émettre au fil de l'eau interdirait de les aligner.
+    table_rows: Vec<(bool, Vec<String>)>,
+    in_table_head: bool,
+    in_table: bool,
+    word_counter: usize,
+}
+
+impl DocumentBuilder {
+    pub fn new(code_policy: CodePolicy) -> Self {
+        let mut doc = Document::default();
+        // Section racine : accueille le texte qui précède tout titre.
+        doc.sections.push(Section {
+            id: 0,
+            level: 0,
+            title: "Introduction".to_string(),
+            first_sentence: None,
+            block_ids: Vec::new(),
+        });
+        Self {
+            doc,
+            code_policy,
+            current_section: 0,
+            list_stack: Vec::new(),
+            quote_depth: 0,
+            pending: None,
+            table_cells: Vec::new(),
+            table_rows: Vec::new(),
+            in_table_head: false,
+            in_table: false,
+            word_counter: 0,
+        }
+    }
+
+    fn options() -> Options {
+        // Sans ENABLE_TABLES, un tableau GFM retombe en paragraphe et ses
+        // barres verticales sont lues comme du texte.
+        let mut options = Options::empty();
+        options.insert(Options::ENABLE_TABLES);
+        options.insert(Options::ENABLE_STRIKETHROUGH);
+        options.insert(Options::ENABLE_FOOTNOTES);
+        options.insert(Options::ENABLE_TASKLISTS);
+        options.insert(Options::ENABLE_SMART_PUNCTUATION);
+        options
+    }
+
+    /// Analyse un fragment markdown et l'ajoute au document.
+    pub fn push_block(&mut self, markdown: &str) {
+        if markdown.trim().is_empty() {
+            return;
+        }
+        for event in Parser::new_ext(markdown, Self::options()) {
+            self.handle(event);
+        }
+        // Un fragment se termine toujours par un bloc clos.
+        self.flush();
+        // Un tableau tronqué par la fin du flux vaut mieux que rien.
+        self.flush_table();
+    }
+
+    fn handle(&mut self, event: Event<'_>) {
+        match event {
+            Event::Start(Tag::Heading { level, .. }) => {
+                self.flush();
+                self.pending = Some(Pending {
+                    kind: BlockKind::Heading { level: level as u8 },
+                    text: String::new(),
+                });
+            }
+            Event::End(TagEnd::Heading(_)) => self.flush(),
+
+            Event::Start(Tag::Paragraph) => {
+                // Dans un item de liste ou une citation, le paragraphe ne crée
+                // pas de bloc : il prolonge celui qui est déjà ouvert.
+                if self.pending.is_none() {
+                    let kind = if self.quote_depth > 0 {
+                        BlockKind::Quote
+                    } else {
+                        BlockKind::Paragraph
+                    };
+                    self.pending = Some(Pending { kind, text: String::new() });
+                }
+            }
+            Event::End(TagEnd::Paragraph) => {
+                if matches!(
+                    self.pending.as_ref().map(|p| &p.kind),
+                    Some(BlockKind::Paragraph) | Some(BlockKind::Quote)
+                ) {
+                    self.flush();
+                } else if let Some(pending) = self.pending.as_mut() {
+                    // Sépare deux paragraphes d'un même item.
+                    pending.push_text(" ");
+                }
+            }
+
+            Event::Start(Tag::List(start)) => self.list_stack.push(start),
+            Event::End(TagEnd::List(_)) => {
+                self.list_stack.pop();
+            }
+            Event::Start(Tag::Item) => {
+                self.flush();
+                let depth = self.list_stack.len().saturating_sub(1) as u8;
+                let ordinal = self.list_stack.last().copied().flatten();
+                // Fait avancer le compteur de la liste ordonnée courante.
+                if let Some(slot) = self.list_stack.last_mut() {
+                    if let Some(n) = slot.as_mut() {
+                        *n += 1;
+                    }
+                }
+                self.pending = Some(Pending {
+                    kind: BlockKind::ListItem { depth, ordinal },
+                    text: String::new(),
+                });
+            }
+            Event::End(TagEnd::Item) => self.flush(),
+
+            Event::Start(Tag::BlockQuote(_)) => {
+                self.flush();
+                self.quote_depth += 1;
+            }
+            Event::End(TagEnd::BlockQuote(_)) => {
+                self.flush();
+                self.quote_depth = self.quote_depth.saturating_sub(1);
+            }
+
+            Event::Start(Tag::CodeBlock(kind)) => {
+                self.flush();
+                let language = match kind {
+                    CodeBlockKind::Fenced(info) => {
+                        let lang = info.split(',').next().unwrap_or("").trim().to_string();
+                        (!lang.is_empty()).then_some(lang)
+                    }
+                    CodeBlockKind::Indented => None,
+                };
+                self.pending = Some(Pending {
+                    kind: BlockKind::Code { language },
+                    text: String::new(),
+                });
+            }
+            Event::End(TagEnd::CodeBlock) => self.flush(),
+
+            Event::Start(Tag::Table(_)) => {
+                self.flush();
+                self.in_table = true;
+            }
+            Event::End(TagEnd::Table) => {
+                self.in_table = false;
+                self.flush_table();
+            }
+            Event::Start(Tag::TableHead) => {
+                self.in_table_head = true;
+                self.table_cells.clear();
+            }
+            Event::End(TagEnd::TableHead) => {
+                self.flush_table_row();
+                self.in_table_head = false;
+            }
+            Event::Start(Tag::TableRow) => self.table_cells.clear(),
+            Event::End(TagEnd::TableRow) => self.flush_table_row(),
+            Event::Start(Tag::TableCell) => self.table_cells.push(String::new()),
+            Event::End(TagEnd::TableCell) => {}
+
+            Event::Text(text) | Event::Code(text) => self.push_text(&text),
+            Event::SoftBreak | Event::HardBreak => self.push_text(" "),
+            Event::TaskListMarker(done) => {
+                self.push_text(if done { "fait :" } else { "à faire :" })
+            }
+            // Le HTML brut et les règles horizontales sont du formatage pur.
+            Event::Rule | Event::Html(_) | Event::InlineHtml(_) => {}
+            _ => {}
+        }
+    }
+
+    fn push_text(&mut self, value: &str) {
+        if self.in_table {
+            if let Some(cell) = self.table_cells.last_mut() {
+                cell.push_str(value);
+            }
+            return;
+        }
+        if let Some(pending) = self.pending.as_mut() {
+            pending.push_text(value);
+        }
+    }
+
+    fn flush_table_row(&mut self) {
+        // Les cellules vides sont gardées : c'est ce qui tient l'alignement
+        // des colonnes, et l'appariement avec l'en-tête.
+        let cells: Vec<String> = self
+            .table_cells
+            .drain(..)
+            .map(|c| c.trim().to_string())
+            .collect();
+        if cells.iter().all(|c| c.is_empty()) {
+            return;
+        }
+        self.table_rows.push((self.in_table_head, cells));
+    }
+
+    /// Émet le tableau retenu : une ligne par bloc, alignée et appariée.
+    fn flush_table(&mut self) {
+        if self.table_rows.is_empty() {
+            return;
+        }
+        let rows = std::mem::take(&mut self.table_rows);
+        let headers = rows
+            .iter()
+            .find(|(header, _)| *header)
+            .map(|(_, cells)| cells.clone())
+            .unwrap_or_default();
+        let widths = column_widths(&rows);
+
+        for (header, cells) in rows {
+            // Une ligne de corps dit la colonne de chaque cellule : « alpha,
+            // huit mille quatre-vingts » ne disait pas lequel était le port.
+            let spoken = if header || headers.is_empty() {
+                cells
+                    .iter()
+                    .filter(|c| !c.is_empty())
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            } else {
+                cells
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, cell)| !cell.is_empty())
+                    .map(|(i, cell)| match headers.get(i) {
+                        Some(name) if !name.is_empty() => format!("{name} : {cell}."),
+                        _ => format!("{cell}."),
+                    })
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            };
+            let kind = BlockKind::TableRow { header };
+            self.commit(kind, &spoken, vec![align_row(&cells, &widths)]);
+        }
+    }
+
+    fn flush(&mut self) {
+        let Some(pending) = self.pending.take() else {
+            return;
+        };
+        // Le code s'affiche tel qu'il est écrit : son indentation porte sa
+        // structure, et le nettoyage destiné à la voix la détruirait.
+        let mut display = Vec::new();
+        let text = match &pending.kind {
+            BlockKind::Code { language } => {
+                display = source_lines(&pending.text);
+                match self.code_policy {
+                    CodePolicy::Skip => return,
+                    CodePolicy::Read => pending.text.clone(),
+                    CodePolicy::Announce => match language {
+                        Some(lang) => format!("Bloc de code {lang}."),
+                        None => "Bloc de code.".to_string(),
+                    },
+                }
+            }
+            _ => pending.text.clone(),
+        };
+        self.commit(pending.kind, &text, display);
+    }
+
+    /// Verse un bloc au document : ce qui se dit, et ce qui s'affiche.
+    fn commit(&mut self, kind: BlockKind, raw_text: &str, display_lines: Vec<String>) {
+        // La numérotation d'un titre se dit ; celle d'une liste se retire, sa
+        // structure étant déjà portée par le rang de l'item.
+        let raw = match kind {
+            BlockKind::Heading { .. } => verbalize_section_number(raw_text),
+            _ => raw_text.to_string(),
+        };
+        let clean = sanitize(&raw);
+        if clean.is_empty() {
+            return;
+        }
+
+        // Un titre ouvre une section, à laquelle il appartient lui-même.
+        if let BlockKind::Heading { level } = kind {
+            let id = self.doc.sections.len();
+            self.doc.sections.push(Section {
+                id,
+                level,
+                title: clean.clone(),
+                first_sentence: None,
+                block_ids: Vec::new(),
+            });
+            self.current_section = id;
+            if self.doc.title.is_empty() {
+                self.doc.title = clean.clone();
+            }
+        }
+
+        let block_id = self.doc.blocks.len();
+        let section_id = self.current_section;
+        let pause = kind.trailing_pause_ms();
+
+        let texts = if matches!(kind, BlockKind::Code { .. }) && self.code_policy == CodePolicy::Read
+        {
+            // Le code n'a pas de phrases : une ligne, une unité de synthèse.
+            clean.lines().map(str::to_string).filter(|l| !l.trim().is_empty()).collect()
+        } else {
+            split_sentences(&clean)
+        };
+
+        let start = self.doc.sentences.len();
+        let count = texts.len();
+        for (i, text) in texts.into_iter().enumerate() {
+            let id = self.doc.sentences.len();
+            let words = self.tokenize(&text);
+            self.doc.sentences.push(Sentence {
+                id,
+                block_id,
+                section_id,
+                text,
+                words,
+                // Seule la dernière phrase porte la pause du bloc.
+                trailing_pause_ms: if i + 1 == count { pause } else { 120 },
+            });
+        }
+        let end = self.doc.sentences.len();
+        if start == end {
+            return;
+        }
+
+        if self.doc.sections[section_id].first_sentence.is_none() {
+            self.doc.sections[section_id].first_sentence = Some(start);
+        }
+        self.doc.sections[section_id].block_ids.push(block_id);
+        self.doc.blocks.push(Block {
+            id: block_id,
+            kind,
+            section_id,
+            text: clean,
+            sentences: (start, end),
+            display_lines,
+        });
+    }
+
+    /// Découpe une phrase en mots affichables, ponctuation comprise.
+    fn tokenize(&mut self, sentence: &str) -> Vec<Word> {
+        let mut words = Vec::new();
+        for token in sentence.split_whitespace() {
+            // La ponctuation reste dans le texte affiché ; seule sa nature est
+            // extraite, pour l'indicateur et pour le rythme du curseur.
+            let punctuation = token.chars().rev().find_map(Punctuation::from_char);
+            words.push(Word {
+                text: token.to_string(),
+                index: self.word_counter,
+                punctuation,
+            });
+            self.word_counter += 1;
+        }
+        words
+    }
+
+    /// Marque la fin de l'entrée.
+    pub fn finish(&mut self) {
+        self.flush();
+        self.flush_table();
+        self.doc.complete = true;
+        if self.doc.title.is_empty() {
+            self.doc.title = self
+                .doc
+                .blocks
+                .first()
+                .map(|b| b.text.chars().take(60).collect())
+                .unwrap_or_else(|| "Document".to_string());
+        }
+    }
+
+    /// Instantané du document tel qu'il est actuellement construit.
+    pub fn document(&self) -> &Document {
+        &self.doc
+    }
+
+    pub fn into_document(mut self) -> Document {
+        self.finish();
+        self.doc.total_words = self.word_counter;
+        self.doc
+    }
+
+    /// Nombre de phrases produites jusqu'ici.
+    pub fn sentence_count(&self) -> usize {
+        self.doc.sentences.len()
+    }
+
+    pub fn sync_word_total(&mut self) {
+        self.doc.total_words = self.word_counter;
+    }
+}
+
+/// Raccourci : analyse un document complet en une fois.
+pub fn parse_document(markdown: &str, code_policy: CodePolicy) -> Document {
+    let mut builder = DocumentBuilder::new(code_policy);
+    for block in crate::input::split_blocks(markdown) {
+        builder.push_block(&block);
+    }
+    builder.into_document()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn doc(md: &str) -> Document {
+        parse_document(md, CodePolicy::Announce)
+    }
+
+    #[test]
+    fn list_items_are_never_dropped() {
+        let d = doc("# Titre\n\nIntro.\n\n- item alpha\n- item beta\n- item gamma\n");
+        let texts: Vec<&str> = d.blocks.iter().map(|b| b.text.as_str()).collect();
+        assert!(texts.iter().any(|t| t.contains("item alpha")), "{texts:?}");
+        assert!(texts.iter().any(|t| t.contains("item beta")), "{texts:?}");
+        assert!(texts.iter().any(|t| t.contains("item gamma")), "{texts:?}");
+        assert_eq!(
+            d.blocks.iter().filter(|b| matches!(b.kind, BlockKind::ListItem { .. })).count(),
+            3
+        );
+    }
+
+    #[test]
+    fn nested_lists_record_their_depth() {
+        let d = doc("- racine\n  - enfant\n");
+        let depths: Vec<u8> = d
+            .blocks
+            .iter()
+            .filter_map(|b| match b.kind {
+                BlockKind::ListItem { depth, .. } => Some(depth),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(depths, vec![0, 1]);
+    }
+
+    #[test]
+    fn code_blocks_are_announced_not_recited() {
+        let d = doc("Avant.\n\n```rust\nfn main() { let secret = 42; }\n```\n\nAprès.\n");
+        let all = d.blocks.iter().map(|b| b.text.as_str()).collect::<Vec<_>>().join(" | ");
+        assert!(!all.contains("secret"), "le code ne doit pas être lu : {all}");
+        assert!(all.contains("Bloc de code rust"), "{all}");
+        assert!(all.contains("Avant") && all.contains("Après"));
+    }
+
+    #[test]
+    fn code_blocks_can_be_skipped_entirely() {
+        let d = parse_document("```\nx = 1\n```\n\nSuite.\n", CodePolicy::Skip);
+        let all = d.blocks.iter().map(|b| b.text.as_str()).collect::<Vec<_>>().join(" ");
+        assert!(!all.contains("Bloc de code"));
+        assert!(all.contains("Suite"));
+    }
+
+    #[test]
+    fn headings_say_their_numbering() {
+        let d = doc("### 3.5 Tarif kilométrique de repli\n");
+        assert_eq!(d.blocks[0].text, "trois point cinq, Tarif kilométrique de repli");
+    }
+
+    #[test]
+    fn list_items_still_drop_their_numbering() {
+        // Le rang d'un item est porté par la structure, pas par la voix.
+        let d = doc("1. premier point\n2. second point\n");
+        assert!(d.blocks[0].text.starts_with("premier"), "obtenu: {:?}", d.blocks[0].text);
+    }
+
+    #[test]
+    fn keeps_elisions_glued_to_their_word() {
+        // La ponctuation intelligente de pulldown-cmark émet l'apostrophe comme
+        // un fragment à part ; l'espacer coupe l'élision, et le moteur perd la
+        // liaison — « s ’ y greffe » se lit en trois morceaux.
+        let d = doc("La spécification s'y greffe sans réécriture.\n");
+        assert!(
+            d.blocks[0].text.contains("s\u{2019}y greffe"),
+            "obtenu: {:?}",
+            d.blocks[0].text
+        );
+    }
+
+    fn table_rows(doc: &Document) -> Vec<&Block> {
+        doc.blocks
+            .iter()
+            .filter(|b| matches!(b.kind, BlockKind::TableRow { .. }))
+            .collect()
+    }
+
+    #[test]
+    fn a_table_row_names_the_column_of_each_cell() {
+        let d = doc("| Serveur | Port |\n|---|---|\n| alpha | 8080 |\n");
+        let rows = table_rows(&d);
+        // L'en-tête se dit une fois, tel quel…
+        assert_eq!(rows[0].text, "Serveur, Port");
+        // …puis chaque cellule est annoncée par sa colonne : « alpha, huit
+        // mille quatre-vingts » ne disait pas lequel était le port.
+        assert_eq!(
+            rows[1].text,
+            "Serveur : alpha. Port : huit mille quatre-vingts."
+        );
+    }
+
+    #[test]
+    fn each_cell_becomes_its_own_sentence() {
+        let d = doc("| Serveur | Port |\n|---|---|\n| alpha | 8080 |\n");
+        let row = table_rows(&d)[1];
+        // Une cellule par phrase : les flèches parcourent le tableau cellule
+        // par cellule au lieu de tout rejouer.
+        assert_eq!(row.sentences.1 - row.sentences.0, 2);
+    }
+
+    #[test]
+    fn a_table_without_a_header_keeps_its_cells_side_by_side() {
+        // Sans en-tête, rien à apparier : les cellules restent énumérées.
+        let d = doc("| a | b |\n|---|---|\n");
+        let rows = table_rows(&d);
+        assert_eq!(rows[0].text, "a, b");
+    }
+
+    #[test]
+    fn table_columns_are_aligned_on_screen() {
+        let d = doc("| Route | Méthode |\n|---|---|\n| /users | GET |\n| /a | DELETE |\n");
+        let rows = table_rows(&d);
+        assert_eq!(rows[0].display_lines, vec!["Route   Méthode"]);
+        assert_eq!(rows[1].display_lines, vec!["/users  GET"]);
+        assert_eq!(rows[2].display_lines, vec!["/a      DELETE"]);
+    }
+
+    #[test]
+    fn a_table_left_open_by_the_stream_is_still_delivered() {
+        let mut builder = DocumentBuilder::new(CodePolicy::Announce);
+        builder.push_block("| Route | Méthode |\n|---|---|\n| /users | GET |");
+        builder.finish();
+        assert_eq!(table_rows(builder.document()).len(), 2);
+    }
+
+    #[test]
+    fn blockquotes_are_captured() {
+        let d = doc("> Une citation utile.\n");
+        assert!(d.blocks.iter().any(|b| b.kind == BlockKind::Quote));
+        assert!(d.blocks[0].text.contains("citation"));
+    }
+
+    #[test]
+    fn headings_open_sections_and_carry_levels() {
+        let d = doc("# Un\n\nTexte a.\n\n## Deux\n\nTexte b.\n");
+        assert_eq!(d.sections.len(), 3); // racine + 2 titres
+        assert_eq!(d.sections[1].level, 1);
+        assert_eq!(d.sections[2].level, 2);
+        assert_eq!(d.sections[1].title, "Un");
+        // Le texte suit bien sa section.
+        let b = d.blocks.iter().find(|b| b.text == "Texte b.").unwrap();
+        assert_eq!(b.section_id, 2);
+    }
+
+    #[test]
+    fn heading_markers_are_never_pronounced() {
+        let d = doc("## Performance & Parallélisme\n");
+        assert_eq!(d.blocks[0].text, "Performance & Parallélisme");
+        assert!(!d.blocks[0].text.contains('#'));
+    }
+
+    #[test]
+    fn words_keep_their_punctuation_for_display() {
+        let d = doc("Bonjour, monde !\n");
+        let words: Vec<&str> = d.sentences[0].words.iter().map(|w| w.text.as_str()).collect();
+        assert_eq!(words, vec!["Bonjour,", "monde", "!"]);
+        assert_eq!(d.sentences[0].words[0].punctuation, Some(Punctuation::Comma));
+    }
+
+    #[test]
+    fn incremental_and_bulk_parsing_agree() {
+        let md = "# Titre\n\nUn.\n\n- a\n- b\n\n## Autre\n\nDeux.\n";
+        let bulk = doc(md);
+
+        let mut builder = DocumentBuilder::new(CodePolicy::Announce);
+        for block in crate::input::split_blocks(md) {
+            builder.push_block(&block);
+        }
+        let incremental = builder.into_document();
+
+        assert_eq!(bulk.blocks, incremental.blocks);
+        assert_eq!(bulk.sentences, incremental.sentences);
+        assert_eq!(bulk.sections, incremental.sections);
+    }
+
+    #[test]
+    fn an_announced_code_block_keeps_its_source_for_the_screen() {
+        let doc = parse_document("```rust\nfn a() {\n    b();\n}\n```", CodePolicy::Announce);
+        let block = doc
+            .blocks
+            .iter()
+            .find(|b| matches!(b.kind, BlockKind::Code { .. }))
+            .expect("un bloc de code");
+        // La voix n'en dit que l'annonce…
+        assert_eq!(doc.sentences[block.sentences.0].text, "Bloc de code rust.");
+        // …tandis que l'écran garde le source, indentation comprise.
+        assert_eq!(block.display_lines, vec!["fn a() {", "    b();", "}"]);
+    }
+
+    #[test]
+    fn a_read_code_block_also_keeps_its_untouched_source() {
+        let doc = parse_document("```json\n{ \"id\": 42 }\n```", CodePolicy::Read);
+        let block = doc
+            .blocks
+            .iter()
+            .find(|b| matches!(b.kind, BlockKind::Code { .. }))
+            .expect("un bloc de code");
+        // Le nombre est mis en mots pour la voix, jamais pour l'écran.
+        assert!(doc.sentences[block.sentences.0].text.contains("quarante-deux"));
+        assert_eq!(block.display_lines, vec!["{ \"id\": 42 }"]);
+    }
+
+    #[test]
+    fn prose_carries_no_display_lines() {
+        let doc = parse_document("Une phrase.", CodePolicy::Announce);
+        assert!(doc.blocks[0].display_lines.is_empty());
+    }
+}
