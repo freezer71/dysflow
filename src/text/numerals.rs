@@ -49,11 +49,24 @@ static NUMBER_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
 ///
 /// Réservé aux titres : ailleurs, un nombre en tête de ligne est une puce de
 /// liste, dont la structure est déjà portée autrement.
+/// Numérotation qui ouvre un titre — `3.5`, `4.10`, `1.` — ou rien.
+static SECTION: LazyLock<Regex> = LazyLock::new(|| {
+    // Soit un sous-niveau — 3.5, 4.10 — soit un rang suivi de sa ponctuation.
+    Regex::new(r"^[ \t]*(?:(?P<deep>\d+(?:\.\d+)+)\.?|(?P<flat>\d+)[.)])[ \t]+").unwrap()
+});
+
+/// Rend la numérotation d'un titre telle qu'elle est écrite, ponctuation
+/// comprise.
+///
+/// L'affichage en a besoin : `sanitize` retire les rangs en tête de ligne,
+/// utile pour une puce de liste, mais un titre doit garder le sien à l'écran.
+pub fn section_number(text: &str) -> Option<&str> {
+    let caps = SECTION.captures(text)?;
+    let whole = caps.get(0)?.as_str();
+    Some(whole.trim())
+}
+
 pub fn verbalize_section_number(text: &str) -> String {
-    static SECTION: LazyLock<Regex> = LazyLock::new(|| {
-        // Soit un sous-niveau — 3.5, 4.10 — soit un rang suivi de sa ponctuation.
-        Regex::new(r"^[ \t]*(?:(?P<deep>\d+(?:\.\d+)+)\.?|(?P<flat>\d+)[.)])[ \t]+").unwrap()
-    });
     let Some(caps) = SECTION.captures(text) else {
         return text.to_string();
     };
@@ -298,6 +311,15 @@ mod tests {
             "quatre point dix, PlaceDistance"
         );
         assert_eq!(verbalize_section_number("1. Contexte"), "un, Contexte");
+    }
+
+    #[test]
+    fn a_section_number_is_returned_as_written() {
+        assert_eq!(section_number("1. Contexte"), Some("1."));
+        assert_eq!(section_number("3.2 Latence"), Some("3.2"));
+        assert_eq!(section_number("2) Contraintes"), Some("2)"));
+        assert_eq!(section_number("Pile technique"), None);
+        assert_eq!(section_number("2026 en chiffres"), None);
     }
 
     #[test]

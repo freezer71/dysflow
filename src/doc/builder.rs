@@ -8,7 +8,7 @@
 use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
 
 use super::{Block, BlockKind, Document, Punctuation, Section, Sentence, Word};
-use crate::text::numerals::verbalize_section_number;
+use crate::text::numerals::{section_number, verbalize_section_number};
 use crate::text::{sanitize, split_sentences};
 
 /// Traitement réservé aux blocs de code.
@@ -387,6 +387,21 @@ impl DocumentBuilder {
         if clean.is_empty() {
             return;
         }
+        // Un titre se dit avec son rang en toutes lettres, mais s'écrit avec
+        // son chiffre : « un, Contexte » à la voix, « 1. Contexte » à l'œil.
+        // Sans quoi le sommaire ne ressemble plus au document.
+        let shown = match kind {
+            BlockKind::Heading { .. } => {
+                // `sanitize` retire les rangs en tête de ligne, ce qu'il faut
+                // pour une puce mais pas pour un titre : le sien est remis.
+                let body = sanitize(raw_text);
+                match section_number(raw_text) {
+                    Some(number) if !body.starts_with(number) => format!("{number} {body}"),
+                    _ => body,
+                }
+            }
+            _ => clean.clone(),
+        };
 
         // Un titre ouvre une section, à laquelle il appartient lui-même.
         if let BlockKind::Heading { level } = kind {
@@ -394,13 +409,13 @@ impl DocumentBuilder {
             self.doc.sections.push(Section {
                 id,
                 level,
-                title: clean.clone(),
+                title: shown.clone(),
                 first_sentence: None,
                 block_ids: Vec::new(),
             });
             self.current_section = id;
             if self.doc.title.is_empty() {
-                self.doc.title = clean.clone();
+                self.doc.title = shown.clone();
             }
         }
 
@@ -420,7 +435,14 @@ impl DocumentBuilder {
         let count = texts.len();
         for (i, text) in texts.into_iter().enumerate() {
             let id = self.doc.sentences.len();
-            let words = self.tokenize(&text);
+            // Les mots affichés viennent du titre écrit ; le texte envoyé au
+            // moteur garde sa forme parlée. La correspondance n'est sûre que
+            // si le titre tient en une phrase.
+            let words = if matches!(kind, BlockKind::Heading { .. }) && count == 1 {
+                self.tokenize(&shown)
+            } else {
+                self.tokenize(&text)
+            };
             self.doc.sentences.push(Sentence {
                 id,
                 block_id,
@@ -662,6 +684,32 @@ mod tests {
         // Le texte suit bien sa section.
         let b = d.blocks.iter().find(|b| b.text == "Texte b.").unwrap();
         assert_eq!(b.section_id, 2);
+    }
+
+    #[test]
+    fn a_numbered_heading_shows_its_number_but_says_it_in_words() {
+        let d = parse_document("## 1. Contexte\n\nDu texte.", CodePolicy::Announce);
+        assert_eq!(
+            d.sections[1].title, "1. Contexte",
+            "le sommaire montre le titre tel qu'il est écrit"
+        );
+        let heading = &d.sentences[0];
+        assert_eq!(heading.text, "un, Contexte", "la voix dit le rang");
+        let shown: Vec<&str> = heading.words.iter().map(|w| w.text.as_str()).collect();
+        assert_eq!(shown, ["1.", "Contexte"], "l'écran montre le chiffre");
+    }
+
+    #[test]
+    fn the_document_title_is_shown_as_written() {
+        let d = parse_document("# 3.2 Passerelle\n\nDu texte.", CodePolicy::Announce);
+        assert_eq!(d.title, "3.2 Passerelle");
+    }
+
+    #[test]
+    fn a_heading_without_a_number_is_left_alone() {
+        let d = parse_document("## Contexte\n\nDu texte.", CodePolicy::Announce);
+        assert_eq!(d.sections[1].title, "Contexte");
+        assert_eq!(d.sentences[0].text, "Contexte");
     }
 
     #[test]
