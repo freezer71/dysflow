@@ -21,8 +21,11 @@ pub fn load(path: &Path) -> Result<String> {
         Kind::Text => std::fs::read_to_string(path)
             .with_context(|| format!("lecture de {}", path.display())),
         Kind::Pdf => Ok(layout::to_markdown(&pdf::pages(path)?)),
+        #[cfg(feature = "ocr")]
+        Kind::Image => Ok(layout::to_markdown(&ocr::pages(path)?)),
+        #[cfg(not(feature = "ocr"))]
         Kind::Image => bail!(
-            "{} est une image : la reconnaissance de texte n'est pas encore disponible",
+            "{} est une image : ce binaire a été compilé sans l'option `ocr`",
             path.display()
         ),
         Kind::Directory => bail!(
@@ -58,8 +61,20 @@ mod tests {
         assert!(out.contains("2. Contraintes"), "seconde page absente : {out}");
     }
 
+    #[cfg(feature = "ocr")]
     #[test]
-    fn an_image_says_what_is_missing_rather_than_failing_flatly() {
+    fn an_image_is_read_by_the_recogniser() {
+        let out = load(&fixture("capture.png")).expect("l'image doit se lire");
+        assert!(out.contains("Spécification"), "accents perdus : {out}");
+        assert!(
+            out.contains("## 1. Contexte"),
+            "la reconstruction n'a pas eu lieu : {out}"
+        );
+    }
+
+    #[cfg(not(feature = "ocr"))]
+    #[test]
+    fn an_image_says_the_binary_was_built_without_ocr() {
         let path = std::env::temp_dir().join("rs-reader-source-image.png");
         std::fs::write(&path, b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR").expect("écriture du témoin");
         let err = load(&path).unwrap_err();
@@ -67,8 +82,8 @@ mod tests {
         let message = err.to_string();
         assert!(message.contains("image"), "l'erreur doit dire ce qui bloque : {message}");
         assert!(
-            message.contains("reconnaissance de texte"),
-            "l'erreur doit nommer ce qui manque : {message}"
+            message.contains("ocr"),
+            "l'erreur doit nommer l'option manquante : {message}"
         );
     }
 
