@@ -160,6 +160,45 @@ fn strip_running_heads(pages: &[Page]) -> Vec<Vec<String>> {
     kept
 }
 
+/// Ponctuations qui referment une phrase.
+const CLOSING: [char; 5] = ['.', '!', '?', ':', ';'];
+
+/// Met les pages bout à bout, en refermant les phrases coupées.
+fn weld_pages(pages: Vec<Vec<String>>) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for lines in pages {
+        let opening = lines.iter().position(|l| !l.trim().is_empty());
+        let welds = match (out.iter().rposition(|l| !l.trim().is_empty()), opening) {
+            (Some(last), Some(first)) => {
+                let tail = out[last].trim_end();
+                let head = lines[first].trim_start();
+                !tail.ends_with(CLOSING)
+                    && head.chars().next().is_some_and(|c| c.is_lowercase())
+            }
+            _ => false,
+        };
+        if welds {
+            let last = out
+                .iter()
+                .rposition(|l| !l.trim().is_empty())
+                .expect("la branche ci-dessus l'a trouvé");
+            let first = opening.expect("la branche ci-dessus l'a trouvé");
+            // La fusion est calculée avant d'écrire : `out[last]` ne peut pas
+            // être lu et assigné dans la même expression.
+            let merged = format!("{} {}", out[last].trim_end(), lines[first].trim_start());
+            out.truncate(last + 1);
+            out[last] = merged;
+            out.extend(lines.into_iter().skip(first + 1));
+        } else {
+            if out.last().is_some_and(|l| !l.trim().is_empty()) {
+                out.push(String::new());
+            }
+            out.extend(lines);
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -172,6 +211,37 @@ mod tests {
 
     fn lines(items: &[&str]) -> Vec<String> {
         items.iter().map(|s| s.to_string()).collect()
+    }
+
+    fn raw(pages: &[&[&str]]) -> Vec<Vec<String>> {
+        pages
+            .iter()
+            .map(|p| p.iter().map(|l| l.to_string()).collect())
+            .collect()
+    }
+
+    #[test]
+    fn a_sentence_cut_by_a_page_break_closes_again() {
+        let out = weld_pages(raw(&[&["aux opérations de"], &["remboursement, en différé."]]));
+        assert_eq!(out, lines(&["aux opérations de remboursement, en différé."]));
+    }
+
+    #[test]
+    fn a_finished_sentence_starts_a_new_line() {
+        let out = weld_pages(raw(&[&["Fin de la partie."], &["Nouvelle partie."]]));
+        assert_eq!(out, lines(&["Fin de la partie.", "", "Nouvelle partie."]));
+    }
+
+    #[test]
+    fn a_capital_after_the_break_is_never_welded() {
+        // Une majuscule ouvre une phrase : rien n'a été coupé.
+        let out = weld_pages(raw(&[&["une liste des seuils"], &["Annexe technique"]]));
+        assert_eq!(out, lines(&["une liste des seuils", "", "Annexe technique"]));
+    }
+
+    #[test]
+    fn a_single_page_comes_back_as_it_is() {
+        assert_eq!(weld_pages(raw(&[&["une", "", "deux"]])), lines(&["une", "", "deux"]));
     }
 
     #[test]
