@@ -92,6 +92,10 @@ struct Args {
     #[arg(long)]
     to_markdown: bool,
 
+    /// Lit le presse-papiers au lieu d'un fichier.
+    #[arg(long)]
+    clip: bool,
+
     /// Ouvre directement l'écran de configuration.
     #[arg(long)]
     config: bool,
@@ -115,7 +119,18 @@ fn main() -> Result<()> {
     }
 
     let mut builder = DocumentBuilder::new(config.code_policy());
-    let (stream, source) = match &args.file {
+    let (stream, source) = if args.clip {
+        let text = read_clipboard()?;
+        if args.to_markdown {
+            print!("{text}");
+            return Ok(());
+        }
+        for block in input::split_blocks(&text) {
+            builder.push_block(&block);
+        }
+        (None, "presse-papiers".to_string())
+    } else {
+        match &args.file {
         Some(path) => {
             // Un fichier est analysé d'emblée : sommaire et durée sont
             // disponibles dès l'ouverture.
@@ -151,12 +166,14 @@ fn main() -> Result<()> {
             // attendre la fin de l'entrée.
             (Some(stream), "stdin".to_string())
         }
+        }
     };
 
     // Sans document ni flux, on démarre sur l'écran de configuration.
-    let open_config = args.config || (args.file.is_none() && stream.is_none());
-    if args.file.is_some() && builder.sentence_count() == 0 {
-        anyhow::bail!("aucun contenu lisible dans le fichier");
+    let open_config =
+        args.config || (args.file.is_none() && !args.clip && stream.is_none());
+    if (args.file.is_some() || args.clip) && builder.sentence_count() == 0 {
+        anyhow::bail!("aucun contenu lisible");
     }
 
     // Un modèle déjà installé devient le défaut, sans rien demander.
@@ -195,6 +212,18 @@ fn main() -> Result<()> {
         // La garde tombe avec ce bloc : une erreur remontée par `run` retrouve
         // donc une sortie d'erreur normale avant d'être affichée.
         tui::run(app)
+    }
+}
+
+/// Lit le presse-papiers, ou explique pourquoi il ne peut pas l'être.
+fn read_clipboard() -> Result<String> {
+    #[cfg(feature = "ocr")]
+    {
+        rs_reader::source::clipboard()
+    }
+    #[cfg(not(feature = "ocr"))]
+    {
+        anyhow::bail!("--clip exige un binaire compilé avec l'option `ocr`")
     }
 }
 

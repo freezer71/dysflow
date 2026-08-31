@@ -109,7 +109,7 @@ fn natural_key(name: &str) -> Vec<Natural> {
     let mut out = Vec::new();
     let mut text = String::new();
     let mut digits = String::new();
-    let mut close_digits = |digits: &mut String, out: &mut Vec<Natural>| {
+    let close_digits = |digits: &mut String, out: &mut Vec<Natural>| {
         if digits.is_empty() {
             return;
         }
@@ -164,6 +164,13 @@ pub fn directory_pages(dir: &Path) -> Result<Vec<Page>> {
     Ok(pages)
 }
 
+/// Reconnaît une image donnée en pixels bruts, comme le presse-papiers la rend.
+pub fn read_rgba(pixels: &[u8], width: u32, height: u32) -> Result<Page> {
+    let buffer = image::RgbaImage::from_raw(width, height, pixels.to_vec())
+        .context("les pixels ne forment pas une image de cette taille")?;
+    Ocr::new()?.read(&image::DynamicImage::ImageRgba8(buffer))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -172,6 +179,19 @@ mod tests {
         Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("tests/fixtures")
             .join(name)
+    }
+
+    #[test]
+    fn raw_pixels_from_the_clipboard_are_recognised() {
+        let image = image::open(fixture("capture.png")).expect("la fixture doit se décoder");
+        let rgba = image.to_rgba8();
+        let (width, height) = rgba.dimensions();
+        let page = read_rgba(&rgba, width, height).expect("les pixels doivent se lire");
+        assert!(
+            page.lines.join("\n").contains("Spécification"),
+            "le presse-papiers n'a pas été reconnu : {:?}",
+            page.lines
+        );
     }
 
     #[test]

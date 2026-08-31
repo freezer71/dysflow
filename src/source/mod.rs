@@ -9,13 +9,31 @@ pub mod layout;
 pub mod ocr;
 pub mod pdf;
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result};
 use std::path::Path;
 
 pub use kind::Kind;
 
 /// Rend le contenu d'un chemin sous forme de markdown, quelle qu'en soit
 /// l'origine.
+/// Lit le presse-papiers : son image reconnue, ou son texte tel quel.
+///
+/// L'image passe d'abord : ce qu'on copie depuis un PDF verrouillé ou une
+/// visio arrive en image, et c'est alors elle qui porte le contenu.
+#[cfg(feature = "ocr")]
+pub fn clipboard() -> Result<String> {
+    let mut board = arboard::Clipboard::new().context("accès au presse-papiers")?;
+    if let Ok(image) = board.get_image() {
+        let width = image.width as u32;
+        let height = image.height as u32;
+        let page = ocr::read_rgba(&image.bytes, width, height)?;
+        return Ok(layout::to_markdown(&[page]));
+    }
+    board
+        .get_text()
+        .context("le presse-papiers ne contient ni image ni texte")
+}
+
 pub fn load(path: &Path) -> Result<String> {
     match kind::of_path(path)? {
         Kind::Text => std::fs::read_to_string(path)
@@ -24,14 +42,14 @@ pub fn load(path: &Path) -> Result<String> {
         #[cfg(feature = "ocr")]
         Kind::Image => Ok(layout::to_markdown(&ocr::pages(path)?)),
         #[cfg(not(feature = "ocr"))]
-        Kind::Image => bail!(
+        Kind::Image => anyhow::bail!(
             "{} est une image : ce binaire a été compilé sans l'option `ocr`",
             path.display()
         ),
         #[cfg(feature = "ocr")]
         Kind::Directory => Ok(layout::to_markdown(&ocr::directory_pages(path)?)),
         #[cfg(not(feature = "ocr"))]
-        Kind::Directory => bail!(
+        Kind::Directory => anyhow::bail!(
             "{} est un dossier : ce binaire a été compilé sans l'option `ocr`",
             path.display()
         ),
