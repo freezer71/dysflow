@@ -6,6 +6,8 @@
 //! français et de l'anglais, puis borne la longueur des phrases pour rester
 //! sous la fenêtre de contexte des modèles TTS.
 
+use crate::text::verbalize;
+
 /// Abréviations qui ne terminent **jamais** une phrase.
 ///
 /// Civilités et renvois : ce qui suit est toujours un nom propre ou une
@@ -33,7 +35,16 @@ const GENERIC_ABBREVIATIONS: &[&str] = &[
 ///
 /// Les modèles TTS dégradent (ou tronquent) au-delà de quelques centaines de
 /// caractères ; couper nous-mêmes garantit aussi une latence régulière.
+///
+/// Elle se mesure sur la phrase **dite**, pas sur la phrase écrite : c'est
+/// celle-là qui entre dans la fenêtre du moteur, et une ligne de montants
+/// double de longueur en passant en toutes lettres.
 const MAX_SENTENCE_CHARS: usize = 320;
+
+/// Longueur de la phrase telle que le moteur la recevra.
+fn spoken_len(text: &str) -> usize {
+    verbalize(text).chars().count()
+}
 
 /// Découpe `text` en phrases prêtes pour la synthèse.
 pub fn split_sentences(text: &str) -> Vec<String> {
@@ -164,7 +175,7 @@ fn followed_by_sentence_start(chars: &[char], after: usize) -> bool {
 
 /// Redécoupe les phrases trop longues, en préférant les frontières naturelles.
 fn enforce_length(sentence: &str, out: &mut Vec<String>) {
-    if sentence.chars().count() <= MAX_SENTENCE_CHARS {
+    if spoken_len(sentence) <= MAX_SENTENCE_CHARS {
         out.push(sentence.to_string());
         return;
     }
@@ -172,8 +183,8 @@ fn enforce_length(sentence: &str, out: &mut Vec<String>) {
     let chars: Vec<char> = sentence.chars().collect();
     let mut start = 0usize;
     while start < chars.len() {
-        let remaining = chars.len() - start;
-        if remaining <= MAX_SENTENCE_CHARS {
+        let limit = longest_that_fits(&chars, start);
+        if limit == chars.len() {
             let tail: String = chars[start..].iter().collect();
             let tail = tail.trim();
             if !tail.is_empty() {
@@ -182,7 +193,6 @@ fn enforce_length(sentence: &str, out: &mut Vec<String>) {
             break;
         }
 
-        let limit = start + MAX_SENTENCE_CHARS;
         // Une virgule ou un tiret respire mieux qu'une coupe au milieu d'un mot.
         let cut = last_index_of(&chars, start, limit, &[',', ';', ':', '—', '–'])
             .or_else(|| last_index_of(&chars, start, limit, &[' ']))
@@ -196,6 +206,33 @@ fn enforce_length(sentence: &str, out: &mut Vec<String>) {
         }
         start = cut;
     }
+}
+
+/// Plus longue tranche depuis `start` qui tienne dans la fenêtre une fois dite.
+///
+/// L'expansion n'est pas uniforme — un montant s'allonge, de la prose non —,
+/// donc aucun budget calculé d'avance ne convient : on mesure. La recherche
+/// est dichotomique pour ne pas mettre en mots la phrase entière à chaque pas.
+fn longest_that_fits(chars: &[char], start: usize) -> usize {
+    let fits = |end: usize| {
+        let slice: String = chars[start..end].iter().collect();
+        spoken_len(&slice) <= MAX_SENTENCE_CHARS
+    };
+    if fits(chars.len()) {
+        return chars.len();
+    }
+    // Au moins un caractère avance, sans quoi la boucle appelante tournerait.
+    let mut low = start + 1;
+    let mut high = chars.len();
+    while low < high {
+        let middle = low + (high - low).div_ceil(2);
+        if fits(middle) {
+            low = middle;
+        } else {
+            high = middle - 1;
+        }
+    }
+    low
 }
 
 fn last_index_of(chars: &[char], start: usize, end: usize, targets: &[char]) -> Option<usize> {

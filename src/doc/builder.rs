@@ -579,6 +579,25 @@ mod tests {
     }
 
     #[test]
+    fn a_sentence_stays_short_enough_once_it_is_said() {
+        // La limite protège la fenêtre du moteur : elle porte donc sur ce
+        // qu'il reçoit, pas sur ce que l'écran montre. Une ligne pleine de
+        // montants s'allonge beaucoup en passant en mots.
+        let long = "Le plafond passe de 100 000 euros à 1 234 567 euros, \
+                    puis à 7 654 321 euros, avant 2 345 678 euros et enfin \
+                    8 765 432 euros selon le barème 9 876 543 applicable.";
+        let d = doc(&format!("{long}\n"));
+        for sentence in &d.sentences {
+            assert!(
+                sentence.text.chars().count() <= 320,
+                "phrase de {} signes envoyée au moteur : {:?}",
+                sentence.text.chars().count(),
+                sentence.text
+            );
+        }
+    }
+
+    #[test]
     fn list_items_are_never_dropped() {
         let d = doc("# Titre\n\nIntro.\n\n- item alpha\n- item beta\n- item gamma\n");
         let texts: Vec<&str> = d.blocks.iter().map(|b| b.text.as_str()).collect();
