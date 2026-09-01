@@ -492,7 +492,7 @@ fn document_lines(frame: ReaderFrame<'_>) -> ReaderView {
                 // Un résultat de recherche se souligne — le fond plein reste
                 // réservé au mot prononcé, qui ne doit jamais se confondre.
                 if !is_current_word
-                    && search.is_some_and(|s| s.matches_word(&word.text))
+                    && search.is_some_and(|s| s.matches_word(word))
                 {
                     style = style.fg(BRIGHT).add_modifier(Modifier::UNDERLINED);
                 }

@@ -1,11 +1,13 @@
 //! Recherche dans le document.
 //!
 //! Dans un document long, retrouver un passage en le faisant défiler coûte
-//! l'attention qu'on voulait garder pour le lire. La recherche porte sur le
-//! texte tel qu'il est *affiché* — donc sur les chiffres écrits comme sur le
-//! source des blocs de code —, ignore la casse et les accents.
+//! l'attention qu'on voulait garder pour le lire. La recherche ignore la casse
+//! et les accents, et répond aux deux formes du document : celle qui est à
+//! l'écran — chiffres écrits, source des blocs de code — et celle qui est dite.
+//! On retrouve donc « 2027 » aussi bien en le tapant qu'en tapant « deux mille
+//! vingt-sept », selon qu'on l'a lu ou entendu.
 
-use crate::doc::Document;
+use crate::doc::{Document, Word};
 
 /// Une recherche et son curseur dans les résultats.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -36,7 +38,10 @@ impl Search {
         }
 
         for sentence in &doc.sentences {
-            if fold(&sentence.written()).contains(&search.needle) {
+            let seen = fold(&sentence.written()).contains(&search.needle);
+            // La forme parlée n'est consultée qu'à défaut : elle coûte une
+            // seconde réduction, et l'écran reste la référence.
+            if seen || fold(&sentence.text).contains(&search.needle) {
                 search.matches.push(sentence.id);
             }
         }
@@ -94,8 +99,18 @@ impl Search {
     }
 
     /// Vrai si le mot fait partie de ce qui est recherché.
-    pub fn matches_word(&self, word: &str) -> bool {
-        !self.needle.is_empty() && fold(word).contains(&self.needle)
+    ///
+    /// Un nombre répond aussi à sa forme parlée : cherché comme on l'a
+    /// entendu, il doit se souligner là où on le voit.
+    pub fn matches_word(&self, word: &Word) -> bool {
+        if self.needle.is_empty() {
+            return false;
+        }
+        fold(&word.text).contains(&self.needle)
+            || word
+                .spoken
+                .as_deref()
+                .is_some_and(|said| fold(said).contains(&self.needle))
     }
 }
 
@@ -176,6 +191,26 @@ fn authenticate() {}
     }
 
     #[test]
+    fn a_search_also_answers_to_what_was_heard() {
+        // On tape aussi bien ce qu'on a entendu que ce qu'on a sous les yeux :
+        // la phrase montre « 2027 » et dit « deux mille vingt-sept ».
+        let doc = parse_document("La règle s'applique à partir de 2027.\n", CodePolicy::Announce);
+        assert_eq!(Search::new(&doc, "deux mille vingt-sept", 0).count(), 1);
+    }
+
+    #[test]
+    fn the_underline_reaches_the_figure_that_was_heard() {
+        let doc = parse_document("La règle s'applique à partir de 2027.\n", CodePolicy::Announce);
+        let search = Search::new(&doc, "deux mille", 0);
+        let word = doc.sentences[0]
+            .words
+            .iter()
+            .find(|w| w.text.starts_with("2027"))
+            .expect("le nombre est à l'écran");
+        assert!(search.matches_word(word), "le résultat trouvé doit se voir");
+    }
+
+    #[test]
     fn a_search_reaches_the_source_of_a_code_block() {
         let doc = doc();
         let search = Search::new(&doc, "authenticate", 0);
@@ -228,12 +263,16 @@ fn authenticate() {}
         assert!(Search::new(&doc, "   ", 0).is_empty());
     }
 
+    fn word(text: &str) -> Word {
+        Word { text: text.to_string(), index: 0, punctuation: None, spoken: None }
+    }
+
     #[test]
     fn a_word_is_highlighted_when_it_carries_the_query() {
         let doc = doc();
         let search = Search::new(&doc, "route", 0);
-        assert!(search.matches_word("routes."));
-        assert!(search.matches_word("Route"));
-        assert!(!search.matches_word("service"));
+        assert!(search.matches_word(&word("routes.")));
+        assert!(search.matches_word(&word("Route")));
+        assert!(!search.matches_word(&word("service")));
     }
 }
