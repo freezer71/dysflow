@@ -1,5 +1,6 @@
 //! Nettoyage et découpage du texte avant mise en voix.
 
+pub mod acronyms;
 pub mod dates;
 pub mod number;
 pub mod numerals;

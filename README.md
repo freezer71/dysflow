@@ -184,6 +184,8 @@ ce qui se lit autrement qu'il ne s'écrit :
 | `-5 degrés` | moins cinq degrés |
 | `55 €`, `1 €`, `30 km`, `25 °C` | cinquante-cinq euros, un euro, trente kilomètres, vingt-cinq degrés |
 | `### 3.5 Tarif de repli` | trois point cinq, Tarif de repli |
+| `HT`, `TTC`, `TVA`, `RCS` | hache té, té té cé, té vé a, erre cé esse |
+| `SIRET`, `SIREN`, `CNIL` | sirette, sirène, knil |
 
 Une date se dit toujours à la française — le jour, le mois en toutes lettres,
 l'année entière — quel que soit l'ordre sous lequel elle est écrite : `2026-08-29`,
@@ -212,6 +214,29 @@ pas d'un nombre de millions, c’est alors le libellé qui tranche — `SIRET`,
 `SIREN`, `RCS`, `TVA`, `intracommunautaire`, `IBAN`, `BIC`, quand il annonce
 directement le nombre. Un montant cité plus loin dans la même phrase reste une
 quantité.
+
+### Les sigles
+
+Un sigle ne se lit pas comme il s'écrit, et le moteur n'a pas de lexique pour
+en décider : `HT` lui parvient comme deux consonnes qu'aucune bouche française
+n'enchaîne, `SIRET` comme un mot dont le T final tomberait. Le lecteur tranche
+donc avant lui, **pour la voix seule** — l'écran garde le sigle.
+
+La règle est simple : ce qui ne se laisse pas dire s'épelle. Un mot en
+capitales sans voyelle (`HT`, `TTC`, `RCS`, `RGPD`) ou dont les consonnes
+n'ouvrent aucune syllabe française (`TVA`, `CDI`, `SNCF`, `PME`) est rendu avec
+les noms des lettres. Le reste est laissé au moteur, qui le dira comme un mot :
+`RIB`, `NAF`, `SARL`, `IBAN`, `SMIC`.
+
+Restent ceux que seul l'usage décide, et qu'un dictionnaire couvre :
+`SIRET` → sirette, `SIREN` → sirène, `CNIL` → knil, `URSSAF`, `INSEE`, `SEPA`,
+`SAS`, `KBIS` d'un côté ; `SA`, `API`, `IA`, `SAV`, `IP`, `UE`, `URL`, `ONG`,
+`APE`, `RATP` de l'autre, qui s'épellent malgré une graphie prononçable.
+
+Deux garde-fous : un mot d'une seule lettre n'est jamais épelé — `A` est aussi
+bien un article qu'un rang — et un mot de plus de six capitales non plus, un
+titre en capitales étant fait de mots et non de sigles. `MENTIONS LÉGALES` se
+lit donc comme il s'écrit.
 
 ### Choisir une voix
 
@@ -448,7 +473,7 @@ entrée ──▶ doc ──▶ tts ──▶ audio ──▶ tui
 - `tts::preview` — aperçus de voix, sur une session tenue ouverte à part.
 - `logging` — détourne les sorties natives vers `reader.log`.
 - `doc` — hiérarchie append-only : sections, blocs, phrases, mots.
-- `text` — nettoyage du formatage et découpage en phrases (`sanitize`), mise en mots des dates et des nombres pour la voix seule (`verbalize`).
+- `text` — nettoyage du formatage et découpage en phrases (`sanitize`), mise en mots des dates, des nombres et des sigles pour la voix seule (`verbalize`).
 - `tts` — contrat moteur/session, pool parallèle, FFI audio.cpp, repli système.
 - `audio` — file de sortie et position déduite du son réellement joué.
 - `tui` — rendu fenêtré, contrôles, panneaux.

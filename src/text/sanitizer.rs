@@ -8,6 +8,7 @@
 //! Ce qu'il ne fait pas : supprimer la ponctuation. Elle porte l'intonation
 //! côté TTS et la lisibilité côté écran.
 
+use crate::text::acronyms::verbalize_acronyms;
 use crate::text::dates::verbalize_dates;
 use crate::text::numerals::verbalize_numbers;
 use regex::Regex;
@@ -62,13 +63,7 @@ static PATTERNS: LazyLock<Patterns> = LazyLock::new(|| Patterns {
     whitespace: Regex::new(r"\s+").unwrap(),
 });
 
-/// Nettoie un fragment pour l'affichage et la synthèse.
-///
-/// L'ordre compte : les images avant les liens, l'emphase avant les filets
-/// (sinon `**gras**` serait mangé par la règle des répétitions), les puces
-/// avant la normalisation des espaces, et les dates après tout ce qui peut
-/// encore les entourer de bruit.
-/// Met en mots ce qui s'écrit en chiffres, pour la voix seule.
+/// Met en mots et en lettres ce qui ne se dit pas comme il s'écrit.
 ///
 /// Séparée de `sanitize` parce que les deux sorties n'ont pas le même
 /// destinataire : l'écran montre « 2027 », le moteur entend « deux mille
@@ -80,10 +75,18 @@ static PATTERNS: LazyLock<Patterns> = LazyLock::new(|| Patterns {
 /// être parties, sinon un permalien daté se retrouverait lu à voix haute.
 pub fn verbalize(clean: &str) -> String {
     // Les dates d'abord : leurs chiffres sont déjà en mots quand les quantités
-    // sont examinées, et ne se disent donc pas deux fois.
-    verbalize_numbers(&verbalize_dates(clean))
+    // sont examinées, et ne se disent donc pas deux fois. Les sigles en
+    // dernier : un numéro cherche son libellé — « SIRET », « TVA » — et ne le
+    // trouverait plus une fois celui-ci épelé.
+    verbalize_acronyms(&verbalize_numbers(&verbalize_dates(clean)))
 }
 
+/// Nettoie un fragment pour l'affichage et la synthèse.
+///
+/// L'ordre compte : les images avant les liens, l'emphase avant les filets
+/// (sinon `**gras**` serait mangé par la règle des répétitions), les puces
+/// avant la normalisation des espaces, et les dates après tout ce qui peut
+/// encore les entourer de bruit.
 pub fn sanitize(raw: &str) -> String {
     let p = &*PATTERNS;
     let mut text = p.table_separator.replace_all(raw, " ").into_owned();
@@ -268,6 +271,26 @@ mod tests {
     fn ignores_dates_buried_in_urls() {
         let clean = verbalize(&sanitize("voir https://example.com/2026-08-29/article"));
         assert!(!clean.contains("août"), "obtenu: {clean:?}");
+    }
+
+    #[test]
+    fn says_acronyms_for_the_synthesiser_only() {
+        // L'écran garde le sigle ; la voix reçoit ce qu'il faut dire.
+        assert_eq!(sanitize("Total HT : 50 €"), "Total HT : 50 €");
+        assert_eq!(
+            verbalize(&sanitize("Total HT : 50 €")),
+            "Total hache té : cinquante euros"
+        );
+    }
+
+    #[test]
+    fn spells_an_identifier_even_once_its_label_is_said() {
+        // Les sigles passent après les nombres : « SIRET » doit encore être
+        // lisible quand les chiffres qui le suivent cherchent leur libellé,
+        // sans quoi le numéro redeviendrait une quantité.
+        let said = verbalize(&sanitize("SIRET 984 733 204 00015"));
+        assert!(said.starts_with("sirette"), "obtenu: {said:?}");
+        assert!(said.contains("neuf huit quatre"), "obtenu: {said:?}");
     }
 
     #[test]
