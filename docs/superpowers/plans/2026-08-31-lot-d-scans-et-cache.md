@@ -1,5 +1,11 @@
 # Lot D — PDF scannés et cache
 
+> **État au 1ᵉʳ septembre 2026**
+> **Livré.** `pdf::page_images`, `looks_scanned`, `recognise_scanned` et
+> `source::cache` — avec `--no-cache` —, couverts par
+> `a_scanned_pdf_is_recognised_and_rebuilt`. Les étapes sont cochées au vu du
+> code livré, non au fil de l'exécution.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Qu'une photocopie se lise comme un PDF ordinaire, et qu'on ne paie la
@@ -66,7 +72,7 @@ Mesuré aujourd'hui sur un PDF sans couche texte :
 - Produces: un PDF d'une page, sans couche texte, dont l'image porte un texte
   français connu
 
-- [ ] **Step 1: Écrire le générateur**
+- [x] **Step 1: Écrire le générateur**
 
 Créez `tests/fixtures/make_scanne_pdf.py` :
 
@@ -139,7 +145,7 @@ out.write_bytes(bytes(buf))
 print("écrit %s : %d octets (image %dx%d)" % (out, len(buf), width, height))
 ```
 
-- [ ] **Step 2: Produire la fixture et constater l'état de départ**
+- [x] **Step 2: Produire la fixture et constater l'état de départ**
 
 ```bash
 python3 tests/fixtures/make_scanne_pdf.py
@@ -149,7 +155,7 @@ cargo run --features ocr -- tests/fixtures/scanne.pdf --to-markdown
 Attendu : environ 20 000 octets, puis une sortie **vide**. C'est le défaut que
 ce lot corrige.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add tests/fixtures/make_scanne_pdf.py tests/fixtures/scanne.pdf
@@ -173,7 +179,7 @@ quel. Les autres filtres — CCITT et JBIG2 des télécopies — demanderaient u
 décodeur que le pur Rust n'offre pas ; ils sont ignorés, et la page restera
 vide plutôt que fausse.
 
-- [ ] **Step 1: Écrire le test qui échoue**
+- [x] **Step 1: Écrire le test qui échoue**
 
 Dans `src/source/pdf.rs` :
 
@@ -204,12 +210,12 @@ en ajoutant `ObjectId` à l'import `pdf_extract`.
     }
 ```
 
-- [ ] **Step 2: Lancer le test et le voir échouer**
+- [x] **Step 2: Lancer le test et le voir échouer**
 
 Run: `cargo test --lib source::pdf`
 Attendu : ÉCHEC des deux nouveaux tests.
 
-- [ ] **Step 3: Écrire l'implémentation**
+- [x] **Step 3: Écrire l'implémentation**
 
 ```rust
 /// Images embarquées d'une page, dans leur forme d'origine.
@@ -271,12 +277,12 @@ fn page_images(doc: &Document, page: ObjectId) -> Vec<Vec<u8>> {
 }
 ```
 
-- [ ] **Step 4: Lancer les tests et les voir passer**
+- [x] **Step 4: Lancer les tests et les voir passer**
 
 Run: `cargo test --lib source::pdf`
 Attendu : 7 tests passent.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/source/pdf.rs
@@ -301,7 +307,7 @@ reconnaissance.
 Les pages partent **en parallèle** : chaque fil ouvre son propre moteur, dont
 l'ouverture coûte bien moins que la lecture d'une page.
 
-- [ ] **Step 1: Écrire le test qui échoue**
+- [x] **Step 1: Écrire le test qui échoue**
 
 ```rust
     #[cfg(feature = "ocr")]
@@ -323,12 +329,12 @@ l'ouverture coûte bien moins que la lecture d'une page.
     }
 ```
 
-- [ ] **Step 2: Lancer le test et le voir échouer**
+- [x] **Step 2: Lancer le test et le voir échouer**
 
 Run: `cargo test --features ocr --lib source::pdf`
 Attendu : ÉCHEC — la page revient vide.
 
-- [ ] **Step 3: Écrire l'implémentation**
+- [x] **Step 3: Écrire l'implémentation**
 
 Ajoutez la constante et la reconnaissance, puis branchez-les dans `pages` :
 
@@ -468,13 +474,13 @@ fn recognise_scanned(
 }
 ```
 
-- [ ] **Step 4: Lancer les tests dans les deux modes**
+- [x] **Step 4: Lancer les tests dans les deux modes**
 
 Run: `cargo test --features ocr --lib source::pdf`
 Run: `cargo test --lib source::pdf`
 Attendu : tout passe des deux côtés.
 
-- [ ] **Step 5: Vérifier à l'œil**
+- [x] **Step 5: Vérifier à l'œil**
 
 ```bash
 cargo run -q --features ocr -- tests/fixtures/scanne.pdf --to-markdown
@@ -483,7 +489,7 @@ cargo run -q --features ocr -- tests/fixtures/scanne.pdf --to-markdown
 Attendu : le texte de la capture, titres reconstruits — là où le lot C rendait
 une page vide.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/source/pdf.rs
@@ -509,7 +515,7 @@ L'empreinte tient à la taille, à la date de modification et aux premiers
 kilo-octets : un document modifié change de clé, sans qu'il faille le relire en
 entier. Ce n'est pas de la cryptographie, `DefaultHasher` suffit.
 
-- [ ] **Step 1: Écrire le test qui échoue**
+- [x] **Step 1: Écrire le test qui échoue**
 
 Créez `src/source/cache.rs` :
 
@@ -571,12 +577,12 @@ mod tests {
 
 Déclarez `pub mod cache;` dans `src/source/mod.rs`.
 
-- [ ] **Step 2: Lancer le test et le voir échouer**
+- [x] **Step 2: Lancer le test et le voir échouer**
 
 Run: `cargo test --lib source::cache`
 Attendu : ÉCHEC des quatre tests.
 
-- [ ] **Step 3: Écrire l'implémentation**
+- [x] **Step 3: Écrire l'implémentation**
 
 ```rust
 use std::collections::hash_map::DefaultHasher;
@@ -634,7 +640,7 @@ pub fn write(key: &str, markdown: &str) {
 }
 ```
 
-- [ ] **Step 4: Brancher le cache dans `load`**
+- [x] **Step 4: Brancher le cache dans `load`**
 
 Dans `src/source/mod.rs`, remplacez le corps de `load` par :
 
@@ -696,7 +702,7 @@ Et le test du cache, dans `mod tests` de `mod.rs` :
     }
 ```
 
-- [ ] **Step 5: Ajouter `--no-cache`**
+- [x] **Step 5: Ajouter `--no-cache`**
 
 Dans `src/main.rs`, `struct Args`, après `clip` :
 
@@ -712,13 +718,13 @@ et remplacez l'appel :
             let text = rs_reader::source::load_with_cache(path, !args.no_cache)?;
 ```
 
-- [ ] **Step 6: Lancer les tests dans les deux modes**
+- [x] **Step 6: Lancer les tests dans les deux modes**
 
 Run: `cargo test --features ocr`
 Run: `cargo test`
 Attendu : tout passe.
 
-- [ ] **Step 7: Mesurer le gain**
+- [x] **Step 7: Mesurer le gain**
 
 ```bash
 cargo build --release --features ocr
@@ -728,7 +734,7 @@ time ./target/release/reader tests/fixtures/scanne.pdf --to-markdown >/dev/null
 
 Attendu : la seconde est nettement plus rapide. Notez les deux durées.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/source/cache.rs src/source/mod.rs src/main.rs
@@ -742,7 +748,7 @@ git commit -m "feat(source): ne payer une extraction coûteuse qu'une fois"
 **Files:**
 - Modify: `tests/pdf_input.rs`, `README.md`
 
-- [ ] **Step 1: Écrire le test de bout en bout**
+- [x] **Step 1: Écrire le test de bout en bout**
 
 Dans `tests/pdf_input.rs` :
 
@@ -765,7 +771,7 @@ fn a_scanned_pdf_is_recognised_and_rebuilt() {
 
 Le cache est écarté : un test doit mesurer la chaîne, pas un souvenir.
 
-- [ ] **Step 2: Lancer toute la suite**
+- [x] **Step 2: Lancer toute la suite**
 
 Run: `cargo test --features ocr`
 Run: `cargo test`
@@ -773,7 +779,7 @@ Run: `cargo clippy --all-targets --features ocr 2>&1 | grep -c warning`
 Run: `cargo clippy --all-targets 2>&1 | grep -c warning`
 Attendu : tout passe, `0` des deux côtés.
 
-- [ ] **Step 3: Documenter**
+- [x] **Step 3: Documenter**
 
 Dans `README.md`, complétez la puce des images :
 
@@ -785,7 +791,7 @@ Dans `README.md`, complétez la puce des images :
   l'extraction. Demande l'option de compilation `ocr`.
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add tests/pdf_input.rs README.md

@@ -1,5 +1,11 @@
 # Lot B — Reconstruction d'un PDF en markdown lisible
 
+> **État au 1ᵉʳ septembre 2026**
+> **Livré.** `unligature`, `join_hyphenated`, `strip_running_heads`,
+> `weld_pages`, `heading_level` et `list_item` composent
+> `layout::to_markdown`, vérifiés sur `tests/fixtures/rapport.pdf`. Les étapes
+> sont cochées au vu du code livré, non au fil de l'exécution.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Qu'un PDF de spécification se lise comme un markdown écrit à la main :
@@ -53,7 +59,7 @@ Mesuré sur `tests/fixtures/rapport.pdf`, produit par la tâche 1 :
 - Produces: `tests/fixtures/rapport.pdf`, trois pages portant les sept défauts
   du tableau ci-dessus
 
-- [ ] **Step 1: Écrire le générateur**
+- [x] **Step 1: Écrire le générateur**
 
 Créez `tests/fixtures/make_rapport_pdf.py` :
 
@@ -142,7 +148,7 @@ out.write_bytes(bytes(buf))
 print("écrit %s : %d octets" % (out, len(buf)))
 ```
 
-- [ ] **Step 2: Produire la fixture et constater l'état de départ**
+- [x] **Step 2: Produire la fixture et constater l'état de départ**
 
 ```bash
 python3 tests/fixtures/make_rapport_pdf.py
@@ -153,7 +159,7 @@ Attendu : `écrit …/rapport.pdf : 2196 octets`, puis une sortie qui contient
 encore `Page 1 sur 3`, `diffé-` et `1. Contexte` sans dièse. C'est l'état que
 les tâches suivantes corrigent.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add tests/fixtures/make_rapport_pdf.py tests/fixtures/rapport.pdf
@@ -175,7 +181,7 @@ Un PDF porte les ligatures typographiques comme un seul caractère. `ﬁ` n'est
 pas `fi` pour un moteur de synthèse, et le trait d'union conditionnel `\u{ad}`
 est invisible à l'écran mais bien présent dans le texte.
 
-- [ ] **Step 1: Écrire le test qui échoue**
+- [x] **Step 1: Écrire le test qui échoue**
 
 Ajoutez dans `src/source/layout.rs`, avant `#[cfg(test)]` :
 
@@ -206,12 +212,12 @@ et dans `mod tests` :
     }
 ```
 
-- [ ] **Step 2: Lancer le test et le voir échouer**
+- [x] **Step 2: Lancer le test et le voir échouer**
 
 Run: `cargo test --lib source::layout`
 Attendu : ÉCHEC sur les trois nouveaux tests, `not yet implemented`.
 
-- [ ] **Step 3: Écrire l'implémentation**
+- [x] **Step 3: Écrire l'implémentation**
 
 ```rust
 /// Rend leurs lettres aux ligatures typographiques.
@@ -241,12 +247,12 @@ fn unligature(text: &str) -> String {
 }
 ```
 
-- [ ] **Step 4: Lancer les tests et les voir passer**
+- [x] **Step 4: Lancer les tests et les voir passer**
 
 Run: `cargo test --lib source::layout`
 Attendu : 10 tests passent (7 du lot A + 3).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/source/layout.rs
@@ -271,7 +277,7 @@ Un mot composé coupé au trait d'union doit garder le sien. La marque retenue :
 si le premier mot de la ligne suivante porte lui-même un trait d'union
 (`en-ciel`), c'est un mot composé, et le trait est conservé.
 
-- [ ] **Step 1: Écrire le test qui échoue**
+- [x] **Step 1: Écrire le test qui échoue**
 
 ```rust
 /// Recolle les mots que la mise en page a coupés en fin de ligne.
@@ -328,12 +334,12 @@ fn join_hyphenated(_lines: Vec<String>) -> Vec<String> {
     }
 ```
 
-- [ ] **Step 2: Lancer le test et le voir échouer**
+- [x] **Step 2: Lancer le test et le voir échouer**
 
 Run: `cargo test --lib source::layout`
 Attendu : ÉCHEC sur les cinq nouveaux tests.
 
-- [ ] **Step 3: Écrire l'implémentation**
+- [x] **Step 3: Écrire l'implémentation**
 
 ```rust
 /// Recolle les mots que la mise en page a coupés en fin de ligne.
@@ -374,12 +380,12 @@ fn join_hyphenated(lines: Vec<String>) -> Vec<String> {
 }
 ```
 
-- [ ] **Step 4: Lancer les tests et les voir passer**
+- [x] **Step 4: Lancer les tests et les voir passer**
 
 Run: `cargo test --lib source::layout`
 Attendu : 15 tests passent.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/source/layout.rs
@@ -403,7 +409,7 @@ secondes. C'est ce qui use le plus à l'écoute.
 Un numéro de page change d'une page à l'autre : les lignes sont donc comparées
 après avoir réduit toute suite de chiffres à un seul jeton.
 
-- [ ] **Step 1: Écrire le test qui échoue**
+- [x] **Step 1: Écrire le test qui échoue**
 
 ```rust
 /// Retire les lignes que chaque page répète en tête ou en pied.
@@ -472,12 +478,12 @@ fn strip_running_heads(_pages: &[Page]) -> Vec<Vec<String>> {
     }
 ```
 
-- [ ] **Step 2: Lancer le test et le voir échouer**
+- [x] **Step 2: Lancer le test et le voir échouer**
 
 Run: `cargo test --lib source::layout`
 Attendu : ÉCHEC sur les quatre nouveaux tests.
 
-- [ ] **Step 3: Écrire l'implémentation**
+- [x] **Step 3: Écrire l'implémentation**
 
 Ajoutez l'import en tête de fichier :
 
@@ -551,12 +557,12 @@ fn strip_running_heads(pages: &[Page]) -> Vec<Vec<String>> {
 }
 ```
 
-- [ ] **Step 4: Lancer les tests et les voir passer**
+- [x] **Step 4: Lancer les tests et les voir passer**
 
 Run: `cargo test --lib source::layout`
 Attendu : 19 tests passent.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/source/layout.rs
@@ -577,7 +583,7 @@ git commit -m "feat(layout): retirer les en-têtes et pieds courants"
 Une phrase coupée par un saut de page doit se refermer. Sinon la voix marque un
 arrêt au milieu, et le sens se perd.
 
-- [ ] **Step 1: Écrire le test qui échoue**
+- [x] **Step 1: Écrire le test qui échoue**
 
 ```rust
 /// Met les pages bout à bout, en refermant les phrases coupées.
@@ -619,12 +625,12 @@ fn weld_pages(_pages: Vec<Vec<String>>) -> Vec<String> {
     }
 ```
 
-- [ ] **Step 2: Lancer le test et le voir échouer**
+- [x] **Step 2: Lancer le test et le voir échouer**
 
 Run: `cargo test --lib source::layout`
 Attendu : ÉCHEC sur les quatre nouveaux tests.
 
-- [ ] **Step 3: Écrire l'implémentation**
+- [x] **Step 3: Écrire l'implémentation**
 
 ```rust
 /// Ponctuations qui referment une phrase.
@@ -667,12 +673,12 @@ fn weld_pages(pages: Vec<Vec<String>>) -> Vec<String> {
 }
 ```
 
-- [ ] **Step 4: Lancer les tests et les voir passer**
+- [x] **Step 4: Lancer les tests et les voir passer**
 
 Run: `cargo test --lib source::layout`
 Attendu : 23 tests passent.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/source/layout.rs
@@ -701,7 +707,7 @@ décider qu'un titre porte un rang : un nombre suivi d'un point ou d'une
 parenthèse, ou une numérotation à plusieurs composantes. « 250 ms de latence »
 n'en est donc pas un.
 
-- [ ] **Step 1: Écrire le test qui échoue**
+- [x] **Step 1: Écrire le test qui échoue**
 
 ```rust
 /// Niveau de titre d'une ligne isolée, s'il y en a un.
@@ -762,12 +768,12 @@ fn list_item(_line: &str) -> Option<&str> {
     }
 ```
 
-- [ ] **Step 2: Lancer le test et le voir échouer**
+- [x] **Step 2: Lancer le test et le voir échouer**
 
 Run: `cargo test --lib source::layout`
 Attendu : ÉCHEC sur les sept nouveaux tests.
 
-- [ ] **Step 3: Écrire l'implémentation**
+- [x] **Step 3: Écrire l'implémentation**
 
 Ajoutez les imports en tête de fichier :
 
@@ -829,12 +835,12 @@ fn list_item(line: &str) -> Option<&str> {
 }
 ```
 
-- [ ] **Step 4: Lancer les tests et les voir passer**
+- [x] **Step 4: Lancer les tests et les voir passer**
 
 Run: `cargo test --lib source::layout`
 Attendu : 30 tests passent.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/source/layout.rs
@@ -868,7 +874,7 @@ Les trois autres — `runs_of_blank_lines_collapse_into_one`,
 `nothing_trails_at_the_end`, `an_empty_document_yields_nothing` — doivent
 passer **sans être touchés**. S'ils échouent, c'est une vraie régression.
 
-- [ ] **Step 1: Écrire les tests qui échouent**
+- [x] **Step 1: Écrire les tests qui échouent**
 
 Ajoutez dans `mod tests` :
 
@@ -925,13 +931,13 @@ Ajoutez dans `mod tests` :
     }
 ```
 
-- [ ] **Step 2: Lancer les tests et les voir échouer**
+- [x] **Step 2: Lancer les tests et les voir échouer**
 
 Run: `cargo test --lib source::layout`
 Attendu : ÉCHEC des six nouveaux tests — `to_markdown` rend encore les lignes
 telles quelles.
 
-- [ ] **Step 3: Remplacer les quatre tests que le lot rend faux**
+- [x] **Step 3: Remplacer les quatre tests que le lot rend faux**
 
 Dans `mod tests`, remplacez ces quatre tests par les versions ci-dessous. Elles
 vérifient la même intention — ordre conservé, padding retiré, pages séparées,
@@ -967,7 +973,7 @@ pas de blanc doublé — sur des données que la reconstruction ne transforme pa
     }
 ```
 
-- [ ] **Step 4: Réécrire `to_markdown`**
+- [x] **Step 4: Réécrire `to_markdown`**
 
 Remplacez la fonction du lot A par le pipeline, et ajoutez ses trois aides :
 
@@ -1064,7 +1070,7 @@ fn flush(para: &mut Vec<String>, out: &mut Vec<String>) {
 **`map_or(true, …)` et non `is_none_or`** : `Option::is_none_or` n'est stable
 que depuis Rust 1.82, et `Cargo.toml` fixe `rust-version = "1.80"`.
 
-- [ ] **Step 5: Lancer les tests et les voir passer**
+- [x] **Step 5: Lancer les tests et les voir passer**
 
 Run: `cargo test --lib source::layout`
 Attendu : 36 tests passent. Les trois tests du lot A laissés intacts —
@@ -1072,7 +1078,7 @@ Attendu : 36 tests passent. Les trois tests du lot A laissés intacts —
 `an_empty_document_yields_nothing` — en font partie. **S'ils échouent, c'est
 une régression** : corrigez `to_markdown`, pas le test.
 
-- [ ] **Step 6: Vérifier que rien n'a régressé ailleurs**
+- [x] **Step 6: Vérifier que rien n'a régressé ailleurs**
 
 Run: `cargo test`
 Attendu : toute la suite passe.
@@ -1080,7 +1086,7 @@ Attendu : toute la suite passe.
 Run: `cargo clippy --all-targets 2>&1 | grep -c warning`
 Attendu : `0`
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/source/layout.rs
@@ -1099,7 +1105,7 @@ git commit -m "feat(layout): assembler la reconstruction complète"
 - Consumes: `source::load`
 - Produces: la preuve que les sept défauts du tableau initial ont disparu
 
-- [ ] **Step 1: Écrire le test qui échoue**
+- [x] **Step 1: Écrire le test qui échoue**
 
 Ajoutez dans `tests/pdf_input.rs` :
 
@@ -1157,14 +1163,14 @@ fn the_rebuilt_pdf_fills_the_table_of_contents() {
 }
 ```
 
-- [ ] **Step 2: Lancer le test et le voir échouer**
+- [x] **Step 2: Lancer le test et le voir échouer**
 
 Run: `cargo test --test pdf_input`
 Attendu : si les tâches 1 à 7 sont faites, ces deux tests passent. **S'ils
 échouent**, lisez le markdown que le message d'échec affiche et corrigez la
 règle en cause dans `layout.rs` — jamais le test.
 
-- [ ] **Step 3: Regarder le résultat**
+- [x] **Step 3: Regarder le résultat**
 
 ```bash
 cargo run -q -- tests/fixtures/rapport.pdf --to-markdown
@@ -1194,7 +1200,7 @@ La mesure est prise au percentile 95. Le seuil ne s'applique pas aux opérations
 L'API expose deux routes documentées.
 ```
 
-- [ ] **Step 4: Documenter**
+- [x] **Step 4: Documenter**
 
 Dans `README.md`, remplacez la puce du lot A par :
 
@@ -1204,7 +1210,7 @@ Dans `README.md`, remplacez la puce du lot A par :
   `--to-markdown` écrit le texte extrait sans lancer la lecture.
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add tests/pdf_input.rs README.md

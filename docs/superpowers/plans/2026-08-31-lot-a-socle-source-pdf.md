@@ -1,5 +1,11 @@
 # Lot A — Socle `source` et PDF à couche texte
 
+> **État au 1ᵉʳ septembre 2026**
+> **Livré.** `source/kind.rs`, `source/pdf.rs`, `source/layout.rs`, le routage
+> de `source::load` et `--to-markdown` sont en place, couverts par
+> `tests/pdf_input.rs`. Les étapes sont cochées au vu du code livré, non au
+> fil de l'exécution.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Faire lire au lecteur un PDF qui porte une couche texte, aussi
@@ -64,7 +70,7 @@ possible et rien n'est réversible.
 - Consumes: rien
 - Produces: un dépôt où les tâches suivantes peuvent committer
 
-- [ ] **Step 1: Vérifier qu'on n'écrase pas un dépôt existant**
+- [x] **Step 1: Vérifier qu'on n'écrase pas un dépôt existant**
 
 ```bash
 cd /Users/tharsan/Workspace/reader
@@ -74,13 +80,13 @@ git rev-parse --is-inside-work-tree 2>&1 | head -1
 Attendu : `fatal: not a git repository`. Si un dépôt existe déjà, **arrêtez** :
 cette tâche est sans objet, passez à la tâche 1.
 
-- [ ] **Step 2: Écrire le `.gitignore`**
+- [x] **Step 2: Écrire le `.gitignore`**
 
 ```gitignore
 /target
 ```
 
-- [ ] **Step 3: Initialiser et faire le premier commit**
+- [x] **Step 3: Initialiser et faire le premier commit**
 
 ```bash
 git init
@@ -88,7 +94,7 @@ git add -A
 git commit -m "chore: mise sous suivi de version du lecteur"
 ```
 
-- [ ] **Step 4: Vérifier que `target/` est bien ignoré**
+- [x] **Step 4: Vérifier que `target/` est bien ignoré**
 
 Run: `git status --porcelain | grep -c '^?? target/'`
 Attendu : `0`
@@ -110,7 +116,7 @@ Attendu : `0`
   - `pub fn sniff(head: &[u8]) -> Kind`
   - `pub fn of_path(path: &Path) -> anyhow::Result<Kind>`
 
-- [ ] **Step 1: Écrire le test qui échoue**
+- [x] **Step 1: Écrire le test qui échoue**
 
 Créez `src/source/kind.rs` avec **seulement** ceci :
 
@@ -218,12 +224,12 @@ Ajoutez dans `src/lib.rs`, en gardant l'ordre alphabétique des modules :
 pub mod source;
 ```
 
-- [ ] **Step 2: Lancer le test et le voir échouer**
+- [x] **Step 2: Lancer le test et le voir échouer**
 
 Run: `cargo test --lib source::kind`
 Attendu : ÉCHEC — chaque test panique sur `not yet implemented`.
 
-- [ ] **Step 3: Écrire l'implémentation minimale**
+- [x] **Step 3: Écrire l'implémentation minimale**
 
 Remplacez les deux `todo!()` :
 
@@ -268,7 +274,7 @@ pub fn of_path(path: &Path) -> Result<Kind> {
 }
 ```
 
-- [ ] **Step 4: Lancer les tests et les voir passer**
+- [x] **Step 4: Lancer les tests et les voir passer**
 
 Run: `cargo test --lib source::kind`
 Attendu : 7 tests passent.
@@ -276,7 +282,7 @@ Attendu : 7 tests passent.
 Run: `cargo clippy --all-targets 2>&1 | grep -c warning`
 Attendu : `0`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/source/kind.rs src/source/mod.rs src/lib.rs
@@ -306,7 +312,7 @@ Le découpage par page n'est pas un confort : les règles du lot B qui supprimen
 les en-têtes répétés et recollent les phrases coupées par un saut de page ne
 peuvent pas travailler sur un document aplati.
 
-- [ ] **Step 1: Créer la fixture PDF**
+- [x] **Step 1: Créer la fixture PDF**
 
 Créez `tests/fixtures/make_spec_pdf.py`. Ce script écrit un PDF de deux pages,
 sans dépendance : les accents passent par `WinAnsiEncoding`, qui est du
@@ -395,7 +401,7 @@ printf '%%PDF-1.4\ntronqu\xc3\xa9 volontairement' > tests/fixtures/tronque.pdf
 
 Attendu : `écrit …/spec.pdf : 1157 octets`
 
-- [ ] **Step 2: Ajouter la dépendance**
+- [x] **Step 2: Ajouter la dépendance**
 
 Dans `Cargo.toml`, sous `[dependencies]`, après `pulldown-cmark` :
 
@@ -403,7 +409,7 @@ Dans `Cargo.toml`, sous `[dependencies]`, après `pulldown-cmark` :
 pdf-extract = "0.12.0"
 ```
 
-- [ ] **Step 3: Écrire le test qui échoue**
+- [x] **Step 3: Écrire le test qui échoue**
 
 Créez `src/source/pdf.rs` :
 
@@ -492,12 +498,12 @@ Déclarez le module dans `src/source/mod.rs` :
 pub mod pdf;
 ```
 
-- [ ] **Step 4: Lancer le test et le voir échouer**
+- [x] **Step 4: Lancer le test et le voir échouer**
 
 Run: `cargo test --lib source::pdf`
 Attendu : ÉCHEC — `not yet implemented` sur les cinq tests.
 
-- [ ] **Step 5: Écrire l'implémentation minimale**
+- [x] **Step 5: Écrire l'implémentation minimale**
 
 Remplacez l'import et le `todo!()` :
 
@@ -534,7 +540,7 @@ pub fn pages(path: &Path) -> Result<Vec<Page>> {
 }
 ```
 
-- [ ] **Step 6: Lancer les tests et les voir passer**
+- [x] **Step 6: Lancer les tests et les voir passer**
 
 Run: `cargo test --lib source::pdf`
 Attendu : 5 tests passent.
@@ -551,7 +557,7 @@ Dans ce cas le document n'a aucune page : ajoutez, juste avant la boucle,
 
 et relancez.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/source/pdf.rs src/source/mod.rs Cargo.toml Cargo.lock tests/fixtures
@@ -574,7 +580,7 @@ Ce module portera au lot B toute la reconstruction. Au lot A il ne fait que ce
 qui ne demande aucune interprétation du sens : réduire les blancs, séparer les
 pages, ne rien laisser traîner en fin de texte.
 
-- [ ] **Step 1: Écrire le test qui échoue**
+- [x] **Step 1: Écrire le test qui échoue**
 
 Créez `src/source/layout.rs` :
 
@@ -651,12 +657,12 @@ Déclarez le module dans `src/source/mod.rs` :
 pub mod layout;
 ```
 
-- [ ] **Step 2: Lancer le test et le voir échouer**
+- [x] **Step 2: Lancer le test et le voir échouer**
 
 Run: `cargo test --lib source::layout`
 Attendu : ÉCHEC — `not yet implemented` sur les sept tests.
 
-- [ ] **Step 3: Écrire l'implémentation minimale**
+- [x] **Step 3: Écrire l'implémentation minimale**
 
 ```rust
 /// Assemble des pages en un markdown que `input::split_blocks` sait découper.
@@ -686,7 +692,7 @@ pub fn to_markdown(pages: &[Page]) -> String {
 }
 ```
 
-- [ ] **Step 4: Lancer les tests et les voir passer**
+- [x] **Step 4: Lancer les tests et les voir passer**
 
 Run: `cargo test --lib source::layout`
 Attendu : 7 tests passent.
@@ -694,7 +700,7 @@ Attendu : 7 tests passent.
 Run: `cargo clippy --all-targets 2>&1 | grep -c warning`
 Attendu : `0`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/source/layout.rs src/source/mod.rs
@@ -716,7 +722,7 @@ git commit -m "feat(source): assembler les pages extraites en markdown"
 Les images et les dossiers sont reconnus mais refusés : ils arrivent au lot C.
 Un refus qui nomme la raison vaut mieux qu'une lecture silencieusement vide.
 
-- [ ] **Step 1: Écrire le test qui échoue**
+- [x] **Step 1: Écrire le test qui échoue**
 
 Complétez `src/source/mod.rs` :
 
@@ -790,12 +796,12 @@ mod tests {
 }
 ```
 
-- [ ] **Step 2: Lancer le test et le voir échouer**
+- [x] **Step 2: Lancer le test et le voir échouer**
 
 Run: `cargo test --lib source::tests`
 Attendu : ÉCHEC — `not yet implemented` sur les quatre tests.
 
-- [ ] **Step 3: Écrire l'implémentation minimale**
+- [x] **Step 3: Écrire l'implémentation minimale**
 
 ```rust
 /// Rend le contenu d'un chemin sous forme de markdown, quelle qu'en soit
@@ -817,12 +823,12 @@ pub fn load(path: &Path) -> Result<String> {
 }
 ```
 
-- [ ] **Step 4: Lancer les tests et les voir passer**
+- [x] **Step 4: Lancer les tests et les voir passer**
 
 Run: `cargo test --lib source`
 Attendu : les 23 tests du module passent (7 + 5 + 7 + 4).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/source/mod.rs
@@ -843,7 +849,7 @@ git commit -m "feat(source): router un chemin vers son extracteur"
 - Produces: le comportement visible — `reader spec.pdf` et
   `reader spec.pdf --to-markdown`
 
-- [ ] **Step 1: Écrire le test de bout en bout qui échoue**
+- [x] **Step 1: Écrire le test de bout en bout qui échoue**
 
 Le test porte sur le **binaire**, pas sur la bibliothèque : `source::load`
 fonctionne déjà après la tâche 4, alors que `--to-markdown` n'existe pas
@@ -907,7 +913,7 @@ fn a_pdf_produces_sentences_to_speak() {
 }
 ```
 
-- [ ] **Step 2: Lancer le test et le voir échouer**
+- [x] **Step 2: Lancer le test et le voir échouer**
 
 Run: `cargo test --test pdf_input`
 Attendu : ÉCHEC de `the_binary_writes_the_extracted_markdown_and_stops` —
@@ -918,7 +924,7 @@ Les deux autres tests passent déjà : ils vérifient le câblage des tâches 1 
 **Si l'un des deux échoue**, c'est une régression de ce lot : corrigez-la avant
 d'aller plus loin.
 
-- [ ] **Step 3: Ajouter l'option à la ligne de commande**
+- [x] **Step 3: Ajouter l'option à la ligne de commande**
 
 Dans `src/main.rs`, dans `struct Args`, juste après le champ `show_config` :
 
@@ -928,7 +934,7 @@ Dans `src/main.rs`, dans `struct Args`, juste après le champ `show_config` :
     to_markdown: bool,
 ```
 
-- [ ] **Step 4: Brancher `source::load` dans la lecture du fichier**
+- [x] **Step 4: Brancher `source::load` dans la lecture du fichier**
 
 Dans `src/main.rs`, branche `Some(path)`, remplacez :
 
@@ -947,7 +953,7 @@ par :
             }
 ```
 
-- [ ] **Step 5: Vérifier que le binaire lit un PDF**
+- [x] **Step 5: Vérifier que le binaire lit un PDF**
 
 ```bash
 cargo run -- tests/fixtures/spec.pdf --to-markdown
@@ -972,7 +978,7 @@ Les montants sont exprimés en euros.
 Les deux dernières lignes de la page 1 restent séparées : la reconstruction des
 paragraphes est le lot B. C'est le comportement attendu ici.
 
-- [ ] **Step 6: Vérifier que rien n'a régressé**
+- [x] **Step 6: Vérifier que rien n'a régressé**
 
 Run: `cargo test`
 Attendu : toute la suite passe. Le dépôt comptait 232 tests de
@@ -986,7 +992,7 @@ Attendu : `0`
 `detach_piped_stdin`. Si clippy signale un import inutilisé, c'est que la
 substitution de l'étape 4 a été faite au mauvais endroit.
 
-- [ ] **Step 7: Documenter**
+- [x] **Step 7: Documenter**
 
 Dans `README.md`, section « Ce qu'il fait », ajoutez une puce :
 
@@ -994,7 +1000,7 @@ Dans `README.md`, section « Ce qu'il fait », ajoutez une puce :
 - Lit un fichier markdown, texte ou **PDF** ; `--to-markdown` écrit le texte extrait sans lancer la lecture
 ```
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/main.rs tests/pdf_input.rs README.md
