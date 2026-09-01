@@ -262,8 +262,15 @@ impl Synthesizer {
 
 impl Drop for Synthesizer {
     fn drop(&mut self) {
-        self.shared.shutdown.store(true, Ordering::SeqCst);
-        self.shared.wake.notify_all();
+        // Le drapeau se lève sous le verrou. Levé à côté, il pouvait tomber
+        // entre la vérification d'un worker et son endormissement : le réveil
+        // partait dans le vide, et la fermeture attendait un thread que plus
+        // rien ne réveillerait — « q » restait suspendu.
+        {
+            let _state = self.shared.state.lock().unwrap_or_else(|e| e.into_inner());
+            self.shared.shutdown.store(true, Ordering::SeqCst);
+            self.shared.wake.notify_all();
+        }
         for handle in self.workers.drain(..) {
             let _ = handle.join();
         }
@@ -418,6 +425,53 @@ mod tests {
             let count = (1000.0 * words as f32 / params.speaking_rate) as usize;
             Ok(PcmBuffer::new(vec![0.1; count], 1000, 1))
         }
+    }
+
+    /// Moteur qui répond sans attendre : les workers enchaînent alors
+    /// prise de travail et sommeil aussi vite que possible.
+    struct InstantEngine;
+    struct InstantSession;
+
+    impl TtsEngine for InstantEngine {
+        fn name(&self) -> String {
+            "instantané".into()
+        }
+        fn open_session(&self) -> Result<Box<dyn TtsSession>> {
+            Ok(Box::new(InstantSession))
+        }
+        fn max_sessions(&self) -> usize {
+            8
+        }
+    }
+
+    impl TtsSession for InstantSession {
+        fn synthesize(&mut self, _text: &str, _params: &TtsParams) -> Result<PcmBuffer> {
+            Ok(PcmBuffer::new(vec![0.1; 10], 1000, 1))
+        }
+    }
+
+    #[test]
+    fn dropping_the_pool_never_hangs() {
+        // Le réveil de fermeture se perdait quand il tombait entre la
+        // vérification du drapeau par un worker et son endormissement : la
+        // fermeture attendait alors un thread que plus rien ne réveillerait,
+        // et « q » restait suspendu. La fenêtre est étroite : on la vise en
+        // fermant des pools par milliers, workers en pleine activité.
+        let (done, finished) = std::sync::mpsc::channel();
+        thread::spawn(move || {
+            let engine: Arc<dyn TtsEngine> = Arc::new(InstantEngine);
+            for _ in 0..60_000 {
+                let synth = Synthesizer::new(Arc::clone(&engine), TtsParams::default(), 3, 4);
+                for i in 0..4 {
+                    synth.push(format!("phrase {i}"), 0);
+                }
+                drop(synth);
+            }
+            let _ = done.send(());
+        });
+        finished
+            .recv_timeout(Duration::from_secs(30))
+            .expect("la fermeture d'un pool est restée bloquée");
     }
 
     fn engine() -> (Arc<FakeEngine>, Arc<AtomicUsize>, Arc<AtomicUsize>) {
