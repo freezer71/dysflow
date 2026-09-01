@@ -101,7 +101,7 @@ impl App {
         let synth = Synthesizer::new(
             Arc::clone(&engine),
             params,
-            config.engine.sessions as usize,
+            config.sessions() as usize,
             config.engine.prefetch as usize,
         );
         let previewer = Previewer::new(Arc::clone(&engine));
@@ -1137,7 +1137,7 @@ impl App {
         let synth = Synthesizer::new(
             engine,
             self.config.tts_params(),
-            self.config.engine.sessions as usize,
+            self.config.sessions() as usize,
             self.config.engine.prefetch as usize,
         );
         for sentence in &self.builder.document().sentences {

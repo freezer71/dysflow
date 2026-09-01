@@ -152,20 +152,29 @@ Le budget jusqu'au premier son se mesure :
 cargo test --release --features audio-cpp --test startup_timing -- --ignored --nocapture
 ```
 
-Les deux modèles ne jouent pas dans la même catégorie. Supertonic synthétise
-**six fois plus vite** que MagpieTTS et reste largement en avance sur la
-lecture. MagpieTTS, à 0,6× le temps réel sur une session, est **plus lent que la
-parole** : les trois sessions par défaut suffisent à lire d'un trait, mais
-chaque saut coûte près de deux fois la durée de la phrase visée avant que le son
-reprenne. Il n'expose par ailleurs aucun réglage de débit.
+Le 4,0× de Supertonic inclut la spécialisation des noyaux Metal, payée par la
+toute première phrase du processus ; en régime établi, sa synthèse tourne à
+**plus de vingt fois le temps réel**.
+
+Les deux modèles ne jouent pas dans la même catégorie. Supertonic reste
+largement en avance sur la lecture avec une seule session. MagpieTTS, à 0,6× le
+temps réel sur une session, est **plus lent que la parole** : il lui en faut
+plusieurs pour lire d'un trait, et chaque saut coûte près de deux fois la durée
+de la phrase visée avant que le son reprenne. Il n'expose par ailleurs aucun
+réglage de débit.
 
 Choisissez donc MagpieTTS pour ses voix, Supertonic pour parcourir un long
 document.
 
-Les sessions s'ouvrent l'une après l'autre — voir la note sur le verrou plus
-bas — si bien que la mise en route coûte autant de fois qu'il y a de sessions
-simultanées. Baisser *Sessions simultanées* à 1 ou 2 dans la rubrique **Moteur**
-la raccourcit.
+**Le nombre de sessions suit la famille.** Une session pèse environ 460 Mo —
+deux fois le modèle — et s'ouvre après les autres, derrière le verrou décrit
+plus bas : chacune de trop coûte de la mémoire *et* retarde le premier son.
+*Sessions simultanées* vaut donc `auto` par défaut : une pour Supertonic,
+plusieurs pour MagpieTTS. Mesuré sur Supertonic, passer de trois sessions à une
+ramène le premier son de 3,9 s à 3,4 s et la mémoire de 1,5 Go à 700 Mo en
+lecture. Un nombre posé à la main l'emporte toujours — y compris celui qu'une
+version antérieure a pu écrire dans `config.toml` : remettez-le à `auto` dans
+la rubrique **Moteur** pour en profiter.
 
 ### Ce qui est dit au moteur
 
@@ -457,7 +466,7 @@ model_path = "~/modeles/supertonic"
 family = "supertonic"
 compute = "metal"         # cpu | metal | cuda | vulkan
 threads = 8
-sessions = 3              # synthèses simultanées
+sessions = 0              # synthèses simultanées ; 0 = ce que la famille demande
 prefetch = 6              # phrases préparées en avance
 
 [voice]

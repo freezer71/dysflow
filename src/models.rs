@@ -439,6 +439,26 @@ const MAGPIE_VOICES: &[VoiceOption] = &[
     VoiceOption { id: "Sofia", label: "Sofia" },
 ];
 
+/// Sessions de synthèse qu'une famille demande pour lire d'un trait.
+///
+/// Une session pèse environ 460 Mo — deux fois le modèle — et s'ouvre après
+/// les autres, derrière le verrou de cycle de vie. En ouvrir plus que
+/// nécessaire coûte donc de la mémoire *et* retarde le premier son.
+pub fn sessions_for_family(family: &str) -> u32 {
+    let cores = std::thread::available_parallelism()
+        .map(|n| n.get() as u32)
+        .unwrap_or(4);
+    match family {
+        // Mesuré à vingt fois le temps réel sur une session : elle reste loin
+        // devant la lecture, et les sauts n'attendent que 0,25 s.
+        "supertonic" => 1,
+        // MagpieTTS est plus lent que la parole ; les familles inconnues sont
+        // supposées l'être aussi, la synthèse en avance valant mieux qu'un
+        // silence.
+        _ => (cores / 3).clamp(2, 4),
+    }
+}
+
 /// Réglages de synthèse réellement honorés par une famille.
 ///
 /// Toutes les familles n'en lisent qu'une partie. Afficher un réglage sans

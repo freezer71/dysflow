@@ -271,7 +271,10 @@ impl Field {
             Field::EnginePref => "auto essaie audio.cpp puis se replie sur la voix système.",
             Field::Compute => "Backend de calcul du modèle.",
             Field::Threads => "Threads alloués au modèle.",
-            Field::Sessions => "Synthèses menées en parallèle.",
+            Field::Sessions => {
+                "Synthèses menées en parallèle. Chacune pèse ~460 Mo ; « auto » en ouvre ce que \
+                 le modèle demande — une pour Supertonic, plusieurs pour MagpieTTS."
+            }
             Field::Prefetch => "Profondeur d'avance de la synthèse.",
             Field::ModelPath => "Renseigné automatiquement à l'installation d'un modèle.",
             Field::Family => "Famille audio.cpp du modèle chargé.",
@@ -399,7 +402,10 @@ impl Field {
             Field::EnginePref => config.engine.engine.clone(),
             Field::Compute => config.engine.compute.clone(),
             Field::Threads => config.engine.threads.to_string(),
-            Field::Sessions => config.engine.sessions.to_string(),
+            Field::Sessions => match config.engine.sessions {
+                0 => format!("auto · {}", config.sessions()),
+                n => n.to_string(),
+            },
             Field::Prefetch => config.engine.prefetch.to_string(),
             Field::ModelPath => text(&shorten_path(&config.engine.model_path)),
             Field::Family => text(&config.engine.family),
@@ -541,8 +547,9 @@ impl Field {
                 Effect::ReloadEngine
             }
             Field::Sessions => {
+                // Zéro est « auto » : sous un, on s'en remet à la famille.
                 config.engine.sessions =
-                    config.engine.sessions.saturating_add_signed(delta).clamp(1, 16);
+                    config.engine.sessions.saturating_add_signed(delta).clamp(0, 16);
                 Effect::ReloadEngine
             }
             Field::Prefetch => {
@@ -902,6 +909,21 @@ mod tests {
         // Le défilement boucle au lieu de buter.
         Field::CodeBlocks.adjust(&mut config, -1);
         assert_eq!(config.reading.code_blocks, "read");
+    }
+
+    #[test]
+    fn sessions_can_be_left_to_the_family() {
+        let mut config = Config::default();
+        config.engine.family = "supertonic".to_string();
+        // « auto » dit ce qu'il vaut : un réglage muet ne se comprend pas.
+        assert_eq!(Field::Sessions.value(&config, 1.0), "auto · 1");
+        Field::Sessions.adjust(&mut config, 1);
+        assert_eq!(Field::Sessions.value(&config, 1.0), "1");
+        // Descendre sous un revient à « auto », et on ne va pas plus bas.
+        Field::Sessions.adjust(&mut config, -1);
+        assert_eq!(config.engine.sessions, 0);
+        Field::Sessions.adjust(&mut config, -1);
+        assert_eq!(config.engine.sessions, 0);
     }
 
     #[test]

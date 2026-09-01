@@ -30,6 +30,11 @@ fn where_the_startup_seconds_go() {
     if let Ok(path) = std::env::var("MODEL") {
         settings.model_path = path;
     }
+    // `SESSIONS=<n>` mesure l'effet du nombre de sessions sans toucher à la
+    // configuration : c'est lui qui décide combien de workers font la queue.
+    if let Some(n) = std::env::var("SESSIONS").ok().and_then(|v| v.parse().ok()) {
+        settings.sessions = n;
+    }
     let params = config.tts_params();
     let sessions = settings.sessions.max(1) as usize;
     println!("\n=== configuration ===");
@@ -174,4 +179,53 @@ fn what_the_pool_costs_before_the_first_sound() {
 
     println!("\n=== du modèle prêt au premier son ===");
     println!("{workers} session(s) : 1re phrase {first:?}, les trois {all:?}");
+}
+
+/// Ce que pèse le modèle seul, et ce que coûte de rouvrir une session.
+///
+/// Un résident qui garderait le modèle entre deux lectures doit savoir ce
+/// qu'il garde : si les sessions pèsent plus que les poids, c'est elles qu'il
+/// faut fermer à l'inactivité — à condition qu'elles se rouvrent vite.
+///
+/// ```sh
+/// STAGE=model /usr/bin/time -l target/release/deps/startup_timing-* \
+///     --ignored --nocapture what_the_model_alone
+/// ```
+#[test]
+#[ignore = "banc de mesure : demande un modèle installé"]
+fn what_the_model_alone_weighs_and_what_reopening_costs() {
+    use std::time::Duration;
+
+    let (config, _) = Config::load();
+    let settings = config.engine_settings();
+    let params = config.tts_params();
+    let quiet = rs_reader::logging::redirect_stderr();
+    let (engine, _) = tts::build_engine(config.engine_preference(), &settings);
+    while engine.name().contains("chargement") {
+        thread::sleep(Duration::from_millis(5));
+    }
+    // `STAGE=model` s'arrête ici : l'empreinte mesurée par `time -l` est
+    // alors celle des poids seuls.
+    if std::env::var("STAGE").as_deref() == Ok("model") {
+        drop(quiet);
+        println!("\nmodèle chargé, aucune session ouverte");
+        return;
+    }
+
+    let open = Instant::now();
+    let mut first = engine.open_session().expect("session");
+    let _ = first.synthesize(PHRASES[0], &params);
+    let first_open = open.elapsed();
+    drop(first);
+
+    let open = Instant::now();
+    let mut again = engine.open_session().expect("session");
+    let _ = again.synthesize(PHRASES[1], &params);
+    let reopen = open.elapsed();
+    drop(again);
+    drop(quiet);
+
+    println!("\n=== rouvrir une session ===");
+    println!("1re ouverture + synthèse : {first_open:?}");
+    println!("réouverture + synthèse   : {reopen:?}");
 }

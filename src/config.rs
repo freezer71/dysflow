@@ -39,7 +39,7 @@ pub struct EngineConfig {
     /// Backend de calcul : `cpu`, `metal`, `cuda`, `vulkan`.
     pub compute: String,
     pub threads: u32,
-    /// Sessions de synthèse simultanées.
+    /// Sessions de synthèse simultanées ; `0` laisse la famille décider.
     pub sessions: u32,
     /// Nombre de phrases synthétisées en avance du curseur.
     pub prefetch: u32,
@@ -56,8 +56,9 @@ impl Default for EngineConfig {
             family: String::new(),
             compute: if cfg!(target_os = "macos") { "metal" } else { "cpu" }.to_string(),
             threads: cores.clamp(1, 8),
-            // Assez pour tenir l'avance sans saturer la mémoire du modèle.
-            sessions: (cores / 3).clamp(2, 4),
+            // Ce que la famille demande : une session suffit à Supertonic,
+            // MagpieTTS en veut plusieurs. Voir `models::sessions_for_family`.
+            sessions: 0,
             prefetch: 6,
         }
     }
@@ -232,7 +233,17 @@ impl Config {
             family: self.engine.family.clone(),
             backend: self.engine.compute.clone(),
             threads: self.engine.threads.max(1),
-            sessions: self.engine.sessions.max(1),
+            sessions: self.sessions(),
+        }
+    }
+
+    /// Sessions de synthèse réellement ouvertes.
+    ///
+    /// Un nombre posé à la main l'emporte ; `0` s'en remet à la famille.
+    pub fn sessions(&self) -> u32 {
+        match self.engine.sessions {
+            0 => crate::models::sessions_for_family(&self.engine.family),
+            n => n,
         }
     }
 
@@ -275,6 +286,24 @@ mod tests {
         assert_eq!(parsed.voice.speed, 1.5);
         assert_eq!(parsed.voice.language, "fr");
         assert_eq!(parsed.reading.code_blocks, "announce");
+    }
+
+    #[test]
+    fn sessions_follow_the_family_when_left_to_auto() {
+        // Supertonic synthétise à vingt fois le temps réel : une session
+        // suffit, et chacune de plus coûte 460 Mo — deux fois le modèle.
+        let mut config = Config::default();
+        assert_eq!(config.engine.sessions, 0, "le défaut est « auto »");
+        config.engine.family = "supertonic".to_string();
+        assert_eq!(config.sessions(), 1);
+        // MagpieTTS est plus lent que la parole : il lui en faut plusieurs.
+        config.engine.family = "magpie_tts".to_string();
+        assert!(config.sessions() >= 2);
+        // Un nombre posé à la main l'emporte, quelle que soit la famille.
+        config.engine.sessions = 3;
+        config.engine.family = "supertonic".to_string();
+        assert_eq!(config.sessions(), 3);
+        assert_eq!(config.engine_settings().sessions, 3);
     }
 
     #[test]
