@@ -9,7 +9,7 @@ use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
 
 use super::{Block, BlockKind, Document, Punctuation, Section, Sentence, Word};
 use crate::text::numerals::{section_number, verbalize_section_number};
-use crate::text::{sanitize, split_sentences, verbalize};
+use crate::text::{sanitize, sanitize_layout, split_sentences, verbalize};
 
 /// Traitement réservé aux blocs de code.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -61,6 +61,26 @@ fn align_row(cells: &[String], widths: &[usize]) -> String {
         }
     }
     line
+}
+
+/// Rend à un titre le rang que le nettoyage lui a retiré.
+///
+/// Un titre se dit avec son rang en toutes lettres, mais s'écrit avec son
+/// chiffre : « un, Contexte » à la voix, « 1. Contexte » à l'œil. Sans quoi le
+/// sommaire ne ressemble plus au document. Le rang reste hors du texte
+/// découpé : « 1. » y passerait pour une phrase entière.
+fn numbered(heading: bool, raw: &str, text: String) -> String {
+    if !heading {
+        return text;
+    }
+    match section_number(raw) {
+        Some(number) if !text.starts_with(number) => format!("{number} {text}"),
+        _ => text,
+    }
+}
+
+fn is_heading(kind: &BlockKind) -> bool {
+    matches!(kind, BlockKind::Heading { .. })
 }
 
 /// Découpe un source en lignes affichables, sans les vides de bordure.
@@ -275,7 +295,13 @@ impl DocumentBuilder {
             Event::End(TagEnd::TableCell) => {}
 
             Event::Text(text) | Event::Code(text) => self.push_text(&text),
-            Event::SoftBreak | Event::HardBreak => self.push_text(" "),
+            // Le saut de ligne du fichier est une composition, pas une
+            // coquille : l'œil le suit. La voix ne le voit pas — `sanitize`
+            // le ramène à un espace.
+            Event::SoftBreak | Event::HardBreak => {
+                let brk = if self.in_table { " " } else { "\n" };
+                self.push_text(brk)
+            }
             Event::TaskListMarker(done) => {
                 self.push_text(if done { "fait :" } else { "à faire :" })
             }
@@ -377,6 +403,14 @@ impl DocumentBuilder {
 
     /// Verse un bloc au document : ce qui se dit, et ce qui s'affiche.
     fn commit(&mut self, kind: BlockKind, raw_text: &str, display_lines: Vec<String>) {
+        // Ce que l'œil suit : le document tel qu'il est composé — ses lignes,
+        // son indentation, l'alignement de ses colonnes. Le balisage seul est
+        // parti, le terminal le rendant autrement.
+        let mut display_lines = display_lines;
+        if display_lines.is_empty() {
+            let layout = numbered(is_heading(&kind), raw_text, sanitize_layout(raw_text));
+            display_lines = source_lines(&layout);
+        }
         // Ce que l'œil lit : le texte nettoyé, chiffres et dates tels qu'ils
         // sont écrits. La mise en mots ne concerne que la voix, et se fait
         // phrase par phrase, plus bas.
@@ -388,15 +422,9 @@ impl DocumentBuilder {
         // son chiffre : « un, Contexte » à la voix, « 1. Contexte » à l'œil.
         // Sans quoi le sommaire ne ressemble plus au document. Le rang reste
         // hors du texte découpé : « 1. » y passerait pour une phrase entière.
-        let shown = match kind {
-            BlockKind::Heading { .. } => match section_number(raw_text) {
-                Some(number) if !body.starts_with(number) => format!("{number} {body}"),
-                _ => body.clone(),
-            },
-            // La numérotation d'une liste reste retirée, sa structure étant
-            // déjà portée par le rang de l'item.
-            _ => body.clone(),
-        };
+        // La numérotation d'une liste reste retirée, sa structure étant déjà
+        // portée par le rang de l'item.
+        let shown = numbered(is_heading(&kind), raw_text, body.clone());
 
         // Un titre ouvre une section, à laquelle il appartient lui-même.
         if let BlockKind::Heading { level } = kind {
@@ -833,8 +861,52 @@ mod tests {
     }
 
     #[test]
-    fn prose_carries_no_display_lines() {
-        let doc = parse_document("Une phrase.", CodePolicy::Announce);
-        assert!(doc.blocks[0].display_lines.is_empty());
+    fn prose_is_shown_with_the_lines_of_the_file() {
+        // L'œil suit le document tel qu'il est composé ; la voix n'y voit
+        // qu'une phrase, d'un seul tenant.
+        let doc = doc("Une première ligne\nune seconde ligne\n");
+        assert_eq!(
+            doc.blocks[0].display_lines,
+            vec!["Une première ligne", "une seconde ligne"]
+        );
+        assert_eq!(doc.sentences[0].text, "Une première ligne une seconde ligne");
+    }
+
+    #[test]
+    fn the_words_shown_and_the_words_read_are_the_same() {
+        // L'invariant dont dépend tout le surlignage : la ligne montrée et la
+        // phrase dite portent les mêmes mots, dans le même ordre. Sans lui,
+        // le mot prononcé se poserait à côté de celui qu'on entend.
+        let doc = doc(concat!(
+            "## 2. Le **contexte**\n\n",
+            "Un paragraphe avec un [lien](https://exemple.fr) et de l'*italique*,\n",
+            "coupé sur deux lignes, chiffré à 10 000 euros le 3 mars 2027.\n\n",
+            "- Un item de liste\n",
+            "- Un second, plus long, qui parle du SIRET 984 561 002 00017\n\n",
+            "> Une citation, sur une ligne.\n",
+        ));
+        assert!(doc.blocks.len() >= 4, "le document doit être varié");
+        for block in &doc.blocks {
+            let shown: Vec<&str> = block
+                .display_lines
+                .iter()
+                .flat_map(|line| line.split_whitespace())
+                .collect();
+            let said: Vec<&str> = (block.sentences.0..block.sentences.1)
+                .flat_map(|id| doc.sentences[id].words.iter().map(|w| w.text.as_str()))
+                .collect();
+            assert_eq!(shown, said, "bloc {:?}", block.kind);
+        }
+    }
+
+    #[test]
+    fn the_indentation_of_a_line_survives() {
+        // L'alignement d'une colonne porte du sens : l'écraser revient à
+        // recomposer le document.
+        let doc = doc("Nom      Rôle\nalpha    serveur\n");
+        assert_eq!(
+            doc.blocks[0].display_lines,
+            vec!["Nom      Rôle", "alpha    serveur"]
+        );
     }
 }

@@ -81,13 +81,35 @@ pub fn verbalize(clean: &str) -> String {
     verbalize_acronyms(&verbalize_numbers(&verbalize_dates(clean)))
 }
 
-/// Nettoie un fragment pour l'affichage et la synthèse.
+/// Retire le balisage sans toucher à la composition.
+///
+/// C'est ce que l'œil reçoit : les lignes du fichier, son indentation,
+/// l'alignement de ses colonnes. Le balisage part parce que le terminal le
+/// rendra autrement — un gras se montre en gras, non entre astérisques — mais
+/// pas un espace de plus. Un document doit se reconnaître à l'écran.
+pub fn sanitize_layout(raw: &str) -> String {
+    tidy_punctuation(&strip_markup(raw))
+}
+
+/// Retire le balisage **et** la composition, pour n'en garder que la prose.
+///
+/// C'est ce que la voix reçoit, et ce sur quoi les phrases se découpent : un
+/// texte d'un seul tenant, où un saut de ligne ne vaut qu'un espace.
+pub fn sanitize(raw: &str) -> String {
+    // Dérivée de la version composée, et non calculée à part : les deux
+    // portent ainsi exactement les mêmes mots, dans le même ordre. C'est ce
+    // qui permet au surlignage de suivre la voix sur un texte qui, lui, garde
+    // la mise en page du fichier.
+    let layout = sanitize_layout(raw);
+    PATTERNS.whitespace.replace_all(&layout, " ").trim().to_string()
+}
+
+/// Retire le balisage : marqueurs markdown, filets, barres, URL.
 ///
 /// L'ordre compte : les images avant les liens, l'emphase avant les filets
-/// (sinon `**gras**` serait mangé par la règle des répétitions), les puces
-/// avant la normalisation des espaces, et les dates après tout ce qui peut
-/// encore les entourer de bruit.
-pub fn sanitize(raw: &str) -> String {
+/// (sinon `**gras**` serait mangé par la règle des répétitions), et les puces
+/// avant tout ce qui pourrait les prendre pour des tirets.
+fn strip_markup(raw: &str) -> String {
     let p = &*PATTERNS;
     let mut text = p.table_separator.replace_all(raw, " ").into_owned();
     text = p.md_image.replace_all(&text, "$1").into_owned();
@@ -114,10 +136,7 @@ pub fn sanitize(raw: &str) -> String {
     text = p.arrow.replace_all(&text, " ").into_owned();
     text = p.rule.replace_all(&text, " ").into_owned();
     // Les barres de tableau deviennent des séparations parlées.
-    text = text.replace('|', " , ");
-    text = p.whitespace.replace_all(&text, " ").into_owned();
-
-    tidy_punctuation(text.trim())
+    text.replace('|', " , ")
 }
 
 /// Recolle la ponctuation isolée par les suppressions précédentes.
@@ -125,22 +144,30 @@ pub fn sanitize(raw: &str) -> String {
 /// Retirer « **gras** » ou une URL laisse volontiers « mot , suite » ou
 /// « fin . » ; un TTS lit ces espaces comme des hésitations.
 fn tidy_punctuation(text: &str) -> String {
+    let chars: Vec<char> = text.chars().collect();
     let mut out = String::with_capacity(text.len());
-    let mut chars = text.chars().peekable();
-    while let Some(c) = chars.next() {
-        if c == ' ' {
-            // Absorbe l'espace précédant une ponctuation fermante.
-            if let Some(&next) = chars.peek() {
+    let mut i = 0;
+    while i < chars.len() {
+        if chars[i] == ' ' {
+            // Absorbe les espaces précédant une ponctuation fermante — une URL
+            // retirée en laisse plusieurs, et le saut de ligne n'en est pas.
+            let mut j = i;
+            while j < chars.len() && chars[j] == ' ' {
+                j += 1;
+            }
+            if let Some(&next) = chars.get(j) {
                 if matches!(next, ',' | '.' | ';' | ':' | '!' | '?' | ')' | ']' | '…') {
                     // En français l'espace fine est d'usage devant ; : ! ?
                     if matches!(next, ';' | ':' | '!' | '?') {
                         out.push(' ');
                     }
+                    i = j;
                     continue;
                 }
             }
         }
-        out.push(c);
+        out.push(chars[i]);
+        i += 1;
     }
     // Une ponctuation redoublée par le nettoyage ne doit pas se cumuler.
     let mut cleaned = String::with_capacity(out.len());
@@ -179,6 +206,33 @@ mod tests {
         // Le contenu de la cellule survit — dit en toutes lettres, comme tout
         // nombre destiné à la synthèse.
         assert!(clean.contains("8080"), "obtenu: {clean:?}");
+    }
+
+    #[test]
+    fn keeps_the_composition_of_the_file_for_the_eye() {
+        // L'œil suit le document tel qu'il est composé : ses lignes, son
+        // indentation, l'alignement de ses colonnes. Seule la voix a besoin
+        // d'un texte d'un seul tenant.
+        let raw = "Premier paragraphe\n  une ligne indentée\n\nAprès un blanc";
+        assert_eq!(
+            sanitize_layout(raw),
+            "Premier paragraphe\n  une ligne indentée\n\nAprès un blanc"
+        );
+        assert_eq!(
+            sanitize(raw),
+            "Premier paragraphe une ligne indentée Après un blanc"
+        );
+    }
+
+    #[test]
+    fn strips_the_markup_without_touching_the_layout() {
+        // Le balisage part — c'est ce que le terminal rendra autrement — mais
+        // pas un espace de plus.
+        let raw = "## Titre\n\n- un **point**\n- deux colonnes    alignées";
+        assert_eq!(
+            sanitize_layout(raw),
+            "Titre\n\nun point\ndeux colonnes    alignées"
+        );
     }
 
     #[test]

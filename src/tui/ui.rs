@@ -108,12 +108,12 @@ fn render_header(frame: &mut Frame, app: &App, area: Rect) {
     frame.render_widget(Paragraph::new(Line::from(spans)), area);
 }
 
-/// Un mot prêt à être placé.
-struct Token {
-    text: String,
+/// Ce qu'un mot apporte à la ligne où le fichier l'a écrit.
+///
+/// Le texte, lui, vient du document : c'est sa composition qui est à l'écran,
+/// et les mots ne font que la styler, dans l'ordre.
+struct Mark {
     style: Style,
-    /// Un espace peut être inséré après ce mot lors du repli.
-    breakable: bool,
     /// Vrai pour le mot en train d'être prononcé.
     cursor: bool,
 }
@@ -214,13 +214,6 @@ fn word_style(
     }
 }
 
-fn finish_line(pad: &str, mut spans: Vec<Span<'static>>) -> Line<'static> {
-    if !pad.is_empty() {
-        spans.insert(0, Span::raw(pad.to_string()));
-    }
-    Line::from(spans)
-}
-
 /// Colonne de lecture : bornée en largeur et centrée dans `area`.
 ///
 /// Une ligne de cent quatre-vingts caractères se relit mal — on perd le début
@@ -274,50 +267,125 @@ fn ruled(line: Line<'static>, width: usize, background: Color) -> Line<'static> 
     Line::from(spans)
 }
 
-/// Replie une suite de mots et signale la ligne où tombe le mot prononcé.
+/// Découpe une ligne en mots, chacun précédé de son écart.
 ///
-/// C'est cette ligne que la règle de lecture souligne : sans elle, retrouver
-/// où l'on en est demande de balayer l'écran à chaque retour d'attention.
-fn wrap_tracked(
-    tokens: Vec<Token>,
+/// L'écart est compté plutôt qu'écrasé : c'est lui qui aligne une colonne.
+fn cells(source: &str) -> Vec<(usize, String)> {
+    let mut out = Vec::new();
+    let mut gap = 0usize;
+    let mut word = String::new();
+    for c in source.chars() {
+        if c.is_whitespace() {
+            if !word.is_empty() {
+                out.push((gap, std::mem::take(&mut word)));
+                gap = 0;
+            }
+            gap += 1;
+        } else {
+            word.push(c);
+        }
+    }
+    if !word.is_empty() {
+        out.push((gap, word));
+    }
+    out
+}
+
+/// Pose les mots sur les lignes du fichier et signale celle qui est prononcée.
+///
+/// La composition vient du document — mêmes lignes, mêmes écarts ; le style,
+/// lui, vient des mots, consommés dans l'ordre.
+///
+/// Tant qu'elle tient dans la colonne. Au-delà, la suivre coûterait plus
+/// qu'elle ne rapporte : un fichier plié à quatre-vingts colonnes, lu dans une
+/// colonne plus étroite, laisserait un mot orphelin sous chacune de ses
+/// lignes. Le bloc est alors recomposé d'un seul tenant — ce qui est encore la
+/// façon la plus fidèle de le montrer quand l'écran est trop étroit pour lui.
+///
+/// La ligne du mot prononcé est celle que la règle de lecture souligne : sans
+/// elle, retrouver où l'on en est demande de balayer l'écran à chaque retour
+/// d'attention.
+fn layout_tracked(
+    source: &[String],
+    marks: Vec<Mark>,
     width: usize,
     indent: usize,
+    base: Style,
+    prefix: Option<(String, Style)>,
 ) -> (Vec<Line<'static>>, Option<usize>) {
     if width == 0 {
         return (Vec::new(), None);
     }
-    let pad = " ".repeat(indent);
-    let mut lines = Vec::new();
-    let mut spans: Vec<Span> = Vec::new();
-    let mut used = 0usize;
+    // Le marqueur du bloc occupe le début de la première ligne : il compte
+    // dans ce qu'elle peut tenir.
+    let head = prefix.as_ref().map_or(0, |(text, _)| text.chars().count() + 1);
+    let recomposed: Vec<String>;
+    let source: &[String] = if source
+        .iter()
+        .enumerate()
+        .all(|(n, line)| indent + usize::from(n == 0) * head + line.chars().count() <= width)
+    {
+        source
+    } else {
+        recomposed = vec![source.join(" ")];
+        &recomposed
+    };
+
+    let mut words = marks.into_iter();
+    let mut prefix = prefix;
+    let mut lines: Vec<Line<'static>> = Vec::new();
     let mut cursor_line = None;
 
-    for token in tokens {
-        let len = token.text.chars().count();
-        let needs_space = !spans.is_empty();
-        let cost = len + usize::from(needs_space);
+    for (n, source_line) in source.iter().enumerate() {
+        let mut spans: Vec<Span<'static>> = Vec::new();
+        let mut used = indent;
+        if indent > 0 {
+            spans.push(Span::raw(" ".repeat(indent)));
+        }
+        // Le marqueur du bloc — puce, filet de citation — ouvre sa première
+        // ligne et se comporte ensuite comme un mot de plus.
+        if n == 0 {
+            if let Some((text, style)) = prefix.take() {
+                used += text.chars().count();
+                spans.push(Span::styled(text, style));
+            }
+        }
+        let mut placed = used > indent;
 
-        if used + cost > width && !spans.is_empty() {
-            lines.push(finish_line(&pad, std::mem::take(&mut spans)));
-            used = 0;
-        } else if needs_space {
-            spans.push(Span::raw(" "));
-            used += 1;
+        for (written, text) in cells(source_line) {
+            // L'écart du fichier ouvre la ligne — c'est son indentation — et
+            // sépare ensuite deux mots sans jamais les coller.
+            let mut gap = if placed { written.max(1) } else { written };
+            let len = text.chars().count();
+            if placed && used + gap + len > width {
+                lines.push(Line::from(std::mem::take(&mut spans)));
+                used = indent;
+                if indent > 0 {
+                    spans.push(Span::raw(" ".repeat(indent)));
+                }
+                gap = 0;
+            }
+            if gap > 0 {
+                spans.push(Span::raw(" ".repeat(gap)));
+                used += gap;
+            }
+            // Un mot plus long que la colonne est laissé intact : le tronquer
+            // nuirait plus à la lecture que de déborder.
+            let (style, cursor) = match words.next() {
+                Some(mark) => (mark.style, mark.cursor),
+                None => (base, false),
+            };
+            if cursor {
+                cursor_line = Some(lines.len());
+            }
+            spans.push(Span::styled(text, style));
+            used += len;
+            placed = true;
         }
 
-        // Le mot prononcé désigne la ligne que la règle de lecture souligne.
-        if token.cursor {
-            cursor_line = Some(lines.len());
-        }
-        // Un mot plus long que la ligne est laissé intact : le tronquer nuirait
-        // plus à la lecture que de déborder.
-        spans.push(Span::styled(token.text, token.style));
-        used += len;
-        let _ = token.breakable;
-    }
-
-    if !spans.is_empty() {
-        lines.push(finish_line(&pad, spans));
+        // Une ligne vide du fichier reste vide à l'écran : elle en compose la
+        // respiration.
+        lines.push(if placed { Line::from(spans) } else { Line::default() });
     }
     (lines, cursor_line)
 }
@@ -454,9 +522,10 @@ fn document_lines(frame: ReaderFrame<'_>) -> ReaderView {
         }
         let is_current_block = block.id == current_block;
 
-        // Un bloc qui porte ses propres lignes d'affichage — du code — se
-        // montre tel qu'il est écrit, pendant que la voix n'en dit que le nom.
-        if !block.display_lines.is_empty() {
+        // Le code et les tableaux ne se disent pas comme ils s'écrivent : ce
+        // qu'ils montrent n'a pas de mots à suivre, et se montre tel quel
+        // pendant que la voix n'en dit que le nom.
+        if matches!(block.kind, BlockKind::Code { .. } | BlockKind::TableRow { .. }) {
             let (text_style, gutter) = fixed_style(&block.kind, is_current_block);
             lines.extend(space_out(
                 fixed_lines(&block.display_lines, width, text_style, gutter),
@@ -467,16 +536,7 @@ fn document_lines(frame: ReaderFrame<'_>) -> ReaderView {
         }
 
         let (indent, prefix) = block_prefix(&block.kind);
-        let mut tokens: Vec<Token> = Vec::new();
-
-        if let Some((text, style)) = prefix {
-            tokens.push(Token {
-                text,
-                style,
-                breakable: false,
-                cursor: false,
-            });
-        }
+        let mut marks: Vec<Mark> = Vec::new();
 
         for id in block.sentences.0..block.sentences.1 {
             let Some(sentence) = doc.sentence(id) else { continue };
@@ -496,16 +556,26 @@ fn document_lines(frame: ReaderFrame<'_>) -> ReaderView {
                 {
                     style = style.fg(BRIGHT).add_modifier(Modifier::UNDERLINED);
                 }
-                tokens.push(Token {
-                    text: word.text.clone(),
-                    style,
-                    breakable: true,
-                    cursor: is_current_word,
-                });
+                marks.push(Mark { style, cursor: is_current_word });
             }
         }
 
-        let (mut wrapped, spoken_line) = wrap_tracked(tokens, width.saturating_sub(indent), indent);
+        // La composition vient du fichier : mêmes lignes, mêmes écarts. Les
+        // mots n'y apportent que leur style — et le bloc son texte, si le
+        // document n'a pas su en garder les lignes.
+        let source = if block.display_lines.is_empty() {
+            std::slice::from_ref(&block.text)
+        } else {
+            &block.display_lines
+        };
+        let (mut wrapped, spoken_line) = layout_tracked(
+            source,
+            marks,
+            width,
+            indent,
+            word_style(&block.kind, is_current_block, false, false),
+            prefix,
+        );
         // La règle passe sous la ligne entière : c'est elle qu'on retrouve en
         // relevant les yeux, pas le mot seul.
         if style.ruler {
@@ -1449,12 +1519,15 @@ mod tests {
     }
 
     #[test]
-    fn wrap_breaks_at_the_given_width() {
-        let tokens: Vec<Token> = ["alpha", "beta", "gamma", "delta"]
-            .iter()
-            .map(|w| token(w))
-            .collect();
-        let lines = wrap_tracked(tokens, 12, 0).0;
+    fn a_line_of_the_file_stays_one_line_on_screen() {
+        // Deux lignes au fichier, deux lignes à l'écran : rien n'est recollé.
+        let (lines, _) = layout(&["alpha beta", "gamma delta"], 40, 0);
+        assert_eq!(text_of_lines(&lines), vec!["alpha beta", "gamma delta"]);
+    }
+
+    #[test]
+    fn a_line_breaks_at_the_given_width() {
+        let (lines, _) = layout(&["alpha beta gamma delta"], 12, 0);
         assert!(lines.len() >= 2, "aucun repli n'a eu lieu");
         for line in &lines {
             let width: usize = line.spans.iter().map(|s| s.content.chars().count()).sum();
@@ -1463,27 +1536,61 @@ mod tests {
     }
 
     #[test]
-    fn wrap_indents_every_line() {
-        let tokens: Vec<Token> = (0..8).map(|i| token(&format!("mot{i}"))).collect();
-        let lines = wrap_tracked(tokens, 10, 4).0;
+    fn one_line_too_wide_recomposes_the_whole_block() {
+        // La composition du fichier vaut pour le bloc entier ou pour rien :
+        // une ligne repliée au milieu de lignes intactes se lit en escalier.
+        let (lines, _) = layout(&["alpha beta", "gamma delta epsilon zeta"], 14, 0);
+        assert_eq!(
+            text_of_lines(&lines),
+            vec!["alpha beta", "gamma delta", "epsilon zeta"]
+        );
+    }
+
+    #[test]
+    fn layout_indents_every_line() {
+        let source: Vec<String> = vec![(0..8).map(|i| format!("mot{i}")).collect::<Vec<_>>().join(" ")];
+        let (lines, _) = layout(&source, 10, 4);
         assert!(lines.len() > 1);
         for line in &lines {
-            assert_eq!(line.spans[0].content.as_ref(), "    ");
+            assert!(line.spans[0].content.starts_with("    "), "{:?}", line.spans[0]);
         }
     }
 
     #[test]
-    fn wrap_keeps_overlong_words_whole() {
-        let tokens = vec![token("anticonstitutionnellement")];
-        let lines = wrap_tracked(tokens, 8, 0).0;
+    fn layout_keeps_overlong_words_whole() {
+        let (lines, _) = layout(&["anticonstitutionnellement"], 8, 0);
         assert_eq!(lines.len(), 1);
         assert_eq!(lines[0].spans[0].content.as_ref(), "anticonstitutionnellement");
     }
 
+    #[test]
+    fn the_spaces_of_a_line_are_kept_as_written() {
+        let (lines, _) = layout(&["Nom      Rôle"], 40, 0);
+        assert_eq!(text_of_lines(&lines), vec!["Nom      Rôle"]);
+    }
+
     // ------------------------------------------------ confort de lecture
 
-    fn token(text: &str) -> Token {
-        Token { text: text.to_string(), style: Style::default(), breakable: true, cursor: false }
+    fn mark() -> Mark {
+        Mark { style: Style::default(), cursor: false }
+    }
+
+    /// Pose les mots de `source` sur ses propres lignes, sans style ni marqueur.
+    fn layout(
+        source: &[impl AsRef<str>],
+        width: usize,
+        indent: usize,
+    ) -> (Vec<Line<'static>>, Option<usize>) {
+        let source: Vec<String> = source.iter().map(|l| l.as_ref().to_string()).collect();
+        let marks: Vec<Mark> = source
+            .iter()
+            .flat_map(|l| l.split_whitespace().map(|_| mark()).collect::<Vec<_>>())
+            .collect();
+        layout_tracked(&source, marks, width, indent, Style::default(), None)
+    }
+
+    fn text_of_lines(lines: &[Line<'static>]) -> Vec<String> {
+        lines.iter().map(|l| text_of(&l.spans)).collect()
     }
 
     #[test]
@@ -1540,18 +1647,18 @@ mod tests {
     }
 
     #[test]
-    fn wrap_reports_the_line_holding_the_cursor() {
-        let mut tokens: Vec<Token> = ["alpha", "beta", "gamma", "delta"].iter().map(|w| token(w)).collect();
-        tokens[3].cursor = true;
-        let (lines, cursor) = wrap_tracked(tokens, 12, 0);
+    fn layout_reports_the_line_holding_the_cursor() {
+        let source = vec!["alpha beta gamma delta".to_string()];
+        let mut marks: Vec<Mark> = (0..4).map(|_| mark()).collect();
+        marks[3].cursor = true;
+        let (lines, cursor) = layout_tracked(&source, marks, 12, 0, Style::default(), None);
         assert!(lines.len() >= 2);
         assert_eq!(cursor, Some(lines.len() - 1), "le curseur est sur la dernière ligne");
     }
 
     #[test]
-    fn wrap_reports_no_cursor_when_none_is_marked() {
-        let tokens = vec![token("alpha"), token("beta")];
-        assert_eq!(wrap_tracked(tokens, 40, 0).1, None);
+    fn layout_reports_no_cursor_when_none_is_marked() {
+        assert_eq!(layout(&["alpha beta"], 40, 0).1, None);
     }
 
     // ------------------------------------------------ mise en lignes du texte
@@ -1697,6 +1804,73 @@ mod tests {
             "  ╎ ",
             "la suite d'une ligne ne doit pas passer pour une ligne neuve"
         );
+    }
+
+    #[test]
+    fn a_paragraph_keeps_the_lines_of_the_file() {
+        // L'œil retrouve le fichier : mêmes lignes, même ordre, rien de recomposé.
+        let doc = parse_document("Une première ligne\nune seconde ligne\n", CodePolicy::Announce);
+        let view = document_lines(ReaderFrame::new(&doc, 60));
+        assert_eq!(shown_lines(&view), vec!["Une première ligne", "une seconde ligne"]);
+    }
+
+    #[test]
+    fn an_aligned_column_keeps_its_spaces() {
+        // L'alignement porte du sens : l'écraser revient à recomposer le texte.
+        let doc = parse_document("Nom      Rôle\nalpha    serveur\n", CodePolicy::Announce);
+        let view = document_lines(ReaderFrame::new(&doc, 60));
+        assert_eq!(shown_lines(&view), vec!["Nom      Rôle", "alpha    serveur"]);
+    }
+
+    #[test]
+    fn a_block_too_wide_for_the_column_is_recomposed() {
+        // Suivre les lignes d'un fichier plus large que la colonne laisserait
+        // un mot orphelin sous chacune : mieux vaut alors le recomposer.
+        let doc = parse_document(PROSE, CodePolicy::Announce);
+        let view = document_lines(ReaderFrame::new(&doc, 24));
+        let shown = shown_lines(&view);
+        assert!(shown.len() > 1, "aucun repli n'a eu lieu : {shown:?}");
+        for line in &shown {
+            assert!(line.chars().count() <= 24, "ligne trop large : {line:?}");
+        }
+        // Chaque ligne est remplie : le premier mot de la suivante n'y tenait
+        // pas. Sans quoi le texte se lirait en escalier.
+        for pair in shown.windows(2) {
+            let next = pair[1].split(' ').next().unwrap_or_default();
+            assert!(
+                pair[0].chars().count() + 1 + next.chars().count() > 24,
+                "un mot orphelin : {pair:?}"
+            );
+        }
+        // Recomposé, jamais amputé : tous les mots, dans l'ordre.
+        assert_eq!(shown.join(" "), PROSE);
+    }
+
+    #[test]
+    fn a_word_still_carries_its_style_on_the_line_of_the_file() {
+        // La composition vient du fichier, le style vient des mots : le
+        // surlignage ne doit pas décrocher pour autant.
+        let doc = parse_document("Une première ligne\nune seconde ligne\n", CodePolicy::Announce);
+        let view = document_lines(ReaderFrame {
+            current_word: Some(4),
+            ..ReaderFrame::new(&doc, 60)
+        });
+        let spoken = view
+            .lines
+            .iter()
+            .flat_map(|l| l.spans.iter())
+            .find(|s| s.style.bg == Some(ACCENT))
+            .expect("le mot prononcé est affiché");
+        assert_eq!(spoken.content.as_ref(), "seconde");
+    }
+
+    /// Le texte de chaque ligne non vide, tel qu'il est à l'écran.
+    fn shown_lines(view: &ReaderView) -> Vec<String> {
+        view.lines
+            .iter()
+            .map(|l| text_of(&l.spans))
+            .filter(|t| !t.trim().is_empty())
+            .collect()
     }
 
     #[test]

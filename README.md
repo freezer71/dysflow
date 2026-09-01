@@ -41,6 +41,8 @@ permanence.
 - **Ne lit pas le formatage.** Bordures de tableaux, filets, flèches, marqueurs
   de titres et syntaxe markdown sont retirés ; la hiérarchie passe par la
   typographie et par la durée des silences, jamais par un « dièse titre ».
+- **Garde la page du fichier.** Les lignes, l'indentation et l'alignement des
+  colonnes sont ceux du document : ce qui est à l'écran se reconnaît.
 
 ## Installation
 
@@ -296,6 +298,13 @@ l'œil :
 
 La règle et le surlignage ne disent pas la même chose : le mot dit **où en est
 la voix**, la ligne dit **où revenir** quand on relève les yeux.
+
+**La page reste celle du fichier.** L'écran suit la composition du document —
+mêmes lignes, même indentation, colonnes alignées — et n'en retire que le
+balisage, que la typographie du terminal rend autrement. Un document plié à
+quatre-vingts colonnes, lu dans une colonne plus étroite, ferait exception :
+suivre ses lignes y laisserait un mot orphelin sous chacune, et le bloc est
+alors recomposé d'un seul tenant.
 
 **Ce qui n'est pas lu reste montré.** Un bloc de code annoncé — le réglage par
 défaut — se dit « bloc de code rust » et s'affiche pourtant en entier, avec son
