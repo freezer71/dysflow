@@ -18,19 +18,24 @@ pub use kind::Kind;
 /// Lit le presse-papiers : son image reconnue, ou son texte tel quel.
 ///
 /// L'image passe d'abord : ce qu'on copie depuis un PDF verrouillé ou une
-/// visio arrive en image, et c'est alors elle qui porte le contenu.
-#[cfg(feature = "ocr")]
+/// visio arrive en image, et c'est alors elle qui porte le contenu. Elle
+/// demande la reconnaissance ; le texte, lui, ne demande rien.
+#[cfg(feature = "clipboard")]
 pub fn clipboard() -> Result<String> {
     let mut board = arboard::Clipboard::new().context("accès au presse-papiers")?;
+    #[cfg(feature = "ocr")]
     if let Ok(image) = board.get_image() {
         let width = image.width as u32;
         let height = image.height as u32;
         let page = ocr::read_rgba(&image.bytes, width, height)?;
         return Ok(layout::to_markdown(&[page]));
     }
-    board
-        .get_text()
-        .context("le presse-papiers ne contient ni image ni texte")
+    #[cfg(feature = "ocr")]
+    let absent = "le presse-papiers ne contient ni image ni texte";
+    #[cfg(not(feature = "ocr"))]
+    let absent = "le presse-papiers ne contient pas de texte ; \
+                  une image demande un binaire compilé avec l'option `ocr`";
+    board.get_text().context(absent)
 }
 
 /// Rend le contenu d'un chemin sous forme de markdown, quelle qu'en soit

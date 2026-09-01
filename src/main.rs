@@ -221,13 +221,13 @@ fn main() -> Result<()> {
 
 /// Lit le presse-papiers, ou explique pourquoi il ne peut pas l'être.
 fn read_clipboard() -> Result<String> {
-    #[cfg(feature = "ocr")]
+    #[cfg(feature = "clipboard")]
     {
         rs_reader::source::clipboard()
     }
-    #[cfg(not(feature = "ocr"))]
+    #[cfg(not(feature = "clipboard"))]
     {
-        anyhow::bail!("--clip exige un binaire compilé avec l'option `ocr`")
+        anyhow::bail!("--clip exige un binaire compilé avec l'option `clipboard`")
     }
 }
 

@@ -41,11 +41,14 @@ cc = { version = "1.1", optional = true }
 
 [features]
 # Par défaut le binaire se construit en secondes et se replie sur le TTS système.
-default = []
+default = ["clipboard"]
 # Compile et lie audio.cpp dans le binaire (nécessite CMake + le submodule vendor/audio.cpp).
 audio-cpp = ["dep:cmake", "dep:cc"]
-# Compile Tesseract dans le binaire pour lire images et scans.
-ocr = ["dep:tesseract-rs", "dep:image", "dep:arboard"]
+# Donne accès au presse-papiers : coller du texte ne demande rien de plus.
+clipboard = ["dep:arboard"]
+# Compile Tesseract dans le binaire pour lire images et scans, presse-papiers
+# compris — la reconnaissance s'ajoute au collage, elle ne le conditionne pas.
+ocr = ["dep:tesseract-rs", "dep:image", "clipboard"]
 
 [[bin]]
 name = "reader"

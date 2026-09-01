@@ -22,10 +22,12 @@ permanence.
   rendus au sommaire, mots coupés recollés, en-têtes et pieds de page retirés.
   `--to-markdown` écrit le texte extrait sans lancer la lecture.
 - **Lit aussi les images**, avec reconnaissance de texte : une capture d'écran,
-  une photo de page, un dossier de scans, un **PDF photocopié**, ou le
-  presse-papiers avec `--clip`. Les pages sont reconnues en parallèle et le
-  résultat mémorisé : la deuxième ouverture est immédiate. `--no-cache` refait
-  l'extraction. Demande l'option de compilation `ocr`.
+  une photo de page, un dossier de scans, un **PDF photocopié**, ou une image
+  collée. Les pages sont reconnues en parallèle et le résultat mémorisé : la
+  deuxième ouverture est immédiate. `--no-cache` refait l'extraction. Demande
+  l'option de compilation `ocr`.
+- **Lit le presse-papiers** avec `--clip`, sans rien exiger de plus : coller du
+  texte n'a rien à reconnaître. Seule une image collée demande l'option `ocr`.
 - **Synthétise en parallèle**, sur plusieurs sessions, dans une fenêtre glissante
   autour du curseur — ce qui rend l'avance et le recul immédiats et borne la
   mémoire.
@@ -60,8 +62,8 @@ FEATURES=audio-cpp ./scripts/package.sh
 Distribuez le dossier entier : le binaire cherche la bibliothèque à côté de
 lui, puis dans un `lib/` voisin. Un binaire copié seul ne démarre pas.
 
-Pour la **reconnaissance de texte** — images, dossiers de scans,
-presse-papiers —, Tesseract est compilé dans le binaire. Comptez une minute au
+Pour la **reconnaissance de texte** — images, dossiers de scans, images
+collées —, Tesseract est compilé dans le binaire. Comptez une minute au
 premier build ; ensuite rien n'est à installer, les données de langue
 (français et anglais) sont embarquées :
 
