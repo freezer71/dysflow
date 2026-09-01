@@ -7,7 +7,7 @@
 
 use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
 
-use super::{Block, BlockKind, Document, Punctuation, Section, Sentence, Word};
+use super::{Block, BlockKind, Document, Emphasis, Punctuation, Section, Sentence, Word};
 use crate::text::numerals::{section_number, verbalize_section_number};
 use crate::text::{sanitize, sanitize_layout, split_sentences, verbalize};
 
@@ -99,10 +99,60 @@ fn source_lines(raw: &str) -> Vec<String> {
     lines
 }
 
+/// Un mot du fichier et la mise en valeur qu'il y portait.
+struct Marked {
+    text: String,
+    emphasis: Emphasis,
+}
+
+/// Mises en valeur ouvertes, comptées : elles s'imbriquent.
+#[derive(Default)]
+struct Emphases {
+    strong: usize,
+    italic: usize,
+    struck: usize,
+    link: usize,
+    code: usize,
+}
+
+impl Emphases {
+    fn current(&self) -> Emphasis {
+        Emphasis {
+            strong: self.strong > 0,
+            italic: self.italic > 0,
+            struck: self.struck > 0,
+            link: self.link > 0,
+            code: self.code > 0,
+        }
+    }
+}
+
+/// Rend à un mot la mise en valeur qu'il portait dans le fichier.
+///
+/// Les deux listes viennent du même texte, mais le nettoyage a pu en retirer
+/// un mot — une adresse, un marqueur resté — et un titre y ajoute son rang.
+/// On avance donc jusqu'au mot reconnu plutôt qu'à l'aveugle : un gras décalé
+/// se remarquerait plus qu'un gras absent.
+fn emphasis_of(word: &str, marks: &[Marked], cursor: &mut usize) -> Emphasis {
+    /// Au-delà, ce n'est plus un décalage mais un autre texte.
+    const LOOKAHEAD: usize = 8;
+
+    let end = (*cursor + LOOKAHEAD).min(marks.len());
+    for (i, mark) in marks.iter().enumerate().take(end).skip(*cursor) {
+        if mark.text == word {
+            *cursor = i + 1;
+            return mark.emphasis;
+        }
+    }
+    Emphasis::default()
+}
+
 /// Bloc en cours d'assemblage.
 struct Pending {
     kind: BlockKind,
     text: String,
+    /// Les mots du bloc, dans l'ordre du fichier, avec leur mise en valeur.
+    marks: Vec<Marked>,
 }
 
 impl Pending {
@@ -115,8 +165,19 @@ impl Pending {
     ///
     /// Les espaces qui manquent vraiment sont poussés explicitement : les sauts
     /// de ligne souples et durs, et la fin d'un paragraphe interne à un item.
-    fn push_text(&mut self, value: &str) {
+    fn push_text(&mut self, value: &str, emphasis: Emphasis) {
+        // Un fragment qui ne commence pas par une espace continue le mot
+        // précédent, et en garde la mise en valeur : « **gras**, » arrive en
+        // deux morceaux, et la virgule appartient encore au mot.
+        let joined = !value.starts_with(char::is_whitespace)
+            && self.text.chars().last().is_some_and(|c| !c.is_whitespace());
         self.text.push_str(value);
+        for (i, word) in value.split_whitespace().enumerate() {
+            match self.marks.last_mut() {
+                Some(last) if i == 0 && joined => last.text.push_str(word),
+                _ => self.marks.push(Marked { text: word.to_string(), emphasis }),
+            }
+        }
     }
 }
 
@@ -137,6 +198,8 @@ pub struct DocumentBuilder {
     table_rows: Vec<(bool, Vec<String>)>,
     in_table_head: bool,
     in_table: bool,
+    /// Mises en valeur ouvertes : elles traversent les fragments de texte.
+    emphases: Emphases,
     word_counter: usize,
 }
 
@@ -162,6 +225,7 @@ impl DocumentBuilder {
             table_rows: Vec::new(),
             in_table_head: false,
             in_table: false,
+            emphases: Emphases::default(),
             word_counter: 0,
         }
     }
@@ -199,6 +263,7 @@ impl DocumentBuilder {
                 self.pending = Some(Pending {
                     kind: BlockKind::Heading { level: level as u8 },
                     text: String::new(),
+                    marks: Vec::new(),
                 });
             }
             Event::End(TagEnd::Heading(_)) => self.flush(),
@@ -212,7 +277,8 @@ impl DocumentBuilder {
                     } else {
                         BlockKind::Paragraph
                     };
-                    self.pending = Some(Pending { kind, text: String::new() });
+                    self.pending =
+                        Some(Pending { kind, text: String::new(), marks: Vec::new() });
                 }
             }
             Event::End(TagEnd::Paragraph) => {
@@ -223,7 +289,7 @@ impl DocumentBuilder {
                     self.flush();
                 } else if let Some(pending) = self.pending.as_mut() {
                     // Sépare deux paragraphes d'un même item.
-                    pending.push_text(" ");
+                    pending.push_text(" ", Emphasis::default());
                 }
             }
 
@@ -244,6 +310,7 @@ impl DocumentBuilder {
                 self.pending = Some(Pending {
                     kind: BlockKind::ListItem { depth, ordinal },
                     text: String::new(),
+                    marks: Vec::new(),
                 });
             }
             Event::End(TagEnd::Item) => self.flush(),
@@ -269,6 +336,7 @@ impl DocumentBuilder {
                 self.pending = Some(Pending {
                     kind: BlockKind::Code { language },
                     text: String::new(),
+                    marks: Vec::new(),
                 });
             }
             Event::End(TagEnd::CodeBlock) => self.flush(),
@@ -294,7 +362,25 @@ impl DocumentBuilder {
             Event::Start(Tag::TableCell) => self.table_cells.push(String::new()),
             Event::End(TagEnd::TableCell) => {}
 
-            Event::Text(text) | Event::Code(text) => self.push_text(&text),
+            // La mise en valeur ne se prononce pas — la voix en dirait le
+            // marqueur — mais elle se montre : c'est la structure de la phrase.
+            Event::Start(Tag::Strong) => self.emphases.strong += 1,
+            Event::End(TagEnd::Strong) => self.emphases.strong -= 1,
+            Event::Start(Tag::Emphasis) => self.emphases.italic += 1,
+            Event::End(TagEnd::Emphasis) => self.emphases.italic -= 1,
+            Event::Start(Tag::Strikethrough) => self.emphases.struck += 1,
+            Event::End(TagEnd::Strikethrough) => self.emphases.struck -= 1,
+            // Seul le texte du lien est lu et montré : l'adresse se dirait
+            // caractère par caractère.
+            Event::Start(Tag::Link { .. }) => self.emphases.link += 1,
+            Event::End(TagEnd::Link) => self.emphases.link -= 1,
+
+            Event::Text(text) => self.push_text(&text),
+            Event::Code(text) => {
+                self.emphases.code += 1;
+                self.push_text(&text);
+                self.emphases.code -= 1;
+            }
             // Le saut de ligne du fichier est une composition, pas une
             // coquille : l'œil le suit. La voix ne le voit pas — `sanitize`
             // le ramène à un espace.
@@ -318,8 +404,9 @@ impl DocumentBuilder {
             }
             return;
         }
+        let emphasis = self.emphases.current();
         if let Some(pending) = self.pending.as_mut() {
-            pending.push_text(value);
+            pending.push_text(value, emphasis);
         }
     }
 
@@ -373,7 +460,9 @@ impl DocumentBuilder {
                     .join(" ")
             };
             let kind = BlockKind::TableRow { header };
-            self.commit(kind, &spoken, vec![align_row(&cells, &widths)]);
+            // Une cellule ne porte pas de mise en valeur : ce qu'un tableau
+            // montre est composé à part, colonnes alignées.
+            self.commit(kind, &spoken, vec![align_row(&cells, &widths)], &[]);
         }
     }
 
@@ -398,11 +487,17 @@ impl DocumentBuilder {
             }
             _ => pending.text.clone(),
         };
-        self.commit(pending.kind, &text, display);
+        self.commit(pending.kind, &text, display, &pending.marks);
     }
 
     /// Verse un bloc au document : ce qui se dit, et ce qui s'affiche.
-    fn commit(&mut self, kind: BlockKind, raw_text: &str, display_lines: Vec<String>) {
+    fn commit(
+        &mut self,
+        kind: BlockKind,
+        raw_text: &str,
+        display_lines: Vec<String>,
+        marks: &[Marked],
+    ) {
         // Ce que l'œil suit : le document tel qu'il est composé — ses lignes,
         // son indentation, l'alignement de ses colonnes. Le balisage seul est
         // parti, le terminal le rendant autrement.
@@ -456,6 +551,9 @@ impl DocumentBuilder {
 
         let start = self.doc.sentences.len();
         let count = texts.len();
+        // Les mots du bloc défilent d'une phrase à l'autre : la mise en valeur
+        // vient du fichier, qui n'a pas de phrases.
+        let mut mark = 0usize;
         let titled = matches!(kind, BlockKind::Heading { .. }) && count == 1;
         for (i, written) in texts.into_iter().enumerate() {
             let id = self.doc.sentences.len();
@@ -463,7 +561,10 @@ impl DocumentBuilder {
             // moteur en est la forme parlée. Un titre y ajoute son rang, à
             // condition de tenir en une phrase : sinon la correspondance
             // entre les deux ne serait plus sûre.
-            let words = self.tokenize(if titled { &shown } else { &written });
+            let mut words = self.tokenize(if titled { &shown } else { &written });
+            for word in &mut words {
+                word.emphasis = emphasis_of(&word.text, marks, &mut mark);
+            }
             let text = if titled {
                 verbalize(&sanitize(&verbalize_section_number(raw_text)))
             } else {
@@ -514,6 +615,7 @@ impl DocumentBuilder {
                 index: self.word_counter,
                 punctuation,
                 spoken: (said != token).then_some(said),
+                emphasis: Emphasis::default(),
             });
             self.word_counter += 1;
         }
@@ -870,6 +972,28 @@ mod tests {
             vec!["Une première ligne", "une seconde ligne"]
         );
         assert_eq!(doc.sentences[0].text, "Une première ligne une seconde ligne");
+    }
+
+    #[test]
+    fn a_word_keeps_the_emphasis_it_carries_in_the_file() {
+        let doc = doc(
+            "Un mot **en gras**, un autre en *italique*, un [lien](https://exemple.fr) et du `code`.\n",
+        );
+        let words = &doc.sentences[0].words;
+        let emphasis = |wanted: &str| {
+            words
+                .iter()
+                .find(|w| w.text.trim_matches(|c: char| !c.is_alphanumeric()) == wanted)
+                .unwrap_or_else(|| panic!("le mot « {wanted} » est absent de {words:?}"))
+                .emphasis
+        };
+        assert!(emphasis("gras").strong, "le gras du fichier se voit à l'écran");
+        assert!(emphasis("italique").italic);
+        assert!(emphasis("lien").link);
+        assert!(emphasis("code").code);
+        assert!(emphasis("mot").is_plain(), "la prose reste de la prose");
+        // La voix, elle, n'en sait rien : elle dirait le marqueur.
+        assert!(doc.sentences[0].text.contains("en gras"));
     }
 
     #[test]

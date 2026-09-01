@@ -15,7 +15,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph, Wrap};
 use ratatui::Frame;
 
-use crate::doc::BlockKind;
+use crate::doc::{BlockKind, Emphasis};
 use crate::models;
 use crate::tui::app::{App, Panel};
 use crate::tui::config::{Page, Section};
@@ -27,6 +27,9 @@ const BRIGHT: Color = Color::Rgb(238, 238, 238);
 const NORMAL: Color = Color::Rgb(186, 186, 186);
 const DIM: Color = Color::Rgb(120, 120, 120);
 const FAINT: Color = Color::Rgb(82, 82, 82);
+/// Ce qui n'est pas de la prose : un lien, un fragment de code. Une teinte
+/// froide, choisie loin de l'accent pour ne jamais passer pour le curseur.
+const TECHNICAL: Color = Color::Rgb(126, 168, 196);
 /// Fond de la règle de lecture : assez marqué pour retrouver sa ligne d'un
 /// coup d'œil, assez sombre pour ne pas concurrencer le mot prononcé.
 const RULER: Color = Color::Rgb(38, 38, 44);
@@ -177,8 +180,35 @@ fn block_prefix(kind: &BlockKind) -> (usize, Option<(String, Style)>) {
     }
 }
 
+/// Ajoute au mot la mise en valeur qu'il porte dans le fichier.
+///
+/// Jamais de fond : le mot prononcé reste le seul de l'écran à en porter un.
+/// Et jamais de couleur hors du bloc lu, qui doit s'effacer en entier — la
+/// graisse et le soulignement, eux, restent lisibles sans faire de trou dans
+/// la page.
+fn emphasised(style: Style, emphasis: &Emphasis, in_current_block: bool) -> Style {
+    let mut style = style;
+    if emphasis.strong {
+        style = style.add_modifier(Modifier::BOLD);
+    }
+    if emphasis.italic {
+        style = style.add_modifier(Modifier::ITALIC);
+    }
+    if emphasis.struck {
+        style = style.add_modifier(Modifier::CROSSED_OUT);
+    }
+    if emphasis.link {
+        style = style.add_modifier(Modifier::UNDERLINED);
+    }
+    if (emphasis.link || emphasis.code) && in_current_block {
+        style = style.fg(TECHNICAL);
+    }
+    style
+}
+
 fn word_style(
     kind: &BlockKind,
+    emphasis: &Emphasis,
     in_current_block: bool,
     in_current_sentence: bool,
     is_current_word: bool,
@@ -204,14 +234,19 @@ fn word_style(
         _ => Style::default().fg(NORMAL),
     };
 
-    if in_current_sentence {
-        base.fg(BRIGHT).add_modifier(Modifier::BOLD)
+    // La phrase lue s'éclaircit, elle ne s'épaissit pas : la graisse dit
+    // désormais le gras du fichier, et deux signaux pour deux choses valent
+    // mieux qu'un seul pour les deux. La règle de lecture et le mot prononcé
+    // la désignent par ailleurs.
+    let base = if in_current_sentence {
+        base.fg(BRIGHT)
     } else if in_current_block {
         base
     } else {
         // Hors du bloc courant, le texte s'efface sans disparaître.
         base.fg(FAINT).remove_modifier(Modifier::BOLD)
-    }
+    };
+    emphasised(base, emphasis, in_current_block)
 }
 
 /// Colonne de lecture : bornée en largeur et centrée dans `area`.
@@ -545,6 +580,7 @@ fn document_lines(frame: ReaderFrame<'_>) -> ReaderView {
                 let is_current_word = is_current_sentence && current_word == Some(i);
                 let mut style = word_style(
                     &block.kind,
+                    &word.emphasis,
                     is_current_block,
                     is_current_sentence,
                     is_current_word,
@@ -573,7 +609,7 @@ fn document_lines(frame: ReaderFrame<'_>) -> ReaderView {
             marks,
             width,
             indent,
-            word_style(&block.kind, is_current_block, false, false),
+            word_style(&block.kind, &Emphasis::default(), is_current_block, false, false),
             prefix,
         );
         // La règle passe sous la ligne entière : c'est elle qu'on retrouve en
@@ -1862,6 +1898,65 @@ mod tests {
             .find(|s| s.style.bg == Some(ACCENT))
             .expect("le mot prononcé est affiché");
         assert_eq!(spoken.content.as_ref(), "seconde");
+    }
+
+    /// Le style du premier span dont le texte contient `word`.
+    fn style_of(view: &ReaderView, word: &str) -> Style {
+        view.lines
+            .iter()
+            .flat_map(|l| l.spans.iter())
+            .find(|s| s.content.contains(word))
+            .unwrap_or_else(|| panic!("le mot « {word} » est absent de l'écran"))
+            .style
+    }
+
+    #[test]
+    fn the_emphasis_of_the_file_is_shown() {
+        // « Utiliser tout le formatage disponible sur la vue » : le gras du
+        // fichier est du gras à l'écran, l'italique de l'italique.
+        let doc = parse_document(
+            "Un mot **en gras**, un autre en *italique*, un [lien](https://exemple.fr), du `code` et du ~~barré~~.",
+            CodePolicy::Announce,
+        );
+        let view = document_lines(ReaderFrame::new(&doc, 90));
+        assert!(style_of(&view, "gras").add_modifier.contains(Modifier::BOLD));
+        assert!(style_of(&view, "italique").add_modifier.contains(Modifier::ITALIC));
+        assert!(style_of(&view, "lien").add_modifier.contains(Modifier::UNDERLINED));
+        assert_eq!(style_of(&view, "code").fg, Some(TECHNICAL));
+        assert!(style_of(&view, "barré").add_modifier.contains(Modifier::CROSSED_OUT));
+        // La prose reste de la prose : la mise en valeur ne dit quelque chose
+        // que si elle est rare.
+        let plain = style_of(&view, "mot");
+        assert!(!plain.add_modifier.contains(Modifier::BOLD), "{plain:?}");
+        assert!(!plain.add_modifier.contains(Modifier::ITALIC), "{plain:?}");
+    }
+
+    #[test]
+    fn the_spoken_word_keeps_the_only_background_even_in_bold() {
+        let doc = parse_document("Un mot **en gras** ici.", CodePolicy::Announce);
+        let view = document_lines(ReaderFrame {
+            current_word: Some(3),
+            ..ReaderFrame::new(&doc, 60)
+        });
+        let spoken = style_of(&view, "gras");
+        assert_eq!(spoken.bg, Some(ACCENT), "le mot prononcé prime");
+    }
+
+    #[test]
+    fn a_faded_block_keeps_its_emphasis_without_its_colour() {
+        // Hors du bloc lu, le texte s'efface en entier : un lien coloré y
+        // ferait un trou dans la page.
+        let doc = parse_document(
+            "Un [lien](https://exemple.fr) ici.\n\nUne autre phrase.\n",
+            CodePolicy::Announce,
+        );
+        let view = document_lines(ReaderFrame {
+            current_sentence: 1,
+            ..ReaderFrame::new(&doc, 60)
+        });
+        let link = style_of(&view, "lien");
+        assert!(link.add_modifier.contains(Modifier::UNDERLINED));
+        assert_eq!(link.fg, Some(FAINT), "le bloc effacé le reste");
     }
 
     /// Le texte de chaque ligne non vide, tel qu'il est à l'écran.

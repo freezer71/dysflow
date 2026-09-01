@@ -100,6 +100,28 @@ impl Punctuation {
     }
 }
 
+/// Mise en valeur portée par un mot dans le fichier.
+///
+/// Elle appartient à l'écrit seul : la voix ne dit ni le gras ni le lien —
+/// elle en dirait le marqueur. L'œil, lui, y lit la structure de la phrase.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Emphasis {
+    pub strong: bool,
+    pub italic: bool,
+    pub struck: bool,
+    /// Texte d'un lien : ce qui est écrit, l'adresse restant hors du texte.
+    pub link: bool,
+    /// Code au fil du texte, entre accents graves.
+    pub code: bool,
+}
+
+impl Emphasis {
+    /// Vrai quand le mot ne porte aucune mise en valeur.
+    pub fn is_plain(&self) -> bool {
+        *self == Emphasis::default()
+    }
+}
+
 /// Un mot tel qu'il est affiché.
 ///
 /// `text` conserve sa ponctuation : le lecteur affiche une prose lisible, pas
@@ -116,6 +138,9 @@ pub struct Word {
     /// seconde qui donne sa durée, donc son poids dans le surlignage.
     #[serde(default)]
     pub spoken: Option<String>,
+    /// Mise en valeur du mot dans le fichier, pour l'écran seul.
+    #[serde(default)]
+    pub emphasis: Emphasis,
 }
 
 impl Word {

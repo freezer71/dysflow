@@ -264,7 +264,13 @@ fn authenticate() {}
     }
 
     fn word(text: &str) -> Word {
-        Word { text: text.to_string(), index: 0, punctuation: None, spoken: None }
+        Word {
+            text: text.to_string(),
+            index: 0,
+            punctuation: None,
+            spoken: None,
+            emphasis: Default::default(),
+        }
     }
 
     #[test]

@@ -299,6 +299,18 @@ l'œil :
 La règle et le surlignage ne disent pas la même chose : le mot dit **où en est
 la voix**, la ligne dit **où revenir** quand on relève les yeux.
 
+**Le formatage du fichier se voit.** Le gras est du gras, l'italique de
+l'italique, le barré du barré ; un lien et un fragment de code prennent une
+teinte froide, loin de l'accent réservé au curseur de lecture. Rien de tout
+cela ne se prononce — la voix en dirait le marqueur — et rien n'en porte de
+fond : le mot prononcé reste le seul de l'écran à en avoir un. Hors du bloc
+lu, la couleur s'efface avec le reste ; la graisse et le soulignement, eux,
+restent lisibles.
+
+La phrase en cours s'éclaircit désormais sans s'épaissir : la graisse dit le
+gras du document, et la phrase lue se reconnaît à sa clarté, à la règle qui la
+souligne et au mot que la voix y tient.
+
 **La page reste celle du fichier.** L'écran suit la composition du document —
 mêmes lignes, même indentation, colonnes alignées — et n'en retire que le
 balisage, que la typographie du terminal rend autrement. Un document plié à
