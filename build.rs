@@ -41,6 +41,8 @@ fn build_audio_cpp() {
         );
     }
 
+    patch_gguf_bulk_read(&vendor);
+
     // Ne compiler que les familles utiles : « full » construirait 62 familles.
     // Chaque famille ajoutée allonge la compilation et grossit la bibliothèque ;
     // on ne compile que celles que le catalogue propose réellement.
@@ -90,4 +92,78 @@ fn build_audio_cpp() {
     }
     println!("cargo:rustc-link-arg=-Wl,-rpath,{}", lib_dir.display());
     println!("cargo:audiocpp_lib={}", lib_dir.display());
+}
+
+/// Corrige, dans le ggml vendu, la lecture élément par élément des tableaux.
+///
+/// Un GGUF d'audio.cpp embarque ses fichiers annexes en un tableau d'octets
+/// de plusieurs dizaines de mégaoctets — 54 Mo pour Supertonic — que
+/// `gguf_reader::read` lit par un `fread` verrouillé **par octet**. Trois
+/// secondes par ouverture, et le modèle s'ouvre quatre fois au chargement. Lu
+/// en bloc, le chargement tombe à un quart de seconde.
+///
+/// Appliqué ici, à la construction, parce que le sous-module n'est pas à
+/// nous : le correctif tient en neuf lignes, et se réapplique tout seul après
+/// un `git submodule update`. Le fichier garde ses fins de ligne CRLF, d'où
+/// le travail sur les octets plutôt que sur du texte.
+#[cfg(feature = "audio-cpp")]
+fn patch_gguf_bulk_read(vendor: &std::path::Path) {
+    let path = vendor.join("external/ggml/src/gguf.cpp");
+    println!("cargo:rerun-if-changed={}", path.display());
+    let Ok(bytes) = std::fs::read(&path) else {
+        return;
+    };
+    let marker = b"rs-reader: one fread";
+    if find(&bytes, marker).is_some() {
+        return;
+    }
+    for newline in ["\r\n", "\n"] {
+        let old = [
+            "        dst.resize(n);",
+            "        for (size_t i = 0; i < dst.size(); ++i) {",
+            "            if constexpr (std::is_same<T, bool>::value) {",
+            "",
+        ]
+        .join(newline);
+        let new = [
+            "        dst.resize(n);",
+            "        if constexpr (!std::is_same<T, bool>::value && !std::is_same<T, std::string>::value) {",
+            "            // rs-reader: one fread instead of one per element. Plain arrays are",
+            "            // contiguous on disk and in memory; a 54 MB uint8 blob otherwise",
+            "            // costs 57 million locked fread calls.",
+            "            const size_t size = n * sizeof(T);",
+            "            const size_t nread = fread(dst.data(), 1, size, file);",
+            "            nbytes_remain -= nread;",
+            "            return nread == size;",
+            "        }",
+            "        for (size_t i = 0; i < dst.size(); ++i) {",
+            "            if constexpr (std::is_same<T, bool>::value) {",
+            "",
+        ]
+        .join(newline);
+        if let Some(at) = find(&bytes, old.as_bytes()) {
+            let mut patched = Vec::with_capacity(bytes.len() + new.len());
+            patched.extend_from_slice(&bytes[..at]);
+            patched.extend_from_slice(new.as_bytes());
+            patched.extend_from_slice(&bytes[at + old.len()..]);
+            std::fs::write(&path, patched)
+                .unwrap_or_else(|e| panic!("correctif ggml : écriture de {} : {e}", path.display()));
+            println!(
+                "cargo:warning=correctif ggml appliqué (lecture en bloc des tableaux GGUF) : {}",
+                path.display()
+            );
+            return;
+        }
+    }
+    // Un ggml qui a changé n'est pas une erreur : le lecteur fonctionne, en
+    // chargeant lentement. Le dire suffit.
+    println!(
+        "cargo:warning=gguf.cpp a changé, correctif de lecture en bloc non appliqué : \
+         le chargement du modèle prendra quelques secondes de plus"
+    );
+}
+
+#[cfg(feature = "audio-cpp")]
+fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    haystack.windows(needle.len()).position(|w| w == needle)
 }

@@ -83,6 +83,15 @@ git submodule update --init --recursive
 cargo build --release --features audio-cpp
 ```
 
+Le build **corrige ggml au passage** : `build.rs` remplace, dans
+`vendor/audio.cpp/external/ggml/src/gguf.cpp`, la lecture élément par élément
+des tableaux GGUF par une lecture en bloc — neuf lignes, qui ramènent le
+chargement d'un modèle de trois secondes à un quart. Le correctif se réapplique
+tout seul après un `git submodule update`, et `git status` montre depuis le
+sous-module comme modifié : c'est attendu. Si ggml change au point que le
+correctif ne s'applique plus, le build le dit et continue — le lecteur
+fonctionne alors, en chargeant lentement.
+
 Le build ne compile que les familles de modèles utiles — `supertonic,pocket_tts`
 par défaut, sur les 62 que porte le projet :
 
@@ -124,37 +133,41 @@ RS_READER_TTS_FAMILIES=supertonic,magpie_tts,qwen3_tts \
 Le catalogue ne propose que ce que le binaire sait charger : une famille absente
 n'apparaît pas dans la liste.
 
-Le modèle se charge **en arrière-plan** : l'interface s'ouvre en 0,05 s et la
-barre de lecture annonce l'étape en cours — `⠹ chargement du modèle
-supertonic… 2,4 s`, puis `synthèse de la première phrase…` — jusqu'à ce que le
-son démarre, où elle redevient la barre de progression. Rien n'est perdu : la
-première phrase n'aurait de toute façon pas pu être prononcée avant. Ce délai
-ne se raccourcit pas depuis le lecteur, il appartient au moteur ; ce qui se
-corrige, c'est de le traverser sans savoir s'il se passe quelque chose.
+Le modèle se charge **en arrière-plan** : l'interface s'ouvre en 0,05 s, le
+document s'analyse pendant que les poids montent sur le GPU, et la barre de
+lecture annonce l'étape en cours — `⠹ chargement du modèle supertonic… 0,2 s`,
+puis `synthèse de la première phrase…` — jusqu'à ce que le son démarre, où elle
+redevient la barre de progression.
+
+**Le chargement a longtemps coûté trois secondes, et c'était un défaut de
+lecture, pas un coût du modèle.** Un GGUF d'audio.cpp embarque ses fichiers
+annexes en un tableau de 54 Mo dans ses métadonnées, que le lecteur GGUF de
+ggml parcourait par un `fread` verrouillé **par octet** — 57 millions d'appels,
+et le fichier s'ouvre quatre fois au chargement. Le build applique un correctif
+de neuf lignes qui lit ces tableaux en bloc : voir *Installation*.
 
 Mesuré sur un Apple M5 en Metal, sur la même phrase française :
 
-| | Supertonic 3 F16 | MagpieTTS Q8_0 |
+| | Supertonic 3 | MagpieTTS Q8_0 |
 |---|---|---|
-| Chargement du modèle | 3,0 s | 3,2 s |
-| Ouverture d'une session | **0,3 s** | 2,4 s |
-| Synthèse | **4,0× le temps réel** | **0,6×** |
+| Chargement du modèle | **0,25 s** | **0,25 s** |
+| Ouverture d'une session | **0,1 s** | 0,4 s |
+| Synthèse | **21× le temps réel** | **0,75×** |
+| Premier son, tout compris | **0,6 s** | 6,3 s |
 | Échantillonnage | **44,1 kHz** | 22,05 kHz |
 | Contrôle du débit | **oui** | aucun |
 
 Ces chiffres valent à chaud. Au tout premier lancement, cache disque vide, le
-chargement monte à 9,6 s — d'où le chrono affiché plutôt qu'une estimation, qui
-se tromperait d'un facteur trois au moment où elle compterait le plus.
+chargement est plus long — d'où le chrono affiché plutôt qu'une estimation, qui
+se tromperait au moment où elle compterait le plus. L'ouverture de session paie
+une fois par binaire la spécialisation des noyaux Metal — 1,1 s pour Supertonic,
+2,3 s pour MagpieTTS —, que macOS met ensuite en cache d'un lancement à l'autre.
 
 Le budget jusqu'au premier son se mesure :
 
 ```bash
 cargo test --release --features audio-cpp --test startup_timing -- --ignored --nocapture
 ```
-
-Le 4,0× de Supertonic inclut la spécialisation des noyaux Metal, payée par la
-toute première phrase du processus ; en régime établi, sa synthèse tourne à
-**plus de vingt fois le temps réel**.
 
 Les deux modèles ne jouent pas dans la même catégorie. Supertonic reste
 largement en avance sur la lecture avec une seule session. MagpieTTS, à 0,6× le
@@ -171,7 +184,7 @@ deux fois le modèle — et s'ouvre après les autres, derrière le verrou décr
 plus bas : chacune de trop coûte de la mémoire *et* retarde le premier son.
 *Sessions simultanées* vaut donc `auto` par défaut : une pour Supertonic,
 plusieurs pour MagpieTTS. Mesuré sur Supertonic, passer de trois sessions à une
-ramène le premier son de 3,9 s à 3,4 s et la mémoire de 1,5 Go à 700 Mo en
+ramène le premier son de 0,85 s à 0,56 s, et la mémoire de 1,5 Go à 700 Mo en
 lecture. Un nombre posé à la main l'emporte toujours — y compris celui qu'une
 version antérieure a pu écrire dans `config.toml` : remettez-le à `auto` dans
 la rubrique **Moteur** pour en profiter.

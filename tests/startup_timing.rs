@@ -23,15 +23,21 @@ const PHRASES: [&str; 3] = [
 #[test]
 #[ignore = "banc de mesure : demande un modèle installé"]
 fn where_the_startup_seconds_go() {
-    let (config, _) = Config::load();
-    let mut settings = config.engine_settings();
-    // `MODEL=<chemin>` compare deux poids du même modèle sans toucher à la
-    // configuration de la machine.
+    let (mut config, _) = Config::load();
+    // `MODEL=<chemin>` compare deux poids sans toucher à la configuration de
+    // la machine ; `FAMILY=<famille>` l'accompagne quand le poids n'est pas
+    // de la famille configurée. La voix suit alors la famille, comme dans le
+    // lecteur : MagpieTTS refuse une voix de Supertonic.
     if let Ok(path) = std::env::var("MODEL") {
-        settings.model_path = path;
+        config.engine.model_path = path;
     }
-    // `SESSIONS=<n>` mesure l'effet du nombre de sessions sans toucher à la
-    // configuration : c'est lui qui décide combien de workers font la queue.
+    if let Ok(family) = std::env::var("FAMILY") {
+        config.engine.family = family;
+        config.align_voice_with_family();
+    }
+    let mut settings = config.engine_settings();
+    // `SESSIONS=<n>` mesure l'effet du nombre de sessions : c'est lui qui
+    // décide combien de workers font la queue.
     if let Some(n) = std::env::var("SESSIONS").ok().and_then(|v| v.parse().ok()) {
         settings.sessions = n;
     }
