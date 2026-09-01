@@ -316,7 +316,9 @@ mêmes lignes, même indentation, colonnes alignées — et n'en retire que le
 balisage, que la typographie du terminal rend autrement. Un document plié à
 quatre-vingts colonnes, lu dans une colonne plus étroite, ferait exception :
 suivre ses lignes y laisserait un mot orphelin sous chacune, et le bloc est
-alors recomposé d'un seul tenant.
+alors recomposé d'un seul tenant. Ce qui prolonge une ligne pend alors sous son
+texte et non sous sa puce, et le filet d'une citation tient toute sa hauteur :
+une ligne de suite ne se confond jamais avec une ligne neuve.
 
 **Ce qui n'est pas lu reste montré.** Un bloc de code annoncé — le réglage par
 défaut — se dit « bloc de code rust » et s'affiche pourtant en entier, avec son

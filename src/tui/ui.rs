@@ -161,22 +161,61 @@ fn render_reader(frame: &mut Frame, app: &App, area: Rect) {
     );
 }
 
-/// Indentation et marqueur visuel d'un bloc.
-fn block_prefix(kind: &BlockKind) -> (usize, Option<(String, Style)>) {
-    match kind {
-        BlockKind::Heading { .. } => (0, None),
-        BlockKind::Paragraph => (0, None),
-        BlockKind::ListItem { depth, ordinal } => {
-            let indent = 2 + *depth as usize * 2;
-            let marker = match ordinal {
-                Some(n) => format!("{n}."),
-                None => "•".to_string(),
-            };
-            (indent, Some((marker, Style::default().fg(ACCENT))))
+/// Ce qui ouvre les lignes d'un bloc : son décalage, et sa marque.
+struct Prefix {
+    indent: usize,
+    marker: Option<(String, Style)>,
+    /// Vrai quand la marque ouvre chaque ligne, et non la première seule.
+    every_line: bool,
+}
+
+impl Prefix {
+    /// Colonnes qu'occupe la marque, espace compris.
+    fn width(&self) -> usize {
+        self.marker
+            .as_ref()
+            .map_or(0, |(text, _)| text.chars().count() + 1)
+    }
+
+    /// Décalage des lignes qui prolongent la première.
+    ///
+    /// La suite d'un item pend sous son texte, jamais sous sa puce : la liste
+    /// garde ainsi sa colonne. Une citation, elle, reprend son filet.
+    fn hanging(&self) -> usize {
+        if self.every_line {
+            self.indent
+        } else {
+            self.indent + self.width()
         }
-        BlockKind::Quote => (2, Some(("│".to_string(), Style::default().fg(FAINT)))),
-        BlockKind::Code { .. } => (2, Some(("⟨⟩".to_string(), Style::default().fg(FAINT)))),
-        BlockKind::TableRow { .. } => (2, Some(("·".to_string(), Style::default().fg(FAINT)))),
+    }
+}
+
+/// Indentation et marqueur visuel d'un bloc.
+fn block_prefix(kind: &BlockKind) -> Prefix {
+    let plain = |indent| Prefix { indent, marker: None, every_line: false };
+    match kind {
+        BlockKind::Heading { .. } | BlockKind::Paragraph => plain(0),
+        BlockKind::ListItem { depth, ordinal } => Prefix {
+            indent: 2 + *depth as usize * 2,
+            marker: Some((
+                match ordinal {
+                    Some(n) => format!("{n}."),
+                    None => "•".to_string(),
+                },
+                Style::default().fg(ACCENT),
+            )),
+            every_line: false,
+        },
+        // Le filet de la citation tient toute sa hauteur : à la première ligne
+        // seule, la suivante se lirait comme de la prose décalée.
+        BlockKind::Quote => Prefix {
+            indent: 2,
+            marker: Some(("│".to_string(), Style::default().fg(FAINT))),
+            every_line: true,
+        },
+        // Code et tableaux ne passent pas par ici : ils portent leur propre
+        // filet, ligne à ligne.
+        BlockKind::Code { .. } | BlockKind::TableRow { .. } => plain(2),
     }
 }
 
@@ -326,6 +365,22 @@ fn cells(source: &str) -> Vec<(usize, String)> {
     out
 }
 
+/// Ouvre une ligne : son décalage, puis la marque du bloc s'il en porte une.
+fn open_line(prefix: &Prefix, marked: bool) -> (Vec<Span<'static>>, usize) {
+    let mut spans = Vec::new();
+    let mut used = prefix.indent;
+    if prefix.indent > 0 {
+        spans.push(Span::raw(" ".repeat(prefix.indent)));
+    }
+    // L'espace qui suit la marque vient de l'écart du premier mot, comme
+    // entre deux mots : la marque compte pour un mot de plus.
+    if let (true, Some((text, style))) = (marked, prefix.marker.as_ref()) {
+        used += text.chars().count();
+        spans.push(Span::styled(text.clone(), *style));
+    }
+    (spans, used)
+}
+
 /// Pose les mots sur les lignes du fichier et signale celle qui est prononcée.
 ///
 /// La composition vient du document — mêmes lignes, mêmes écarts ; le style,
@@ -344,22 +399,20 @@ fn layout_tracked(
     source: &[String],
     marks: Vec<Mark>,
     width: usize,
-    indent: usize,
+    prefix: &Prefix,
     base: Style,
-    prefix: Option<(String, Style)>,
 ) -> (Vec<Line<'static>>, Option<usize>) {
     if width == 0 {
         return (Vec::new(), None);
     }
-    // Le marqueur du bloc occupe le début de la première ligne : il compte
-    // dans ce qu'elle peut tenir.
-    let head = prefix.as_ref().map_or(0, |(text, _)| text.chars().count() + 1);
+    // La marque du bloc occupe le début de sa ligne : elle compte dans ce que
+    // cette ligne peut tenir.
+    let head = prefix.width();
     let recomposed: Vec<String>;
-    let source: &[String] = if source
-        .iter()
-        .enumerate()
-        .all(|(n, line)| indent + usize::from(n == 0) * head + line.chars().count() <= width)
-    {
+    let source: &[String] = if source.iter().enumerate().all(|(n, line)| {
+        let marked = usize::from(n == 0 || prefix.every_line) * head;
+        prefix.indent + marked + line.chars().count() <= width
+    }) {
         source
     } else {
         recomposed = vec![source.join(" ")];
@@ -367,25 +420,14 @@ fn layout_tracked(
     };
 
     let mut words = marks.into_iter();
-    let mut prefix = prefix;
     let mut lines: Vec<Line<'static>> = Vec::new();
     let mut cursor_line = None;
 
     for (n, source_line) in source.iter().enumerate() {
-        let mut spans: Vec<Span<'static>> = Vec::new();
-        let mut used = indent;
-        if indent > 0 {
-            spans.push(Span::raw(" ".repeat(indent)));
-        }
-        // Le marqueur du bloc — puce, filet de citation — ouvre sa première
-        // ligne et se comporte ensuite comme un mot de plus.
-        if n == 0 {
-            if let Some((text, style)) = prefix.take() {
-                used += text.chars().count();
-                spans.push(Span::styled(text, style));
-            }
-        }
-        let mut placed = used > indent;
+        // La marque du bloc — puce, filet de citation — ouvre la ligne et se
+        // comporte ensuite comme un mot de plus.
+        let (mut spans, mut used) = open_line(prefix, n == 0 || prefix.every_line);
+        let mut placed = used > prefix.indent;
 
         for (written, text) in cells(source_line) {
             // L'écart du fichier ouvre la ligne — c'est son indentation — et
@@ -394,11 +436,18 @@ fn layout_tracked(
             let len = text.chars().count();
             if placed && used + gap + len > width {
                 lines.push(Line::from(std::mem::take(&mut spans)));
-                used = indent;
-                if indent > 0 {
-                    spans.push(Span::raw(" ".repeat(indent)));
+                let (opened, at) = open_line(prefix, prefix.every_line);
+                spans = opened;
+                used = at;
+                placed = at > prefix.indent;
+                // Ce qui prolonge une ligne pend sous son texte, jamais sous
+                // sa puce : la liste garde ainsi sa colonne.
+                let pad = prefix.hanging().saturating_sub(used);
+                if pad > 0 {
+                    spans.push(Span::raw(" ".repeat(pad)));
+                    used += pad;
                 }
-                gap = 0;
+                gap = usize::from(placed);
             }
             if gap > 0 {
                 spans.push(Span::raw(" ".repeat(gap)));
@@ -420,7 +469,11 @@ fn layout_tracked(
 
         // Une ligne vide du fichier reste vide à l'écran : elle en compose la
         // respiration.
-        lines.push(if placed { Line::from(spans) } else { Line::default() });
+        lines.push(if placed || used > prefix.indent {
+            Line::from(spans)
+        } else {
+            Line::default()
+        });
     }
     (lines, cursor_line)
 }
@@ -597,7 +650,7 @@ fn document_lines(frame: ReaderFrame<'_>) -> ReaderView {
             continue;
         }
 
-        let (indent, prefix) = block_prefix(&block.kind);
+        let prefix = block_prefix(&block.kind);
         let mut marks: Vec<Mark> = Vec::new();
 
         for id in block.sentences.0..block.sentences.1 {
@@ -635,9 +688,8 @@ fn document_lines(frame: ReaderFrame<'_>) -> ReaderView {
             source,
             marks,
             width,
-            indent,
+            &prefix,
             word_style(&block.kind, &Emphasis::default(), is_current_block, false, false),
-            prefix,
         );
         // La règle passe sous la ligne entière : c'est elle qu'on retrouve en
         // relevant les yeux, pas le mot seul.
@@ -1649,7 +1701,8 @@ mod tests {
             .iter()
             .flat_map(|l| l.split_whitespace().map(|_| mark()).collect::<Vec<_>>())
             .collect();
-        layout_tracked(&source, marks, width, indent, Style::default(), None)
+        let prefix = Prefix { indent, marker: None, every_line: false };
+        layout_tracked(&source, marks, width, &prefix, Style::default())
     }
 
     fn text_of_lines(lines: &[Line<'static>]) -> Vec<String> {
@@ -1714,7 +1767,8 @@ mod tests {
         let source = vec!["alpha beta gamma delta".to_string()];
         let mut marks: Vec<Mark> = (0..4).map(|_| mark()).collect();
         marks[3].cursor = true;
-        let (lines, cursor) = layout_tracked(&source, marks, 12, 0, Style::default(), None);
+        let prefix = Prefix { indent: 0, marker: None, every_line: false };
+        let (lines, cursor) = layout_tracked(&source, marks, 12, &prefix, Style::default());
         assert!(lines.len() >= 2);
         assert_eq!(cursor, Some(lines.len() - 1), "le curseur est sur la dernière ligne");
     }
@@ -1924,6 +1978,38 @@ mod tests {
             .find(|s| s.style.bg == Some(ACCENT))
             .expect("le mot prononcé est affiché");
         assert_eq!(spoken.content.as_ref(), "seconde");
+    }
+
+    #[test]
+    fn a_quote_carries_its_bar_on_every_line() {
+        // Sans elle, la seconde ligne d'une citation se lit comme de la prose
+        // décalée de deux colonnes.
+        let doc = parse_document("> Une citation tenue\n> sur deux lignes.\n", CodePolicy::Announce);
+        let view = document_lines(ReaderFrame::new(&doc, 60));
+        let shown = shown_lines(&view);
+        assert_eq!(shown.len(), 2, "{shown:?}");
+        for line in &shown {
+            assert!(line.starts_with("  │ "), "citation sans filet : {line:?}");
+        }
+    }
+
+    #[test]
+    fn a_list_item_hangs_under_its_own_text() {
+        // La suite d'un item s'aligne sous son texte, pas sous sa puce : la
+        // liste garde alors sa colonne.
+        let doc = parse_document(
+            "- Un item de liste assez long pour déborder de la colonne.\n",
+            CodePolicy::Announce,
+        );
+        let view = document_lines(ReaderFrame::new(&doc, 30));
+        let shown = shown_lines(&view);
+        assert!(shown.len() > 1, "aucun repli : {shown:?}");
+        assert!(shown[0].starts_with("  • "), "{:?}", shown[0]);
+        assert!(
+            shown[1].starts_with("    ") && !shown[1].starts_with("     "),
+            "la suite ne pend pas sous le texte : {:?}",
+            shown[1]
+        );
     }
 
     /// Le style du premier span dont le texte contient `word`.
