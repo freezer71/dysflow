@@ -4,9 +4,11 @@ use anyhow::{Context, Result};
 use clap::Parser;
 use std::io::IsTerminal;
 use std::path::PathBuf;
+use std::sync::mpsc::Receiver;
 
 use rs_reader::config::Config;
 use rs_reader::doc::DocumentBuilder;
+use rs_reader::input::InputEvent;
 use rs_reader::tui::app::App;
 use rs_reader::{doc, input, tts, tui};
 
@@ -122,62 +124,13 @@ fn main() -> Result<()> {
         return Ok(());
     }
 
-    let mut builder = DocumentBuilder::new(config.code_policy());
-    let (stream, source) = if args.clip {
-        let text = read_clipboard()?;
-        if args.to_markdown {
+    // Rien à dire à voix haute : écrire du markdown sur la sortie standard ne
+    // demande aucun modèle, et n'a pas à en payer le chargement.
+    if args.to_markdown {
+        if let Some(text) = extracted(&args)? {
             print!("{text}");
             return Ok(());
         }
-        for block in input::split_blocks(&text) {
-            builder.push_block(&block);
-        }
-        (None, "presse-papiers".to_string())
-    } else {
-        match &args.file {
-        Some(path) => {
-            // Un fichier est analysé d'emblée : sommaire et durée sont
-            // disponibles dès l'ouverture.
-            let text = rs_reader::source::load_with_cache(path, !args.no_cache)?;
-            if args.to_markdown {
-                print!("{text}");
-                return Ok(());
-            }
-            for block in input::split_blocks(&text) {
-                builder.push_block(&block);
-            }
-            let name = path
-                .file_name()
-                .map(|n| n.to_string_lossy().into_owned())
-                .unwrap_or_else(|| path.to_string_lossy().into_owned());
-            (None, name)
-        }
-        None if std::io::stdin().is_terminal() => {
-            // Lancé sans rien : il n'y a rien à lire, mais tout à régler.
-            // Ouvrir la configuration vaut mieux qu'un message d'erreur.
-            (None, "configuration".to_string())
-        }
-        None => {
-            // Le tube est mis de côté et le descripteur 0 rendu au terminal,
-            // faute de quoi le clavier resterait muet en mode pipe.
-            let piped = input::detach_piped_stdin()
-                .context("récupération du flux d'entrée")?;
-            let stream = match piped {
-                Some(file) => input::spawn_reader(file),
-                None => input::spawn_reader(std::io::stdin()),
-            };
-            // Le flux est lu au fil de l'eau : la lecture commence sans
-            // attendre la fin de l'entrée.
-            (Some(stream), "stdin".to_string())
-        }
-        }
-    };
-
-    // Sans document ni flux, on démarre sur l'écran de configuration.
-    let open_config =
-        args.config || (args.file.is_none() && !args.clip && stream.is_none());
-    if (args.file.is_some() || args.clip) && builder.sentence_count() == 0 {
-        anyhow::bail!("aucun contenu lisible");
     }
 
     // Un modèle déjà installé devient le défaut, sans rien demander.
@@ -193,35 +146,124 @@ fn main() -> Result<()> {
     }
 
     // La redirection couvre le chargement du modèle, qui est déjà bavard, et
-    // s'achève avec ce bloc : une erreur remontée ensuite s'affiche normalement.
-    {
-        let _quiet = rs_reader::logging::redirect_stderr();
+    // tout ce qui suit : le chargement se poursuit en fond pendant la lecture
+    // du document, et ses messages s'écriraient sinon par-dessus.
+    let quiet = rs_reader::logging::redirect_stderr();
 
-        let (engine, engine_notice) =
-            tts::build_engine(config.engine_preference(), &config.engine_settings());
-        notices.extend(engine_notice);
+    // Le modèle part en premier, et le document se lit pendant qu'il charge.
+    // Mesuré : trois secondes de chargement, une de plus pour ouvrir la
+    // première session — les passer à extraire et analyser plutôt qu'à
+    // attendre avance d'autant le premier son. Un PDF reconnu à l'OCR y gagne
+    // des secondes entières ; un markdown, le temps de son analyse.
+    let (engine, engine_notice) =
+        tts::build_engine(config.engine_preference(), &config.engine_settings());
+    notices.extend(engine_notice);
 
-        let mut app = App::new(
-            builder,
-            stream,
-            engine,
-            config,
-            source,
-            notices,
-            rs_reader::audio::Player::new(),
-        );
-        // Un fichier a une identité stable : sa lecture reprend où elle en
-        // était. Un flux et un collage n'en ont pas — la même position leur
-        // désignerait un autre texte.
-        if args.file.is_some() {
-            app.resume_where_left();
+    let (builder, stream, source) = match read_input(&args, &config) {
+        Ok(read) => read,
+        // Ce qui a échoué doit s'afficher : la redirection tombe avant.
+        Err(err) => {
+            drop(quiet);
+            return Err(err);
         }
-        if open_config {
-            app.open_config();
+    };
+
+    // Sans document ni flux, on démarre sur l'écran de configuration.
+    let open_config = args.config || (args.file.is_none() && !args.clip && stream.is_none());
+    if (args.file.is_some() || args.clip) && builder.sentence_count() == 0 {
+        drop(quiet);
+        anyhow::bail!("aucun contenu lisible");
+    }
+
+    let mut app = App::new(
+        builder,
+        stream,
+        engine,
+        config,
+        source,
+        notices,
+        rs_reader::audio::Player::new(),
+    );
+    // Un fichier a une identité stable : sa lecture reprend où elle en était.
+    // Un flux et un collage n'en ont pas — la même position leur désignerait
+    // un autre texte.
+    if args.file.is_some() {
+        app.resume_where_left();
+    }
+    if open_config {
+        app.open_config();
+    }
+    let outcome = tui::run(app);
+    // La garde tombe ici : une erreur remontée par `run` retrouve une sortie
+    // d'erreur normale avant d'être affichée.
+    drop(quiet);
+    outcome
+}
+
+/// Le texte d'une source qui en porte un, pour `--to-markdown`.
+///
+/// Rend `None` pour un flux : il n'y a rien à extraire d'une entrée qui
+/// n'existe pas encore.
+fn extracted(args: &Args) -> Result<Option<String>> {
+    if args.clip {
+        return Ok(Some(read_clipboard()?));
+    }
+    match &args.file {
+        Some(path) => Ok(Some(rs_reader::source::load_with_cache(
+            path,
+            !args.no_cache,
+        )?)),
+        None => Ok(None),
+    }
+}
+
+/// Ce qu'il y a à lire : le document assemblé, le flux qui l'alimente encore,
+/// et le nom sous lequel il se retient.
+fn read_input(
+    args: &Args,
+    config: &Config,
+) -> Result<(DocumentBuilder, Option<Receiver<InputEvent>>, String)> {
+    let mut builder = DocumentBuilder::new(config.code_policy());
+
+    if args.clip {
+        let text = read_clipboard()?;
+        for block in input::split_blocks(&text) {
+            builder.push_block(&block);
         }
-        // La garde tombe avec ce bloc : une erreur remontée par `run` retrouve
-        // donc une sortie d'erreur normale avant d'être affichée.
-        tui::run(app)
+        return Ok((builder, None, "presse-papiers".to_string()));
+    }
+
+    match &args.file {
+        Some(path) => {
+            // Un fichier est analysé d'emblée : sommaire et durée sont
+            // disponibles dès l'ouverture.
+            let text = rs_reader::source::load_with_cache(path, !args.no_cache)?;
+            for block in input::split_blocks(&text) {
+                builder.push_block(&block);
+            }
+            let name = path
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_else(|| path.to_string_lossy().into_owned());
+            Ok((builder, None, name))
+        }
+        None if std::io::stdin().is_terminal() => {
+            // Lancé sans rien : il n'y a rien à lire, mais tout à régler.
+            // Ouvrir la configuration vaut mieux qu'un message d'erreur.
+            Ok((builder, None, "configuration".to_string()))
+        }
+        None => {
+            // Le tube est mis de côté et le descripteur 0 rendu au terminal,
+            // faute de quoi le clavier resterait muet en mode pipe.
+            let piped = input::detach_piped_stdin().context("récupération du flux d'entrée")?;
+            let stream = match piped {
+                Some(file) => input::spawn_reader(file),
+                None => input::spawn_reader(std::io::stdin()),
+            };
+            // Le flux est lu au fil de l'eau : la lecture commence sans
+            // attendre la fin de l'entrée.
+            Ok((builder, Some(stream), "stdin".to_string()))
+        }
     }
 }
 

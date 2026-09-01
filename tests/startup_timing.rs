@@ -24,7 +24,12 @@ const PHRASES: [&str; 3] = [
 #[ignore = "banc de mesure : demande un modèle installé"]
 fn where_the_startup_seconds_go() {
     let (config, _) = Config::load();
-    let settings = config.engine_settings();
+    let mut settings = config.engine_settings();
+    // `MODEL=<chemin>` compare deux poids du même modèle sans toucher à la
+    // configuration de la machine.
+    if let Ok(path) = std::env::var("MODEL") {
+        settings.model_path = path;
+    }
     let params = config.tts_params();
     let sessions = settings.sessions.max(1) as usize;
     println!("\n=== configuration ===");
@@ -117,4 +122,56 @@ fn what_the_parsing_costs_before_the_model_starts_loading() {
         let elapsed = start.elapsed();
         println!("{label:20} → {elapsed:?} ({} phrases)", builder.sentence_count());
     }
+}
+
+/// Ce que le pool coûte **après** que le modèle est prêt.
+///
+/// Un piège à éviter : la première session d'un processus paie la
+/// spécialisation des pipelines Metal — environ une seconde — et toutes les
+/// suivantes en profitent. Comparer deux réglages dans le même processus
+/// mesure donc l'ordre des mesures, pas les réglages. D'où `WORKERS=` : une
+/// mesure par processus, à comparer entre lancements.
+///
+/// ```sh
+/// WORKERS=1 cargo test --release --features audio-cpp --test startup_timing \
+///     -- --ignored --nocapture what_the_pool
+/// ```
+#[test]
+#[ignore = "banc de mesure : demande un modèle installé"]
+fn what_the_pool_costs_before_the_first_sound() {
+    use rs_reader::tts::Synthesizer;
+    use std::time::Duration;
+
+    let (config, _) = Config::load();
+    let settings = config.engine_settings();
+    let params = config.tts_params();
+    let workers: usize = std::env::var("WORKERS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(settings.sessions.max(1) as usize);
+
+    let quiet = rs_reader::logging::redirect_stderr();
+    let (engine, _) = tts::build_engine(config.engine_preference(), &settings);
+    // Le chargement du modèle est commun à toutes les mesures : on l'attend
+    // avant de lancer le chrono, pour ne compter que le pool.
+    while engine.name().contains("chargement") {
+        thread::sleep(Duration::from_millis(5));
+    }
+    let synth = Synthesizer::new(engine, params, workers, 8);
+    for phrase in PHRASES {
+        synth.push(phrase.to_string(), 0);
+    }
+    let start = Instant::now();
+    while synth.get(0).is_none() {
+        thread::sleep(Duration::from_millis(2));
+    }
+    let first = start.elapsed();
+    while synth.get(PHRASES.len() - 1).is_none() {
+        thread::sleep(Duration::from_millis(2));
+    }
+    let all = start.elapsed();
+    drop(quiet);
+
+    println!("\n=== du modèle prêt au premier son ===");
+    println!("{workers} session(s) : 1re phrase {first:?}, les trois {all:?}");
 }
