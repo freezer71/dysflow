@@ -176,6 +176,8 @@ ce qui se lit autrement qu'il ne s'écrit :
 | `lot 1`, `page 47` | lot un, page quarante-sept |
 | `1 234 567`, `8080` | un million deux cent trente-quatre mille cinq cent soixante-sept, huit mille quatre-vingts |
 | `06 12 34 56 78` | zéro six, douze, trente-quatre, cinquante-six, soixante-dix-huit |
+| `984 733 204 00015` | neuf huit quatre, sept trois trois, deux zéro quatre, zéro zéro zéro un cinq |
+| `00015` | zéro zéro zéro un cinq |
 | `14h30` | quatorze heures trente |
 | `3,14`, `100 %` | trois virgule quatorze, cent pour cent |
 | `le 1er`, `la 21ème` | le premier, la vingt et unième |
@@ -200,6 +202,16 @@ Ce qui n'est pas une quantité reste intact : `version 2.1`, `M5`, `F1`, `v3`,
 `3/4`. Un numéro suit la forme sous laquelle il est écrit — groupé par milliers,
 il se dit comme une quantité ; en dix chiffres derrière un `0` ou un `+33`, il
 se dit par paires.
+
+Un **identifiant se dit chiffre par chiffre**, en respirant à chaque groupe
+écrit : c'est en l'écoutant qu'on le recopie, et « neuf cent quatre-vingt-quatre
+milliards » ne se note pas. Deux indices le trahissent, la forme et le libellé :
+un groupement qui n'est pas celui des milliers (`984 733 204 00015`) ou un zéro
+de tête (`00015`) suffisent ; neuf chiffres groupés par trois ne se distinguant
+pas d'un nombre de millions, c’est alors le libellé qui tranche — `SIRET`,
+`SIREN`, `RCS`, `TVA`, `intracommunautaire`, `IBAN`, `BIC`, quand il annonce
+directement le nombre. Un montant cité plus loin dans la même phrase reste une
+quantité.
 
 ### Choisir une voix
 

@@ -36,13 +36,26 @@ static NUMBER_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
         // sans quoi « 3 gouttes » deviendrait « trois grammes ».
         "|(?P<symn>\\d+(?:[ \u{202F}\u{00A0}]\\d{3})*(?:,\\d+)?)\\s*(?P<syms>€|\\$|£|°C|°)",
         "|(?P<letn>\\d+(?:[ \u{202F}\u{00A0}]\\d{3})*(?:,\\d+)?)\\s*(?P<lets>km/h|km|cm|mm|kg|m|g)\\b",
-        // Milliers séparés : 1 234 567, espace ordinaire, fine ou insécable.
-        "|(?P<grp>\\d{1,3}(?:[ \u{202F}\u{00A0}]\\d{3})+)",
+        // Chiffres groupés : 1 234 567, mais aussi 984 733 204 00015. Un
+        // dernier groupe plus long ne doit pas être coupé en deux — « 000 »
+        // puis « 15 » donnait « millequinze ». La suite est reconnue entière,
+        // et c'est le rendu qui décide si elle compte ou identifie.
+        "|(?P<grp>\\d{1,3}(?:[ \u{202F}\u{00A0}]\\d{3,5})+)\\b",
         r"|(?P<deci>\d+),(?P<decf>\d+)",
         r"|(?P<ordn>\d+)(?P<ords>ers|er|res|re|ères|ère|ndes|nde|nds|nd|èmes|ème|emes|eme|es|e)\b",
         r"|(?P<card>\d+)",
     ))
     .unwrap()
+});
+
+/// Libellés après lesquels une suite de chiffres identifie au lieu de compter.
+///
+/// Neuf chiffres groupés par trois ne se distinguent pas d'un nombre de
+/// millions : seul le libellé tranche. La fenêtre laisse passer une
+/// ponctuation et un préfixe de pays — « TVA : FR 12 345 678 901 ».
+static IDENTIFIER_CONTEXT: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)\b(?:siret|siren|rcs|tva|iban|bic|intracommunautaire)\b[^0-9]{0,12}$")
+        .unwrap()
 });
 
 /// Met en mots la numérotation qui ouvre un titre.
@@ -90,7 +103,7 @@ pub fn verbalize_numbers(text: &str) -> String {
     for caps in NUMBER_PATTERN.captures_iter(text) {
         let matched = caps.get(0).expect("le groupe 0 existe toujours");
         // Rien à dire : le fragment sera recopié tel quel avec le reste.
-        let Some(spoken) = render(&caps) else {
+        let Some(spoken) = render(&caps, text) else {
             continue;
         };
         out.push_str(&text[last..matched.start()]);
@@ -106,7 +119,7 @@ pub fn verbalize_numbers(text: &str) -> String {
     out
 }
 
-fn render(caps: &Captures) -> Option<String> {
+fn render(caps: &Captures, text: &str) -> Option<String> {
     // Les formes protégées n'ont pas de rendu : on les laisse passer.
     if caps.name("ident").is_some() || caps.name("version").is_some() {
         return None;
@@ -134,8 +147,15 @@ fn render(caps: &Captures) -> Option<String> {
         return spell_quantity(value.as_str(), unit.as_str());
     }
     if let Some(grouped) = caps.name("grp") {
-        let digits: String = grouped.as_str().chars().filter(char::is_ascii_digit).collect();
-        return spell_plain(&digits);
+        let groups: Vec<&str> = grouped
+            .as_str()
+            .split(|c: char| !c.is_ascii_digit())
+            .filter(|g| !g.is_empty())
+            .collect();
+        if is_thousands(&groups) && !IDENTIFIER_CONTEXT.is_match(&text[..grouped.start()]) {
+            return spell_plain(&groups.concat());
+        }
+        return Some(spell_digits(&groups));
     }
     if let (Some(integer), Some(fraction)) = (caps.name("deci"), caps.name("decf")) {
         return spell_decimal(integer.as_str(), fraction.as_str());
@@ -147,7 +167,43 @@ fn render(caps: &Captures) -> Option<String> {
         let feminine = suffix.starts_with('r') || suffix.starts_with('è') || suffix.starts_with("nde");
         return Some(spell_ordinal(n, feminine));
     }
-    spell_plain(caps.name("card")?.as_str())
+    let card = caps.name("card")?.as_str();
+    // Un zéro de tête n'est jamais une quantité : « 00015 » n'est pas quinze.
+    if starts_with_zero(card) {
+        return Some(spell_digits(&[card]));
+    }
+    spell_plain(card)
+}
+
+/// Vrai si la suite de groupes se lit comme des milliers : 1 234 567.
+fn is_thousands(groups: &[&str]) -> bool {
+    let Some(first) = groups.first() else {
+        return false;
+    };
+    first.len() <= 3 && !starts_with_zero(first) && groups[1..].iter().all(|g| g.len() == 3)
+}
+
+fn starts_with_zero(group: &str) -> bool {
+    group.len() > 1 && group.starts_with('0')
+}
+
+/// Dit les chiffres un à un, en respirant à chaque groupe écrit.
+///
+/// Un identifiant se note en l'écoutant : la découpe du document est la seule
+/// aide dont dispose celui qui le recopie.
+fn spell_digits(groups: &[&str]) -> String {
+    groups
+        .iter()
+        .map(|group| {
+            group
+                .chars()
+                .filter_map(|c| c.to_digit(10))
+                .map(|d| spell_cardinal(u64::from(d)))
+                .collect::<Vec<_>>()
+                .join(" ")
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 /// Met en mots une suite de chiffres, si elle reste dans l'échelle nommable.
@@ -468,4 +524,56 @@ mod tests {
     fn leaves_fractions_alone() {
         assert_eq!(verbalize_numbers("3/4 du total"), "3/4 du total");
     }
+
+    #[test]
+    fn an_identification_number_is_read_digit_by_digit() {
+        // Un SIRET n'est pas une quantité : le dire « neuf cent quatre-vingt-
+        // quatre milliards » ne permet ni de le noter ni de le vérifier.
+        assert_eq!(
+            verbalize_numbers("SIRET : 984 733 204 00015"),
+            "SIRET : neuf huit quatre, sept trois trois, deux zéro quatre, zéro zéro zéro un cinq"
+        );
+    }
+
+    #[test]
+    fn a_named_identifier_is_read_digit_by_digit_too() {
+        // Neuf chiffres groupés par trois ne se distinguent pas d'un million :
+        // c'est le libellé qui tranche.
+        assert_eq!(
+            verbalize_numbers("SIREN : 984 733 204"),
+            "SIREN : neuf huit quatre, sept trois trois, deux zéro quatre"
+        );
+        assert_eq!(
+            verbalize_numbers("TVA : FR 12 345 678 901"),
+            "TVA : FR un deux, trois quatre cinq, six sept huit, neuf zéro un"
+        );
+        assert_eq!(
+            verbalize_numbers("TVA intracommunautaire : FR 12 345 678 901"),
+            "TVA intracommunautaire : FR un deux, trois quatre cinq, six sept huit, neuf zéro un"
+        );
+    }
+
+    #[test]
+    fn a_distant_label_does_not_turn_an_amount_into_an_identifier() {
+        // Le libellé doit annoncer le nombre, pas seulement traîner dans la
+        // phrase : sinon tout montant cité près du mot « TVA » serait épelé.
+        assert_eq!(
+            verbalize_numbers("La TVA due sur ce lot atteint 1 234 euros"),
+            "La TVA due sur ce lot atteint mille deux cent trente-quatre euros"
+        );
+    }
+
+    #[test]
+    fn leading_zeros_are_never_a_quantity() {
+        assert_eq!(verbalize_numbers("00015"), "zéro zéro zéro un cinq");
+    }
+
+    #[test]
+    fn thousands_remain_a_quantity() {
+        assert_eq!(
+            verbalize_numbers("Le plafond de 1 234 567 euros"),
+            "Le plafond de un million deux cent trente-quatre mille cinq cent soixante-sept euros"
+        );
+    }
 }
+
