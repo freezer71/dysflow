@@ -7,6 +7,7 @@ use std::time::{Duration, Instant};
 
 use crate::audio::Player;
 use crate::bookmark::BookmarkStore;
+use crate::position::PositionStore;
 use crate::config::Config;
 use crate::doc::{Document, DocumentBuilder};
 use crate::input::{BlockAssembler, InputEvent};
@@ -40,6 +41,11 @@ pub struct App {
     previewer: Previewer,
     pub player: Player,
     pub bookmarks: BookmarkStore,
+    /// Positions retenues d'une session à l'autre.
+    pub positions: PositionStore,
+    /// Vrai quand ce document a une identité stable, donc une position qui
+    /// veut encore dire quelque chose à la prochaine ouverture.
+    remembers_place: bool,
     pub config: Config,
     pub source: String,
 
@@ -121,6 +127,8 @@ impl App {
             previewer,
             player,
             bookmarks,
+            positions: PositionStore::load(),
+            remembers_place: false,
             config,
             source,
             queue_head: 0,
@@ -627,6 +635,70 @@ impl App {
         if let Some(target) = search.advance(delta) {
             self.seek_to(target);
         }
+    }
+
+    /// Retient la position dans ce document, et reprend où l'on s'était arrêté.
+    ///
+    /// Réservé aux documents qui ont une identité stable : un flux et un
+    /// collage ne sont pas les mêmes d'une fois sur l'autre, et leur rendre
+    /// une position ancienne enverrait la lecture n'importe où.
+    pub fn resume_where_left(&mut self) {
+        self.remembers_place = true;
+        let Some((at, snippet)) = self
+            .positions
+            .get(&self.source)
+            .map(|p| (p.sentence_id, p.snippet.clone()))
+        else {
+            return;
+        };
+        // À l'index retenu si la phrase y est encore ; sinon là où elle est
+        // passée. Un paragraphe ajouté en tête décale tout, et la reprise
+        // tomberait au milieu d'un autre passage.
+        let target = {
+            let doc = self.doc();
+            if doc.sentence(at).map(|s| s.written()).as_deref() == Some(snippet.as_str()) {
+                Some(at)
+            } else {
+                doc.sentences.iter().position(|s| s.written() == snippet)
+            }
+        };
+        // Reprendre au début n'est pas une reprise : rien à dire, rien à faire.
+        let Some(target) = target.filter(|t| *t > 0) else {
+            return;
+        };
+        self.seek_to(target);
+        self.notify("Reprise là où vous en étiez — g revient au début");
+    }
+
+    /// Où en est la lecture, si cela vaut d'être retenu.
+    ///
+    /// Rendue plutôt qu'écrite : c'est la décision qui se vérifie, l'écriture
+    /// n'ayant lieu qu'à la fermeture.
+    pub fn place_to_remember(&self) -> Option<(usize, String)> {
+        if !self.remembers_place {
+            return None;
+        }
+        let id = self.current_sentence();
+        // Un document lu jusqu'au bout n'a plus de position : le rouvrir doit
+        // le reprendre au début, non sur sa dernière phrase.
+        if id + 1 >= self.doc().sentences.len() {
+            return None;
+        }
+        Some((id, self.doc().sentence(id)?.written()))
+    }
+
+    /// Note où en était la lecture, pour la prochaine ouverture.
+    pub fn remember_position(&mut self) {
+        if !self.remembers_place {
+            return;
+        }
+        match self.place_to_remember() {
+            Some((id, snippet)) => self.positions.record(&self.source, id, &snippet),
+            None => self.positions.forget(&self.source),
+        }
+        // La fermeture est en cours : plus personne n'est là pour lire une
+        // erreur, et une position perdue coûte un défilement.
+        let _ = self.positions.save();
     }
 
     pub fn toggle_bookmark(&mut self) {
@@ -1204,6 +1276,74 @@ pub(crate) mod tests {
     }
 
     pub(crate) const DOC: &str = "# Titre\n\nPremière phrase.\n\nDeuxième phrase.\n\nTroisième phrase.\n";
+
+    #[test]
+    fn a_document_reopens_where_the_voice_stopped() {
+        let mut app = app_reading(DOC);
+        let snippet = app.doc().sentence(2).unwrap().written();
+        let source = app.source.clone();
+        app.positions.record(&source, 2, &snippet);
+
+        app.resume_where_left();
+
+        assert_eq!(app.current_sentence(), 2);
+        assert!(!app.status().is_empty(), "la reprise doit se dire");
+    }
+
+    #[test]
+    fn a_sentence_that_moved_is_found_again() {
+        // Un paragraphe ajouté en tête décale tout : c'est le texte qui
+        // compte, pas l'index retenu.
+        let mut app = app_reading(DOC);
+        let snippet = app.doc().sentence(2).unwrap().written();
+        let source = app.source.clone();
+        app.positions.record(&source, 99, &snippet);
+
+        app.resume_where_left();
+
+        assert_eq!(app.current_sentence(), 2);
+    }
+
+    #[test]
+    fn a_place_that_no_longer_exists_starts_the_document_over() {
+        let mut app = app_reading(DOC);
+        let source = app.source.clone();
+        app.positions.record(&source, 2, "Une phrase retirée depuis.");
+
+        app.resume_where_left();
+
+        assert_eq!(app.current_sentence(), 0);
+    }
+
+    #[test]
+    fn the_place_kept_is_the_sentence_being_read() {
+        let mut app = app_reading(DOC);
+        app.resume_where_left();
+        app.seek_to(2);
+        let (id, snippet) = app.place_to_remember().expect("une position à retenir");
+        assert_eq!(id, 2);
+        assert_eq!(snippet, app.doc().sentence(2).unwrap().written());
+    }
+
+    #[test]
+    fn a_stream_keeps_no_place() {
+        // Un flux et un collage ne sont pas les mêmes d'une fois sur l'autre :
+        // leur rendre une position ancienne enverrait la lecture n'importe où.
+        let mut app = app_reading(DOC);
+        app.seek_to(2);
+        assert!(app.place_to_remember().is_none());
+    }
+
+    #[test]
+    fn a_document_read_to_the_end_keeps_no_place() {
+        let mut app = app_reading(DOC);
+        app.resume_where_left();
+        app.seek_end();
+        assert!(
+            app.place_to_remember().is_none(),
+            "rouvrir un document fini doit le reprendre au début"
+        );
+    }
 
     #[test]
     fn coming_back_to_a_silent_sentence_gives_it_another_chance() {

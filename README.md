@@ -41,6 +41,8 @@ permanence.
 - **Ne lit pas le formatage.** Bordures de tableaux, filets, flèches, marqueurs
   de titres et syntaxe markdown sont retirés ; la hiérarchie passe par la
   typographie et par la durée des silences, jamais par un « dièse titre ».
+- **Rouvre un document là où on l'a laissé.** La position se retient toute
+  seule, et se retrouve même si le document a été retouché entre-temps.
 - **Garde la page du fichier.** Les lignes, l'indentation et l'alignement des
   colonnes sont ceux du document : ce qui est à l'écran se reconnaît.
 
@@ -263,7 +265,7 @@ système (`say` sur macOS, `espeak-ng` ailleurs). La barre d'état affiche alors
 | `Maj+←` `Maj+→` | Recul / avance rapide |
 | `↑` `↓` | Bloc précédent / suivant |
 | `n` `p` | Titre suivant / précédent |
-| `Début` `Fin` | Début / fin du document |
+| `g` · `Début` `Fin` | Début · fin du document |
 | `r` | Reprendre la phrase |
 | `+` `-` | Vitesse |
 | `1` `2` `3` `4` | 0,75× · 1× · 1,5× · 2× |
@@ -336,6 +338,14 @@ léger entre elles et sous son en-tête, et se dit colonne par colonne :
 Sans cet appariement, une ligne de tableau se disait « slash users, GET, JWT » :
 trois valeurs sans leur colonne. Chaque cellule est par ailleurs une phrase,
 donc `←` `→` parcourent le tableau cellule par cellule.
+
+**Reprendre où l'on s'était arrêté.** Rouvrir un fichier déjà lu remet la voix
+sur sa dernière phrase, et le dit en bas de l'écran ; `g` ramène au début. Ce
+qui est retenu n'est pas seulement un rang, c'est la phrase elle-même : un
+paragraphe ajouté en tête décale tout, et la reprise tomberait au milieu d'un
+autre passage. Un document lu jusqu'au bout oublie sa position — le rouvrir le
+reprend au début. Un flux et un collage n'en gardent aucune : ils ne sont pas
+les mêmes d'une fois sur l'autre.
 
 **Défiler sans perdre la voix.** `Pg↑` et `Pg↓` déplacent la vue seule : la
 lecture continue là où elle en était, et la barre d'état affiche `⏸ vue figée`

@@ -22,7 +22,7 @@ pub const HELP: &[(&str, &str)] = &[
     ("Maj+← →", "Recul / avance rapide"),
     ("↑ ↓", "Bloc précédent / suivant"),
     ("n / p", "Titre suivant / précédent"),
-    ("Début / Fin", "Début / fin du document"),
+    ("g / Début · Fin", "Début · fin du document"),
     ("r", "Reprendre la phrase"),
     ("+ / -", "Vitesse (resynthèse)"),
     ("1 2 3 4", "Vitesse 0,75× 1× 1,5× 2×"),

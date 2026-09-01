@@ -210,6 +210,12 @@ fn main() -> Result<()> {
             notices,
             rs_reader::audio::Player::new(),
         );
+        // Un fichier a une identité stable : sa lecture reprend où elle en
+        // était. Un flux et un collage n'en ont pas — la même position leur
+        // désignerait un autre texte.
+        if args.file.is_some() {
+            app.resume_where_left();
+        }
         if open_config {
             app.open_config();
         }
