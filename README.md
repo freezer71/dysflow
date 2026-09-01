@@ -49,8 +49,17 @@ permanence.
 ## Installation
 
 ```bash
-cargo install --path .          # voix du système, build en quelques secondes
+./scripts/install.sh            # voix audio.cpp + reconnaissance de texte, dans ~/.local
+cargo install --path .          # voix du système seule, build en quelques secondes
 ```
+
+`install.sh` construit le binaire puis le pose dans `$PREFIX/bin` et son shim
+audio.cpp dans `$PREFIX/lib` — `~/.local` par défaut, sans droits ;
+`PREFIX=/usr/local sudo -E ./scripts/install.sh` pour toute la machine. Il
+vérifie ensuite que `reader` démarre depuis la racine, et dit s'il manque le
+`bin/` au `PATH`. Rien d'autre à copier : modèles et configuration vivent dans
+le répertoire de données. Pour désinstaller, `rm $PREFIX/bin/reader
+$PREFIX/lib/libaudiocpp_shim.*`.
 
 ### Distribuer le binaire
 
@@ -64,7 +73,8 @@ FEATURES=audio-cpp ./scripts/package.sh
 ```
 
 Distribuez le dossier entier : le binaire cherche la bibliothèque à côté de
-lui, puis dans un `lib/` voisin. Un binaire copié seul ne démarre pas.
+lui, puis dans un `lib/` voisin — c'est cette seconde disposition
+qu'`install.sh` adopte. Un binaire copié seul ne démarre pas.
 
 Pour la **reconnaissance de texte** — images, dossiers de scans, images
 collées —, Tesseract est compilé dans le binaire. Comptez une minute au
