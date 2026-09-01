@@ -17,9 +17,13 @@ rm -rf "$OUT"
 mkdir -p "$OUT"
 cp target/release/reader "$OUT/"
 
-# Le nom du répertoire de build porte une empreinte, il faut le retrouver.
+# Le nom du répertoire de build porte une empreinte, il faut le retrouver —
+# et chaque jeu de features laisse le sien : on prend le plus récent, sans
+# quoi un shim d'un build antérieur pouvait être livré à la place de celui
+# qu'on vient de compiler.
 for ext in dylib so; do
-    shim=$(find target/release/build -path "*out/lib/libaudiocpp_shim.$ext" 2>/dev/null | head -1)
+    shim=$(find target/release/build -path "*out/lib/libaudiocpp_shim.$ext" -print0 2>/dev/null \
+        | xargs -0 ls -t 2>/dev/null | head -1)
     [ -n "$shim" ] && cp "$shim" "$OUT/" && break
 done
 
