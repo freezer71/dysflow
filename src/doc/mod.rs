@@ -247,13 +247,10 @@ impl Document {
     /// Première phrase du bloc voisin, dans la direction `delta`.
     pub fn sentence_in_neighbour_block(&self, from: usize, delta: isize) -> Option<usize> {
         let block_id = self.sentence(from)?.block_id;
-        // Reculer depuis le milieu d'un bloc revient d'abord à son début.
-        if delta < 0 {
-            let block = self.block(block_id)?;
-            if from > block.sentences.0 {
-                return Some(block.sentences.0);
-            }
-        }
+        // Un cran est un bloc, dans les deux sens. Reculer passait d'abord par
+        // le début du bloc courant : sur un paragraphe de plusieurs lignes, il
+        // fallait deux touches pour bouger, et la première ne semblait rien
+        // faire. Le recul fin appartient à la flèche gauche.
         let target = block_id.checked_add_signed(delta)?;
         self.block(target).map(|b| b.sentences.0)
     }

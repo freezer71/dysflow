@@ -445,18 +445,10 @@ impl App {
 
     pub fn seek_block(&mut self, delta: isize) {
         let current = self.current_sentence();
-        let block = self.doc().sentence(current).map(|s| s.block_id);
         match self.doc().sentence_in_neighbour_block(current, delta) {
             Some(target) => {
-                // Reculer depuis le milieu d'un bloc revient d'abord à son
-                // début : le dire, sinon on croit avoir changé de paragraphe.
-                let same_block = self.doc().sentence(target).map(|s| s.block_id) == block;
                 self.seek_to(target);
-                self.notify(match (same_block, delta > 0) {
-                    (true, _) => "Début du bloc",
-                    (false, true) => "Bloc suivant",
-                    (false, false) => "Bloc précédent",
-                });
+                self.notify(if delta > 0 { "Bloc suivant" } else { "Bloc précédent" });
             }
             None => self.notify("Aucun bloc de ce côté"),
         }
@@ -1251,15 +1243,16 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn stepping_back_inside_a_block_says_where_it_lands() {
-        // Revenir en haut du paragraphe courant n'est pas changer de bloc :
-        // l'annoncer ainsi laisse croire qu'on a reculé plus qu'on ne l'a fait.
-        let mut app = app_reading("Un paragraphe. Avec trois phrases. Et une fin.\n");
+    fn stepping_back_leaves_the_block_at_once() {
+        // Un cran de recul est un bloc, du premier coup : passer d'abord par
+        // le début du bloc courant obligeait à appuyer deux fois pour bouger,
+        // alors que la flèche gauche couvre déjà le recul fin.
+        let mut app = app_reading("Premier bloc.\n\nDeuxième bloc. Avec deux phrases.\n");
         app.seek_to(2);
         app.seek_block(-1);
         assert_eq!(app.current_sentence(), 0);
         assert!(
-            app.status().contains("Début du bloc"),
+            app.status().contains("Bloc précédent"),
             "statut : {:?}",
             app.status()
         );
