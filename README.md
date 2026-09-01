@@ -524,5 +524,26 @@ exclusif, aucun sur quatre-vingt-douze. La synthèse, elle, ne prend aucun verro
 ## Tests
 
 ```bash
-cargo test
+cargo test                 # tout, sauf ce que la reconnaissance de texte demande
+cargo test --features ocr  # y ajoute image, dossier, presse-papiers, PDF scanné
+```
+
+La seconde ligne n'est pas un supplément : `tests/image_input.rs` est compilé
+sous `#![cfg(feature = "ocr")]`, comme le test du PDF photocopié de
+`tests/pdf_input.rs`. Sans elle, ces chemins ne sont pas *ignorés* — ils
+n'existent pas dans le binaire de test, et rien ne signale leur absence.
+
+Trois sondes ne tournent qu'à la demande, faute d'être vérifiables par une
+assertion : elles rendent un son ou une mesure, à écouter ou à lire.
+
+```bash
+# Ce qu'un document donne à l'oreille, phrase par phrase
+DOC=chemin.md cargo test --test document_probe -- --ignored --nocapture
+
+# Un sigle avant et après sa mise en mots, dans un seul WAV
+OUT=/tmp/sigles.wav cargo test --release --features audio-cpp \
+    --test acronym_probe -- --ignored --nocapture
+
+# Le temps du premier son, du lancement à la voix
+cargo test --release --features audio-cpp --test startup_timing -- --ignored --nocapture
 ```
