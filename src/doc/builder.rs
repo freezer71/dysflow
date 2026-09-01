@@ -49,6 +49,9 @@ fn column_widths(rows: &[(bool, Vec<String>)]) -> Vec<usize> {
 }
 
 /// Aligne une ligne sur les largeurs données, sans remplir la dernière colonne.
+///
+/// Un filet sépare les colonnes : l'alignement seul laisse l'œil glisser d'une
+/// ligne à l'autre au milieu d'un tableau.
 fn align_row(cells: &[String], widths: &[usize]) -> String {
     let last = cells.len().saturating_sub(1);
     let mut line = String::new();
@@ -57,10 +60,29 @@ fn align_row(cells: &[String], widths: &[usize]) -> String {
         if i < last {
             let pad = widths.get(i).copied().unwrap_or(0).saturating_sub(cell.chars().count());
             line.push_str(&" ".repeat(pad));
-            line.push_str("  ");
+            line.push_str(" │ ");
         }
     }
     line
+}
+
+/// Filet posé sous l'en-tête, aligné sur les séparateurs des colonnes.
+fn header_rule(widths: &[usize]) -> String {
+    let last = widths.len().saturating_sub(1);
+    let mut rule = String::new();
+    for (i, width) in widths.iter().enumerate() {
+        // Le filet couvre la colonne et l'espace qui l'écarte du séparateur.
+        let span = match (i == 0, i == last) {
+            (true, true) => *width,
+            (true, false) | (false, true) => width + 1,
+            _ => width + 2,
+        };
+        rule.push_str(&"─".repeat(span));
+        if i < last {
+            rule.push('┼');
+        }
+    }
+    rule
 }
 
 /// Rend à un titre le rang que le nettoyage lui a retiré.
@@ -460,9 +482,15 @@ impl DocumentBuilder {
                     .join(" ")
             };
             let kind = BlockKind::TableRow { header };
+            // L'en-tête emporte son filet : il nomme les colonnes de tout ce
+            // qui suit, et le trait le dit sans qu'on ait à le prononcer.
+            let mut display = vec![align_row(&cells, &widths)];
+            if header {
+                display.push(header_rule(&widths));
+            }
             // Une cellule ne porte pas de mise en valeur : ce qu'un tableau
             // montre est composé à part, colonnes alignées.
-            self.commit(kind, &spoken, vec![align_row(&cells, &widths)], &[]);
+            self.commit(kind, &spoken, display, &[]);
         }
     }
 
@@ -846,9 +874,21 @@ mod tests {
     fn table_columns_are_aligned_on_screen() {
         let d = doc("| Route | Méthode |\n|---|---|\n| /users | GET |\n| /a | DELETE |\n");
         let rows = table_rows(&d);
-        assert_eq!(rows[0].display_lines, vec!["Route   Méthode"]);
-        assert_eq!(rows[1].display_lines, vec!["/users  GET"]);
-        assert_eq!(rows[2].display_lines, vec!["/a      DELETE"]);
+        assert_eq!(
+            rows[0].display_lines,
+            vec!["Route  │ Méthode", "───────┼────────"],
+            "l'en-tête pose les colonnes et le filet qui les tient"
+        );
+        assert_eq!(rows[1].display_lines, vec!["/users │ GET"]);
+        assert_eq!(rows[2].display_lines, vec!["/a     │ DELETE"]);
+        // Le croisement du filet tombe sur le séparateur des colonnes : un
+        // trait décalé d'un signe suffit à défaire le tableau.
+        let bar = |line: &String| line.chars().position(|c| c == '│' || c == '┼');
+        let column = bar(&rows[0].display_lines[0]);
+        assert!(column.is_some());
+        assert_eq!(bar(&rows[0].display_lines[1]), column);
+        assert_eq!(bar(&rows[1].display_lines[0]), column);
+        assert_eq!(bar(&rows[2].display_lines[0]), column);
     }
 
     #[test]

@@ -321,13 +321,14 @@ alors recomposé d'un seul tenant.
 **Ce qui n'est pas lu reste montré.** Un bloc de code annoncé — le réglage par
 défaut — se dit « bloc de code rust » et s'affiche pourtant en entier, avec son
 indentation ; une ligne trop longue est repliée sous un filet `╎`, jamais
-tronquée. Un tableau garde ses colonnes alignées à l'écran, et se dit colonne
-par colonne :
+tronquée. Un tableau garde ses colonnes alignées à l'écran, un filet
+léger entre elles et sous son en-tête, et se dit colonne par colonne :
 
 ```
-  │ Route        Méthode  Auth          « Route : slash users.
-  │ /users       GET      JWT             Méthode : GET.
-  │ /users/{id}  DELETE   JWT admin       Auth : JWT. »
+    Route       │ Méthode │ Auth         « Route : slash users.
+    ────────────┼─────────┼──────────      Méthode : GET.
+    /users      │ GET     │ JWT            Auth : JWT. »
+    /users/{id} │ DELETE  │ JWT admin
 ```
 
 Sans cet appariement, une ligne de tableau se disait « slash users, GET, JWT » :

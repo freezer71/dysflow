@@ -455,24 +455,39 @@ fn fixed_style(kind: &BlockKind, current: bool) -> (Style, Style) {
     (text, gutter)
 }
 
+/// Filets d'un bloc montré tel qu'il est écrit : ouverture, puis continuation.
+///
+/// Le tableau fait exception : il porte déjà sa grille, et un filet de plus à
+/// gauche en dessinerait une seconde par-dessus la sienne. Les deux marques
+/// gardent la même largeur, sans quoi les colonnes se décaleraient au premier
+/// repli.
+fn gutters(kind: &BlockKind) -> (&'static str, &'static str) {
+    match kind {
+        BlockKind::TableRow { .. } => ("    ", "  ╎ "),
+        _ => ("  │ ", "  ╎ "),
+    }
+}
+
 /// Met un source en lignes, replié plutôt que tronqué.
 ///
-/// Un filet en tête distingue le code et les tableaux de la prose sans
-/// qu'aucun marqueur ne soit prononcé, et la continuation d'une ligne trop
-/// longue reste alignée dessous : rien de ce qui est écrit ne disparaît.
+/// Un filet en tête distingue le code de la prose sans qu'aucun marqueur ne
+/// soit prononcé, et la continuation d'une ligne trop longue reste alignée
+/// dessous : rien de ce qui est écrit ne disparaît.
 fn fixed_lines(
     source: &[String],
     width: usize,
-    style: Style,
-    gutter: Style,
+    kind: &BlockKind,
+    current: bool,
 ) -> Vec<Line<'static>> {
-    let room = width.saturating_sub(4).max(1);
+    let (style, gutter) = fixed_style(kind, current);
+    let (opening, continuation) = gutters(kind);
+    let room = width.saturating_sub(opening.chars().count()).max(1);
 
     let mut lines = Vec::new();
     for source_line in source {
         let mut rest: Vec<char> = source_line.chars().collect();
         if rest.is_empty() {
-            lines.push(Line::from(Span::styled("  │", gutter)));
+            lines.push(Line::from(Span::styled(opening.trim_end().to_string(), gutter)));
             continue;
         }
         let mut first = true;
@@ -480,7 +495,7 @@ fn fixed_lines(
             let take = rest.len().min(room);
             let chunk: String = rest.drain(..take).collect();
             lines.push(Line::from(vec![
-                Span::styled(if first { "  │ " } else { "  ╎ " }.to_string(), gutter),
+                Span::styled(if first { opening } else { continuation }.to_string(), gutter),
                 Span::styled(chunk, style),
             ]));
             first = false;
@@ -551,22 +566,34 @@ fn document_lines(frame: ReaderFrame<'_>) -> ReaderView {
     let first = anchor_block.saturating_sub(WINDOW_BACK);
     let last = (anchor_block + WINDOW_FORWARD).min(doc.blocks.len() - 1);
 
-    for block in &doc.blocks[first..=last] {
+    let window = &doc.blocks[first..=last];
+    for (n, block) in window.iter().enumerate() {
         if block.id == anchor_block {
             anchor = lines.len();
         }
         let is_current_block = block.id == current_block;
+        // Les lignes d'un même tableau se tiennent : une ligne vide entre
+        // elles en ferait autant de tableaux.
+        let glued = matches!(block.kind, BlockKind::TableRow { .. })
+            && window
+                .get(n + 1)
+                .is_some_and(|next| matches!(next.kind, BlockKind::TableRow { .. }));
 
         // Le code et les tableaux ne se disent pas comme ils s'écrivent : ce
         // qu'ils montrent n'a pas de mots à suivre, et se montre tel quel
         // pendant que la voix n'en dit que le nom.
         if matches!(block.kind, BlockKind::Code { .. } | BlockKind::TableRow { .. }) {
-            let (text_style, gutter) = fixed_style(&block.kind, is_current_block);
-            lines.extend(space_out(
-                fixed_lines(&block.display_lines, width, text_style, gutter),
-                style.spacing,
-            ));
-            lines.push(Line::from(""));
+            let shown = fixed_lines(&block.display_lines, width, &block.kind, is_current_block);
+            // L'interlignage aère la prose ; dans un tableau, il séparerait
+            // l'en-tête du filet qui le souligne.
+            lines.extend(if matches!(block.kind, BlockKind::TableRow { .. }) {
+                shown
+            } else {
+                space_out(shown, style.spacing)
+            });
+            if !glued {
+                lines.push(Line::from(""));
+            }
             continue;
         }
 
@@ -1831,8 +1858,7 @@ mod tests {
     #[test]
     fn a_folded_code_line_says_it_continues() {
         let long = "x".repeat(80);
-        let (text, gutter) = fixed_style(&BlockKind::Code { language: None }, false);
-        let lines = fixed_lines(&[long], 24, text, gutter);
+        let lines = fixed_lines(&[long], 24, &BlockKind::Code { language: None }, false);
         assert!(lines.len() > 1);
         assert_eq!(lines[0].spans[0].content.as_ref(), "  │ ");
         assert_eq!(
@@ -2042,6 +2068,29 @@ mod tests {
     }
 
     #[test]
+    fn a_table_holds_together_as_one_grid() {
+        let doc = parse_document(
+            "| Route | Méthode |\n|---|---|\n| /users | GET |\n| /a | DELETE |\n",
+            CodePolicy::Announce,
+        );
+        let view = document_lines(ReaderFrame::new(&doc, 60));
+        let shown: Vec<String> = view.lines.iter().map(|l| text_of(&l.spans)).collect();
+        let first = shown
+            .iter()
+            .position(|l| l.contains("Route"))
+            .expect("l'en-tête est affiché");
+        // Un tableau porte déjà sa grille : un filet de gauche en ferait une
+        // seconde par-dessus.
+        assert!(shown[first].starts_with("    Route"), "{:?}", shown[first]);
+        // Ses lignes se suivent : une ligne vide entre elles en ferait autant
+        // de tableaux.
+        for line in &shown[first..first + 4] {
+            assert!(!line.trim().is_empty(), "tableau disloqué : {shown:?}");
+        }
+        assert!(shown[first + 1].contains('┼'), "l'en-tête porte son filet");
+    }
+
+    #[test]
     fn a_table_is_shown_in_columns_with_its_header_apart() {
         let doc = parse_document(
             "| Route | Méthode |\n|---|---|\n| /users | GET |\n",
@@ -2054,11 +2103,11 @@ mod tests {
             .map(|l| l.spans.iter().map(|s| s.content.to_string()).collect())
             .collect();
         assert!(
-            shown.iter().any(|l| l.contains("Route   Méthode")),
+            shown.iter().any(|l| l.contains("Route  │ Méthode")),
             "colonnes non alignées : {shown:?}"
         );
         // La valeur reste écrite comme dans le document, même dite autrement.
-        assert!(shown.iter().any(|l| l.contains("/users  GET")));
+        assert!(shown.iter().any(|l| l.contains("/users │ GET")));
 
         let header = view
             .lines
