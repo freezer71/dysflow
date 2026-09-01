@@ -9,7 +9,7 @@ use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
 
 use super::{Block, BlockKind, Document, Punctuation, Section, Sentence, Word};
 use crate::text::numerals::{section_number, verbalize_section_number};
-use crate::text::{sanitize, split_sentences};
+use crate::text::{sanitize, split_sentences, verbalize};
 
 /// Traitement réservé aux blocs de code.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -377,30 +377,25 @@ impl DocumentBuilder {
 
     /// Verse un bloc au document : ce qui se dit, et ce qui s'affiche.
     fn commit(&mut self, kind: BlockKind, raw_text: &str, display_lines: Vec<String>) {
-        // La numérotation d'un titre se dit ; celle d'une liste se retire, sa
-        // structure étant déjà portée par le rang de l'item.
-        let raw = match kind {
-            BlockKind::Heading { .. } => verbalize_section_number(raw_text),
-            _ => raw_text.to_string(),
-        };
-        let clean = sanitize(&raw);
-        if clean.is_empty() {
+        // Ce que l'œil lit : le texte nettoyé, chiffres et dates tels qu'ils
+        // sont écrits. La mise en mots ne concerne que la voix, et se fait
+        // phrase par phrase, plus bas.
+        let body = sanitize(raw_text);
+        if body.is_empty() {
             return;
         }
         // Un titre se dit avec son rang en toutes lettres, mais s'écrit avec
         // son chiffre : « un, Contexte » à la voix, « 1. Contexte » à l'œil.
-        // Sans quoi le sommaire ne ressemble plus au document.
+        // Sans quoi le sommaire ne ressemble plus au document. Le rang reste
+        // hors du texte découpé : « 1. » y passerait pour une phrase entière.
         let shown = match kind {
-            BlockKind::Heading { .. } => {
-                // `sanitize` retire les rangs en tête de ligne, ce qu'il faut
-                // pour une puce mais pas pour un titre : le sien est remis.
-                let body = sanitize(raw_text);
-                match section_number(raw_text) {
-                    Some(number) if !body.starts_with(number) => format!("{number} {body}"),
-                    _ => body,
-                }
-            }
-            _ => clean.clone(),
+            BlockKind::Heading { .. } => match section_number(raw_text) {
+                Some(number) if !body.starts_with(number) => format!("{number} {body}"),
+                _ => body.clone(),
+            },
+            // La numérotation d'une liste reste retirée, sa structure étant
+            // déjà portée par le rang de l'item.
+            _ => body.clone(),
         };
 
         // Un titre ouvre une section, à laquelle il appartient lui-même.
@@ -426,22 +421,25 @@ impl DocumentBuilder {
         let texts = if matches!(kind, BlockKind::Code { .. }) && self.code_policy == CodePolicy::Read
         {
             // Le code n'a pas de phrases : une ligne, une unité de synthèse.
-            clean.lines().map(str::to_string).filter(|l| !l.trim().is_empty()).collect()
+            body.lines().map(str::to_string).filter(|l| !l.trim().is_empty()).collect()
         } else {
-            split_sentences(&clean)
+            split_sentences(&body)
         };
 
         let start = self.doc.sentences.len();
         let count = texts.len();
-        for (i, text) in texts.into_iter().enumerate() {
+        let titled = matches!(kind, BlockKind::Heading { .. }) && count == 1;
+        for (i, written) in texts.into_iter().enumerate() {
             let id = self.doc.sentences.len();
-            // Les mots affichés viennent du titre écrit ; le texte envoyé au
-            // moteur garde sa forme parlée. La correspondance n'est sûre que
-            // si le titre tient en une phrase.
-            let words = if matches!(kind, BlockKind::Heading { .. }) && count == 1 {
-                self.tokenize(&shown)
+            // Les mots affichés viennent du texte écrit ; celui envoyé au
+            // moteur en est la forme parlée. Un titre y ajoute son rang, à
+            // condition de tenir en une phrase : sinon la correspondance
+            // entre les deux ne serait plus sûre.
+            let words = self.tokenize(if titled { &shown } else { &written });
+            let text = if titled {
+                verbalize(&sanitize(&verbalize_section_number(raw_text)))
             } else {
-                self.tokenize(&text)
+                verbalize(&written)
             };
             self.doc.sentences.push(Sentence {
                 id,
@@ -466,7 +464,7 @@ impl DocumentBuilder {
             id: block_id,
             kind,
             section_id,
-            text: clean,
+            text: shown,
             sentences: (start, end),
             display_lines,
         });
@@ -479,10 +477,15 @@ impl DocumentBuilder {
             // La ponctuation reste dans le texte affiché ; seule sa nature est
             // extraite, pour l'indicateur et pour le rythme du curseur.
             let punctuation = token.chars().rev().find_map(Punctuation::from_char);
+            // Un nombre se dit bien plus longtemps qu'il ne s'écrit : garder
+            // sa forme parlée laisse le curseur suivre la voix. Le contexte
+            // manque à l'échelle du mot, mais un poids n'a pas à être exact.
+            let said = verbalize(token);
             words.push(Word {
                 text: token.to_string(),
                 index: self.word_counter,
                 punctuation,
+                spoken: (said != token).then_some(said),
             });
             self.word_counter += 1;
         }
@@ -543,6 +546,39 @@ mod tests {
     }
 
     #[test]
+    fn figures_are_shown_as_written_and_said_in_words() {
+        let d = doc("Le seuil est de 10 000 euros en 2027.\n");
+        let sentence = &d.sentences[0];
+        let shown: Vec<&str> = sentence.words.iter().map(|w| w.text.as_str()).collect();
+        assert_eq!(
+            shown.join(" "),
+            "Le seuil est de 10 000 euros en 2027.",
+            "l'écran doit montrer les chiffres tels qu'ils sont écrits"
+        );
+        assert!(
+            sentence.text.contains("deux mille vingt-sept"),
+            "la voix doit les dire : {:?}",
+            sentence.text
+        );
+        assert!(!sentence.text.contains("2027"), "parlé : {:?}", sentence.text);
+    }
+
+    #[test]
+    fn a_figure_weighs_what_it_costs_to_say() {
+        // « 2027 » s'écrit en quatre signes et se dit en trois mots : sans
+        // corriger son poids, le curseur le quitterait au quart du temps et
+        // prendrait un mot d'avance sur la voix.
+        let d = doc("2027 arrive.\n");
+        let sentence = &d.sentences[0];
+        assert_eq!(sentence.words[0].text, "2027");
+        assert_eq!(
+            sentence.word_at(0.5, 1.0),
+            Some(0),
+            "à mi-phrase, la voix en est encore au nombre"
+        );
+    }
+
+    #[test]
     fn list_items_are_never_dropped() {
         let d = doc("# Titre\n\nIntro.\n\n- item alpha\n- item beta\n- item gamma\n");
         let texts: Vec<&str> = d.blocks.iter().map(|b| b.text.as_str()).collect();
@@ -587,9 +623,13 @@ mod tests {
     }
 
     #[test]
-    fn headings_say_their_numbering() {
+    fn headings_say_their_numbering_but_show_their_figures() {
         let d = doc("### 3.5 Tarif kilométrique de repli\n");
-        assert_eq!(d.blocks[0].text, "trois point cinq, Tarif kilométrique de repli");
+        assert_eq!(d.blocks[0].text, "3.5 Tarif kilométrique de repli");
+        assert_eq!(
+            d.sentences[0].text,
+            "trois point cinq, Tarif kilométrique de repli"
+        );
     }
 
     #[test]
@@ -627,10 +667,13 @@ mod tests {
         assert_eq!(rows[0].text, "Serveur, Port");
         // …puis chaque cellule est annoncée par sa colonne : « alpha, huit
         // mille quatre-vingts » ne disait pas lequel était le port.
-        assert_eq!(
-            rows[1].text,
-            "Serveur : alpha. Port : huit mille quatre-vingts."
-        );
+        assert_eq!(rows[1].text, "Serveur : alpha. Port : 8080.");
+        let spoken = d.sentences[rows[1].sentences.0..rows[1].sentences.1]
+            .iter()
+            .map(|s| s.text.as_str())
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert_eq!(spoken, "Serveur : alpha. Port : huit mille quatre-vingts.");
     }
 
     #[test]

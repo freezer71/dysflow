@@ -2,8 +2,8 @@
 //!
 //! Dans un document long, retrouver un passage en le faisant défiler coûte
 //! l'attention qu'on voulait garder pour le lire. La recherche porte sur le
-//! texte tel qu'il est *affiché* — donc sur les nombres mis en mots comme sur
-//! le source des blocs de code —, ignore la casse et les accents.
+//! texte tel qu'il est *affiché* — donc sur les chiffres écrits comme sur le
+//! source des blocs de code —, ignore la casse et les accents.
 
 use crate::doc::Document;
 
@@ -36,7 +36,7 @@ impl Search {
         }
 
         for sentence in &doc.sentences {
-            if fold(&sentence.text).contains(&search.needle) {
+            if fold(&sentence.written()).contains(&search.needle) {
                 search.matches.push(sentence.id);
             }
         }
@@ -165,6 +165,14 @@ fn authenticate() {}
     fn a_search_ignores_the_missing_accent() {
         let doc = doc();
         assert_eq!(Search::new(&doc, "specification", 0).count(), 1);
+    }
+
+    #[test]
+    fn a_search_finds_the_figures_that_are_on_screen() {
+        // On cherche ce qu'on voit : « 2027 » est à l'écran, même si la voix
+        // dit « deux mille vingt-sept ».
+        let doc = parse_document("La règle s'applique à partir de 2027.\n", CodePolicy::Announce);
+        assert_eq!(Search::new(&doc, "2027", 0).count(), 1);
     }
 
     #[test]

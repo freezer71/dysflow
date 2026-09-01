@@ -100,7 +100,7 @@ impl Punctuation {
     }
 }
 
-/// Un mot tel qu'il est affiché *et* prononcé.
+/// Un mot tel qu'il est affiché.
 ///
 /// `text` conserve sa ponctuation : le lecteur affiche une prose lisible, pas
 /// une suite de tokens nus.
@@ -110,12 +110,19 @@ pub struct Word {
     /// Index global, stable, utilisé par le surlignage.
     pub index: usize,
     pub punctuation: Option<Punctuation>,
+    /// Forme parlée, quand elle diffère de la forme écrite.
+    ///
+    /// « 2027 » s'écrit en quatre signes et se dit en trois mots : c'est la
+    /// seconde qui donne sa durée, donc son poids dans le surlignage.
+    #[serde(default)]
+    pub spoken: Option<String>,
 }
 
 impl Word {
     /// Poids temporel du mot dans sa phrase.
     fn weight(&self) -> f32 {
-        let letters = self.text.chars().filter(|c| c.is_alphanumeric()).count() as f32;
+        let said = self.spoken.as_deref().unwrap_or(&self.text);
+        let letters = said.chars().filter(|c| c.is_alphanumeric()).count() as f32;
         letters.max(1.0) + self.punctuation.map_or(0.0, |p| p.pause_weight())
     }
 }
@@ -126,13 +133,25 @@ pub struct Sentence {
     pub id: usize,
     pub block_id: usize,
     pub section_id: usize,
-    /// Texte nettoyé, envoyé tel quel au moteur TTS.
+    /// Forme parlée, envoyée telle quelle au moteur TTS.
+    ///
+    /// Elle diffère de ce qui est à l'écran dès qu'un nombre ou une date est
+    /// en jeu : voir `written`.
     pub text: String,
     pub words: Vec<Word>,
     pub trailing_pause_ms: u64,
 }
 
 impl Sentence {
+    /// La phrase telle qu'elle est à l'écran.
+    ///
+    /// Ce que l'on cherche et ce que l'on cite est ce que l'on voit, pas la
+    /// forme parlée : on ne retrouverait pas « 2027 » dans « deux mille
+    /// vingt-sept ».
+    pub fn written(&self) -> String {
+        self.words.iter().map(|w| w.text.as_str()).collect::<Vec<_>>().join(" ")
+    }
+
     /// Répartit `total` entre les mots, proportionnellement à leur poids, et
     /// renvoie l'index du mot prononcé à `elapsed`.
     ///

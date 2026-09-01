@@ -44,13 +44,23 @@ fn what_reaches_the_engine() {
         }
     }
 
+    println!("\n=== écrit \u{2260} dit ===");
+    for sentence in doc.sentences.iter().take(200) {
+        let shown = sentence.written();
+        if shown != sentence.text {
+            println!("  œil  {shown:?}");
+            println!("  voix {:?}\n", sentence.text);
+        }
+    }
+
     println!("\n=== titres ===");
     for section in doc.sections.iter().take(14) {
         println!("  {:?}", section.title);
     }
 
-    println!("\n=== échantillon ===");
+    println!("\n=== échantillon : ce que l'œil lit, puis ce que la voix dit ===");
     for sentence in doc.sentences.iter().skip(40).take(8) {
-        println!("  {:?}", sentence.text);
+        println!("  œil  {:?}", sentence.written());
+        println!("  voix {:?}\n", sentence.text);
     }
 }

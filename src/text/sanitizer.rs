@@ -68,6 +68,22 @@ static PATTERNS: LazyLock<Patterns> = LazyLock::new(|| Patterns {
 /// (sinon `**gras**` serait mangé par la règle des répétitions), les puces
 /// avant la normalisation des espaces, et les dates après tout ce qui peut
 /// encore les entourer de bruit.
+/// Met en mots ce qui s'écrit en chiffres, pour la voix seule.
+///
+/// Séparée de `sanitize` parce que les deux sorties n'ont pas le même
+/// destinataire : l'écran montre « 2027 », le moteur entend « deux mille
+/// vingt-sept ». Confondre les deux faisait lire au lecteur une prose qu'il
+/// n'avait pas écrite.
+///
+/// À appliquer sur du texte déjà nettoyé : « **26/08/2029** » doit avoir perdu
+/// ses astérisques pour que l'article se pose sur le bon mot, et les URL doivent
+/// être parties, sinon un permalien daté se retrouverait lu à voix haute.
+pub fn verbalize(clean: &str) -> String {
+    // Les dates d'abord : leurs chiffres sont déjà en mots quand les quantités
+    // sont examinées, et ne se disent donc pas deux fois.
+    verbalize_numbers(&verbalize_dates(clean))
+}
+
 pub fn sanitize(raw: &str) -> String {
     let p = &*PATTERNS;
     let mut text = p.table_separator.replace_all(raw, " ").into_owned();
@@ -90,14 +106,6 @@ pub fn sanitize(raw: &str) -> String {
             break;
         }
     }
-
-    // Après l'emphase : « **26/08/2029** » doit avoir perdu ses astérisques
-    // pour que l'article se pose sur le bon mot. Après les URL aussi, sinon
-    // un permalien daté se retrouverait lu à voix haute.
-    text = verbalize_dates(&text);
-    // Les dates d'abord : leurs chiffres sont déjà en mots quand les quantités
-    // sont examinées, et ne se disent donc pas deux fois.
-    text = verbalize_numbers(&text);
 
     text = p.box_drawing.replace_all(&text, " ").into_owned();
     text = p.arrow.replace_all(&text, " ").into_owned();
@@ -167,7 +175,7 @@ mod tests {
         assert!(clean.contains("Serveur"));
         // Le contenu de la cellule survit — dit en toutes lettres, comme tout
         // nombre destiné à la synthèse.
-        assert!(clean.contains("huit mille quatre-vingts"), "obtenu: {clean:?}");
+        assert!(clean.contains("8080"), "obtenu: {clean:?}");
     }
 
     #[test]
@@ -186,7 +194,7 @@ mod tests {
         assert_eq!(sanitize("appelle read_to_string ici"), "appelle read_to_string ici");
         // Ce qui compte ici est que l'astérisque de multiplication survive ;
         // la mise en mots des nombres est le fait d'une autre étape.
-        assert_eq!(sanitize("3 * 4 = 12"), "trois * quatre = douze");
+        assert_eq!(sanitize("3 * 4 = 12"), "3 * 4 = 12");
     }
 
     #[test]
@@ -214,9 +222,17 @@ mod tests {
     }
 
     #[test]
+    fn leaves_figures_alone_for_the_eye() {
+        // L'écran montre les chiffres tels qu'ils sont écrits : les mettre en
+        // mots est le fait de `verbalize`, pour la voix seule.
+        assert_eq!(sanitize("Le lot 1 contient 12 pièces."), "Le lot 1 contient 12 pièces.");
+        assert_eq!(sanitize("Rendez-vous le 26/08/2029."), "Rendez-vous le 26/08/2029.");
+    }
+
+    #[test]
     fn verbalises_dates_for_the_synthesiser() {
         assert_eq!(
-            sanitize("Rendez-vous le 26/08/2029 à Paris."),
+            verbalize(&sanitize("Rendez-vous le 26/08/2029 à Paris.")),
             "Rendez-vous le vingt-six août deux mille vingt-neuf à Paris."
         );
     }
@@ -225,7 +241,7 @@ mod tests {
     fn verbalises_dates_once_emphasis_is_unwrapped() {
         // L'ordre compte : détectée trop tôt, la date hériterait des « * ».
         assert_eq!(
-            sanitize("Publié le **2026-08-29**."),
+            verbalize(&sanitize("Publié le **2026-08-29**.")),
             "Publié le vingt-neuf août deux mille vingt-six."
         );
     }
@@ -233,7 +249,7 @@ mod tests {
     #[test]
     fn verbalises_numbers_for_the_synthesiser() {
         assert_eq!(
-            sanitize("Le lot 1 contient 12 pièces."),
+            verbalize(&sanitize("Le lot 1 contient 12 pièces.")),
             "Le lot un contient douze pièces."
         );
     }
@@ -243,14 +259,14 @@ mod tests {
         // La date est consommée d'abord : ses chiffres ne repassent pas en
         // quantités, sans quoi « 2026 » se dirait deux fois.
         assert_eq!(
-            sanitize("Date : 2026-08-29"),
+            verbalize(&sanitize("Date : 2026-08-29")),
             "Date : vingt-neuf août deux mille vingt-six"
         );
     }
 
     #[test]
     fn ignores_dates_buried_in_urls() {
-        let clean = sanitize("voir https://example.com/2026-08-29/article");
+        let clean = verbalize(&sanitize("voir https://example.com/2026-08-29/article"));
         assert!(!clean.contains("août"), "obtenu: {clean:?}");
     }
 

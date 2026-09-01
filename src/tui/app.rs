@@ -627,7 +627,8 @@ impl App {
             return;
         };
         let block_id = sentence.block_id;
-        let snippet = sentence.text.clone();
+        // Un signet cite ce qu'on a sous les yeux, pas ce que le moteur entend.
+        let snippet = sentence.written();
         let title = self
             .doc()
             .section_of_sentence(sentence_id)

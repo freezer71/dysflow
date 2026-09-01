@@ -189,6 +189,11 @@ vingt-six ».
 La numérotation d'un titre se dit ; celle d'un item de liste se retire, sa
 structure étant déjà portée par le rang de l'item.
 
+Cette mise en mots ne concerne que la voix : **l'écran garde la colonne
+« Écrit »**. On entend « deux mille vingt-sept » en lisant `2027` — c'est le
+document qu'on suit des yeux, pas sa transcription. Le curseur reste calé pour
+autant : un nombre pèse, dans le surlignage, le temps qu'il faut pour le dire.
+
 Ce qui n'est pas une quantité reste intact : `version 2.1`, `M5`, `F1`, `v3`,
 `3/4`. Un numéro suit la forme sous laquelle il est écrit — groupé par milliers,
 il se dit comme une quantité ; en dix chiffres derrière un `0` ou un `+33`, il
@@ -276,8 +281,8 @@ tant qu'on ne l'a pas rejointe. `f` y ramène, et tout saut de lecture aussi.
 **Chercher.** `/` ouvre la saisie, `Entrée` envoie la lecture sur la première
 occurrence à partir du curseur, `N` et `P` parcourent les suivantes. La
 recherche ignore la casse **et les accents** — `specification` trouve
-« Spécification » — et porte sur ce qui est affiché : les nombres mis en mots
-comme le source des blocs de code.
+« Spécification » — et porte sur ce qui est affiché : les chiffres tels qu'ils
+sont écrits comme le source des blocs de code.
 
 ## Configuration
 
@@ -429,7 +434,7 @@ entrée ──▶ doc ──▶ tts ──▶ audio ──▶ tui
 - `tts::preview` — aperçus de voix, sur une session tenue ouverte à part.
 - `logging` — détourne les sorties natives vers `reader.log`.
 - `doc` — hiérarchie append-only : sections, blocs, phrases, mots.
-- `text` — nettoyage du formatage, mise en mots des dates et des nombres, découpage en phrases.
+- `text` — nettoyage du formatage et découpage en phrases (`sanitize`), mise en mots des dates et des nombres pour la voix seule (`verbalize`).
 - `tts` — contrat moteur/session, pool parallèle, FFI audio.cpp, repli système.
 - `audio` — file de sortie et position déduite du son réellement joué.
 - `tui` — rendu fenêtré, contrôles, panneaux.
