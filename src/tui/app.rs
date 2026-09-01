@@ -435,19 +435,6 @@ impl App {
         self.notify(label);
     }
 
-    /// Recule au début de la phrase courante, ou à la précédente si on vient
-    /// tout juste de commencer — le comportement attendu d'un « précédent ».
-    pub fn previous_or_restart(&mut self) {
-        let current = self.current_sentence();
-        if self.sentence_progress() > 0.25 {
-            self.seek_to(current);
-            self.notify("Reprise de la phrase");
-        } else {
-            self.seek_to(current.saturating_sub(1));
-            self.notify("Phrase précédente");
-        }
-    }
-
     pub fn seek_block(&mut self, delta: isize) {
         let current = self.current_sentence();
         match self.doc().sentence_in_neighbour_block(current, delta) {

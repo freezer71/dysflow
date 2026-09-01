@@ -159,13 +159,7 @@ fn handle_reader(app: &mut App, key: KeyEvent) {
         KeyCode::Char(' ') => app.toggle_play(),
 
         KeyCode::Right => app.seek_sentences(if shift { step } else { 1 }),
-        KeyCode::Left => {
-            if shift {
-                app.seek_sentences(-step)
-            } else {
-                app.previous_or_restart()
-            }
-        }
+        KeyCode::Left => app.seek_sentences(if shift { -step } else { -1 }),
 
         // Les flèches verticales pilotent le panneau ouvert, sinon le texte.
         KeyCode::Up => match app.panel {
@@ -221,9 +215,23 @@ fn handle_reader(app: &mut App, key: KeyEvent) {
 mod tests {
     use super::*;
     use crate::tui::app::tests::{app_reading, DOC};
+    use std::time::Duration;
 
     fn press(app: &mut App, code: KeyCode) {
         handle(app, KeyEvent::new(code, KeyModifiers::NONE));
+    }
+
+    #[test]
+    fn the_left_arrow_steps_back_even_in_the_middle_of_a_sentence() {
+        let mut app = app_reading(DOC);
+        app.seek_to(2);
+        // On revient en arrière justement quand la phrase est bien engagée :
+        // c'est en l'écoutant qu'on s'aperçoit d'avoir manqué la précédente.
+        app.player.simulate(2, Duration::from_secs(3), Duration::from_secs(4));
+
+        press(&mut app, KeyCode::Left);
+
+        assert_eq!(app.current_sentence(), 1, "la flèche a relu la phrase courante");
     }
 
     #[test]

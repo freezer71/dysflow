@@ -137,6 +137,21 @@ impl Player {
         }
     }
 
+    /// Fait comme si une phrase sonnait déjà depuis un moment.
+    ///
+    /// Sans sortie audio, aucune position n'existe : les essais qui portent
+    /// sur la progression dans la phrase doivent la poser eux-mêmes.
+    #[cfg(test)]
+    pub fn simulate(&mut self, sentence_id: usize, elapsed: Duration, speech: Duration) {
+        self.active = Some(Active {
+            sentence_id,
+            total: speech,
+            speech,
+            accumulated: elapsed,
+            resumed_at: None,
+        });
+    }
+
     pub fn error(&self) -> Option<&str> {
         self.error.as_deref()
     }
