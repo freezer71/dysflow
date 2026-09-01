@@ -207,10 +207,18 @@ impl Synthesizer {
         self.shared.state.lock().unwrap().failures.get(&id).cloned()
     }
 
-    /// Redonne sa chance à une phrase en échec.
-    pub fn retry(&self, id: usize) {
+    /// Redonne leur chance aux phrases en échec à partir de `from`.
+    ///
+    /// Un refus du moteur condamnait la phrase pour la session entière : y
+    /// revenir exprès ne la faisait pas réentendre. Or c'est précisément le
+    /// geste de quelqu'un qui veut réécouter un passage.
+    pub fn retry_from(&self, from: usize) {
         let mut state = self.shared.state.lock().unwrap();
-        state.failures.remove(&id);
+        let before = state.failures.len();
+        state.failures.retain(|&id, _| id < from);
+        if state.failures.len() == before {
+            return;
+        }
         drop(state);
         self.shared.wake.notify_all();
     }

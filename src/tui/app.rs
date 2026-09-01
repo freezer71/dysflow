@@ -1,5 +1,6 @@
 //! État de l'application et commandes du lecteur.
 
+use std::collections::HashSet;
 use std::sync::mpsc::{Receiver, TryRecvError};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -46,7 +47,11 @@ pub struct App {
     queue_head: usize,
     /// Dernière phrase connue comme étant en cours de lecture.
     last_known: usize,
-    skipped: usize,
+    /// Phrases que le moteur a refusées et que la lecture a passées.
+    ///
+    /// Un ensemble, non un compteur : repasser sur la même phrase ne fait pas
+    /// deux phrases muettes, et l'annonce doit rester vraie.
+    skipped: HashSet<usize>,
     /// Cadence mesurée sur ce qui a été synthétisé, d'où sortent les temps
     /// affichés. Elle suit le débit : le changer la transpose aussitôt.
     pace: Pace,
@@ -120,7 +125,7 @@ impl App {
             source,
             queue_head: 0,
             last_known: 0,
-            skipped: 0,
+            skipped: HashSet::new(),
             pace: Pace::default(),
             panel: Panel::None,
             selection: 0,
@@ -337,7 +342,7 @@ impl App {
             }
             // Une phrase que le moteur refuse ne doit pas bloquer la lecture.
             if self.synth.failure(self.queue_head).is_some() {
-                self.skipped += 1;
+                self.skipped.insert(self.queue_head);
                 self.queue_head += 1;
                 continue;
             }
@@ -385,7 +390,7 @@ impl App {
     }
 
     pub fn skipped_count(&self) -> usize {
-        self.skipped
+        self.skipped.len()
     }
 
     pub fn input_complete(&self) -> bool {
@@ -413,6 +418,9 @@ impl App {
         }
         let target = target.min(total - 1);
         self.player.flush();
+        // Ce qu'on rejoint mérite d'être tenté à nouveau : un refus du moteur
+        // ne doit pas rendre un passage définitivement muet.
+        self.synth.retry_from(target);
         self.queue_head = target;
         self.last_known = target;
         self.synth.set_cursor(target);
@@ -437,10 +445,18 @@ impl App {
 
     pub fn seek_block(&mut self, delta: isize) {
         let current = self.current_sentence();
+        let block = self.doc().sentence(current).map(|s| s.block_id);
         match self.doc().sentence_in_neighbour_block(current, delta) {
             Some(target) => {
+                // Reculer depuis le milieu d'un bloc revient d'abord à son
+                // début : le dire, sinon on croit avoir changé de paragraphe.
+                let same_block = self.doc().sentence(target).map(|s| s.block_id) == block;
                 self.seek_to(target);
-                self.notify(if delta > 0 { "Bloc suivant" } else { "Bloc précédent" });
+                self.notify(match (same_block, delta > 0) {
+                    (true, _) => "Début du bloc",
+                    (false, true) => "Bloc suivant",
+                    (false, false) => "Bloc précédent",
+                });
             }
             None => self.notify("Aucun bloc de ce côté"),
         }
@@ -1147,7 +1163,107 @@ pub(crate) mod tests {
         )
     }
 
+    /// Moteur qui refuse une phrase une seule fois, puis accepte tout.
+    ///
+    /// Reproduit l'échec passager : la phrase reste muette, et rien ne la
+    /// relance tant qu'on ne revient pas dessus.
+    struct FlakyEngine {
+        refused: Arc<std::sync::atomic::AtomicBool>,
+    }
+    struct FlakySession {
+        refused: Arc<std::sync::atomic::AtomicBool>,
+    }
+
+    impl TtsEngine for FlakyEngine {
+        fn name(&self) -> String {
+            "capricieux".into()
+        }
+        fn open_session(&self) -> Result<Box<dyn TtsSession>> {
+            Ok(Box::new(FlakySession { refused: Arc::clone(&self.refused) }))
+        }
+        fn max_sessions(&self) -> usize {
+            1
+        }
+    }
+
+    impl TtsSession for FlakySession {
+        fn synthesize(&mut self, text: &str, _params: &TtsParams) -> Result<PcmBuffer> {
+            // Le drapeau ne se consomme que sur la phrase visée : sinon la
+            // première venue l'épuiserait.
+            if text.contains("Deuxième")
+                && !self.refused.swap(true, std::sync::atomic::Ordering::SeqCst)
+            {
+                anyhow::bail!("le moteur a refusé cette phrase");
+            }
+            Ok(PcmBuffer::new(vec![0.0; 100], 1000, 1))
+        }
+    }
+
+    /// Attend qu'une condition se réalise, sans dépendre d'un délai fixe.
+    fn wait_for(mut ready: impl FnMut() -> bool) -> bool {
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while Instant::now() < deadline {
+            if ready() {
+                return true;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        false
+    }
+
     pub(crate) const DOC: &str = "# Titre\n\nPremière phrase.\n\nDeuxième phrase.\n\nTroisième phrase.\n";
+
+    #[test]
+    fn coming_back_to_a_silent_sentence_gives_it_another_chance() {
+        let mut builder = DocumentBuilder::new(CodePolicy::Announce);
+        for block in crate::input::split_blocks(DOC) {
+            builder.push_block(&block);
+        }
+        let mut config = Config::default();
+        config.reading.autoplay = false;
+        let engine = Arc::new(FlakyEngine {
+            refused: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        });
+        let mut app = App::new(
+            builder,
+            None,
+            engine,
+            config,
+            "test.md".to_string(),
+            Vec::new(),
+            crate::audio::Player::silent(),
+        );
+        let id = app
+            .doc()
+            .sentences
+            .iter()
+            .position(|s| s.text.contains("Deuxième"))
+            .expect("la phrase existe");
+
+        assert!(wait_for(|| app.synth.failure(id).is_some()), "l'échec doit être constaté");
+
+        // Revenir sur un passage muet, c'est demander à l'entendre.
+        app.seek_to(id);
+        assert!(
+            app.synth.failure(id).is_none(),
+            "la phrase reste condamnée alors qu'on y revient"
+        );
+    }
+
+    #[test]
+    fn stepping_back_inside_a_block_says_where_it_lands() {
+        // Revenir en haut du paragraphe courant n'est pas changer de bloc :
+        // l'annoncer ainsi laisse croire qu'on a reculé plus qu'on ne l'a fait.
+        let mut app = app_reading("Un paragraphe. Avec trois phrases. Et une fin.\n");
+        app.seek_to(2);
+        app.seek_block(-1);
+        assert_eq!(app.current_sentence(), 0);
+        assert!(
+            app.status().contains("Début du bloc"),
+            "statut : {:?}",
+            app.status()
+        );
+    }
 
     #[test]
     fn scrolling_the_view_leaves_the_voice_where_it_was() {
