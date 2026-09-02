@@ -1,13 +1,7 @@
 //! Interface plein écran : installation du terminal, boucle d'événements.
 
-pub mod app;
-pub mod config;
 pub mod keymap;
-pub mod search;
-pub mod pace;
-pub mod startup;
 pub mod ui;
-pub mod view;
 
 use anyhow::{Context, Result};
 use crossterm::event::{self, DisableMouseCapture, EnableMouseCapture, Event};
@@ -20,7 +14,7 @@ use ratatui::Terminal;
 use std::io::{self, Stdout};
 use std::time::{Duration, Instant};
 
-use app::App;
+use crate::app::App;
 
 /// Cadence de rafraîchissement.
 ///

@@ -1,4 +1,14 @@
-//! État de l'application et commandes du lecteur.
+//! Le contrôleur : état de l'application et commandes du lecteur.
+//!
+//! Il ne sait rien de l'écran qui le montre. Le terminal (`tui`) et la fenêtre
+//! (`gui`) le rendent chacun à leur manière et lui envoient les mêmes touches.
+
+pub mod config;
+pub mod keys;
+pub mod pace;
+pub mod search;
+pub mod startup;
+pub mod view;
 
 use std::collections::HashSet;
 use std::sync::mpsc::{Receiver, TryRecvError};
@@ -14,11 +24,10 @@ use crate::input::{BlockAssembler, InputEvent};
 use crate::models;
 use crate::tts::preview::{self, Previewer};
 use crate::tts::{self, Synthesizer, TtsEngine, TtsParams};
-use crate::tui::config::{ConfigScreen, Effect, Field, Page, Section};
-use crate::tui::pace::Pace;
-use crate::tui::search::Search;
-use crate::tui::view::ViewAnchor;
-use crate::tui::startup;
+use crate::app::config::{ConfigScreen, Effect, Field, Page, Section};
+use crate::app::pace::Pace;
+use crate::app::search::Search;
+use crate::app::view::ViewAnchor;
 
 /// Panneau latéral affiché à droite du texte.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -26,6 +35,15 @@ pub enum Panel {
     None,
     Contents,
     Bookmarks,
+}
+
+/// Réglages d'affichage du texte, tels que la rubrique « Lecture » les fixe.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ReadingStyle {
+    /// Lignes vides insérées entre deux lignes de texte.
+    pub spacing: usize,
+    /// Souligne d'un fond la ligne où se trouve le mot prononcé.
+    pub ruler: bool,
 }
 
 pub struct App {
@@ -197,8 +215,8 @@ impl App {
     }
 
     /// Réglages d'affichage du texte, tels que le rendu les attend.
-    pub fn reading_style(&self) -> crate::tui::ui::ReadingStyle {
-        crate::tui::ui::ReadingStyle {
+    pub fn reading_style(&self) -> ReadingStyle {
+        ReadingStyle {
             spacing: self.config.reading.line_spacing as usize,
             ruler: self.config.reading.reading_ruler,
         }
@@ -637,6 +655,15 @@ impl App {
         }
     }
 
+    /// Lance une recherche d'un seul geste, comme une saisie validée.
+    ///
+    /// Un champ de saisie d'une fenêtre livre la requête entière ; la faire
+    /// entrer caractère par caractère serait mimer un clavier qu'on n'a pas.
+    pub fn search_with(&mut self, query: &str) {
+        self.search_input = Some(query.to_string());
+        self.search_commit();
+    }
+
     /// Retient la position dans ce document, et reprend où l'on s'était arrêté.
     ///
     /// Réservé aux documents qui ont une identité stable : un flux et un
@@ -687,8 +714,11 @@ impl App {
         Some((id, self.doc().sentence(id)?.written()))
     }
 
-    /// Note où en était la lecture, pour la prochaine ouverture.
-    pub fn remember_position(&mut self) {
+    /// Note où en était la lecture, dans la mémoire des positions.
+    ///
+    /// Sans écrire : l'écriture a lieu à la fermeture, une fois pour tous les
+    /// documents lus dans la session.
+    fn note_position(&mut self) {
         if !self.remembers_place {
             return;
         }
@@ -696,9 +726,76 @@ impl App {
             Some((id, snippet)) => self.positions.record(&self.source, id, &snippet),
             None => self.positions.forget(&self.source),
         }
+    }
+
+    /// Note où en était la lecture et l'écrit, pour la prochaine ouverture.
+    pub fn remember_position(&mut self) {
+        if !self.remembers_place {
+            return;
+        }
+        self.note_position();
         // La fermeture est en cours : plus personne n'est là pour lire une
         // erreur, et une position perdue coûte un défilement.
         let _ = self.positions.save();
+    }
+
+    /// Remplace le document lu, en gardant le moteur chargé.
+    ///
+    /// Ouvrir un autre fichier ne doit pas coûter le chargement d'un modèle :
+    /// le moteur est partagé, et la synthèse se reconstruit dessus comme le
+    /// fait `reload_engine`. La position du document quitté est notée avant.
+    pub fn open_document(
+        &mut self,
+        builder: DocumentBuilder,
+        input: Option<Receiver<InputEvent>>,
+        source: String,
+    ) {
+        self.note_position();
+        self.stop_preview();
+        self.player.flush();
+
+        let has_stream = input.is_some();
+        self.builder = builder;
+        self.input = input;
+        self.assembler = BlockAssembler::new();
+        self.published = 0;
+        self.input_done = !has_stream;
+        self.source = source;
+        self.remembers_place = false;
+        self.queue_head = 0;
+        self.last_known = 0;
+        self.skipped.clear();
+        self.pace = Pace::default();
+        self.panel = Panel::None;
+        self.selection = 0;
+        self.show_config = false;
+        self.view = ViewAnchor::default();
+        self.search_input = None;
+        self.search = None;
+        self.started_at = Instant::now();
+        self.synthesis_started = false;
+
+        // Une synthèse neuve sur le même moteur. L'ancienne se libère hors du
+        // thread d'interface : sa destruction attend les phrases en cours.
+        let synth = Synthesizer::new(
+            self.synth.engine(),
+            self.config.tts_params(),
+            self.config.sessions() as usize,
+            self.config.engine.prefetch as usize,
+        );
+        let previous = std::mem::replace(&mut self.synth, synth);
+        std::thread::spawn(move || drop(previous));
+
+        if !has_stream {
+            self.builder.finish();
+            self.builder.sync_word_total();
+        }
+        self.publish_new_sentences();
+        if self.config.reading.autoplay {
+            self.player.play();
+        } else {
+            self.player.pause();
+        }
     }
 
     pub fn toggle_bookmark(&mut self) {
@@ -908,17 +1005,36 @@ impl App {
     pub fn config_commit_edit(&mut self) {
         let Some(buffer) = self.screen.editing.take() else { return };
         let Some(field) = self.screen.current_field(&self.config) else { return };
-        field.set_text(&mut self.config, buffer.trim().to_string());
-        // Saisir une famille à la main change le jeu de voix disponible.
+        self.config_set_text(field, buffer);
+    }
+
+    /// Pose le texte d'un réglage, avec ce qu'il entraîne.
+    ///
+    /// Une famille saisie à la main change le jeu de voix ; un chemin de
+    /// modèle ou une famille changent le moteur lui-même ; une consigne ou un
+    /// WAV de référence ne demandent qu'une resynthèse — ils partent avec
+    /// chaque requête.
+    pub fn config_set_text(&mut self, field: Field, value: String) {
+        field.set_text(&mut self.config, value.trim().to_string());
         if field == Field::Family {
             self.config.align_voice_with_family();
         }
-        // Un chemin de modèle ou une famille change le moteur lui-même.
-        self.apply_effect(if field.is_text(&self.config) {
-            Effect::ReloadEngine
-        } else {
-            Effect::Resynthesize
+        self.apply_effect(match field {
+            Field::ModelPath | Field::Family => Effect::ReloadEngine,
+            _ => Effect::Resynthesize,
         });
+    }
+
+    /// Pose la valeur d'un réglage numérique — un curseur, pas une flèche.
+    pub fn config_set_number(&mut self, field: Field, value: Option<f64>) {
+        let effect = field.set_number(&mut self.config, value);
+        self.apply_effect(effect);
+    }
+
+    /// Pose un choix — une liste déroulante, pas une flèche.
+    pub fn config_set_choice(&mut self, field: Field, value: &str) {
+        let effect = field.set_choice(&mut self.config, value);
+        self.apply_effect(effect);
     }
 
     pub fn config_cancel_edit(&mut self) {
@@ -1106,10 +1222,17 @@ impl App {
         }
     }
 
-    fn apply_effect(&mut self, effect: Effect) {
+    /// Répercute un changement de réglage sur la lecture.
+    pub fn apply_effect(&mut self, effect: Effect) {
         match effect {
             Effect::None => {}
             Effect::Volume(delta) => self.change_volume(delta),
+            Effect::SetVolume(volume) => {
+                let volume = volume.clamp(0.0, 2.0);
+                self.player.set_volume(volume);
+                self.config.voice.volume = volume;
+                self.notify(&format!("Volume {:.0} %", volume * 100.0));
+            }
             Effect::Resynthesize => {
                 self.apply_tts_params();
                 let current = self.current_sentence();
@@ -1465,5 +1588,82 @@ pub(crate) mod tests {
         app.search_cancel();
         assert!(app.search_input().is_none());
         assert!(app.search().is_none());
+    }
+
+    #[test]
+    fn a_search_given_whole_lands_where_a_typed_one_does() {
+        let mut typed = app_reading(DOC);
+        typed.search_open();
+        for c in "troisieme".chars() {
+            typed.search_push(c);
+        }
+        typed.search_commit();
+
+        let mut whole = app_reading(DOC);
+        whole.search_with("troisieme");
+
+        assert_eq!(whole.current_sentence(), typed.current_sentence());
+        assert_eq!(
+            whole.search().map(|s| s.count()),
+            typed.search().map(|s| s.count())
+        );
+        assert!(whole.search_input().is_none(), "la saisie est close une fois validée");
+    }
+
+    #[test]
+    fn opening_another_document_keeps_the_engine_loaded() {
+        let mut app = app_reading(DOC);
+        let engine = app.synth.engine();
+        app.seek_to(2);
+
+        let mut builder = DocumentBuilder::new(CodePolicy::Announce);
+        for block in crate::input::split_blocks("# Autre\n\nUne phrase neuve.\n") {
+            builder.push_block(&block);
+        }
+        app.open_document(builder, None, "autre.md".to_string());
+
+        assert!(Arc::ptr_eq(&engine, &app.synth.engine()), "le moteur a été rechargé");
+        assert_eq!(app.doc().title, "Autre");
+        assert_eq!(app.source, "autre.md");
+        assert_eq!(app.current_sentence(), 0);
+        assert!(app.search().is_none());
+        assert!(app.view.is_following());
+        assert!(app.input_complete());
+    }
+
+    #[test]
+    fn opening_another_document_notes_where_the_first_one_stopped() {
+        let mut app = app_reading(DOC);
+        // « test.md » devient un document dont la position se retient.
+        app.resume_where_left();
+        app.seek_to(1);
+        let snippet = app.doc().sentence(1).unwrap().written();
+
+        let mut builder = DocumentBuilder::new(CodePolicy::Announce);
+        builder.push_block("Un autre texte.");
+        app.open_document(builder, None, "autre.md".to_string());
+
+        let kept = app.positions.get("test.md").expect("la position du premier document");
+        assert_eq!(kept.sentence_id, 1);
+        assert_eq!(kept.snippet, snippet);
+        // Le nouveau document n'a pas encore d'identité stable.
+        assert!(app.place_to_remember().is_none());
+    }
+
+    #[test]
+    fn setting_the_volume_moves_the_player_and_the_config() {
+        let mut app = app_reading(DOC);
+        app.config_set_number(Field::Volume, Some(0.25));
+        assert!((app.player.volume() - 0.25).abs() < 1e-6);
+        assert!((app.config.voice.volume - 0.25).abs() < 1e-6);
+    }
+
+    #[test]
+    fn a_text_setting_reloads_the_engine_only_when_it_names_the_model() {
+        let mut app = app_reading(DOC);
+        let engine = app.synth.engine();
+        app.config_set_text(Field::Instruction, "  lentement ".to_string());
+        assert_eq!(app.config.voice.instruction, "lentement");
+        assert!(Arc::ptr_eq(&engine, &app.synth.engine()), "une consigne ne recharge rien");
     }
 }

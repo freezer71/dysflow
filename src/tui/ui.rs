@@ -17,10 +17,10 @@ use ratatui::Frame;
 
 use crate::doc::{BlockKind, Emphasis};
 use crate::models;
-use crate::tui::app::{App, Panel};
-use crate::tui::config::{Page, Section};
-use crate::tui::keymap::{CONFIG_HELP, HELP};
-use crate::tui::startup;
+use crate::app::{App, Panel, ReadingStyle};
+use crate::app::config::{Page, Section};
+use crate::app::keys::{CONFIG_HELP, HELP};
+use crate::app::startup;
 
 const ACCENT: Color = Color::Rgb(242, 107, 39);
 const BRIGHT: Color = Color::Rgb(238, 238, 238);
@@ -478,15 +478,6 @@ fn layout_tracked(
     (lines, cursor_line)
 }
 
-/// Réglages d'affichage du texte, tels que la rubrique « Lecture » les fixe.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ReadingStyle {
-    /// Lignes vides insérées entre deux lignes de texte.
-    pub spacing: usize,
-    /// Souligne d'un fond la ligne où se trouve le mot prononcé.
-    pub ruler: bool,
-}
-
 /// Lignes à afficher, et index de celle qui ouvre le bloc en cours de lecture.
 struct ReaderView {
     lines: Vec<Line<'static>>,
@@ -571,7 +562,7 @@ struct ReaderFrame<'a> {
     width: usize,
     style: ReadingStyle,
     /// Recherche en cours, dont les occurrences se signalent dans le texte.
-    search: Option<&'a crate::tui::search::Search>,
+    search: Option<&'a crate::app::search::Search>,
 }
 
 impl<'a> ReaderFrame<'a> {
@@ -2082,7 +2073,7 @@ mod tests {
 
     #[test]
     fn search_results_stand_out_in_the_text() {
-        use crate::tui::search::Search;
+        use crate::app::search::Search;
         let doc = parse_document("Le service expose deux routes.", CodePolicy::Announce);
         let search = Search::new(&doc, "route", 0);
         let view = document_lines(ReaderFrame {
@@ -2111,7 +2102,7 @@ mod tests {
 
     #[test]
     fn the_spoken_word_keeps_its_mark_even_when_it_is_a_result() {
-        use crate::tui::search::Search;
+        use crate::app::search::Search;
         let doc = parse_document("Une route.", CodePolicy::Announce);
         let search = Search::new(&doc, "route", 0);
         let view = document_lines(ReaderFrame {
@@ -2134,7 +2125,7 @@ mod tests {
 
     #[test]
     fn the_status_line_shows_the_query_being_typed() {
-        let mut app = crate::tui::app::tests::app_reading("Une phrase.\n");
+        let mut app = crate::app::tests::app_reading("Une phrase.\n");
         app.search_open();
         app.search_push('r');
         app.search_push('o');
@@ -2145,7 +2136,7 @@ mod tests {
 
     #[test]
     fn the_status_line_keeps_saying_that_the_view_is_frozen() {
-        let mut app = crate::tui::app::tests::app_reading("Une phrase.\n\nUne autre.\n");
+        let mut app = crate::app::tests::app_reading("Une phrase.\n\nUne autre.\n");
         app.scroll_view(-1);
         // Un autre message chasse la notification, pas l'état.
         app.notify("autre chose");
