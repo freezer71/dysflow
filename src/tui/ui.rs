@@ -19,7 +19,7 @@ use crate::doc::{BlockKind, Emphasis};
 use crate::models;
 use crate::app::{App, Panel, ReadingStyle};
 use crate::app::config::{Page, Section};
-use crate::tui::keymap::{CONFIG_HELP, HELP};
+use crate::app::keys::{CONFIG_HELP, HELP};
 use crate::app::startup;
 
 const ACCENT: Color = Color::Rgb(242, 107, 39);

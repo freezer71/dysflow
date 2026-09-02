@@ -4,6 +4,7 @@
 //! (`gui`) le rendent chacun à leur manière et lui envoient les mêmes touches.
 
 pub mod config;
+pub mod keys;
 pub mod pace;
 pub mod search;
 pub mod startup;
