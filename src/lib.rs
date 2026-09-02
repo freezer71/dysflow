@@ -13,6 +13,7 @@ pub mod audio;
 pub mod bookmark;
 pub mod config;
 pub mod doc;
+pub mod gui;
 pub mod input;
 pub mod launch;
 pub mod logging;
