@@ -188,7 +188,7 @@ standard suffit, il ne s'agit pas de cryptographie.
 Effet de bord utile : le markdown devient exportable.
 
 ```sh
-reader spec.pdf --to-markdown > spec.md
+sillon spec.pdf --to-markdown > spec.md
 ```
 
 ## Données de langue
