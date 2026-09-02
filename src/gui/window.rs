@@ -2,7 +2,7 @@
 //!
 //! Pour vérifier le rendu sans passer par l'écran, `SILLON_GUI_CAPTURE=/x.png`
 //! fait enregistrer la trame par la fenêtre elle-même après une seconde et
-//! demie, puis quitte.
+//! demie — ou `SILLON_GUI_CAPTURE_AFTER_MS` —, puis quitte.
 
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
@@ -10,6 +10,7 @@ use std::time::{Duration, Instant};
 use anyhow::{anyhow, Result};
 use eframe::egui::{self, CentralPanel, Panel, ViewportBuilder};
 
+use super::reader::Reader;
 use super::{fonts, theme};
 use crate::app::App;
 
@@ -20,6 +21,9 @@ pub struct Gui {
     applied: Option<(String, String, f32)>,
     /// Capture demandée par l'environnement : chemin, départ, déjà demandée.
     capture: Option<(PathBuf, Instant, bool)>,
+    pub(super) reader: Reader,
+    /// Source du document composé : quand elle change, tout se recompose.
+    last_source: String,
 }
 
 pub fn run(app: App) -> Result<()> {
@@ -35,22 +39,36 @@ pub fn run(app: App) -> Result<()> {
     eframe::run_native(
         "sillon",
         options,
-        Box::new(move |_cc| Ok(Box::new(Gui::new(app)))),
+        // Les polices s'installent avant la première trame : une famille
+        // demandée avant d'être connue ferait paniquer la composition.
+        Box::new(move |cc| Ok(Box::new(Gui::new(app, &cc.egui_ctx)))),
     )
     .map_err(|err| anyhow!("fenêtre : {err}"))
 }
 
 impl Gui {
-    fn new(app: App) -> Self {
+    fn new(app: App, ctx: &egui::Context) -> Self {
         let capture = std::env::var_os("SILLON_GUI_CAPTURE")
             .map(|path| (PathBuf::from(path), Instant::now(), false));
-        Self { app, applied: None, capture }
+        let last_source = app.source.clone();
+        let mut gui = Self { app, applied: None, capture, reader: Reader::new(), last_source };
+        gui.refresh_theme(ctx);
+        gui
     }
 
     /// Enregistre la fenêtre telle qu'elle se dessine, puis quitte.
     fn capture_if_asked(&mut self, ctx: &egui::Context) {
         let Some((path, since, requested)) = self.capture.as_mut() else { return };
-        if !*requested && since.elapsed() > Duration::from_millis(1500) {
+        // Une fenêtre occultée n'est plus dessinée : pour la capturer, il faut
+        // qu'elle passe devant.
+        if since.elapsed() < Duration::from_millis(100) {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+        }
+        let after = std::env::var("SILLON_GUI_CAPTURE_AFTER_MS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(1500);
+        if !*requested && since.elapsed() > Duration::from_millis(after) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(egui::UserData::default()));
             *requested = true;
         }
@@ -91,15 +109,32 @@ impl Gui {
 }
 
 impl eframe::App for Gui {
-    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        let ctx = ui.ctx().clone();
-        self.refresh_theme(&ctx);
+    /// Le tour du contrôleur, à chaque trame — et fenêtre cachée aussi : la
+    /// sortie audio se nourrit ici, et la voix ne doit pas s'arrêter parce
+    /// qu'on a réduit la fenêtre.
+    fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.app.tick();
-        self.capture_if_asked(&ctx);
         if self.app.should_quit {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
+        // Le mot suivi doit rester fluide : trente trames par seconde en
+        // lecture, moins au repos — juste assez pour voir passer un message.
+        ctx.request_repaint_after(if self.app.player.is_playing() {
+            Duration::from_millis(33)
+        } else {
+            Duration::from_millis(250)
+        });
+    }
+
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        let ctx = ui.ctx().clone();
+        self.refresh_theme(&ctx);
+        self.capture_if_asked(&ctx);
         let palette = theme::palette(&self.app.config.gui.theme);
+        if self.app.source != self.last_source {
+            self.reader.reset();
+            self.last_source = self.app.source.clone();
+        }
 
         Panel::top("header").show(ui, |ui| {
             ui.horizontal(|ui| {
@@ -110,16 +145,8 @@ impl eframe::App for Gui {
         CentralPanel::default()
             .frame(egui::Frame::new().fill(palette.background).inner_margin(16.0))
             .show(ui, |ui| {
-                ui.label("fenêtre en construction");
+                self.reader.show(ui, &mut self.app, &palette);
             });
-
-        // Le mot suivi doit rester fluide : trente trames par seconde en
-        // lecture, moins au repos — juste assez pour voir passer un message.
-        ctx.request_repaint_after(if self.app.player.is_playing() {
-            Duration::from_millis(33)
-        } else {
-            Duration::from_millis(250)
-        });
     }
 
     fn on_exit(&mut self) {
