@@ -1,16 +1,16 @@
-# reader
+# sillon
 
 Lecteur audio en terminal : il prend du markdown — pipé ou en fichier —, le
 hiérarchise, et le lit à voix haute avec les contrôles d'un lecteur audio.
 
 ```bash
-reader                                      # ouvre le menu de configuration
-cat notes.md | reader
-reader rapport.md --speed 1.5
-llm "explique-moi les monades" | reader     # la lecture démarre avant la fin du flux
+sillon                                      # ouvre le menu de configuration
+cat notes.md | sillon
+sillon rapport.md --speed 1.5
+llm "explique-moi les monades" | sillon     # la lecture démarre avant la fin du flux
 ```
 
-**Lancé sans argument, `reader` ouvre l'écran de configuration.** Depuis la
+**Lancé sans argument, `sillon` ouvre l'écran de configuration.** Depuis la
 lecture, la touche `s` y mène aussi ; la barre d'état le rappelle en
 permanence.
 
@@ -56,9 +56,9 @@ cargo install --path .          # voix du système seule, build en quelques seco
 `install.sh` construit le binaire puis le pose dans `$PREFIX/bin` et son shim
 audio.cpp dans `$PREFIX/lib` — `~/.local` par défaut, sans droits ;
 `PREFIX=/usr/local sudo -E ./scripts/install.sh` pour toute la machine. Il
-vérifie ensuite que `reader` démarre depuis la racine, et dit s'il manque le
+vérifie ensuite que `sillon` démarre depuis la racine, et dit s'il manque le
 `bin/` au `PATH`. Rien d'autre à copier : modèles et configuration vivent dans
-le répertoire de données. Pour désinstaller, `rm $PREFIX/bin/reader
+le répertoire de données. Pour désinstaller, `rm $PREFIX/bin/sillon
 $PREFIX/lib/libaudiocpp_shim.*`.
 
 ### Distribuer le binaire
@@ -106,13 +106,13 @@ Le build ne compile que les familles de modèles utiles — `supertonic,pocket_t
 par défaut, sur les 62 que porte le projet :
 
 ```bash
-RS_READER_TTS_FAMILIES=supertonic,magpie_tts cargo build --release --features audio-cpp
-RS_READER_AUDIOCPP_DIR=/chemin/vers/audio.cpp cargo build --features audio-cpp
+SILLON_TTS_FAMILIES=supertonic,magpie_tts cargo build --release --features audio-cpp
+SILLON_AUDIOCPP_DIR=/chemin/vers/audio.cpp cargo build --features audio-cpp
 ```
 
 ### Installer un modèle
 
-Lancez `reader` sans argument : l'écran s'ouvre sur la rubrique **Modèles**, qui
+Lancez `sillon` sans argument : l'écran s'ouvre sur la rubrique **Modèles**, qui
 liste ce qui est installable avec la taille et l'espace disque libre. `Entrée`
 installe, puis sélectionne. Rien n'est jamais téléchargé sans cette action.
 
@@ -127,8 +127,8 @@ Le catalogue ne retient que des modèles **à voix nommées** : aucun n'exige qu
 lui fabrique une voix — enregistrement à cloner ou description à composer —
 avant de pouvoir l'écouter. Un test le vérifie à chaque compilation.
 
-Les modèles vont dans `~/.local/share/rs-reader/models/<famille>/` (sur macOS,
-`~/Library/Application Support/rs-reader/models/`). Un modèle déjà installé est
+Les modèles vont dans `~/.local/share/sillon/models/<famille>/` (sur macOS,
+`~/Library/Application Support/sillon/models/`). Un modèle déjà installé est
 adopté automatiquement au lancement suivant.
 
 Le binaire ne sait charger que les familles compilées en lui — `supertonic` et
@@ -136,7 +136,7 @@ Le binaire ne sait charger que les familles compilées en lui — `supertonic` e
 audio.cpp :
 
 ```bash
-RS_READER_TTS_FAMILIES=supertonic,magpie_tts,qwen3_tts \
+SILLON_TTS_FAMILIES=supertonic,magpie_tts,qwen3_tts \
   cargo build --release --features audio-cpp
 ```
 
@@ -391,7 +391,7 @@ sont écrits comme le source des blocs de code.
 
 ## Configuration
 
-Tout se règle depuis l'écran de configuration — `reader` sans argument, ou `s`
+Tout se règle depuis l'écran de configuration — `sillon` sans argument, ou `s`
 en cours de lecture :
 
 | Rubrique | Contenu |
@@ -479,8 +479,8 @@ les accepte.
 Les valeurs prennent effet immédiatement : la synthèse déjà préparée est
 régénérée au besoin.
 
-Le fichier vit dans `~/.config/rs-reader/config.toml`, et peut aussi être écrit
-par `reader --write-config`.
+Le fichier vit dans `~/.config/sillon/config.toml`, et peut aussi être écrit
+par `sillon --write-config`.
 
 ```toml
 [engine]
@@ -523,7 +523,7 @@ cfg_scale = "2.5"
 ```
 
 Les mêmes réglages existent en ligne de commande (`--voice`, `--speed`,
-`--emotion`, `--instruction`, `--set cle=valeur`…). Voir `reader --help`.
+`--emotion`, `--instruction`, `--set cle=valeur`…). Voir `sillon --help`.
 
 ## Architecture
 
@@ -537,7 +537,7 @@ entrée ──▶ doc ──▶ tts ──▶ audio ──▶ tui
 - `models` — catalogue, installation et suppression des modèles.
 - `tts::lazy` — charge le moteur en arrière-plan pour que l'interface soit immédiate.
 - `tts::preview` — aperçus de voix, sur une session tenue ouverte à part.
-- `logging` — détourne les sorties natives vers `reader.log`.
+- `logging` — détourne les sorties natives vers `sillon.log`.
 - `doc` — hiérarchie append-only : sections, blocs, phrases, mots.
 - `text` — nettoyage du formatage et découpage en phrases (`sanitize`), mise en mots des dates, des nombres et des sigles pour la voix seule (`verbalize`).
 - `tts` — contrat moteur/session, pool parallèle, FFI audio.cpp, repli système.
@@ -545,7 +545,7 @@ entrée ──▶ doc ──▶ tts ──▶ audio ──▶ tui
 - `tui` — rendu fenêtré, contrôles, panneaux.
 
 Les sorties de ggml sont détournées vers
-`~/.local/share/rs-reader/reader.log` : en plein écran, elles disloqueraient le
+`~/.local/share/sillon/sillon.log` : en plein écran, elles disloqueraient le
 rendu.
 
 Le FFI vit dans `native/` : `audiocpp_shim.{h,cpp}` referme l'API C++ d'audio.cpp

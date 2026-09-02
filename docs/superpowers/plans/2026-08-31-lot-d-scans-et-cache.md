@@ -563,7 +563,7 @@ mod tests {
 
     #[test]
     fn what_is_written_comes_back() {
-        let key = "essai-du-cache-rs-reader";
+        let key = "essai-du-cache-sillon";
         write(key, "## Titre\n\nDu texte.");
         assert_eq!(read(key).as_deref(), Some("## Titre\n\nDu texte."));
     }
@@ -616,7 +616,7 @@ pub fn fingerprint(path: &Path) -> Result<String> {
 
 /// Répertoire du cache, créé au besoin.
 fn dir() -> Option<PathBuf> {
-    let dir = dirs::cache_dir()?.join("rs-reader").join("documents");
+    let dir = dirs::cache_dir()?.join("sillon").join("documents");
     std::fs::create_dir_all(&dir).ok()?;
     Some(dir)
 }
@@ -715,7 +715,7 @@ Dans `src/main.rs`, `struct Args`, après `clip` :
 et remplacez l'appel :
 
 ```rust
-            let text = rs_reader::source::load_with_cache(path, !args.no_cache)?;
+            let text = sillon::source::load_with_cache(path, !args.no_cache)?;
 ```
 
 - [x] **Step 6: Lancer les tests dans les deux modes**
@@ -728,8 +728,8 @@ Attendu : tout passe.
 
 ```bash
 cargo build --release --features ocr
-time ./target/release/reader tests/fixtures/scanne.pdf --to-markdown --no-cache >/dev/null
-time ./target/release/reader tests/fixtures/scanne.pdf --to-markdown >/dev/null
+time ./target/release/sillon tests/fixtures/scanne.pdf --to-markdown --no-cache >/dev/null
+time ./target/release/sillon tests/fixtures/scanne.pdf --to-markdown >/dev/null
 ```
 
 Attendu : la seconde est nettement plus rapide. Notez les deux durées.
@@ -756,7 +756,7 @@ Dans `tests/pdf_input.rs` :
 #[cfg(feature = "ocr")]
 #[test]
 fn a_scanned_pdf_is_recognised_and_rebuilt() {
-    let markdown = rs_reader::source::load_with_cache(&fixture("scanne.pdf"), false)
+    let markdown = sillon::source::load_with_cache(&fixture("scanne.pdf"), false)
         .expect("le scan doit se lire");
     assert!(
         markdown.contains("Spécification"),

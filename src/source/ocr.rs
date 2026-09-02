@@ -29,9 +29,8 @@ const ENG: &[u8] = include_bytes!(concat!(
 /// La taille sert de témoin : réécrire cinq mégaoctets à chaque lancement
 /// serait inutile, mais un fichier tronqué doit être remplacé.
 fn tessdata_dir() -> Result<PathBuf> {
-    let dir = dirs::cache_dir()
+    let dir = crate::paths::cache_dir()
         .context("répertoire de cache introuvable")?
-        .join("rs-reader")
         .join("tessdata");
     std::fs::create_dir_all(&dir)
         .with_context(|| format!("création de {}", dir.display()))?;
@@ -210,7 +209,7 @@ mod tests {
 
     #[test]
     fn a_directory_of_captures_is_read_in_order() {
-        let dir = std::env::temp_dir().join("rs-reader-scans");
+        let dir = std::env::temp_dir().join("sillon-scans");
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("création du dossier");
         // La même capture deux fois : l'ordre est vérifiable, le contenu connu.
@@ -226,7 +225,7 @@ mod tests {
 
     #[test]
     fn a_directory_without_images_says_so() {
-        let dir = std::env::temp_dir().join("rs-reader-vide");
+        let dir = std::env::temp_dir().join("sillon-vide");
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("création du dossier");
         let err = directory_pages(&dir);

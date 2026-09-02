@@ -143,7 +143,7 @@ pub const CATALOG: &[ModelPackage] = &[
 
 /// Familles compilées dans ce binaire, renseignées par `build.rs`.
 pub fn compiled_families() -> Vec<&'static str> {
-    option_env!("RS_READER_COMPILED_FAMILIES")
+    option_env!("SILLON_COMPILED_FAMILIES")
         .unwrap_or("")
         .split(',')
         .map(str::trim)
@@ -169,7 +169,7 @@ pub fn available() -> Vec<&'static ModelPackage> {
 
 /// Répertoire où sont rangés les modèles installés.
 pub fn models_dir() -> Option<PathBuf> {
-    dirs::data_local_dir().map(|d| d.join("rs-reader").join("models"))
+    crate::paths::data_dir().map(|d| d.join("models"))
 }
 
 pub fn install_path(package: &ModelPackage) -> Option<PathBuf> {

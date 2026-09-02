@@ -12,7 +12,7 @@ use std::path::PathBuf;
 
 /// Emplacement du journal de session.
 pub fn log_path() -> Option<PathBuf> {
-    dirs::data_local_dir().map(|d| d.join("rs-reader").join("reader.log"))
+    crate::paths::data_dir().map(|d| d.join("sillon.log"))
 }
 
 /// Garde qui restaure `stderr` lorsqu'elle est libérée.

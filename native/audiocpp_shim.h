@@ -14,8 +14,8 @@
  * poids (partagés, immuables), chaque session porte son propre graphe. Plusieurs
  * sessions peuvent donc synthétiser en parallèle sur un seul chargement.
  */
-#ifndef RS_READER_AUDIOCPP_SHIM_H
-#define RS_READER_AUDIOCPP_SHIM_H
+#ifndef SILLON_AUDIOCPP_SHIM_H
+#define SILLON_AUDIOCPP_SHIM_H
 
 #include <stddef.h>
 
@@ -91,4 +91,4 @@ void acpp_string_free(char * text);
 }
 #endif
 
-#endif /* RS_READER_AUDIOCPP_SHIM_H */
+#endif /* SILLON_AUDIOCPP_SHIM_H */

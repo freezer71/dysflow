@@ -8,9 +8,9 @@
 //! ```
 #![cfg(feature = "audio-cpp")]
 
-use rs_reader::text::{sanitize, verbalize};
-use rs_reader::tts::audio_cpp::AudioCppEngine;
-use rs_reader::tts::{EngineSettings, TtsEngine, TtsParams};
+use sillon::text::{sanitize, verbalize};
+use sillon::tts::audio_cpp::AudioCppEngine;
+use sillon::tts::{EngineSettings, TtsEngine, TtsParams};
 
 #[test]
 #[ignore]
@@ -18,7 +18,7 @@ fn listen_to_the_acronyms() {
     let home = std::env::var("HOME").unwrap();
     let settings = EngineSettings {
         model_path: format!(
-            "{home}/Library/Application Support/rs-reader/models/supertonic/supertonic-3-orig.gguf"
+            "{home}/Library/Application Support/sillon/models/supertonic/supertonic-3-orig.gguf"
         ),
         family: "supertonic".to_string(),
         backend: String::new(),

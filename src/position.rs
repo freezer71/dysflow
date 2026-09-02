@@ -34,7 +34,7 @@ pub struct PositionStore {
 
 impl PositionStore {
     pub fn path() -> Option<PathBuf> {
-        dirs::data_local_dir().map(|d| d.join("rs-reader").join("positions.json"))
+        crate::paths::data_dir().map(|d| d.join("positions.json"))
     }
 
     /// Relit les positions retenues, ou repart de zéro sans le dire.
@@ -150,7 +150,7 @@ mod tests {
 
     #[test]
     fn a_place_written_is_a_place_reread() {
-        let dir = std::env::temp_dir().join(format!("rs-reader-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("sillon-{}", std::process::id()));
         let path = dir.join("positions.json");
         let mut store = PositionStore::default();
         store.record("a.md", 4, "Une phrase.");

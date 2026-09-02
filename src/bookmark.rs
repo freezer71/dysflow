@@ -36,7 +36,7 @@ pub struct BookmarkStore {
 
 impl BookmarkStore {
     pub fn path() -> Option<PathBuf> {
-        dirs::data_local_dir().map(|d| d.join("rs-reader").join("bookmarks.json"))
+        crate::paths::data_dir().map(|d| d.join("bookmarks.json"))
     }
 
     pub fn load() -> (Self, Option<String>) {

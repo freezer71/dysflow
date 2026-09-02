@@ -1,4 +1,4 @@
-//! `reader` — lecteur audio en terminal pour du texte pipé ou un fichier.
+//! `sillon` — lecteur audio en terminal pour du texte pipé ou un fichier.
 
 use anyhow::{Context, Result};
 use clap::Parser;
@@ -6,15 +6,15 @@ use std::io::IsTerminal;
 use std::path::PathBuf;
 use std::sync::mpsc::Receiver;
 
-use rs_reader::config::Config;
-use rs_reader::doc::DocumentBuilder;
-use rs_reader::input::InputEvent;
-use rs_reader::tui::app::App;
-use rs_reader::{doc, input, tts, tui};
+use sillon::config::Config;
+use sillon::doc::DocumentBuilder;
+use sillon::input::InputEvent;
+use sillon::tui::app::App;
+use sillon::{doc, input, tts, tui};
 
 #[derive(Parser, Debug)]
 #[command(
-    name = "reader",
+    name = "sillon",
     version,
     about = "Lit à voix haute du markdown pipé ou un fichier, avec contrôles de lecture complets."
 )]
@@ -148,7 +148,7 @@ fn main() -> Result<()> {
     // La redirection couvre le chargement du modèle, qui est déjà bavard, et
     // tout ce qui suit : le chargement se poursuit en fond pendant la lecture
     // du document, et ses messages s'écriraient sinon par-dessus.
-    let quiet = rs_reader::logging::redirect_stderr();
+    let quiet = sillon::logging::redirect_stderr();
 
     // Le modèle part en premier, et le document se lit pendant qu'il charge.
     // Mesuré : trois secondes de chargement, une de plus pour ouvrir la
@@ -182,7 +182,7 @@ fn main() -> Result<()> {
         config,
         source,
         notices,
-        rs_reader::audio::Player::new(),
+        sillon::audio::Player::new(),
     );
     // Un fichier a une identité stable : sa lecture reprend où elle en était.
     // Un flux et un collage n'en ont pas — la même position leur désignerait
@@ -209,7 +209,7 @@ fn extracted(args: &Args) -> Result<Option<String>> {
         return Ok(Some(read_clipboard()?));
     }
     match &args.file {
-        Some(path) => Ok(Some(rs_reader::source::load_with_cache(
+        Some(path) => Ok(Some(sillon::source::load_with_cache(
             path,
             !args.no_cache,
         )?)),
@@ -237,7 +237,7 @@ fn read_input(
         Some(path) => {
             // Un fichier est analysé d'emblée : sommaire et durée sont
             // disponibles dès l'ouverture.
-            let text = rs_reader::source::load_with_cache(path, !args.no_cache)?;
+            let text = sillon::source::load_with_cache(path, !args.no_cache)?;
             for block in input::split_blocks(&text) {
                 builder.push_block(&block);
             }
@@ -271,7 +271,7 @@ fn read_input(
 fn read_clipboard() -> Result<String> {
     #[cfg(feature = "clipboard")]
     {
-        rs_reader::source::clipboard()
+        sillon::source::clipboard()
     }
     #[cfg(not(feature = "clipboard"))]
     {
@@ -288,9 +288,9 @@ fn adopt_installed_model(config: &mut Config, notices: &mut Vec<String>) {
     if !config.engine.model_path.trim().is_empty() {
         return;
     }
-    match rs_reader::models::first_installed() {
+    match sillon::models::first_installed() {
         Some(package) => {
-            if let Some(path) = rs_reader::models::install_path(package) {
+            if let Some(path) = sillon::models::install_path(package) {
                 config.engine.model_path = path.to_string_lossy().into_owned();
                 config.engine.family = package.family.to_string();
                 if config.engine.engine == "auto" {
@@ -299,7 +299,7 @@ fn adopt_installed_model(config: &mut Config, notices: &mut Vec<String>) {
             }
         }
         None => {
-            if !rs_reader::models::available().is_empty() {
+            if !sillon::models::available().is_empty() {
                 notices.push(
                     "aucun modèle installé — appuyez sur `s` pour en installer un".to_string(),
                 );

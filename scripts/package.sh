@@ -15,7 +15,7 @@ cargo build --release --features "$FEATURES"
 
 rm -rf "$OUT"
 mkdir -p "$OUT"
-cp target/release/reader "$OUT/"
+cp target/release/sillon "$OUT/"
 
 # Le nom du répertoire de build porte une empreinte, il faut le retrouver —
 # et chaque jeu de features laisse le sien : on prend le plus récent, sans
@@ -34,6 +34,6 @@ else
 fi
 
 echo "Vérification hors de l'arbre de compilation…"
-( cd "$OUT" && ./reader --show-config >/dev/null )
+( cd "$OUT" && ./sillon --show-config >/dev/null )
 echo "Prêt : $OUT/"
 ls -lh "$OUT"

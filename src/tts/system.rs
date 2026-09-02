@@ -24,7 +24,7 @@ struct TempFile(PathBuf);
 impl TempFile {
     fn new(extension: &str) -> Self {
         let id = COUNTER.fetch_add(1, Ordering::Relaxed);
-        let name = format!("rs-reader-{}-{}.{}", std::process::id(), id, extension);
+        let name = format!("sillon-{}-{}.{}", std::process::id(), id, extension);
         TempFile(std::env::temp_dir().join(name))
     }
 

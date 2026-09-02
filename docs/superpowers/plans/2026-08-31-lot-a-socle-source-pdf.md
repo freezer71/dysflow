@@ -182,7 +182,7 @@ mod tests {
 
     #[test]
     fn the_header_wins_over_the_extension() {
-        let path = std::env::temp_dir().join("rs-reader-menteur.txt");
+        let path = std::env::temp_dir().join("sillon-menteur.txt");
         std::fs::write(&path, b"%PDF-1.4\n1 0 obj\n").expect("écriture du témoin");
         let kind = of_path(&path);
         let _ = std::fs::remove_file(&path);
@@ -757,7 +757,7 @@ mod tests {
 
     #[test]
     fn a_text_file_comes_back_unchanged() {
-        let path = std::env::temp_dir().join("rs-reader-source-texte.md");
+        let path = std::env::temp_dir().join("sillon-source-texte.md");
         std::fs::write(&path, "# Titre\n\nUn paragraphe.\n").expect("écriture du témoin");
         let out = load(&path);
         let _ = std::fs::remove_file(&path);
@@ -773,7 +773,7 @@ mod tests {
 
     #[test]
     fn an_image_says_what_is_missing_rather_than_failing_flatly() {
-        let path = std::env::temp_dir().join("rs-reader-source-image.png");
+        let path = std::env::temp_dir().join("sillon-source-image.png");
         std::fs::write(&path, b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR").expect("écriture du témoin");
         let err = load(&path).unwrap_err();
         let _ = std::fs::remove_file(&path);
@@ -846,8 +846,8 @@ git commit -m "feat(source): router un chemin vers son extracteur"
 
 **Interfaces:**
 - Consumes: `source::load` (tâche 4), `input::split_blocks` (existant)
-- Produces: le comportement visible — `reader spec.pdf` et
-  `reader spec.pdf --to-markdown`
+- Produces: le comportement visible — `sillon spec.pdf` et
+  `sillon spec.pdf --to-markdown`
 
 - [x] **Step 1: Écrire le test de bout en bout qui échoue**
 
@@ -871,7 +871,7 @@ fn fixture(name: &str) -> PathBuf {
 
 #[test]
 fn the_binary_writes_the_extracted_markdown_and_stops() {
-    let out = Command::new(env!("CARGO_BIN_EXE_reader"))
+    let out = Command::new(env!("CARGO_BIN_EXE_sillon"))
         .arg(fixture("spec.pdf"))
         .arg("--to-markdown")
         .output()
@@ -889,8 +889,8 @@ fn the_binary_writes_the_extracted_markdown_and_stops() {
 
 #[test]
 fn a_pdf_becomes_markdown_the_reader_can_navigate() {
-    let markdown = rs_reader::source::load(&fixture("spec.pdf")).expect("le PDF doit se lire");
-    let blocks = rs_reader::input::split_blocks(&markdown);
+    let markdown = sillon::source::load(&fixture("spec.pdf")).expect("le PDF doit se lire");
+    let blocks = sillon::input::split_blocks(&markdown);
     assert!(
         blocks.len() >= 2,
         "le document doit se découper en blocs navigables, obtenu {} : {blocks:?}",
@@ -900,9 +900,9 @@ fn a_pdf_becomes_markdown_the_reader_can_navigate() {
 
 #[test]
 fn a_pdf_produces_sentences_to_speak() {
-    use rs_reader::doc::builder::{parse_document, CodePolicy};
+    use sillon::doc::builder::{parse_document, CodePolicy};
 
-    let markdown = rs_reader::source::load(&fixture("spec.pdf")).expect("le PDF doit se lire");
+    let markdown = sillon::source::load(&fixture("spec.pdf")).expect("le PDF doit se lire");
     let doc = parse_document(&markdown, CodePolicy::Announce);
     assert!(!doc.sentences.is_empty(), "aucune phrase à prononcer");
     let spoken: String = doc.sentences.iter().map(|s| s.text.as_str()).collect();
@@ -946,7 +946,7 @@ Dans `src/main.rs`, branche `Some(path)`, remplacez :
 par :
 
 ```rust
-            let text = rs_reader::source::load(path)?;
+            let text = sillon::source::load(path)?;
             if args.to_markdown {
                 print!("{text}");
                 return Ok(());

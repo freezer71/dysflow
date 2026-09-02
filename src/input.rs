@@ -157,7 +157,7 @@ pub fn split_blocks(markdown: &str) -> Vec<String> {
 /// Quand le contenu arrive par un tube, `stdin` n'est plus un terminal. La
 /// bibliothèque de terminal se rabat alors sur `/dev/tty` — et sur macOS,
 /// kqueue refuse ce descripteur avec `EINVAL` : le clavier devient muet dans le
-/// cas d'usage principal, `cat notes.md | reader`.
+/// cas d'usage principal, `cat notes.md | sillon`.
 ///
 /// L'alias `/dev/tty` n'est pas surveillable, mais le périphérique qu'il désigne
 /// l'est. On résout donc le vrai chemin (`/dev/ttys001`…) depuis une sortie

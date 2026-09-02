@@ -146,7 +146,7 @@ impl Default for ReadingConfig {
 impl Config {
     /// Emplacement du fichier de configuration.
     pub fn path() -> Option<PathBuf> {
-        dirs::config_dir().map(|d| d.join("rs-reader").join("config.toml"))
+        crate::paths::config_dir().map(|d| d.join("config.toml"))
     }
 
     /// Charge la configuration, ou renvoie les défauts.

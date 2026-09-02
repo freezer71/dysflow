@@ -6,7 +6,7 @@ use std::process::Command;
 fn pasting_text_asks_for_no_recognition() {
     // Le texte du presse-papiers n'a rien à reconnaître. L'exiger quand même
     // fermait la porte à tout binaire construit par défaut — le plus courant.
-    let out = Command::new(env!("CARGO_BIN_EXE_reader"))
+    let out = Command::new(env!("CARGO_BIN_EXE_sillon"))
         .args(["--clip", "--to-markdown"])
         .output()
         .expect("le binaire doit se lancer");

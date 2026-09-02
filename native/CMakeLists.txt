@@ -5,7 +5,7 @@
 # standard C++), là où un lien statique obligerait `build.rs` à reconstituer un
 # ordre d'édition de liens fragile.
 cmake_minimum_required(VERSION 3.20)
-project(rs_reader_audiocpp_shim CXX)
+project(sillon_audiocpp_shim CXX)
 
 if (NOT DEFINED AUDIOCPP_DIR)
     message(FATAL_ERROR "AUDIOCPP_DIR doit pointer sur l'arbre source d'audio.cpp")

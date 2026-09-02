@@ -1,5 +1,5 @@
 [package]
-name = "rs-reader"
+name = "sillon"
 version = "0.2.0"
 edition = "2021"
 rust-version = "1.80"
@@ -51,7 +51,7 @@ clipboard = ["dep:arboard"]
 ocr = ["dep:tesseract-rs", "dep:image", "clipboard"]
 
 [[bin]]
-name = "reader"
+name = "sillon"
 path = "src/main.rs"
 
 [profile.release]

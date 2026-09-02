@@ -9,15 +9,15 @@ fn main() {
     println!("cargo:rerun-if-changed=native/audiocpp_shim.cpp");
     println!("cargo:rerun-if-changed=native/audiocpp_shim.h");
     println!("cargo:rerun-if-changed=native/CMakeLists.txt");
-    println!("cargo:rerun-if-env-changed=RS_READER_AUDIOCPP_DIR");
-    println!("cargo:rerun-if-env-changed=RS_READER_TTS_FAMILIES");
+    println!("cargo:rerun-if-env-changed=SILLON_AUDIOCPP_DIR");
+    println!("cargo:rerun-if-env-changed=SILLON_TTS_FAMILIES");
 
     #[cfg(feature = "audio-cpp")]
     build_audio_cpp();
 
     // Le catalogue de modèles ne propose que des familles chargeables.
     #[cfg(not(feature = "audio-cpp"))]
-    println!("cargo:rustc-env=RS_READER_COMPILED_FAMILIES=");
+    println!("cargo:rustc-env=SILLON_COMPILED_FAMILIES=");
 }
 
 #[cfg(feature = "audio-cpp")]
@@ -25,7 +25,7 @@ fn build_audio_cpp() {
     use std::path::PathBuf;
 
     let manifest = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
-    let vendor = std::env::var("RS_READER_AUDIOCPP_DIR")
+    let vendor = std::env::var("SILLON_AUDIOCPP_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|_| manifest.join("vendor/audio.cpp"));
 
@@ -35,7 +35,7 @@ fn build_audio_cpp() {
              Récupérez-le puis relancez :\n  \
              git submodule add https://github.com/0xShug0/audio.cpp vendor/audio.cpp\n  \
              git submodule update --init --recursive\n\n\
-             Ou indiquez un arbre existant : RS_READER_AUDIOCPP_DIR=/chemin/vers/audio.cpp\n\n\
+             Ou indiquez un arbre existant : SILLON_AUDIOCPP_DIR=/chemin/vers/audio.cpp\n\n\
              Sans la feature `audio-cpp`, le lecteur se construit sans rien de tout cela.",
             vendor.display()
         );
@@ -46,9 +46,9 @@ fn build_audio_cpp() {
     // Ne compiler que les familles utiles : « full » construirait 62 familles.
     // Chaque famille ajoutée allonge la compilation et grossit la bibliothèque ;
     // on ne compile que celles que le catalogue propose réellement.
-    let families = std::env::var("RS_READER_TTS_FAMILIES")
+    let families = std::env::var("SILLON_TTS_FAMILIES")
         .unwrap_or_else(|_| "supertonic,magpie_tts".to_string());
-    println!("cargo:rustc-env=RS_READER_COMPILED_FAMILIES={families}");
+    println!("cargo:rustc-env=SILLON_COMPILED_FAMILIES={families}");
 
     let mut config = cmake::Config::new(manifest.join("native"));
     config
@@ -113,7 +113,7 @@ fn patch_gguf_bulk_read(vendor: &std::path::Path) {
     let Ok(bytes) = std::fs::read(&path) else {
         return;
     };
-    let marker = b"rs-reader: one fread";
+    let marker = b"sillon: one fread";
     if find(&bytes, marker).is_some() {
         return;
     }
@@ -128,7 +128,7 @@ fn patch_gguf_bulk_read(vendor: &std::path::Path) {
         let new = [
             "        dst.resize(n);",
             "        if constexpr (!std::is_same<T, bool>::value && !std::is_same<T, std::string>::value) {",
-            "            // rs-reader: one fread instead of one per element. Plain arrays are",
+            "            // sillon: one fread instead of one per element. Plain arrays are",
             "            // contiguous on disk and in memory; a 54 MB uint8 blob otherwise",
             "            // costs 57 million locked fread calls.",
             "            const size_t size = n * sizeof(T);",

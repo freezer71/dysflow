@@ -6,9 +6,9 @@
 //! DOC=chemin.md cargo test --test document_probe -- --ignored --nocapture
 //! ```
 
-use rs_reader::doc::builder::CodePolicy;
-use rs_reader::doc::DocumentBuilder;
-use rs_reader::input;
+use sillon::doc::builder::CodePolicy;
+use sillon::doc::DocumentBuilder;
+use sillon::input;
 
 #[test]
 #[ignore = "sonde : demande un document"]

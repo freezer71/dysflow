@@ -8,8 +8,8 @@
 //! cargo test --release --features audio-cpp --test startup_timing -- --ignored --nocapture
 //! ```
 
-use rs_reader::config::Config;
-use rs_reader::tts::{self, TtsEngine};
+use sillon::config::Config;
+use sillon::tts::{self, TtsEngine};
 use std::sync::{Arc, Barrier};
 use std::thread;
 use std::time::Instant;
@@ -48,7 +48,7 @@ fn where_the_startup_seconds_go() {
     println!("backend   : {}", settings.backend);
     println!("sessions  : {sessions}");
 
-    let quiet = rs_reader::logging::redirect_stderr();
+    let quiet = sillon::logging::redirect_stderr();
     let t0 = Instant::now();
     let (engine, notice) = tts::build_engine(config.engine_preference(), &settings);
     let built = t0.elapsed();
@@ -116,8 +116,8 @@ fn where_the_startup_seconds_go() {
 #[test]
 #[ignore = "banc de mesure"]
 fn what_the_parsing_costs_before_the_model_starts_loading() {
-    use rs_reader::doc::DocumentBuilder;
-    use rs_reader::input;
+    use sillon::doc::DocumentBuilder;
+    use sillon::input;
 
     let readme = std::fs::read_to_string("README.md").expect("README");
     for (label, text) in [
@@ -126,7 +126,7 @@ fn what_the_parsing_costs_before_the_model_starts_loading() {
         ("×100 (1,3 Mo)", readme.repeat(100)),
     ] {
         let start = Instant::now();
-        let mut builder = DocumentBuilder::new(rs_reader::doc::builder::CodePolicy::Announce);
+        let mut builder = DocumentBuilder::new(sillon::doc::builder::CodePolicy::Announce);
         for block in input::split_blocks(&text) {
             builder.push_block(&block);
         }
@@ -150,7 +150,7 @@ fn what_the_parsing_costs_before_the_model_starts_loading() {
 #[test]
 #[ignore = "banc de mesure : demande un modèle installé"]
 fn what_the_pool_costs_before_the_first_sound() {
-    use rs_reader::tts::Synthesizer;
+    use sillon::tts::Synthesizer;
     use std::time::Duration;
 
     let (config, _) = Config::load();
@@ -161,7 +161,7 @@ fn what_the_pool_costs_before_the_first_sound() {
         .and_then(|v| v.parse().ok())
         .unwrap_or(settings.sessions.max(1) as usize);
 
-    let quiet = rs_reader::logging::redirect_stderr();
+    let quiet = sillon::logging::redirect_stderr();
     let (engine, _) = tts::build_engine(config.engine_preference(), &settings);
     // Le chargement du modèle est commun à toutes les mesures : on l'attend
     // avant de lancer le chrono, pour ne compter que le pool.
@@ -205,7 +205,7 @@ fn what_the_model_alone_weighs_and_what_reopening_costs() {
     let (config, _) = Config::load();
     let settings = config.engine_settings();
     let params = config.tts_params();
-    let quiet = rs_reader::logging::redirect_stderr();
+    let quiet = sillon::logging::redirect_stderr();
     let (engine, _) = tts::build_engine(config.engine_preference(), &settings);
     while engine.name().contains("chargement") {
         thread::sleep(Duration::from_millis(5));

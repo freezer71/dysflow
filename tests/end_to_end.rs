@@ -8,9 +8,9 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
-use rs_reader::doc::builder::{parse_document, CodePolicy};
-use rs_reader::doc::BlockKind;
-use rs_reader::tts::{PcmBuffer, Synthesizer, TtsEngine, TtsParams, TtsSession};
+use sillon::doc::builder::{parse_document, CodePolicy};
+use sillon::doc::BlockKind;
+use sillon::tts::{PcmBuffer, Synthesizer, TtsEngine, TtsParams, TtsSession};
 
 /// Moteur dont la durée produite est proportionnelle au texte, et inversement
 /// proportionnelle au débit demandé.
@@ -122,8 +122,8 @@ fn full_document_pipeline_preserves_every_kind_of_content() {
 
 #[test]
 fn streamed_input_matches_a_single_pass() {
-    use rs_reader::doc::DocumentBuilder;
-    use rs_reader::input::BlockAssembler;
+    use sillon::doc::DocumentBuilder;
+    use sillon::input::BlockAssembler;
 
     let mut assembler = BlockAssembler::new();
     let mut builder = DocumentBuilder::new(CodePolicy::Announce);

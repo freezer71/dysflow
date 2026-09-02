@@ -180,7 +180,7 @@ nouveau.
 ## Cache
 
 Relire une spec sur plusieurs jours ne doit pas refaire l'OCR. Le markdown
-reconstruit est mémorisé dans `dirs::cache_dir()/rs-reader/`, sous une clé
+reconstruit est mémorisé dans `dirs::cache_dir()/sillon/`, sous une clé
 dérivée de la taille, de la date de modification et des premiers kilo-octets du
 fichier. Aucune dépendance nouvelle : `DefaultHasher` de la bibliothèque
 standard suffit, il ne s'agit pas de cryptographie.
@@ -207,11 +207,11 @@ Ligne de commande :
 
 | Commande | Effet |
 |---|---|
-| `reader spec.pdf` | Inchangé dans l'usage |
-| `reader capture.png` | OCR puis lecture |
-| `reader scans/` | Dossier d'images, en ordre naturel |
-| `reader --clip` | Presse-papiers, image ou texte |
-| `reader spec.pdf --to-markdown` | Écrit le markdown et quitte |
+| `sillon spec.pdf` | Inchangé dans l'usage |
+| `sillon capture.png` | OCR puis lecture |
+| `sillon scans/` | Dossier d'images, en ordre naturel |
+| `sillon --clip` | Presse-papiers, image ou texte |
+| `sillon spec.pdf --to-markdown` | Écrit le markdown et quitte |
 | `--no-cache` | Refait l'extraction |
 
 Configuration : une sixième rubrique **Documents**, pour ne pas mêler ces
@@ -244,7 +244,7 @@ Chaque échec dit quoi faire, jamais seulement qu'il a échoué :
 | `pdf.rs` | Fixture PDF minimale : extraction et découpage en pages |
 | `ocr.rs` | Fixture image française : **les accents doivent survivre**. Le test de non-régression qui compte, et il tourne sur les trois cibles |
 | `cache.rs` | Écriture puis relecture |
-| Bout en bout | `reader fixture.pdf --to-markdown` |
+| Bout en bout | `sillon fixture.pdf --to-markdown` |
 
 ## Lots
 

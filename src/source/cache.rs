@@ -32,7 +32,7 @@ pub fn fingerprint(path: &Path) -> Result<String> {
 
 /// Répertoire du cache, créé au besoin.
 fn dir() -> Option<PathBuf> {
-    let dir = dirs::cache_dir()?.join("rs-reader").join("documents");
+    let dir = crate::paths::cache_dir()?.join("documents");
     std::fs::create_dir_all(&dir).ok()?;
     Some(dir)
 }
@@ -83,7 +83,7 @@ mod tests {
 
     #[test]
     fn what_is_written_comes_back() {
-        let key = "essai-du-cache-rs-reader";
+        let key = "essai-du-cache-sillon";
         write(key, "## Titre\n\nDu texte.");
         assert_eq!(read(key).as_deref(), Some("## Titre\n\nDu texte."));
     }

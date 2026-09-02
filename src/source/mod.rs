@@ -98,7 +98,7 @@ mod tests {
 
     #[test]
     fn a_text_file_comes_back_unchanged() {
-        let path = std::env::temp_dir().join("rs-reader-source-texte.md");
+        let path = std::env::temp_dir().join("sillon-source-texte.md");
         std::fs::write(&path, "# Titre\n\nUn paragraphe.\n").expect("écriture du témoin");
         let out = load(&path);
         let _ = std::fs::remove_file(&path);
@@ -145,7 +145,7 @@ mod tests {
     #[cfg(not(feature = "ocr"))]
     #[test]
     fn an_image_says_the_binary_was_built_without_ocr() {
-        let path = std::env::temp_dir().join("rs-reader-source-image.png");
+        let path = std::env::temp_dir().join("sillon-source-image.png");
         std::fs::write(&path, b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR").expect("écriture du témoin");
         let err = load(&path).unwrap_err();
         let _ = std::fs::remove_file(&path);

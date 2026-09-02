@@ -1112,7 +1112,7 @@ Ajoutez dans `tests/pdf_input.rs` :
 ```rust
 #[test]
 fn a_laid_out_pdf_is_rebuilt_into_readable_markdown() {
-    let markdown = rs_reader::source::load(&fixture("rapport.pdf")).expect("le PDF doit se lire");
+    let markdown = sillon::source::load(&fixture("rapport.pdf")).expect("le PDF doit se lire");
 
     assert!(
         !markdown.contains("Confidentiel"),
@@ -1150,9 +1150,9 @@ fn a_laid_out_pdf_is_rebuilt_into_readable_markdown() {
 
 #[test]
 fn the_rebuilt_pdf_fills_the_table_of_contents() {
-    use rs_reader::doc::builder::{parse_document, CodePolicy};
+    use sillon::doc::builder::{parse_document, CodePolicy};
 
-    let markdown = rs_reader::source::load(&fixture("rapport.pdf")).expect("le PDF doit se lire");
+    let markdown = sillon::source::load(&fixture("rapport.pdf")).expect("le PDF doit se lire");
     let doc = parse_document(&markdown, CodePolicy::Announce);
     assert!(
         doc.sections.len() >= 4,
