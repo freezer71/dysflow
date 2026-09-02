@@ -30,16 +30,20 @@ pub fn show(ui: &mut Ui, gui: &mut Gui, palette: &Palette) -> Actions {
         ui.separator();
 
         let doc = gui.app.doc();
-        let section = doc
-            .section_of_sentence(gui.app.current_sentence())
-            .map(|s| s.title.clone())
-            .unwrap_or_default();
-        let title = doc.title.clone();
-        ui.label(RichText::new(&title).strong().color(palette.bright));
-        ui.label(RichText::new(&gui.app.source).color(palette.dim));
-        if !section.is_empty() && section != title {
-            ui.label(RichText::new("▸").color(palette.faint));
-            ui.label(RichText::new(section).color(palette.accent));
+        if doc.is_empty() && gui.app.input_complete() {
+            ui.label(RichText::new("Aucun document").color(palette.faint));
+        } else {
+            let section = doc
+                .section_of_sentence(gui.app.current_sentence())
+                .map(|s| s.title.clone())
+                .unwrap_or_default();
+            let title = doc.title.clone();
+            ui.label(RichText::new(&title).strong().color(palette.bright));
+            ui.label(RichText::new(&gui.app.source).color(palette.dim));
+            if !section.is_empty() && section != title {
+                ui.label(RichText::new("▸").color(palette.faint));
+                ui.label(RichText::new(section).color(palette.accent));
+            }
         }
         if !gui.app.input_complete() {
             ui.label(RichText::new("⟳ flux").color(palette.dim));

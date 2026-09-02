@@ -17,11 +17,15 @@ mod help;
 #[cfg(feature = "gui")]
 mod keys;
 #[cfg(feature = "gui")]
+mod open;
+#[cfg(feature = "gui")]
 mod panel;
 #[cfg(feature = "gui")]
 mod player;
 #[cfg(feature = "gui")]
 mod reader;
+#[cfg(feature = "gui")]
+mod settings;
 #[cfg(feature = "gui")]
 mod theme;
 #[cfg(feature = "gui")]

@@ -105,9 +105,12 @@ fn controls(ui: &mut Ui, app: &mut App, palette: &Palette) {
     {
         app.toggle_mute();
     }
-    let mut volume = f64::from(app.player.volume());
+    let before = f64::from(app.player.volume());
+    let mut volume = before;
     let slider = ui.add(Slider::new(&mut volume, 0.0..=1.0).show_value(false).step_by(0.05));
-    if slider.changed() {
+    // Le curseur arrondit au pas dès le premier dessin : seul un vrai
+    // déplacement compte.
+    if slider.changed() && (volume - before).abs() > 1e-6 {
         app.config_set_number(Field::Volume, Some(volume));
     }
     ui.label(
@@ -207,7 +210,7 @@ pub fn status(ui: &mut Ui, app: &mut App, palette: &Palette, opening: Option<&st
                     .color(palette.dim),
             );
         }
-        if app.is_finished() {
+        if app.is_finished() && !app.doc().is_empty() {
             ui.label(RichText::new("· lecture terminée").color(palette.dim));
         }
     });
