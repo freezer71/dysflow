@@ -102,5 +102,3 @@ pub fn has_italic(font: &str) -> bool {
     matches!(font, ATKINSON | OPENDYSLEXIC)
 }
 
-#[allow(dead_code)]
-pub const ALL: &[&str] = &[ATKINSON, OPENDYSLEXIC, DEFAULT];

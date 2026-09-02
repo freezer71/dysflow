@@ -8,6 +8,7 @@ use std::time::{Duration, Instant};
 
 use eframe::egui::{self, ComboBox, ProgressBar, RichText, ScrollArea, Slider, TextEdit, Ui};
 
+use super::fonts;
 use super::theme::Palette;
 use super::window::Gui;
 use crate::app::config::{Control, Field, Page, Section};
@@ -293,9 +294,9 @@ fn display(ui: &mut Ui, gui: &mut Gui, palette: &Palette) {
 
     labelled(ui, palette, "Police de lecture", |ui| {
         let names = [
-            ("atkinson", "Atkinson Hyperlegible"),
-            ("opendyslexic", "OpenDyslexic"),
-            ("default", "Standard"),
+            (fonts::ATKINSON, "Atkinson Hyperlegible"),
+            (fonts::OPENDYSLEXIC, "OpenDyslexic"),
+            (fonts::DEFAULT, "Standard"),
         ];
         let shown = names
             .iter()

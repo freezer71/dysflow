@@ -3,7 +3,7 @@
 //! L'organisation suit le trajet du texte :
 //!
 //! ```text
-//! entrée ──▶ doc ──▶ tts ──▶ audio ──▶ app ──▶ tui
+//! entrée ──▶ doc ──▶ tts ──▶ audio ──▶ app ──▶ tui | gui
 //! (flux,    (blocs,  (pool    (sortie,  (état,   (rendu,
 //!  blocs)   phrases) parallèle) position) commandes) touches)
 //! ```

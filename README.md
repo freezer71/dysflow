@@ -288,6 +288,42 @@ Sans modèle installé — ou sans la feature — le lecteur se replie sur la vo
 système (`say` sur macOS, `espeak-ng` ailleurs). La barre d'état affiche alors
 `⚠ voix système` et la marche à suivre, en permanence.
 
+## Interface graphique
+
+`sillon-gui` est le même lecteur dans une fenêtre : mêmes touches, mêmes
+réglages, même moteur. Ce que la fenêtre ajoute, c'est ce qu'un terminal ne
+peut pas donner à qui lit en écoutant :
+
+- une police faite pour la lisibilité, embarquée — Atkinson Hyperlegible par
+  défaut, OpenDyslexic au choix — et une taille de texte réglable ;
+- un interlignage réel, en fraction de ligne, et une règle de lecture qui passe
+  derrière la ligne entière ;
+- un mot prononcé qui ne fait pas bouger la ligne : il change de fond et de
+  couleur, jamais de graisse ;
+- un clic sur un mot, qui y envoie la voix ; un clic sur la barre de
+  progression ; un sommaire et des signets cliquables ;
+- **Ouvrir…**, un fichier déposé sur la fenêtre, le presse-papiers.
+
+```bash
+cargo build --release --features gui,audio-cpp,ocr
+./target/release/sillon-gui rapport.pdf
+FEATURES=audio-cpp,ocr,gui ./scripts/install.sh     # pose aussi sillon-gui
+```
+
+La rubrique **Affichage** des réglages porte la police, la taille,
+l'interlignage et le thème — sombre par défaut, clair au choix. Ils vivent dans
+la section `[gui]` du `config.toml`. Les autres rubriques sont celles du
+terminal, en curseurs et listes.
+
+Sur macOS, `scripts/package.sh` assemble aussi `dist/Sillon.app`, à glisser
+dans le Dock ; sur Linux, un `sillon.desktop`. La fenêtre s'appuie sur egui
+(wgpu : Metal, Vulkan ou OpenGL) et ne demande aucune bibliothèque à installer.
+La conception est dans `docs/superpowers/specs/2026-09-02-interface-graphique-design.md`.
+
+Pour vérifier un rendu sans regarder l'écran, `SILLON_GUI_CAPTURE=/tmp/x.png`
+fait enregistrer la trame par la fenêtre elle-même après une seconde et demie,
+puis quitte.
+
 ## Contrôles
 
 | Touche | Effet |
@@ -534,7 +570,7 @@ Les mêmes réglages existent en ligne de commande (`--voice`, `--speed`,
 ## Architecture
 
 ```
-entrée ──▶ doc ──▶ tts ──▶ audio ──▶ app ──▶ tui
+entrée ──▶ doc ──▶ tts ──▶ audio ──▶ app ──▶ tui | gui
 (flux,    (blocs,  (pool    (sortie,  (état,   (rendu,
  blocs)   phrases) parallèle) position) commandes) touches)
 ```
@@ -550,6 +586,7 @@ entrée ──▶ doc ──▶ tts ──▶ audio ──▶ app ──▶ tui
 - `audio` — file de sortie et position déduite du son réellement joué.
 - `app` — le contrôleur : document, lecture, recherche, signets, écran de configuration. Il ne connaît aucun écran.
 - `tui` — rendu ratatui du contrôleur, adaptation des touches.
+- `gui` — rendu egui du contrôleur : fenêtre, polices embarquées, réglages en widgets.
 
 Les sorties de ggml sont détournées vers
 `~/.local/share/sillon/sillon.log` : en plein écran, elles disloqueraient le

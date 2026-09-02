@@ -7,6 +7,7 @@
 #   ./scripts/install.sh                          # ~/.local, sans droits
 #   PREFIX=/usr/local sudo -E ./scripts/install.sh
 #   FEATURES=audio-cpp ./scripts/install.sh       # sans reconnaissance de texte
+#   FEATURES=audio-cpp,ocr,gui ./scripts/install.sh   # avec la fenêtre : sillon-gui
 #
 # Pour désinstaller : rm $PREFIX/bin/sillon $PREFIX/lib/libaudiocpp_shim.*
 set -e
@@ -27,6 +28,20 @@ echo "Vérification hors de l'arbre de compilation…"
 ( cd / && "$PREFIX/bin/sillon" --show-config >/dev/null )
 
 echo "Installé : $PREFIX/bin/sillon"
+
+if [ -f dist/sillon-gui ]; then
+    install -m 755 dist/sillon-gui "$PREFIX/bin/sillon-gui"
+    ( cd / && "$PREFIX/bin/sillon-gui" --show-config >/dev/null )
+    echo "Installé : $PREFIX/bin/sillon-gui"
+    if [ -f dist/sillon.desktop ]; then
+        mkdir -p "$HOME/.local/share/applications"
+        install -m 644 dist/sillon.desktop "$HOME/.local/share/applications/sillon.desktop"
+        echo "Installé : ~/.local/share/applications/sillon.desktop"
+    fi
+    if [ -d dist/Sillon.app ]; then
+        echo "Bundle : dist/Sillon.app — à glisser dans /Applications pour l'avoir dans le Dock."
+    fi
+fi
 case ":$PATH:" in
     *":$PREFIX/bin:"*) ;;
     *)
