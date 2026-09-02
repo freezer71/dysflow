@@ -9,8 +9,9 @@ use std::sync::mpsc::{channel, Receiver, TryRecvError};
 use anyhow::Result;
 use eframe::egui::{self, Align2, Color32, RichText, Ui};
 
-use super::header::Actions;
-use super::pixel::{self, Button};
+use super::icons::Icon;
+use super::sidebar::Actions;
+use super::widgets::Button;
 use super::theme::Palette;
 use super::window::Gui;
 use crate::doc::DocumentBuilder;
@@ -126,25 +127,23 @@ pub fn empty_state(ui: &mut Ui, gui: &Gui, palette: &Palette) -> Actions {
     let mut actions = Actions::default();
     ui.add_space(ui.available_height() * 0.3);
     ui.vertical_centered(|ui| {
-        ui.label(RichText::new("sillon").size(40.0).color(palette.accent).strong());
+        ui.label(RichText::new("sillon").size(28.0).color(palette.accent).strong());
         ui.label(
             RichText::new("Un document à lire, à écouter, à suivre des yeux.").color(palette.dim),
         );
-        ui.add_space(24.0);
+        ui.add_space(20.0);
         ui.horizontal(|ui| {
-            ui.add_space((ui.available_width() - 470.0).max(0.0) / 2.0);
-            if Button::icon(&pixel::FOLDER)
+            ui.add_space((ui.available_width() - 330.0).max(0.0) / 2.0);
+            if Button::icon(Icon::Folder)
                 .label("Ouvrir un fichier")
                 .primary()
-                .big()
                 .show(ui, palette)
                 .clicked()
             {
                 actions.open_file = true;
             }
-            if Button::icon(&pixel::CLIPBOARD)
+            if Button::icon(Icon::Clipboard)
                 .label("Lire le presse-papiers")
-                .big()
                 .show(ui, palette)
                 .clicked()
             {
@@ -154,13 +153,14 @@ pub fn empty_state(ui: &mut Ui, gui: &Gui, palette: &Palette) -> Actions {
         ui.add_space(12.0);
         ui.label(
             RichText::new("ou déposez un fichier sur la fenêtre — markdown, texte, PDF, image")
+                .small()
                 .color(palette.faint),
         );
         if let Some(opening) = &gui.opening {
             ui.add_space(12.0);
             ui.horizontal(|ui| {
-                ui.add_space((ui.available_width() - 260.0).max(0.0) / 2.0);
-                ui.add(egui::Spinner::new().color(palette.accent));
+                ui.add_space((ui.available_width() - 220.0).max(0.0) / 2.0);
+                ui.add(egui::Spinner::new().size(14.0).color(palette.accent));
                 ui.label(
                     RichText::new(format!("extraction de {}…", opening.name)).color(palette.accent),
                 );

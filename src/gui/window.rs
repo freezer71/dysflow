@@ -1,26 +1,28 @@
 //! La fenêtre : une trame est un tour du contrôleur, puis les zones.
 //!
-//! Pour vérifier le rendu sans passer par l'écran, `SILLON_GUI_CAPTURE=/x.png`
-//! fait enregistrer la trame par la fenêtre elle-même après une seconde et
-//! demie — ou `SILLON_GUI_CAPTURE_AFTER_MS` —, puis quitte.
+//! De gauche à droite : la barre latérale, le texte lu avec sa carte de
+//! lecture, la note. Pour vérifier le rendu sans passer par l'écran,
+//! `SILLON_GUI_CAPTURE=/x.png` fait enregistrer la trame par la fenêtre
+//! elle-même après une seconde et demie — ou `SILLON_GUI_CAPTURE_AFTER_MS` —,
+//! puis quitte ; mieux, les rendus hors écran de `snapshot`.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, Result};
-use eframe::egui::{self, CentralPanel, Panel, ViewportBuilder};
+use eframe::egui::{self, CentralPanel, Frame, Panel, Stroke, ViewportBuilder};
 
+use super::notes::Note;
 use super::reader::Reader;
 use super::settings::Rubric;
-use super::{fonts, header, help, keys, open, panel, pixel, player, settings, theme};
-use crate::app::{App, Panel as AppPanel};
+use super::{fonts, header, help, keys, notes, open, player, settings, sidebar, theme};
+use crate::app::App;
 
 pub struct Gui {
     pub(super) app: App,
-    /// Police, thème et taille appliqués au contexte : on ne refait que ce
-    /// qui change.
-    applied: Option<(String, String, f32)>,
+    /// Police et thème appliqués au contexte : on ne refait que ce qui change.
+    applied: Option<(String, String)>,
     /// Capture demandée par l'environnement : chemin, départ, déjà demandée,
     /// fenêtre déjà passée devant.
     capture: Option<(PathBuf, Instant, bool, bool)>,
@@ -32,6 +34,10 @@ pub struct Gui {
     pub(super) search_open: bool,
     pub(super) search_text: String,
     pub(super) focus_search: bool,
+    pub(super) sidebar_open: bool,
+    pub(super) notes_open: bool,
+    pub(super) focus_note: bool,
+    pub(super) note: Note,
     /// Rubrique de configuration ouverte.
     pub(super) rubric: Rubric,
     /// Vrai à la trame précédente : pour caler la rubrique quand l'écran s'ouvre.
@@ -44,7 +50,7 @@ pub struct Gui {
     pub(super) opening: Option<open::Opening>,
     /// Un fichier survole la fenêtre.
     pub(super) hovering_file: bool,
-    /// Où le bouton « Plus » s'est dessiné : les tests hors écran cliquent là.
+    /// Où le bouton `⋯` s'est dessiné : les tests hors écran cliquent là.
     pub(super) more_rect: Option<egui::Rect>,
 }
 
@@ -53,8 +59,8 @@ pub fn run(app: App) -> Result<()> {
         viewport: ViewportBuilder::default()
             .with_title("sillon")
             .with_app_id("org.koumalabs.sillon")
-            .with_inner_size([1100.0, 760.0])
-            .with_min_inner_size([640.0, 420.0])
+            .with_inner_size([1180.0, 760.0])
+            .with_min_inner_size([720.0, 420.0])
             .with_drag_and_drop(true),
         ..Default::default()
     };
@@ -77,6 +83,8 @@ impl Gui {
         let capture = std::env::var_os("SILLON_GUI_CAPTURE")
             .map(|path| (PathBuf::from(path), Instant::now(), false, false));
         let last_source = app.source.clone();
+        let mut note = Note::new();
+        note.sync(&app.source, &app.doc().title);
         Self {
             app,
             applied: None,
@@ -86,6 +94,10 @@ impl Gui {
             search_open: false,
             search_text: String::new(),
             focus_search: false,
+            sidebar_open: true,
+            notes_open: false,
+            focus_note: false,
+            note,
             rubric: Rubric::Section(0),
             config_was_open: false,
             edits: HashMap::new(),
@@ -138,14 +150,14 @@ impl Gui {
     /// Met le contexte au diapason de la configuration quand elle change.
     fn refresh_theme(&mut self, ctx: &egui::Context) {
         let gui = &self.app.config.gui;
-        let wanted = (gui.font.clone(), gui.theme.clone(), gui.font_size());
+        let wanted = (gui.font.clone(), gui.theme.clone());
         if self.applied.as_ref() == Some(&wanted) {
             return;
         }
         if self.applied.as_ref().map(|a| &a.0) != Some(&wanted.0) {
             fonts::install(ctx, &wanted.0);
         }
-        theme::apply(ctx, &wanted.1, wanted.2);
+        theme::apply(ctx, &wanted.1);
         self.applied = Some(wanted);
     }
 }
@@ -157,6 +169,7 @@ impl Gui {
     pub(super) fn advance(&mut self, ctx: &egui::Context) {
         self.app.tick();
         open::poll(self);
+        self.note.tick();
         if self.app.should_quit {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
@@ -186,6 +199,7 @@ impl Gui {
             self.reader.reset();
             self.last_source = self.app.source.clone();
         }
+        self.note.sync(&self.app.source, &self.app.doc().title);
 
         let requests = keys::dispatch(&ctx, &mut self.app);
         if requests.page != 0 {
@@ -194,6 +208,13 @@ impl Gui {
         if requests.focus_search {
             self.search_open = true;
             self.focus_search = true;
+        }
+        if requests.toggle_sidebar {
+            self.sidebar_open = !self.sidebar_open;
+        }
+        if requests.toggle_notes {
+            self.notes_open = !self.notes_open;
+            self.focus_note = self.notes_open;
         }
         if requests.escape {
             self.search_open = false;
@@ -207,56 +228,113 @@ impl Gui {
         }
         self.config_was_open = self.app.show_config;
 
-        let mut actions =
-            Panel::top("header").show(ui, |ui| header::show(ui, self, &palette)).inner;
-        // Les panneaux du bas se posent de l'extérieur vers l'intérieur : la
-        // ligne d'état tout en bas, la barre de lecture au-dessus.
-        let opening = self.opening.as_ref().map(|o| o.name.clone());
-        // Une hauteur fixe : la ligne d'état se tait sans faire sauter le texte.
-        let status_h = pixel::step(ui) * 14.0 + 6.0;
-        Panel::bottom("status").exact_size(status_h).show(ui, |ui| {
-            player::status(ui, &mut self.app, &palette, opening.as_deref())
-        });
-        let bar = Panel::bottom("player").show(ui, |ui| player::show(ui, self, &palette)).inner;
-        if bar.open_search {
-            self.search_open = true;
-            self.focus_search = true;
+        let mut open_file = requests.open_file;
+        let mut paste = requests.paste;
+        if self.sidebar_open {
+            let side = Frame::new().fill(palette.panel).inner_margin(egui::Margin::symmetric(8, 10));
+            let actions = Panel::left("sidebar")
+                .exact_size(sidebar::WIDTH)
+                .resizable(false)
+                .show_separator_line(false)
+                .frame(side)
+                .show(ui, |ui| sidebar::show(ui, self, &palette))
+                .inner;
+            open_file |= actions.open_file;
+            paste |= actions.paste;
+            edge(ui, &palette, Side::Right);
         }
-        if self.app.panel != AppPanel::None && !self.app.show_config {
-            Panel::right("panneau")
-                .default_size(320.0)
-                .show(ui, |ui| panel::show(ui, &mut self.app, &palette));
+        let top = Frame::new().fill(palette.background).inner_margin(egui::Margin::symmetric(12, 8));
+        Panel::top("header")
+            .exact_size(header::HEIGHT)
+            .show_separator_line(false)
+            .frame(top)
+            .show(ui, |ui| header::show(ui, self, &palette));
+        edge(ui, &palette, Side::Bottom);
+        if self.notes_open && !self.app.show_config {
+            let side = Frame::new().fill(palette.panel).inner_margin(egui::Margin::symmetric(12, 10));
+            Panel::right("note")
+                .default_size(300.0)
+                .size_range(220.0..=520.0)
+                .show_separator_line(false)
+                .frame(side)
+                .show(ui, |ui| notes::show(ui, self, &palette));
+            edge(ui, &palette, Side::Left);
         }
+
         let empty = self.app.doc().is_empty() && self.app.input_complete();
         if self.app.show_config {
             CentralPanel::default()
-                .frame(egui::Frame::new().fill(palette.background))
+                .frame(Frame::new().fill(palette.background).inner_margin(20.0))
                 .show(ui, |ui| settings::show(ui, self, &palette));
         } else {
             CentralPanel::default()
-                .frame(egui::Frame::new().fill(palette.background).inner_margin(16.0))
+                .frame(Frame::new().fill(palette.background))
                 .show(ui, |ui| {
-                    if empty {
-                        let more = open::empty_state(ui, self, &palette);
-                        actions.open_file |= more.open_file;
-                        actions.paste |= more.paste;
-                    } else {
-                        self.reader.show(ui, &mut self.app, &palette);
+                    // Sans document, pas de carte : rien à lire, rien à faire avancer.
+                    if !empty {
+                        let opening = self.opening.as_ref().map(|o| o.name.clone());
+                        let below =
+                            Frame::new().inner_margin(egui::Margin { left: 16, right: 16, top: 0, bottom: 14 });
+                        let actions = Panel::bottom("carte")
+                            .show_separator_line(false)
+                            .frame(below)
+                            .show(ui, |ui| player::show(ui, self, &palette, opening.as_deref()))
+                            .inner;
+                        if actions.open_search {
+                            self.search_open = true;
+                            self.focus_search = true;
+                        }
+                        if actions.add_marker {
+                            self.note.add_marker(&self.app);
+                            self.notes_open = true;
+                            self.focus_note = true;
+                        }
                     }
+                    CentralPanel::default()
+                        .frame(Frame::new().fill(palette.background).inner_margin(egui::Margin::symmetric(16, 8)))
+                        .show(ui, |ui| {
+                            if empty {
+                                let more = open::empty_state(ui, self, &palette);
+                                open_file |= more.open_file;
+                                paste |= more.paste;
+                            } else {
+                                self.reader.show(ui, &mut self.app, &palette);
+                            }
+                        });
                 });
         }
         help::show(&ctx, &mut self.app, &palette);
         open::drop_overlay(&ctx, self, &palette);
 
-        if actions.open_file || requests.open_file {
+        if open_file {
             if let Some(path) = open::pick_file() {
                 open::start_path(self, path);
             }
         }
-        if actions.paste || requests.paste {
+        if paste {
             open::start_clipboard(self);
         }
     }
+}
+
+#[derive(Clone, Copy)]
+enum Side {
+    Right,
+    Bottom,
+    Left,
+}
+
+/// Un trait d'un point au bord du dernier panneau posé, à la place du
+/// séparateur d'egui — que la palette ne connaît pas.
+fn edge(ui: &mut egui::Ui, palette: &theme::Palette, side: Side) {
+    let rect = ui.max_rect();
+    let stroke = Stroke::new(1.0, palette.edge);
+    let painter = ui.painter();
+    match side {
+        Side::Right => painter.vline(rect.min.x, rect.y_range(), stroke),
+        Side::Left => painter.vline(rect.max.x, rect.y_range(), stroke),
+        Side::Bottom => painter.hline(rect.x_range(), rect.min.y, stroke),
+    };
 }
 
 impl eframe::App for Gui {
@@ -269,6 +347,7 @@ impl eframe::App for Gui {
     }
 
     fn on_exit(&mut self) {
+        self.note.flush();
         self.app.remember_position();
         // Ce qui devait être écrit l'est. Détruire le lecteur attendrait la fin
         // des synthèses en cours — mesuré : vingt-quatre secondes avec MagpieTTS

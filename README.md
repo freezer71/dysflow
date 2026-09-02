@@ -310,15 +310,18 @@ cargo build --release --features gui,audio-cpp,ocr
 FEATURES=audio-cpp,ocr,gui ./scripts/install.sh     # pose aussi sillon-gui
 ```
 
-**Les contrôles sont en pixel art**, le texte lu ne l'est pas. Boutons à
-coins coupés et ombre en bloc, icônes dessinées pixel par pixel, barre de
-progression en blocs, police Pixelify Sans pour les libellés courts — et
-Atkinson pour tout ce qui se lit. La barre du bas ne montre que cinq gestes :
-phrase précédente, **LECTURE**, phrase suivante, vitesse, volume. Le reste —
-signets, sommaire, recherche, reprise, début, réglages, aide, moteur — attend
-derrière le bouton `⋯` **Plus**. La ligne d'état ne parle que quand elle a
-quelque chose à dire, sans changer de hauteur pour ne pas faire sauter le
-texte. `Échap` ferme ce qui est ouvert ; `q` quitte.
+**Trois colonnes, une interface fine.** À gauche, la barre latérale : Ouvrir,
+Coller, le sommaire avec la section en cours en orange, les signets, puis
+Réglages et Aide ; elle se replie d'un clic ou avec `t`. Au milieu, le texte
+lu, et sous lui une carte de lecture : le bouton de lecture, le début de la
+phrase que la voix dit, le temps, une ligne de temps à glisser pour avancer ou
+reculer — avec un repère par section —, phrase précédente et suivante, vitesse,
+volume, et le reste derrière `⋯`. À droite, sur `e` ou l'icône de page, une
+**note** par document : du texte libre, enregistré tout seul dans le dossier
+de données (`notes/`), et un bouton **Repère** qui y pose la section et la
+minute en cours. Le texte d'interface fait treize points quelle que soit la
+taille du texte lu ; les icônes sont tracées au trait ; `Échap` ferme ce qui
+est ouvert, `q` quitte.
 
 La rubrique **Affichage** des réglages porte la police, la taille,
 l'interlignage et le thème — sombre par défaut, clair au choix. Ils vivent dans
@@ -328,7 +331,8 @@ terminal, en curseurs et listes.
 Sur macOS, `scripts/package.sh` assemble aussi `dist/Sillon.app`, à glisser
 dans le Dock ; sur Linux, un `sillon.desktop`. La fenêtre s'appuie sur egui
 (wgpu : Metal, Vulkan ou OpenGL) et ne demande aucune bibliothèque à installer.
-La conception est dans `docs/superpowers/specs/2026-09-02-interface-graphique-design.md`.
+La conception est dans `docs/superpowers/specs/2026-09-02-interface-graphique-design.md`,
+et la mise en page fine dans `docs/superpowers/specs/2026-09-02-interface-fine-design.md`.
 
 Pour vérifier un rendu sans regarder l'écran, `SILLON_GUI_CAPTURE=/tmp/x.png`
 fait enregistrer la trame par la fenêtre elle-même après une seconde et demie,

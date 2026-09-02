@@ -38,7 +38,7 @@ fn reading() -> App {
 
 fn harness(app: App) -> Harness<'static, Gui> {
     Harness::builder()
-        .with_size(egui::vec2(1100.0, 760.0))
+        .with_size(egui::vec2(1180.0, 760.0))
         .with_pixels_per_point(2.0)
         .with_max_steps(64)
         .build_ui_state(
@@ -112,6 +112,26 @@ fn frozen_view_and_search() {
     let mut harness = harness(app);
     harness.state_mut().search_open = true;
     save(&mut harness, "recherche-vue-figee");
+}
+
+#[test]
+#[ignore = "rend une image à regarder ; demande un GPU"]
+fn note_panel() {
+    let mut harness = harness(reading());
+    {
+        let gui = harness.state_mut();
+        gui.notes_open = true;
+        gui.note.text = "Idée à creuser : la règle de lecture.\n\n— Deuxième partie · 1:12\nRelire ce passage avec le PDF d'origine.\n".to_string();
+    }
+    save(&mut harness, "note");
+}
+
+#[test]
+#[ignore = "rend une image à regarder ; demande un GPU"]
+fn folded_sidebar() {
+    let mut harness = harness(reading());
+    harness.state_mut().sidebar_open = false;
+    save(&mut harness, "sans-barre");
 }
 
 #[test]

@@ -19,6 +19,10 @@ pub struct Requests {
     pub open_file: bool,
     pub paste: bool,
     pub focus_search: bool,
+    /// La barre latérale — sommaire, signets — se replie ou se déplie.
+    pub toggle_sidebar: bool,
+    /// Le panneau de note s'ouvre ou se ferme.
+    pub toggle_notes: bool,
     /// Échap pressé alors que rien n'était ouvert : la fenêtre décide.
     pub escape: bool,
 }
@@ -50,14 +54,12 @@ pub fn dispatch(ctx: &egui::Context, app: &mut App) -> Requests {
                     EguiKey::PageDown => requests.page += 1,
                     // Au terminal, Échap quitte ; dans une fenêtre, on ferme
                     // ce qui est ouvert, et sinon rien — `q` quitte.
-                    EguiKey::Escape
-                        if !app.show_help && !app.show_config && app.panel == crate::app::Panel::None =>
-                    {
+                    EguiKey::Escape if !app.show_help && !app.show_config => {
                         requests.escape = true;
                     }
-                    EguiKey::Tab if modifiers.shift => {
-                        keys::handle(app, Key::plain(KeyCode::BackTab));
-                    }
+                    // Au terminal, Tab ouvre le panneau du sommaire ; ici la
+                    // barre latérale est à la fenêtre.
+                    EguiKey::Tab if !app.show_config => requests.toggle_sidebar = true,
                     _ => {
                         if let Some(code) = special(key) {
                             keys::handle(
@@ -81,7 +83,14 @@ pub fn dispatch(ctx: &egui::Context, app: &mut App) -> Requests {
                         // L'espace est déjà passé en touche.
                         ' ' => {}
                         // Le champ de recherche prend le clavier lui-même.
-                        '/' => requests.focus_search = true,
+                        '/' if !app.show_config => requests.focus_search = true,
+                        // Sommaire et signets vivent dans la barre latérale,
+                        // la note dans son panneau : à la fenêtre, pas au
+                        // contrôleur.
+                        't' | 'B' if !app.show_config && !app.show_help => {
+                            requests.toggle_sidebar = true;
+                        }
+                        'e' if !app.show_config && !app.show_help => requests.toggle_notes = true,
                         _ => keys::handle(
                             app,
                             Key { code: KeyCode::Char(c), shift: c.is_uppercase(), ctrl: false },

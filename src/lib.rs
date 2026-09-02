@@ -18,6 +18,7 @@ pub mod input;
 pub mod launch;
 pub mod logging;
 pub mod models;
+pub mod notes;
 pub mod paths;
 pub mod position;
 pub mod source;

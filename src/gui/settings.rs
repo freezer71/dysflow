@@ -9,7 +9,8 @@ use std::time::{Duration, Instant};
 use eframe::egui::{self, ComboBox, ProgressBar, RichText, ScrollArea, Slider, TextEdit, Ui};
 
 use super::fonts;
-use super::pixel::{self, Button};
+use super::icons::Icon;
+use super::widgets::{self, Button, NavRow};
 use super::theme::Palette;
 use super::window::Gui;
 use crate::app::config::{Control, Field, Page, Section};
@@ -25,72 +26,57 @@ pub enum Rubric {
 }
 
 /// Largeur de la colonne des libellés.
-const LABEL_W: f32 = 230.0;
+const LABEL_W: f32 = 200.0;
 
-pub fn show(ui: &mut Ui, gui: &mut Gui, palette: &Palette) {
-    egui::Panel::left("rubriques")
-        .default_size(280.0)
-        .resizable(false)
-        .show(ui, |ui| {
-            ui.add_space(8.0);
-            ui.heading(RichText::new("Configuration").color(palette.accent));
-            ui.label(RichText::new(format!("moteur : {}", gui.app.engine_name())).color(palette.dim));
-            ui.add_space(8.0);
-            for (i, section) in Section::ALL.iter().enumerate() {
-                let selected = gui.rubric == Rubric::Section(i);
-                let summary = section.summary(&gui.app.config);
-                if rubric_row(ui, palette, selected, section.label(), &summary) {
-                    gui.rubric = Rubric::Section(i);
-                    gui.app.screen.section = i;
-                    gui.app.screen.page = Page::Detail;
-                    gui.app.screen.row = 0;
-                }
-            }
-            let display = format!(
-                "{} · {:.0} px",
-                gui.app.config.gui.font,
-                gui.app.config.gui.font_size()
-            );
-            if rubric_row(ui, palette, gui.rubric == Rubric::Display, "Affichage", &display) {
-                gui.rubric = Rubric::Display;
-            }
-            ui.add_space(12.0);
-            if Button::icon(&pixel::PREV)
-                .label("Retour à la lecture")
-                .show(ui, palette)
-                .on_hover_text("Échap · s")
-                .clicked()
-            {
-                gui.app.toggle_config();
-            }
-        });
-
-    egui::CentralPanel::default()
-        .frame(egui::Frame::new().fill(palette.background).inner_margin(20.0))
-        .show(ui, |ui| {
-            footer(ui, gui, palette);
-            ScrollArea::vertical()
-                .auto_shrink([false, false])
-                .show(ui, |ui| match gui.rubric {
-                    Rubric::Section(i) if Section::ALL[i] == Section::Models => {
-                        models_list(ui, gui, palette)
-                    }
-                    Rubric::Section(i) => fields(ui, gui, Section::ALL[i], palette),
-                    Rubric::Display => display(ui, gui, palette),
-                });
-        });
+/// Les rubriques, dans la barre latérale : elles remplacent le sommaire tant
+/// que l'écran de réglages est ouvert.
+pub fn rubrics(ui: &mut Ui, gui: &mut Gui, palette: &Palette) {
+    widgets::group_label(ui, palette, "Réglages");
+    for (i, section) in Section::ALL.iter().enumerate() {
+        let selected = gui.rubric == Rubric::Section(i);
+        let summary = section.summary(&gui.app.config);
+        if NavRow::new(section.label())
+            .selected(selected)
+            .show(ui, palette)
+            .on_hover_text(summary)
+            .clicked()
+        {
+            gui.rubric = Rubric::Section(i);
+            gui.app.screen.section = i;
+            gui.app.screen.page = Page::Detail;
+            gui.app.screen.row = 0;
+        }
+    }
+    let display = format!("{} · {:.0} px", gui.app.config.gui.font, gui.app.config.gui.font_size());
+    if NavRow::new("Affichage")
+        .selected(gui.rubric == Rubric::Display)
+        .show(ui, palette)
+        .on_hover_text(display)
+        .clicked()
+    {
+        gui.rubric = Rubric::Display;
+    }
+    ui.add_space(8.0);
+    if NavRow::new("Retour à la lecture")
+        .icon(Icon::Prev)
+        .show(ui, palette)
+        .on_hover_text("Échap · s")
+        .clicked()
+    {
+        gui.app.toggle_config();
+    }
 }
 
-fn rubric_row(ui: &mut Ui, palette: &Palette, selected: bool, label: &str, summary: &str) -> bool {
-    let text = if selected {
-        RichText::new(label).color(palette.on_accent).strong()
-    } else {
-        RichText::new(label).color(palette.normal)
-    };
-    let clicked = ui.selectable_label(selected, text).clicked();
-    ui.label(RichText::new(summary).small().color(palette.faint));
-    ui.add_space(4.0);
-    clicked
+/// Le contenu de la rubrique ouverte, avec son pied.
+pub fn show(ui: &mut Ui, gui: &mut Gui, palette: &Palette) {
+    footer(ui, gui, palette);
+    ScrollArea::vertical()
+        .auto_shrink([false, false])
+        .show(ui, |ui| match gui.rubric {
+            Rubric::Section(i) if Section::ALL[i] == Section::Models => models_list(ui, gui, palette),
+            Rubric::Section(i) => fields(ui, gui, Section::ALL[i], palette),
+            Rubric::Display => display(ui, gui, palette),
+        });
 }
 
 fn labelled(ui: &mut Ui, palette: &Palette, label: &str, add: impl FnOnce(&mut Ui)) {
@@ -451,7 +437,7 @@ fn models_list(ui: &mut Ui, gui: &mut Gui, palette: &Palette) {
                         models::human_size(*received),
                         models::human_size(*total)
                     )));
-                    if Button::icon(&pixel::CLOSE).label("Interrompre").show(ui, palette).clicked() {
+                    if Button::icon(Icon::Stop).label("Interrompre").show(ui, palette).clicked() {
                         gui.app.screen.row = i;
                         gui.app.config_delete();
                     }
@@ -459,7 +445,7 @@ fn models_list(ui: &mut Ui, gui: &mut Gui, palette: &Palette) {
                 _ => {
                     if installed && !truncated {
                         if !is_active
-                            && Button::icon(&pixel::PLAY).label("Utiliser").show(ui, palette).clicked()
+                            && Button::icon(Icon::Check).label("Utiliser").show(ui, palette).clicked()
                         {
                             gui.app.screen.row = i;
                             gui.app.config_activate();
@@ -470,7 +456,7 @@ fn models_list(ui: &mut Ui, gui: &mut Gui, palette: &Palette) {
                         let label = if truncated { "Réinstaller" } else { "Installer" };
                         let clicked = ui
                             .add_enabled_ui(!busy, |ui| {
-                                Button::icon(&pixel::FOLLOW).label(label).show(ui, palette).clicked()
+                                Button::icon(Icon::Download).label(label).show(ui, palette).clicked()
                             })
                             .inner;
                         if clicked {
@@ -498,7 +484,7 @@ fn delete_button(ui: &mut Ui, gui: &mut Gui, row: usize, palette: &Palette) {
         .confirm_delete
         .is_some_and(|(r, at)| r == row && at.elapsed() < Duration::from_secs(3));
     if armed {
-        if Button::icon(&pixel::CLOSE)
+        if Button::icon(Icon::Trash)
             .label("Confirmer la suppression")
             .primary()
             .show(ui, palette)
@@ -508,7 +494,7 @@ fn delete_button(ui: &mut Ui, gui: &mut Gui, row: usize, palette: &Palette) {
             gui.app.screen.row = row;
             gui.app.config_delete();
         }
-    } else if Button::icon(&pixel::CLOSE).label("Supprimer").show(ui, palette).clicked() {
+    } else if Button::icon(Icon::Trash).label("Supprimer").show(ui, palette).clicked() {
         gui.confirm_delete = Some((row, Instant::now()));
     }
 }
@@ -516,7 +502,7 @@ fn delete_button(ui: &mut Ui, gui: &mut Gui, row: usize, palette: &Palette) {
 /// Écouter, enregistrer, et le message de la rubrique.
 fn footer(ui: &mut Ui, gui: &mut Gui, palette: &Palette) {
     ui.horizontal(|ui| {
-        if Button::icon(&pixel::SPEAKER)
+        if Button::icon(Icon::Speaker)
             .label("Écouter la voix")
             .show(ui, palette)
             .on_hover_text("t")
@@ -533,7 +519,7 @@ fn footer(ui: &mut Ui, gui: &mut Gui, palette: &Palette) {
             }
             gui.app.preview_voice();
         }
-        if Button::icon(&pixel::FLAG)
+        if Button::icon(Icon::Check)
             .label("Enregistrer")
             .show(ui, palette)
             .on_hover_text("w")

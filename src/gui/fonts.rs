@@ -3,8 +3,6 @@
 //! egui ne connaît pas la graisse : chaque face est une famille à part, et
 //! `family` choisit la bonne pour un mot en gras, en italique, ou les deux.
 //! Les polices d'origine restent en repli, pour les symboles et les emoji.
-//! Une police pixel s'ajoute pour les contrôles : elle ne sert qu'aux libellés
-//! courts — un verbe, un chiffre —, jamais à ce qui se lit.
 
 use std::sync::Arc;
 
@@ -13,14 +11,6 @@ use eframe::egui::{self, FontData, FontDefinitions, FontFamily};
 pub const ATKINSON: &str = "atkinson";
 pub const OPENDYSLEXIC: &str = "opendyslexic";
 pub const DEFAULT: &str = "default";
-
-/// La police des contrôles : Pixelify Sans, pour les libellés courts.
-///
-/// Le fichier embarqué est modifié d'un détail : sa ligature « fi » — un
-/// glyphe qui se lit « A » à cette taille — est désactivée en renommant
-/// l'étiquette OpenType `liga`. La licence OFL de cette police ne réserve pas
-/// son nom ; la modification est notée dans `assets/fonts/`.
-const PIXEL: &str = "pixel";
 
 struct Face {
     name: &'static str,
@@ -60,7 +50,6 @@ const FACES: &[Face] = &[
         name: "opendyslexic-bold-italic",
         data: include_bytes!("../../assets/fonts/OpenDyslexic-BoldItalic.otf"),
     },
-    Face { name: PIXEL, data: include_bytes!("../../assets/fonts/PixelifySans.ttf") },
 ];
 
 /// Installe les polices embarquées et fait de `font` celle de toute la fenêtre.
@@ -105,11 +94,6 @@ pub fn family(font: &str, strong: bool, italic: bool) -> FontFamily {
         (true, true) => format!("{base}-bold-italic"),
     };
     FontFamily::Name(name.into())
-}
-
-/// La police pixel des contrôles, à cette taille.
-pub fn pixel(size: f32) -> egui::FontId {
-    egui::FontId::new(size, FontFamily::Name(PIXEL.into()))
 }
 
 /// Vrai quand la police a une vraie italique : egui n'a alors pas à en
