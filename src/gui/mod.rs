@@ -5,6 +5,7 @@
 //! vérifie ce que la fenêtre montre. Le reste dessine, et n'existe qu'avec la
 //! feature `gui`.
 
+pub mod flow;
 pub mod text;
 
 #[cfg(feature = "gui")]
