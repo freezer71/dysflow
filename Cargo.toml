@@ -33,6 +33,7 @@ hound = "3.5"
 ureq = "2.10"
 eframe = { version = "0.36", optional = true }
 rfd = { version = "0.17", optional = true }
+egui_kittest = { version = "0.36", optional = true, features = ["wgpu", "snapshot"] }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
@@ -54,6 +55,9 @@ ocr = ["dep:tesseract-rs", "dep:image", "clipboard"]
 # La fenêtre : eframe (wgpu) et le dialogue de fichiers. Optionnelle, comme
 # audio-cpp — sans elle le build reste une affaire de secondes.
 gui = ["dep:eframe", "dep:rfd", "dep:image"]
+# Rendu de la fenêtre hors écran, pour la vérifier à l'œil sans écran :
+# `cargo test --features snapshots gui::snapshot -- --ignored`.
+snapshots = ["gui", "dep:egui_kittest"]
 
 [[bin]]
 name = "sillon"
