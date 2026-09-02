@@ -11,6 +11,16 @@ pub mod text;
 #[cfg(feature = "gui")]
 mod fonts;
 #[cfg(feature = "gui")]
+mod header;
+#[cfg(feature = "gui")]
+mod help;
+#[cfg(feature = "gui")]
+mod keys;
+#[cfg(feature = "gui")]
+mod panel;
+#[cfg(feature = "gui")]
+mod player;
+#[cfg(feature = "gui")]
 mod reader;
 #[cfg(feature = "gui")]
 mod theme;

@@ -11,8 +11,8 @@ use anyhow::{anyhow, Result};
 use eframe::egui::{self, CentralPanel, Panel, ViewportBuilder};
 
 use super::reader::Reader;
-use super::{fonts, theme};
-use crate::app::App;
+use super::{fonts, header, help, keys, panel, player, theme};
+use crate::app::{App, Panel as AppPanel};
 
 pub struct Gui {
     pub(super) app: App,
@@ -24,6 +24,9 @@ pub struct Gui {
     pub(super) reader: Reader,
     /// Source du document composé : quand elle change, tout se recompose.
     last_source: String,
+    /// Le champ de recherche de l'en-tête, et la demande de lui donner le clavier.
+    pub(super) search_text: String,
+    pub(super) focus_search: bool,
 }
 
 pub fn run(app: App) -> Result<()> {
@@ -51,7 +54,15 @@ impl Gui {
         let capture = std::env::var_os("SILLON_GUI_CAPTURE")
             .map(|path| (PathBuf::from(path), Instant::now(), false));
         let last_source = app.source.clone();
-        let mut gui = Self { app, applied: None, capture, reader: Reader::new(), last_source };
+        let mut gui = Self {
+            app,
+            applied: None,
+            capture,
+            reader: Reader::new(),
+            last_source,
+            search_text: String::new(),
+            focus_search: false,
+        };
         gui.refresh_theme(ctx);
         gui
     }
@@ -136,17 +147,32 @@ impl eframe::App for Gui {
             self.last_source = self.app.source.clone();
         }
 
-        Panel::top("header").show(ui, |ui| {
-            ui.horizontal(|ui| {
-                ui.label(egui::RichText::new(&self.app.doc().title).strong().color(palette.bright));
-                ui.label(egui::RichText::new(&self.app.source).color(palette.dim));
-            });
-        });
+        let requests = keys::dispatch(&ctx, &mut self.app);
+        if requests.page != 0 {
+            self.reader.page(requests.page);
+        }
+        if requests.focus_search {
+            self.focus_search = true;
+        }
+
+        let actions = Panel::top("header").show(ui, |ui| header::show(ui, self, &palette)).inner;
+        // Les panneaux du bas se posent de l'extérieur vers l'intérieur : la
+        // ligne d'état tout en bas, la barre de lecture au-dessus.
+        Panel::bottom("status").show(ui, |ui| player::status(ui, &mut self.app, &palette, None));
+        Panel::bottom("player").show(ui, |ui| player::show(ui, &mut self.app, &palette));
+        if self.app.panel != AppPanel::None && !self.app.show_config {
+            Panel::right("panneau")
+                .default_size(320.0)
+                .show(ui, |ui| panel::show(ui, &mut self.app, &palette));
+        }
         CentralPanel::default()
             .frame(egui::Frame::new().fill(palette.background).inner_margin(16.0))
             .show(ui, |ui| {
                 self.reader.show(ui, &mut self.app, &palette);
             });
+        help::show(&ctx, &mut self.app, &palette);
+
+        let _ = (actions.open_file || requests.open_file, actions.paste || requests.paste);
     }
 
     fn on_exit(&mut self) {
