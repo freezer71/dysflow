@@ -1,10 +1,11 @@
 //! Interface graphique : une fenêtre eframe autour du même contrôleur.
 //!
 //! Deux modules ne touchent pas à egui et se compilent toujours : `text` met un
-//! bloc en runs, `flow` fait l'arithmétique du défilement (à venir). C'est là que se
+//! bloc en runs, `flow` fait l'arithmétique du défilement. C'est là que se
 //! vérifie ce que la fenêtre montre. Le reste dessine, et n'existe qu'avec la
 //! feature `gui`.
 
+pub mod text;
 
 #[cfg(feature = "gui")]
 mod fonts;
