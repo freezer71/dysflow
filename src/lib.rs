@@ -14,6 +14,7 @@ pub mod bookmark;
 pub mod config;
 pub mod doc;
 pub mod input;
+pub mod launch;
 pub mod logging;
 pub mod models;
 pub mod paths;
