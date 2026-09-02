@@ -1,4 +1,13 @@
-//! État de l'application et commandes du lecteur.
+//! Le contrôleur : état de l'application et commandes du lecteur.
+//!
+//! Il ne sait rien de l'écran qui le montre. Le terminal (`tui`) et la fenêtre
+//! (`gui`) le rendent chacun à leur manière et lui envoient les mêmes touches.
+
+pub mod config;
+pub mod pace;
+pub mod search;
+pub mod startup;
+pub mod view;
 
 use std::collections::HashSet;
 use std::sync::mpsc::{Receiver, TryRecvError};
@@ -14,11 +23,10 @@ use crate::input::{BlockAssembler, InputEvent};
 use crate::models;
 use crate::tts::preview::{self, Previewer};
 use crate::tts::{self, Synthesizer, TtsEngine, TtsParams};
-use crate::tui::config::{ConfigScreen, Effect, Field, Page, Section};
-use crate::tui::pace::Pace;
-use crate::tui::search::Search;
-use crate::tui::view::ViewAnchor;
-use crate::tui::startup;
+use crate::app::config::{ConfigScreen, Effect, Field, Page, Section};
+use crate::app::pace::Pace;
+use crate::app::search::Search;
+use crate::app::view::ViewAnchor;
 
 /// Panneau latéral affiché à droite du texte.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -26,6 +34,15 @@ pub enum Panel {
     None,
     Contents,
     Bookmarks,
+}
+
+/// Réglages d'affichage du texte, tels que la rubrique « Lecture » les fixe.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ReadingStyle {
+    /// Lignes vides insérées entre deux lignes de texte.
+    pub spacing: usize,
+    /// Souligne d'un fond la ligne où se trouve le mot prononcé.
+    pub ruler: bool,
 }
 
 pub struct App {
@@ -197,8 +214,8 @@ impl App {
     }
 
     /// Réglages d'affichage du texte, tels que le rendu les attend.
-    pub fn reading_style(&self) -> crate::tui::ui::ReadingStyle {
-        crate::tui::ui::ReadingStyle {
+    pub fn reading_style(&self) -> ReadingStyle {
+        ReadingStyle {
             spacing: self.config.reading.line_spacing as usize,
             ruler: self.config.reading.reading_ruler,
         }

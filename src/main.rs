@@ -9,7 +9,7 @@ use std::sync::mpsc::Receiver;
 use sillon::config::Config;
 use sillon::doc::DocumentBuilder;
 use sillon::input::InputEvent;
-use sillon::tui::app::App;
+use sillon::app::App;
 use sillon::{doc, input, tts, tui};
 
 #[derive(Parser, Debug)]

@@ -528,9 +528,9 @@ Les mêmes réglages existent en ligne de commande (`--voice`, `--speed`,
 ## Architecture
 
 ```
-entrée ──▶ doc ──▶ tts ──▶ audio ──▶ tui
-(flux,    (blocs,  (pool    (sortie,  (rendu,
- blocs)   phrases) parallèle) position) contrôles)
+entrée ──▶ doc ──▶ tts ──▶ audio ──▶ app ──▶ tui
+(flux,    (blocs,  (pool    (sortie,  (état,   (rendu,
+ blocs)   phrases) parallèle) position) commandes) touches)
 ```
 
 - `input` — lecture non bloquante, regroupement en blocs markdown.
@@ -542,7 +542,8 @@ entrée ──▶ doc ──▶ tts ──▶ audio ──▶ tui
 - `text` — nettoyage du formatage et découpage en phrases (`sanitize`), mise en mots des dates, des nombres et des sigles pour la voix seule (`verbalize`).
 - `tts` — contrat moteur/session, pool parallèle, FFI audio.cpp, repli système.
 - `audio` — file de sortie et position déduite du son réellement joué.
-- `tui` — rendu fenêtré, contrôles, panneaux.
+- `app` — le contrôleur : document, lecture, recherche, signets, écran de configuration. Il ne connaît aucun écran.
+- `tui` — rendu ratatui du contrôleur, adaptation des touches.
 
 Les sorties de ggml sont détournées vers
 `~/.local/share/sillon/sillon.log` : en plein écran, elles disloqueraient le

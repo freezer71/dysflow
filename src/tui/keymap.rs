@@ -6,8 +6,8 @@
 
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 
-use super::app::{App, Panel};
-use super::config::Page;
+use crate::app::{App, Panel};
+use crate::app::config::Page;
 
 /// Blocs parcourus par une page de défilement.
 ///
@@ -214,7 +214,7 @@ fn handle_reader(app: &mut App, key: KeyEvent) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tui::app::tests::{app_reading, DOC};
+    use crate::app::tests::{app_reading, DOC};
     use std::time::Duration;
 
     fn press(app: &mut App, code: KeyCode) {
