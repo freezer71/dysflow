@@ -4585,3 +4585,29 @@ git commit -m "build(gui): livrer la fenêtre — binaire, bundle macOS, .deskto
 - `cargo test` et `cargo test --features gui` passent.
 - `cargo build --release --features gui,audio-cpp` produit `sillon-gui` ; lancé sur `dist/demo.md` avec un modèle installé, le mot suit la voix, la règle suit le mot, `Pg↓` fige, `f` revient, `s` ouvre les réglages, `Échap` revient.
 - Le terminal n'a pas changé : `cargo run -- dist/demo.md` se comporte comme avant.
+
+## Livraison — 2026-09-02
+
+Les seize tâches sont livrées sur la branche `interface-graphique`, en treize
+commits. Écarts par rapport au plan, tous constatés à l'exécution :
+
+- **eframe 0.36** n'a plus `TopBottomPanel`/`SidePanel` mais un seul `Panel`
+  (`top`, `bottom`, `left`, `right`), et `show(ui, …)` remplace `show_inside`.
+  Le contrat `App` est `ui(&mut Ui)` + `logic(&Context)`.
+- **Une fenêtre occultée n'est plus dessinée** : eframe n'appelle alors que
+  `logic()`. Le tour du contrôleur (`tick`, `poll` de l'extraction, cadence,
+  fermeture) vit donc dans `logic()`, pas dans `ui()` — sinon la voix
+  s'arrêterait dès qu'on passe la fenêtre derrière une autre.
+- Les polices s'installent dans le callback de création, pas à la première
+  trame : une famille demandée avant d'être connue fait paniquer la
+  composition.
+- `SILLON_GUI_CAPTURE=/x.png` (et `SILLON_GUI_CAPTURE_AFTER_MS`) fait
+  enregistrer la trame par la fenêtre elle-même puis quitter : c'est ainsi que
+  chaque étape a été vérifiée à l'œil, sans capturer l'écran de l'utilisateur.
+- Les tâches 11–13 puis 14–15 sont chacune un seul commit : `window.rs` les
+  branche ensemble.
+- `launch::adopt_installed_model` tolère un chemin de modèle périmé : la
+  configuration de la machine de développement pointait encore vers
+  `rs-reader/models`, et la fenêtre partait sur la voix système.
+- `package.sh` efface `dist/` : le `dist/demo.md` qui y vivait a disparu ; un
+  `docs/demo.md` versionné le remplace, recomposé d'après ce qu'il montrait.
