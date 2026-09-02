@@ -231,5 +231,10 @@ impl eframe::App for Gui {
 
     fn on_exit(&mut self) {
         self.app.remember_position();
+        // Ce qui devait être écrit l'est. Détruire le lecteur attendrait la fin
+        // des synthèses en cours — mesuré : vingt-quatre secondes avec MagpieTTS
+        // en train de compiler ses noyaux. Une fenêtre qu'on ferme doit
+        // disparaître ; le système reprend ce qui reste.
+        std::process::exit(0);
     }
 }
