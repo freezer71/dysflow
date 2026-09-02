@@ -310,6 +310,16 @@ cargo build --release --features gui,audio-cpp,ocr
 FEATURES=audio-cpp,ocr,gui ./scripts/install.sh     # pose aussi sillon-gui
 ```
 
+**Les contrôles sont en pixel art**, le texte lu ne l'est pas. Boutons à
+coins coupés et ombre en bloc, icônes dessinées pixel par pixel, barre de
+progression en blocs, police Pixelify Sans pour les libellés courts — et
+Atkinson pour tout ce qui se lit. La barre du bas ne montre que cinq gestes :
+phrase précédente, **LECTURE**, phrase suivante, vitesse, volume. Le reste —
+signets, sommaire, recherche, reprise, début, réglages, aide, moteur — attend
+derrière le bouton `⋯` **Plus**. La ligne d'état ne parle que quand elle a
+quelque chose à dire, sans changer de hauteur pour ne pas faire sauter le
+texte. `Échap` ferme ce qui est ouvert ; `q` quitte.
+
 La rubrique **Affichage** des réglages porte la police, la taille,
 l'interlignage et le thème — sombre par défaut, clair au choix. Ils vivent dans
 la section `[gui]` du `config.toml`. Les autres rubriques sont celles du
@@ -322,7 +332,13 @@ La conception est dans `docs/superpowers/specs/2026-09-02-interface-graphique-de
 
 Pour vérifier un rendu sans regarder l'écran, `SILLON_GUI_CAPTURE=/tmp/x.png`
 fait enregistrer la trame par la fenêtre elle-même après une seconde et demie,
-puis quitte.
+puis quitte — à condition que la fenêtre soit dessinée, donc l'écran allumé.
+Sans écran du tout, la feature `snapshots` rend les mêmes zones par le GPU,
+hors fenêtre, dans `target/snapshots/` :
+
+```bash
+cargo test --features snapshots gui::snapshot -- --ignored
+```
 
 ## Contrôles
 

@@ -2,6 +2,7 @@
 
 use eframe::egui::{self, RichText, ScrollArea, Ui};
 
+use super::pixel::{self, Button};
 use super::theme::Palette;
 use crate::app::{App, Panel};
 
@@ -15,7 +16,7 @@ pub fn show(ui: &mut Ui, app: &mut App, palette: &Palette) {
     ui.horizontal(|ui| {
         ui.heading(RichText::new(title).color(palette.accent));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if ui.button("×").on_hover_text("Échap").clicked() {
+            if Button::icon(&pixel::CLOSE).show(ui, palette).on_hover_text("Échap").clicked() {
                 app.panel = Panel::None;
             }
         });
@@ -87,7 +88,7 @@ fn bookmarks(ui: &mut Ui, app: &mut App, palette: &Palette) {
                 ui.label(RichText::new(meta).small().color(palette.faint));
             });
             ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
-                if ui.small_button("×").on_hover_text("d — retirer").clicked() {
+                if Button::icon(&pixel::CLOSE).show(ui, palette).on_hover_text("d — retirer").clicked() {
                     app.selection = i;
                     app.delete_selection();
                 }

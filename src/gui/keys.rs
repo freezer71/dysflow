@@ -19,6 +19,8 @@ pub struct Requests {
     pub open_file: bool,
     pub paste: bool,
     pub focus_search: bool,
+    /// Échap pressé alors que rien n'était ouvert : la fenêtre décide.
+    pub escape: bool,
 }
 
 /// Distribue les touches de la trame, sauf quand un champ de saisie a le clavier.
@@ -46,6 +48,13 @@ pub fn dispatch(ctx: &egui::Context, app: &mut App) -> Requests {
                 match key {
                     EguiKey::PageUp => requests.page -= 1,
                     EguiKey::PageDown => requests.page += 1,
+                    // Au terminal, Échap quitte ; dans une fenêtre, on ferme
+                    // ce qui est ouvert, et sinon rien — `q` quitte.
+                    EguiKey::Escape
+                        if !app.show_help && !app.show_config && app.panel == crate::app::Panel::None =>
+                    {
+                        requests.escape = true;
+                    }
                     EguiKey::Tab if modifiers.shift => {
                         keys::handle(app, Key::plain(KeyCode::BackTab));
                     }

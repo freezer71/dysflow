@@ -10,6 +10,7 @@ use anyhow::Result;
 use eframe::egui::{self, Align2, Color32, RichText, Ui};
 
 use super::header::Actions;
+use super::pixel::{self, Button};
 use super::theme::Palette;
 use super::window::Gui;
 use crate::doc::DocumentBuilder;
@@ -131,11 +132,22 @@ pub fn empty_state(ui: &mut Ui, gui: &Gui, palette: &Palette) -> Actions {
         );
         ui.add_space(24.0);
         ui.horizontal(|ui| {
-            ui.add_space((ui.available_width() - 340.0).max(0.0) / 2.0);
-            if ui.button(RichText::new("Ouvrir un fichier…").size(18.0)).clicked() {
+            ui.add_space((ui.available_width() - 470.0).max(0.0) / 2.0);
+            if Button::icon(&pixel::FOLDER)
+                .label("Ouvrir un fichier")
+                .primary()
+                .big()
+                .show(ui, palette)
+                .clicked()
+            {
                 actions.open_file = true;
             }
-            if ui.button(RichText::new("Lire le presse-papiers").size(18.0)).clicked() {
+            if Button::icon(&pixel::CLIPBOARD)
+                .label("Lire le presse-papiers")
+                .big()
+                .show(ui, palette)
+                .clicked()
+            {
                 actions.paste = true;
             }
         });

@@ -1,7 +1,11 @@
-//! L'en-tête : ouvrir, coller, où l'on est, chercher, ouvrir les panneaux.
+//! L'en-tête : ouvrir, coller, où l'on est, le sommaire, les réglages.
+//!
+//! Le champ de recherche n'y vit pas en permanence : il s'ouvre sur `/` ou
+//! depuis « Plus », et se referme une fois la recherche lancée.
 
 use eframe::egui::{self, Align, Layout, RichText, TextEdit, Ui};
 
+use super::pixel::{self, Button};
 use super::theme::Palette;
 use super::window::Gui;
 use crate::app::Panel;
@@ -14,21 +18,30 @@ pub struct Actions {
 }
 
 pub fn show(ui: &mut Ui, gui: &mut Gui, palette: &Palette) -> Actions {
+    let px = pixel::step(ui);
     let mut actions = Actions::default();
-    ui.add_space(4.0);
+    ui.add_space(2.0 * px);
     ui.horizontal(|ui| {
-        if ui.button("Ouvrir…").on_hover_text("⌘O · Ctrl+O").clicked() {
+        ui.add_space(px);
+        if Button::icon(&pixel::FOLDER)
+            .label("Ouvrir")
+            .show(ui, palette)
+            .on_hover_text("⌘O · Ctrl+O")
+            .clicked()
+        {
             actions.open_file = true;
         }
-        if ui
-            .button("Coller")
+        if Button::icon(&pixel::CLIPBOARD)
+            .label("Coller")
+            .show(ui, palette)
             .on_hover_text("⌘V · Ctrl+V — texte, ou image reconnue")
             .clicked()
         {
             actions.paste = true;
         }
-        ui.separator();
+        ui.add_space(3.0 * px);
 
+        // Où l'on est : du texte qui se lit, dans la police de lecture.
         let doc = gui.app.doc();
         if doc.is_empty() && gui.app.input_complete() {
             ui.label(RichText::new("Aucun document").color(palette.faint));
@@ -50,71 +63,77 @@ pub fn show(ui: &mut Ui, gui: &mut Gui, palette: &Palette) -> Actions {
         }
 
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            if ui.button("Aide").on_hover_text("?").clicked() {
-                gui.app.show_help = !gui.app.show_help;
-            }
-            if ui
-                .selectable_label(gui.app.show_config, "Réglages")
+            ui.add_space(px);
+            if Button::icon(&pixel::GEAR)
+                .label("Réglages")
+                .selected(gui.app.show_config)
+                .show(ui, palette)
                 .on_hover_text("s")
                 .clicked()
             {
                 gui.app.toggle_config();
             }
-            if ui
-                .selectable_label(gui.app.panel == Panel::Bookmarks, "Signets")
-                .on_hover_text("B")
-                .clicked()
-            {
-                gui.app.toggle_panel(Panel::Bookmarks);
-            }
-            if ui
-                .selectable_label(gui.app.panel == Panel::Contents, "Sommaire")
+            if Button::icon(&pixel::LIST)
+                .label("Sommaire")
+                .selected(gui.app.panel == Panel::Contents)
+                .show(ui, palette)
                 .on_hover_text("t")
                 .clicked()
             {
                 gui.app.toggle_panel(Panel::Contents);
             }
-            ui.separator();
-            search(ui, gui, palette);
+            if gui.search_open {
+                ui.add_space(2.0 * px);
+                search(ui, gui, palette);
+            }
         });
     });
-    ui.add_space(4.0);
+    ui.add_space(2.0 * px);
     actions
 }
 
-/// Le champ de recherche et ses deux flèches.
+/// Le champ de recherche, ouvert le temps d'une requête.
 fn search(ui: &mut Ui, gui: &mut Gui, palette: &Palette) {
-    if ui.button("›").on_hover_text("N — résultat suivant").clicked() {
+    if Button::icon(&pixel::CLOSE).show(ui, palette).on_hover_text("Échap").clicked() {
+        gui.search_open = false;
+        gui.search_text.clear();
+        gui.app.search_cancel();
+        return;
+    }
+    if Button::icon(&pixel::NEXT).show(ui, palette).on_hover_text("Résultat suivant  N").clicked() {
         gui.app.search_advance(1);
     }
-    if ui.button("‹").on_hover_text("P — résultat précédent").clicked() {
+    if Button::icon(&pixel::PREV).show(ui, palette).on_hover_text("Résultat précédent  P").clicked() {
         gui.app.search_advance(-1);
     }
     if let Some(search) = gui.app.search() {
         if !search.is_empty() {
             ui.label(
-                RichText::new(format!("{}/{}", search.position(), search.count()))
+                RichText::new(format!("{} / {}", search.position(), search.count()))
                     .color(palette.normal),
             );
         }
     }
     let response = ui.add(
         TextEdit::singleline(&mut gui.search_text)
-            .hint_text("Chercher…  ( / )")
-            .desired_width(200.0),
+            .hint_text("Chercher…")
+            .desired_width(220.0),
     );
     if gui.focus_search {
         response.request_focus();
         gui.focus_search = false;
     }
-    // Entrée lance la recherche depuis le curseur ; le champ rend le clavier.
+    // Entrée lance la recherche depuis le curseur et referme le champ ; les
+    // résultats restent, et N, P ou « Plus » les parcourent.
     if response.lost_focus() {
         if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
             let query = gui.search_text.clone();
             gui.app.search_with(&query);
+            gui.search_open = false;
         } else if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
             gui.search_text.clear();
             gui.app.search_cancel();
+            gui.search_open = false;
         }
     }
 }

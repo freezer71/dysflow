@@ -21,11 +21,15 @@ mod open;
 #[cfg(feature = "gui")]
 mod panel;
 #[cfg(feature = "gui")]
+mod pixel;
+#[cfg(feature = "gui")]
 mod player;
 #[cfg(feature = "gui")]
 mod reader;
 #[cfg(feature = "gui")]
 mod settings;
+#[cfg(all(test, feature = "snapshots"))]
+mod snapshot;
 #[cfg(feature = "gui")]
 mod theme;
 #[cfg(feature = "gui")]

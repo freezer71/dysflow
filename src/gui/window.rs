@@ -13,7 +13,7 @@ use eframe::egui::{self, CentralPanel, Panel, ViewportBuilder};
 
 use super::reader::Reader;
 use super::settings::Rubric;
-use super::{fonts, header, help, keys, open, panel, player, settings, theme};
+use super::{fonts, header, help, keys, open, panel, pixel, player, settings, theme};
 use crate::app::{App, Panel as AppPanel};
 
 pub struct Gui {
@@ -21,12 +21,15 @@ pub struct Gui {
     /// Police, thème et taille appliqués au contexte : on ne refait que ce
     /// qui change.
     applied: Option<(String, String, f32)>,
-    /// Capture demandée par l'environnement : chemin, départ, déjà demandée.
-    capture: Option<(PathBuf, Instant, bool)>,
+    /// Capture demandée par l'environnement : chemin, départ, déjà demandée,
+    /// fenêtre déjà passée devant.
+    capture: Option<(PathBuf, Instant, bool, bool)>,
     pub(super) reader: Reader,
     /// Source du document composé : quand elle change, tout se recompose.
     last_source: String,
-    /// Le champ de recherche de l'en-tête, et la demande de lui donner le clavier.
+    /// Le champ de recherche de l'en-tête : ouvert le temps d'une requête,
+    /// son texte, et la demande de lui donner le clavier.
+    pub(super) search_open: bool,
     pub(super) search_text: String,
     pub(super) focus_search: bool,
     /// Rubrique de configuration ouverte.
@@ -41,6 +44,8 @@ pub struct Gui {
     pub(super) opening: Option<open::Opening>,
     /// Un fichier survole la fenêtre.
     pub(super) hovering_file: bool,
+    /// Où le bouton « Plus » s'est dessiné : les tests hors écran cliquent là.
+    pub(super) more_rect: Option<egui::Rect>,
 }
 
 pub fn run(app: App) -> Result<()> {
@@ -58,22 +63,27 @@ pub fn run(app: App) -> Result<()> {
         options,
         // Les polices s'installent avant la première trame : une famille
         // demandée avant d'être connue ferait paniquer la composition.
-        Box::new(move |cc| Ok(Box::new(Gui::new(app, &cc.egui_ctx)))),
+        Box::new(move |cc| {
+            let mut gui = Gui::new(app);
+            gui.refresh_theme(&cc.egui_ctx);
+            Ok(Box::new(gui))
+        }),
     )
     .map_err(|err| anyhow!("fenêtre : {err}"))
 }
 
 impl Gui {
-    fn new(app: App, ctx: &egui::Context) -> Self {
+    pub(super) fn new(app: App) -> Self {
         let capture = std::env::var_os("SILLON_GUI_CAPTURE")
-            .map(|path| (PathBuf::from(path), Instant::now(), false));
+            .map(|path| (PathBuf::from(path), Instant::now(), false, false));
         let last_source = app.source.clone();
-        let mut gui = Self {
+        Self {
             app,
             applied: None,
             capture,
             reader: Reader::new(),
             last_source,
+            search_open: false,
             search_text: String::new(),
             focus_search: false,
             rubric: Rubric::Section(0),
@@ -82,18 +92,19 @@ impl Gui {
             confirm_delete: None,
             opening: None,
             hovering_file: false,
-        };
-        gui.refresh_theme(ctx);
-        gui
+            more_rect: None,
+        }
     }
 
     /// Enregistre la fenêtre telle qu'elle se dessine, puis quitte.
     fn capture_if_asked(&mut self, ctx: &egui::Context) {
-        let Some((path, since, requested)) = self.capture.as_mut() else { return };
+        let Some((path, since, requested, focused)) = self.capture.as_mut() else { return };
         // Une fenêtre occultée n'est plus dessinée : pour la capturer, il faut
-        // qu'elle passe devant.
-        if since.elapsed() < Duration::from_millis(100) {
+        // qu'elle passe devant — à la première trame, quel que soit le temps
+        // que la fenêtre a mis à s'ouvrir.
+        if !*focused {
             ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+            *focused = true;
         }
         let after = std::env::var("SILLON_GUI_CAPTURE_AFTER_MS")
             .ok()
@@ -139,11 +150,11 @@ impl Gui {
     }
 }
 
-impl eframe::App for Gui {
+impl Gui {
     /// Le tour du contrôleur, à chaque trame — et fenêtre cachée aussi : la
     /// sortie audio se nourrit ici, et la voix ne doit pas s'arrêter parce
     /// qu'on a réduit la fenêtre.
-    fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    pub(super) fn advance(&mut self, ctx: &egui::Context) {
         self.app.tick();
         open::poll(self);
         if self.app.should_quit {
@@ -158,8 +169,16 @@ impl eframe::App for Gui {
         });
     }
 
-    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+    /// Une trame : les zones, dans l'ordre où elles se posent.
+    pub(super) fn frame(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
+        // Un contexte qui n'a pas encore ses polices ne dessine rien cette
+        // trame : les définitions ne prennent effet qu'à la suivante.
+        if self.applied.is_none() {
+            self.refresh_theme(&ctx);
+            ctx.request_repaint();
+            return;
+        }
         self.refresh_theme(&ctx);
         self.capture_if_asked(&ctx);
         let palette = theme::palette(&self.app.config.gui.theme);
@@ -173,7 +192,11 @@ impl eframe::App for Gui {
             self.reader.page(requests.page);
         }
         if requests.focus_search {
+            self.search_open = true;
             self.focus_search = true;
+        }
+        if requests.escape {
+            self.search_open = false;
         }
         open::handle_drops(&ctx, self);
         // L'écran de configuration s'ouvre sur la rubrique que le contrôleur
@@ -189,10 +212,16 @@ impl eframe::App for Gui {
         // Les panneaux du bas se posent de l'extérieur vers l'intérieur : la
         // ligne d'état tout en bas, la barre de lecture au-dessus.
         let opening = self.opening.as_ref().map(|o| o.name.clone());
-        Panel::bottom("status").show(ui, |ui| {
+        // Une hauteur fixe : la ligne d'état se tait sans faire sauter le texte.
+        let status_h = pixel::step(ui) * 14.0 + 6.0;
+        Panel::bottom("status").exact_size(status_h).show(ui, |ui| {
             player::status(ui, &mut self.app, &palette, opening.as_deref())
         });
-        Panel::bottom("player").show(ui, |ui| player::show(ui, &mut self.app, &palette));
+        let bar = Panel::bottom("player").show(ui, |ui| player::show(ui, self, &palette)).inner;
+        if bar.open_search {
+            self.search_open = true;
+            self.focus_search = true;
+        }
         if self.app.panel != AppPanel::None && !self.app.show_config {
             Panel::right("panneau")
                 .default_size(320.0)
@@ -227,6 +256,16 @@ impl eframe::App for Gui {
         if actions.paste || requests.paste {
             open::start_clipboard(self);
         }
+    }
+}
+
+impl eframe::App for Gui {
+    fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.advance(ctx);
+    }
+
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        self.frame(ui);
     }
 
     fn on_exit(&mut self) {

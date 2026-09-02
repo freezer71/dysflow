@@ -9,6 +9,7 @@ use std::time::{Duration, Instant};
 use eframe::egui::{self, ComboBox, ProgressBar, RichText, ScrollArea, Slider, TextEdit, Ui};
 
 use super::fonts;
+use super::pixel::{self, Button};
 use super::theme::Palette;
 use super::window::Gui;
 use crate::app::config::{Control, Field, Page, Section};
@@ -54,7 +55,12 @@ pub fn show(ui: &mut Ui, gui: &mut Gui, palette: &Palette) {
                 gui.rubric = Rubric::Display;
             }
             ui.add_space(12.0);
-            if ui.button("‹ Retour à la lecture").on_hover_text("Échap · s").clicked() {
+            if Button::icon(&pixel::PREV)
+                .label("Retour à la lecture")
+                .show(ui, palette)
+                .on_hover_text("Échap · s")
+                .clicked()
+            {
                 gui.app.toggle_config();
             }
         });
@@ -445,14 +451,16 @@ fn models_list(ui: &mut Ui, gui: &mut Gui, palette: &Palette) {
                         models::human_size(*received),
                         models::human_size(*total)
                     )));
-                    if ui.button("Interrompre").clicked() {
+                    if Button::icon(&pixel::CLOSE).label("Interrompre").show(ui, palette).clicked() {
                         gui.app.screen.row = i;
                         gui.app.config_delete();
                     }
                 }
                 _ => {
                     if installed && !truncated {
-                        if !is_active && ui.button("Utiliser").clicked() {
+                        if !is_active
+                            && Button::icon(&pixel::PLAY).label("Utiliser").show(ui, palette).clicked()
+                        {
                             gui.app.screen.row = i;
                             gui.app.config_activate();
                         }
@@ -460,7 +468,12 @@ fn models_list(ui: &mut Ui, gui: &mut Gui, palette: &Palette) {
                     } else {
                         let busy = downloading.is_some();
                         let label = if truncated { "Réinstaller" } else { "Installer" };
-                        if ui.add_enabled(!busy, egui::Button::new(label)).clicked() {
+                        let clicked = ui
+                            .add_enabled_ui(!busy, |ui| {
+                                Button::icon(&pixel::FOLLOW).label(label).show(ui, palette).clicked()
+                            })
+                            .inner;
+                        if clicked {
                             gui.app.screen.row = i;
                             gui.app.config_activate();
                         }
@@ -485,16 +498,17 @@ fn delete_button(ui: &mut Ui, gui: &mut Gui, row: usize, palette: &Palette) {
         .confirm_delete
         .is_some_and(|(r, at)| r == row && at.elapsed() < Duration::from_secs(3));
     if armed {
-        let button = egui::Button::new(
-            RichText::new("Confirmer la suppression").color(palette.on_accent),
-        )
-        .fill(palette.accent);
-        if ui.add(button).clicked() {
+        if Button::icon(&pixel::CLOSE)
+            .label("Confirmer la suppression")
+            .primary()
+            .show(ui, palette)
+            .clicked()
+        {
             gui.confirm_delete = None;
             gui.app.screen.row = row;
             gui.app.config_delete();
         }
-    } else if ui.button("Supprimer").clicked() {
+    } else if Button::icon(&pixel::CLOSE).label("Supprimer").show(ui, palette).clicked() {
         gui.confirm_delete = Some((row, Instant::now()));
     }
 }
@@ -502,7 +516,12 @@ fn delete_button(ui: &mut Ui, gui: &mut Gui, row: usize, palette: &Palette) {
 /// Écouter, enregistrer, et le message de la rubrique.
 fn footer(ui: &mut Ui, gui: &mut Gui, palette: &Palette) {
     ui.horizontal(|ui| {
-        if ui.button("Écouter la voix").on_hover_text("t").clicked() {
+        if Button::icon(&pixel::SPEAKER)
+            .label("Écouter la voix")
+            .show(ui, palette)
+            .on_hover_text("t")
+            .clicked()
+        {
             // Dans la liste des modèles, l'aperçu porte sur celui qui est chargé.
             if gui.rubric == Rubric::Section(0) {
                 let active = gui.app.config.engine.model_path.clone();
@@ -514,7 +533,12 @@ fn footer(ui: &mut Ui, gui: &mut Gui, palette: &Palette) {
             }
             gui.app.preview_voice();
         }
-        if ui.button("Enregistrer").on_hover_text("w").clicked() {
+        if Button::icon(&pixel::FLAG)
+            .label("Enregistrer")
+            .show(ui, palette)
+            .on_hover_text("w")
+            .clicked()
+        {
             gui.app.save_config();
         }
         // L'aperçu passe devant : c'est le seul message qui décrit une action

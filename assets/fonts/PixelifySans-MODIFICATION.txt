@@ -1,0 +1,7 @@
+Pixelify Sans, version variable de github.com/google/fonts/ofl/pixelifysans,
+sous licence SIL OFL 1.1 (voir OFL-PixelifySans.txt), sans nom réservé.
+
+Modification apportée dans sillon, le 2026-09-02 : dans la table GSUB, la
+fonctionnalité `liga` est renommée `zlig`, ce qui désactive les ligatures
+(« fi », « fl ») dont le glyphe se lit mal à la taille des boutons. Aucun
+glyphe n'est modifié ; la somme de contrôle de la table est recalculée.
