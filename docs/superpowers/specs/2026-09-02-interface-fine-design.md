@@ -37,14 +37,18 @@ une carte de lecture flottante, un panneau à droite.
 - **En-tête** (`gui/header.rs`) : titre et section, puis à droite la loupe
   (champ de recherche le temps d'une requête), le signet, la note.
 - **Carte** (`gui/player.rs`) : posée sous le texte, jamais par-dessus. La
-  ligne de temps compte en phrases (`gui/timeline.rs`, pur et testé) ; on
-  glisse, la phrase cible est demandée au relâchement ; un repère par section.
+  ligne de temps compte en phrases (`gui/timeline.rs`, pur et testé) : la
+  position est `(phrases dites + part dite de la phrase en cours) / total`, elle
+  part de zéro et avance en continu ; on glisse, la phrase cible est demandée
+  au relâchement ; un repère par section.
   Vitesse et volume s'ouvrent en petits menus. `⋯` porte signet, repère,
   recherche, reprise, début, retour à la lecture, réglages, aide, et l'état du
   moteur.
 - **Pastilles** : une ligne de trente points au-dessus de la carte, toujours
-  réservée pour que le texte ne saute pas ; vue figée avec « Suivre la
-  lecture », message du contrôleur, recherche en cours, voix système.
+  réservée pour que le texte ne saute pas ; reprise de position avec « Depuis
+  le début » tant que la lecture n'a pas bougé (`App::resumed_here`), vue
+  figée avec « Suivre la lecture », message du contrôleur, recherche en cours,
+  voix système.
 - **Note** (`gui/notes.rs`, `notes.rs`) : une page Markdown par document dans
   `<données>/notes/<mot>-<empreinte>.md`. Un fichier est nommé par son chemin ;
   ce qui n'en a pas — presse-papiers — par son titre. Écriture une seconde

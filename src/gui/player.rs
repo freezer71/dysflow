@@ -135,7 +135,7 @@ fn line(ui: &mut Ui, gui: &mut Gui, palette: &Palette) {
     }
     let rail = egui::Rect::from_center_size(rect.center(), Vec2::new(rect.width() - 12.0, 4.0));
     let at = |x: f32| ((x - rail.min.x) / rail.width()).clamp(0.0, 1.0);
-    let ratio = timeline::ratio(current, total);
+    let ratio = timeline::ratio(current, gui.app.sentence_progress(), total);
     let dragging = response.dragged();
     let shown = response
         .interact_pointer_pos()
@@ -358,11 +358,29 @@ fn pills(ui: &mut Ui, gui: &mut Gui, palette: &Palette, opening: Option<&str>) {
             if let Some(name) = opening {
                 ui.add(egui::Spinner::new().size(14.0).color(palette.accent));
                 widgets::pill(ui, palette, &format!("extraction de {name}…"), true);
+            } else if let Some(at) = gui.app.resumed_here() {
+                // La lecture a repris là où elle en était : le dire tant qu'on
+                // y est, et offrir le début — la ligne de temps ne part pas de
+                // zéro, il faut qu'on sache pourquoi.
+                widgets::pill(ui, palette, &format!("reprise à la phrase {}", at + 1), true)
+                    .on_hover_text("Là où vous en étiez à la dernière fermeture.");
+                if Button::icon(Icon::Home)
+                    .label("Depuis le début")
+                    .small()
+                    .show(ui, palette)
+                    .on_hover_text("g")
+                    .clicked()
+                {
+                    gui.app.seek_start();
+                }
             } else if gui.app.reference_missing() {
                 widgets::pill(ui, palette, "aucune voix de référence", true)
                     .on_hover_text("Ce modèle clone une voix : Réglages › Voix pour désigner un WAV.");
-            } else if !gui.app.status().is_empty() && !gui.app.status().contains("figée") {
-                // La vue figée a sa pastille à elle, juste après.
+            } else if !gui.app.status().is_empty()
+                && !gui.app.status().contains("figée")
+                && !gui.app.status().starts_with("Reprise")
+            {
+                // La vue figée et la reprise ont leur pastille à elles.
                 widgets::pill(ui, palette, &gui.app.status().to_string(), true);
             } else if on_fallback {
                 widgets::pill(ui, palette, "voix système", false)

@@ -97,6 +97,9 @@ pub struct App {
     status: String,
     status_until: Option<Instant>,
     pub notices: Vec<String>,
+    /// Phrase où la lecture a repris au lancement, tant qu'on y est encore :
+    /// la fenêtre le dit, et propose le début.
+    pub resumed_at: Option<usize>,
 
     /// Lancement du lecteur, origine du chrono de démarrage.
     started_at: Instant,
@@ -165,6 +168,7 @@ impl App {
             status: String::new(),
             status_until: None,
             notices,
+            resumed_at: None,
             started_at: Instant::now(),
             synthesis_started: false,
         };
@@ -694,7 +698,13 @@ impl App {
             return;
         };
         self.seek_to(target);
+        self.resumed_at = Some(target);
         self.notify("Reprise là où vous en étiez — g revient au début");
+    }
+
+    /// La phrase de reprise, tant que la lecture n'en a pas bougé.
+    pub fn resumed_here(&self) -> Option<usize> {
+        self.resumed_at.filter(|&at| at == self.current_sentence())
     }
 
     /// Où en est la lecture, si cela vaut d'être retenu.

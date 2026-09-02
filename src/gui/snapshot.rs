@@ -116,6 +116,16 @@ fn frozen_view_and_search() {
 
 #[test]
 #[ignore = "rend une image à regarder ; demande un GPU"]
+fn resumed_reading() {
+    let mut app = app_reading(DEMO);
+    app.seek_to(2);
+    app.resumed_at = Some(2);
+    let mut harness = harness(app);
+    save(&mut harness, "reprise");
+}
+
+#[test]
+#[ignore = "rend une image à regarder ; demande un GPU"]
 fn note_panel() {
     let mut harness = harness(reading());
     {
