@@ -36,6 +36,9 @@ pub struct ModelPackage {
     pub bytes: u64,
     /// Recommandé comme premier modèle.
     pub recommended: bool,
+    /// Ce que la lecture donnera : fluide, ou hachée parce que le modèle
+    /// produit moins vite qu'il ne parle. Mesuré, pas promis.
+    pub pace: &'static str,
 }
 
 impl ModelPackage {
@@ -96,6 +99,8 @@ pub const CATALOG: &[ModelPackage] = &[
         languages_label: "11 langues, dont le français",
         bytes: 1_562_142_912,
         recommended: true,
+        pace: "Plus lent que la parole sur Apple Silicon — 1,4 fois le temps réel mesuré sur M5 : \
+               la voix marque des silences entre les phrases.",
     },
     ModelPackage {
         id: "supertonic_3_f16",
@@ -110,6 +115,7 @@ pub const CATALOG: &[ModelPackage] = &[
         languages_label: "31 langues, dont le français",
         bytes: 312_784_196,
         recommended: false,
+        pace: "Vingt fois plus vite que la parole : lecture fluide, sauts immédiats.",
     },
     ModelPackage {
         id: "supertonic_3_q8_0",
@@ -124,6 +130,7 @@ pub const CATALOG: &[ModelPackage] = &[
         languages_label: "31 langues, dont le français",
         bytes: 454_072_836,
         recommended: false,
+        pace: "Vingt fois plus vite que la parole : lecture fluide, sauts immédiats.",
     },
     ModelPackage {
         id: "supertonic_3_orig",
@@ -138,6 +145,7 @@ pub const CATALOG: &[ModelPackage] = &[
         languages_label: "31 langues, dont le français",
         bytes: 454_072_836,
         recommended: false,
+        pace: "Vingt fois plus vite que la parole : lecture fluide, sauts immédiats.",
     },
 ];
 
@@ -452,9 +460,14 @@ pub fn sessions_for_family(family: &str) -> u32 {
         // Mesuré à vingt fois le temps réel sur une session : elle reste loin
         // devant la lecture, et les sauts n'attendent que 0,25 s.
         "supertonic" => 1,
-        // MagpieTTS est plus lent que la parole ; les familles inconnues sont
-        // supposées l'être aussi, la synthèse en avance valant mieux qu'un
-        // silence.
+        // MagpieTTS sature le GPU à lui seul : trois sessions produisent six
+        // phrases en 29,4 s, une seule en 29,6 s (M5, Metal). Le débit est le
+        // même, mais à trois les phrases se partagent le GPU et celle dont la
+        // lecture a besoin arrive tard — la deuxième à 29 s au lieu de 13.
+        // Une session : le silence après la première phrase passe de 23 s à 7.
+        "magpie_tts" => 1,
+        // Les familles inconnues sont supposées lentes et parallélisables, la
+        // synthèse en avance valant mieux qu'un silence.
         _ => (cores / 3).clamp(2, 4),
     }
 }
@@ -558,6 +571,13 @@ mod tests {
             .iter()
             .find(|p| p.id == id)
             .unwrap_or_else(|| panic!("{id} absent du catalogue"))
+    }
+
+    #[test]
+    fn magpie_gets_a_single_session_and_supertonic_too() {
+        assert_eq!(sessions_for_family("magpie_tts"), 1);
+        assert_eq!(sessions_for_family("supertonic"), 1);
+        assert!(sessions_for_family("inconnue") >= 2);
     }
 
     #[test]

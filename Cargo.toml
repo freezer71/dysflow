@@ -81,3 +81,15 @@ opt-level = 2
 
 
 
+
+[[example]]
+name = "switch"
+required-features = ["audio-cpp"]
+
+[[example]]
+name = "switch_app"
+required-features = ["audio-cpp"]
+
+[[example]]
+name = "magpie_bench"
+required-features = ["audio-cpp"]

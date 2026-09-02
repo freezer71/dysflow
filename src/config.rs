@@ -58,8 +58,8 @@ impl Default for EngineConfig {
             family: String::new(),
             compute: if cfg!(target_os = "macos") { "metal" } else { "cpu" }.to_string(),
             threads: cores.clamp(1, 8),
-            // Ce que la famille demande : une session suffit à Supertonic,
-            // MagpieTTS en veut plusieurs. Voir `models::sessions_for_family`.
+            // Ce que la famille demande : une session pour Supertonic comme
+            // pour MagpieTTS. Voir `models::sessions_for_family`.
             sessions: 0,
             prefetch: 6,
         }
@@ -340,9 +340,10 @@ mod tests {
         assert_eq!(config.engine.sessions, 0, "le défaut est « auto »");
         config.engine.family = "supertonic".to_string();
         assert_eq!(config.sessions(), 1);
-        // MagpieTTS est plus lent que la parole : il lui en faut plusieurs.
+        // MagpieTTS sature le GPU à lui seul : une session, sinon la phrase
+        // attendue arrive après les autres.
         config.engine.family = "magpie_tts".to_string();
-        assert!(config.sessions() >= 2);
+        assert_eq!(config.sessions(), 1);
         // Un nombre posé à la main l'emporte, quelle que soit la famille.
         config.engine.sessions = 3;
         config.engine.family = "supertonic".to_string();

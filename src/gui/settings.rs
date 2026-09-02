@@ -419,6 +419,13 @@ fn models_list(ui: &mut Ui, gui: &mut Gui, palette: &Palette) {
             });
             ui.label(RichText::new(package.description).small().color(palette.dim));
             ui.label(RichText::new(package.languages_label).small().color(palette.faint));
+            // Ce que ça donnera à l'oreille : un modèle lent n'est pas en panne.
+            let slow = package.pace.starts_with("Plus lent");
+            ui.label(
+                RichText::new(package.pace)
+                    .small()
+                    .color(if slow { palette.accent } else { palette.dim }),
+            );
             if truncated {
                 ui.label(
                     RichText::new(format!(

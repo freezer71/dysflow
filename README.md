@@ -192,12 +192,17 @@ document.
 **Le nombre de sessions suit la famille.** Une session pèse environ 460 Mo —
 deux fois le modèle — et s'ouvre après les autres, derrière le verrou décrit
 plus bas : chacune de trop coûte de la mémoire *et* retarde le premier son.
-*Sessions simultanées* vaut donc `auto` par défaut : une pour Supertonic,
-plusieurs pour MagpieTTS. Mesuré sur Supertonic, passer de trois sessions à une
+*Sessions simultanées* vaut donc `auto` par défaut : une pour Supertonic, une
+pour MagpieTTS aussi. Mesuré sur Supertonic, passer de trois sessions à une
 ramène le premier son de 0,85 s à 0,56 s, et la mémoire de 1,5 Go à 700 Mo en
-lecture. Un nombre posé à la main l'emporte toujours — y compris celui qu'une
-version antérieure a pu écrire dans `config.toml` : remettez-le à `auto` dans
-la rubrique **Moteur** pour en profiter.
+lecture. Mesuré sur MagpieTTS (M5, Metal), trois sessions ne produisent pas
+plus vite qu'une — six phrases en 29,4 s contre 29,6 — mais se partagent le
+GPU, et la phrase dont la lecture a besoin arrive plus tard : la deuxième à
+29 s au lieu de 13. MagpieTTS reste plus lent que la parole sur cette machine
+(1,4 fois le temps réel) ; la liste des modèles le dit. Un nombre posé à la
+main l'emporte toujours — y compris celui qu'une version antérieure a pu
+écrire dans `config.toml` : remettez-le à `auto` dans la rubrique **Moteur**
+pour en profiter.
 
 ### Ce qui est dit au moteur
 
