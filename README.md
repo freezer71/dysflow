@@ -517,6 +517,12 @@ line_width = 0            # largeur de la colonne de texte ; 0 = plein écran
 line_spacing = 1          # lignes vides entre deux lignes de texte
 reading_ruler = true      # fond sous la ligne en cours de lecture
 
+[gui]                     # la fenêtre seule ; voir « Interface graphique »
+font = "atkinson"         # atkinson | opendyslexic | default
+font_size = 22.0          # pixels
+line_height = 1.6         # en fraction de la taille
+theme = "dark"            # dark | light
+
 # Tout paramètre propre à une famille, transmis tel quel au modèle.
 [extra]
 cfg_scale = "2.5"
