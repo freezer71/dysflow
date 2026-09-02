@@ -304,8 +304,16 @@ fn read_clipboard() -> Result<String> {
 /// se contente de dire où aller le chercher, et lit avec la voix du système en
 /// attendant.
 fn adopt_installed_model(config: &mut Config, notices: &mut Vec<String>) {
-    if !config.engine.model_path.trim().is_empty() {
-        return;
+    let configured = config.engine.model_path.trim();
+    if !configured.is_empty() {
+        // Un chemin écrit par une version antérieure peut désigner un fichier
+        // qui a déménagé — le répertoire de données a changé de nom. Le
+        // garder ferait tomber sur la voix système alors qu'un modèle est là.
+        if std::path::Path::new(&crate::config::expand_tilde(configured)).exists() {
+            return;
+        }
+        notices.push(format!("modèle introuvable : {configured}"));
+        config.engine.model_path.clear();
     }
     match crate::models::first_installed() {
         Some(package) => {
