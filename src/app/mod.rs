@@ -1005,17 +1005,36 @@ impl App {
     pub fn config_commit_edit(&mut self) {
         let Some(buffer) = self.screen.editing.take() else { return };
         let Some(field) = self.screen.current_field(&self.config) else { return };
-        field.set_text(&mut self.config, buffer.trim().to_string());
-        // Saisir une famille à la main change le jeu de voix disponible.
+        self.config_set_text(field, buffer);
+    }
+
+    /// Pose le texte d'un réglage, avec ce qu'il entraîne.
+    ///
+    /// Une famille saisie à la main change le jeu de voix ; un chemin de
+    /// modèle ou une famille changent le moteur lui-même ; une consigne ou un
+    /// WAV de référence ne demandent qu'une resynthèse — ils partent avec
+    /// chaque requête.
+    pub fn config_set_text(&mut self, field: Field, value: String) {
+        field.set_text(&mut self.config, value.trim().to_string());
         if field == Field::Family {
             self.config.align_voice_with_family();
         }
-        // Un chemin de modèle ou une famille change le moteur lui-même.
-        self.apply_effect(if field.is_text(&self.config) {
-            Effect::ReloadEngine
-        } else {
-            Effect::Resynthesize
+        self.apply_effect(match field {
+            Field::ModelPath | Field::Family => Effect::ReloadEngine,
+            _ => Effect::Resynthesize,
         });
+    }
+
+    /// Pose la valeur d'un réglage numérique — un curseur, pas une flèche.
+    pub fn config_set_number(&mut self, field: Field, value: Option<f64>) {
+        let effect = field.set_number(&mut self.config, value);
+        self.apply_effect(effect);
+    }
+
+    /// Pose un choix — une liste déroulante, pas une flèche.
+    pub fn config_set_choice(&mut self, field: Field, value: &str) {
+        let effect = field.set_choice(&mut self.config, value);
+        self.apply_effect(effect);
     }
 
     pub fn config_cancel_edit(&mut self) {
@@ -1203,10 +1222,17 @@ impl App {
         }
     }
 
-    fn apply_effect(&mut self, effect: Effect) {
+    /// Répercute un changement de réglage sur la lecture.
+    pub fn apply_effect(&mut self, effect: Effect) {
         match effect {
             Effect::None => {}
             Effect::Volume(delta) => self.change_volume(delta),
+            Effect::SetVolume(volume) => {
+                let volume = volume.clamp(0.0, 2.0);
+                self.player.set_volume(volume);
+                self.config.voice.volume = volume;
+                self.notify(&format!("Volume {:.0} %", volume * 100.0));
+            }
             Effect::Resynthesize => {
                 self.apply_tts_params();
                 let current = self.current_sentence();
@@ -1622,5 +1648,22 @@ pub(crate) mod tests {
         assert_eq!(kept.snippet, snippet);
         // Le nouveau document n'a pas encore d'identité stable.
         assert!(app.place_to_remember().is_none());
+    }
+
+    #[test]
+    fn setting_the_volume_moves_the_player_and_the_config() {
+        let mut app = app_reading(DOC);
+        app.config_set_number(Field::Volume, Some(0.25));
+        assert!((app.player.volume() - 0.25).abs() < 1e-6);
+        assert!((app.config.voice.volume - 0.25).abs() < 1e-6);
+    }
+
+    #[test]
+    fn a_text_setting_reloads_the_engine_only_when_it_names_the_model() {
+        let mut app = app_reading(DOC);
+        let engine = app.synth.engine();
+        app.config_set_text(Field::Instruction, "  lentement ".to_string());
+        assert_eq!(app.config.voice.instruction, "lentement");
+        assert!(Arc::ptr_eq(&engine, &app.synth.engine()), "une consigne ne recharge rien");
     }
 }
