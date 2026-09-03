@@ -49,6 +49,9 @@ case ",$FEATURES," in
                 for s in "$OUT"/libaudiocpp_shim.*; do
                     [ -f "$s" ] && cp "$s" "$APP/MacOS/"
                 done
+                # L'icône est versionnée toute faite : scripts/logo.sh la
+                # rasterise, et lui seul demande macOS.
+                cp assets/logo/sillon.icns "$APP/Resources/"
                 VERSION=$(grep -m1 '^version' Cargo.toml | sed 's/.*"\(.*\)".*/\1/')
                 cat > "$APP/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -60,6 +63,7 @@ case ",$FEATURES," in
   <key>CFBundleVersion</key><string>$VERSION</string>
   <key>CFBundleShortVersionString</key><string>$VERSION</string>
   <key>CFBundleExecutable</key><string>sillon-gui</string>
+  <key>CFBundleIconFile</key><string>sillon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>CFBundleDocumentTypes</key><array><dict>
@@ -83,11 +87,15 @@ Type=Application
 Name=Sillon
 Comment=Lit un document à voix haute, à suivre des yeux
 Exec=sillon-gui %f
+Icon=sillon
 Terminal=false
 Categories=Office;Audio;Accessibility;
 MimeType=text/markdown;text/plain;application/pdf;image/png;image/jpeg;
 DESKTOP
-                echo "Joint : sillon.desktop"
+                # Le thème d'icônes la cherche par son nom : à poser dans
+                # ~/.local/share/icons/hicolor/512x512/apps/sillon.png.
+                cp assets/logo/sillon.png "$OUT/"
+                echo "Joint : sillon.desktop et sillon.png"
                 ;;
         esac
         ;;

@@ -1,3 +1,8 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/logo/sillon-mark-dark.svg">
+  <img src="assets/logo/sillon-mark.svg" alt="" width="76">
+</picture>
+
 # sillon
 
 Lecteur audio en terminal : il prend du markdown — pipé ou en fichier —, le
