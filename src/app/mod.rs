@@ -1,7 +1,4 @@
 //! Le contrôleur : état de l'application et commandes du lecteur.
-//!
-//! Il ne sait rien de l'écran qui le montre. Le terminal (`tui`) et la fenêtre
-//! (`gui`) le rendent chacun à leur manière et lui envoient les mêmes touches.
 
 pub mod config;
 pub mod keys;
@@ -97,9 +94,6 @@ pub struct App {
     status: String,
     status_until: Option<Instant>,
     pub notices: Vec<String>,
-    /// Phrase où la lecture a repris au lancement, tant qu'on y est encore :
-    /// la fenêtre le dit, et propose le début.
-    pub resumed_at: Option<usize>,
 
     /// Lancement du lecteur, origine du chrono de démarrage.
     started_at: Instant,
@@ -168,7 +162,6 @@ impl App {
             status: String::new(),
             status_until: None,
             notices,
-            resumed_at: None,
             started_at: Instant::now(),
             synthesis_started: false,
         };
@@ -659,15 +652,6 @@ impl App {
         }
     }
 
-    /// Lance une recherche d'un seul geste, comme une saisie validée.
-    ///
-    /// Un champ de saisie d'une fenêtre livre la requête entière ; la faire
-    /// entrer caractère par caractère serait mimer un clavier qu'on n'a pas.
-    pub fn search_with(&mut self, query: &str) {
-        self.search_input = Some(query.to_string());
-        self.search_commit();
-    }
-
     /// Retient la position dans ce document, et reprend où l'on s'était arrêté.
     ///
     /// Réservé aux documents qui ont une identité stable : un flux et un
@@ -698,13 +682,7 @@ impl App {
             return;
         };
         self.seek_to(target);
-        self.resumed_at = Some(target);
         self.notify("Reprise là où vous en étiez — g revient au début");
-    }
-
-    /// La phrase de reprise, tant que la lecture n'en a pas bougé.
-    pub fn resumed_here(&self) -> Option<usize> {
-        self.resumed_at.filter(|&at| at == self.current_sentence())
     }
 
     /// Où en est la lecture, si cela vaut d'être retenu.
@@ -747,65 +725,6 @@ impl App {
         // La fermeture est en cours : plus personne n'est là pour lire une
         // erreur, et une position perdue coûte un défilement.
         let _ = self.positions.save();
-    }
-
-    /// Remplace le document lu, en gardant le moteur chargé.
-    ///
-    /// Ouvrir un autre fichier ne doit pas coûter le chargement d'un modèle :
-    /// le moteur est partagé, et la synthèse se reconstruit dessus comme le
-    /// fait `reload_engine`. La position du document quitté est notée avant.
-    pub fn open_document(
-        &mut self,
-        builder: DocumentBuilder,
-        input: Option<Receiver<InputEvent>>,
-        source: String,
-    ) {
-        self.note_position();
-        self.stop_preview();
-        self.player.flush();
-
-        let has_stream = input.is_some();
-        self.builder = builder;
-        self.input = input;
-        self.assembler = BlockAssembler::new();
-        self.published = 0;
-        self.input_done = !has_stream;
-        self.source = source;
-        self.remembers_place = false;
-        self.queue_head = 0;
-        self.last_known = 0;
-        self.skipped.clear();
-        self.pace = Pace::default();
-        self.panel = Panel::None;
-        self.selection = 0;
-        self.show_config = false;
-        self.view = ViewAnchor::default();
-        self.search_input = None;
-        self.search = None;
-        self.started_at = Instant::now();
-        self.synthesis_started = false;
-
-        // Une synthèse neuve sur le même moteur. L'ancienne se libère hors du
-        // thread d'interface : sa destruction attend les phrases en cours.
-        let synth = Synthesizer::new(
-            self.synth.engine(),
-            self.config.tts_params(),
-            self.config.sessions() as usize,
-            self.config.engine.prefetch as usize,
-        );
-        let previous = std::mem::replace(&mut self.synth, synth);
-        std::thread::spawn(move || drop(previous));
-
-        if !has_stream {
-            self.builder.finish();
-            self.builder.sync_word_total();
-        }
-        self.publish_new_sentences();
-        if self.config.reading.autoplay {
-            self.player.play();
-        } else {
-            self.player.pause();
-        }
     }
 
     pub fn toggle_bookmark(&mut self) {
@@ -1035,18 +954,6 @@ impl App {
         });
     }
 
-    /// Pose la valeur d'un réglage numérique — un curseur, pas une flèche.
-    pub fn config_set_number(&mut self, field: Field, value: Option<f64>) {
-        let effect = field.set_number(&mut self.config, value);
-        self.apply_effect(effect);
-    }
-
-    /// Pose un choix — une liste déroulante, pas une flèche.
-    pub fn config_set_choice(&mut self, field: Field, value: &str) {
-        let effect = field.set_choice(&mut self.config, value);
-        self.apply_effect(effect);
-    }
-
     pub fn config_cancel_edit(&mut self) {
         self.screen.editing = None;
     }
@@ -1237,12 +1144,6 @@ impl App {
         match effect {
             Effect::None => {}
             Effect::Volume(delta) => self.change_volume(delta),
-            Effect::SetVolume(volume) => {
-                let volume = volume.clamp(0.0, 2.0);
-                self.player.set_volume(volume);
-                self.config.voice.volume = volume;
-                self.notify(&format!("Volume {:.0} %", volume * 100.0));
-            }
             Effect::Resynthesize => {
                 self.apply_tts_params();
                 let current = self.current_sentence();
@@ -1598,74 +1499,6 @@ pub(crate) mod tests {
         app.search_cancel();
         assert!(app.search_input().is_none());
         assert!(app.search().is_none());
-    }
-
-    #[test]
-    fn a_search_given_whole_lands_where_a_typed_one_does() {
-        let mut typed = app_reading(DOC);
-        typed.search_open();
-        for c in "troisieme".chars() {
-            typed.search_push(c);
-        }
-        typed.search_commit();
-
-        let mut whole = app_reading(DOC);
-        whole.search_with("troisieme");
-
-        assert_eq!(whole.current_sentence(), typed.current_sentence());
-        assert_eq!(
-            whole.search().map(|s| s.count()),
-            typed.search().map(|s| s.count())
-        );
-        assert!(whole.search_input().is_none(), "la saisie est close une fois validée");
-    }
-
-    #[test]
-    fn opening_another_document_keeps_the_engine_loaded() {
-        let mut app = app_reading(DOC);
-        let engine = app.synth.engine();
-        app.seek_to(2);
-
-        let mut builder = DocumentBuilder::new(CodePolicy::Announce);
-        for block in crate::input::split_blocks("# Autre\n\nUne phrase neuve.\n") {
-            builder.push_block(&block);
-        }
-        app.open_document(builder, None, "autre.md".to_string());
-
-        assert!(Arc::ptr_eq(&engine, &app.synth.engine()), "le moteur a été rechargé");
-        assert_eq!(app.doc().title, "Autre");
-        assert_eq!(app.source, "autre.md");
-        assert_eq!(app.current_sentence(), 0);
-        assert!(app.search().is_none());
-        assert!(app.view.is_following());
-        assert!(app.input_complete());
-    }
-
-    #[test]
-    fn opening_another_document_notes_where_the_first_one_stopped() {
-        let mut app = app_reading(DOC);
-        // « test.md » devient un document dont la position se retient.
-        app.resume_where_left();
-        app.seek_to(1);
-        let snippet = app.doc().sentence(1).unwrap().written();
-
-        let mut builder = DocumentBuilder::new(CodePolicy::Announce);
-        builder.push_block("Un autre texte.");
-        app.open_document(builder, None, "autre.md".to_string());
-
-        let kept = app.positions.get("test.md").expect("la position du premier document");
-        assert_eq!(kept.sentence_id, 1);
-        assert_eq!(kept.snippet, snippet);
-        // Le nouveau document n'a pas encore d'identité stable.
-        assert!(app.place_to_remember().is_none());
-    }
-
-    #[test]
-    fn setting_the_volume_moves_the_player_and_the_config() {
-        let mut app = app_reading(DOC);
-        app.config_set_number(Field::Volume, Some(0.25));
-        assert!((app.player.volume() - 0.25).abs() < 1e-6);
-        assert!((app.config.voice.volume - 0.25).abs() < 1e-6);
     }
 
     #[test]

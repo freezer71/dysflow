@@ -4,7 +4,6 @@
 //! précédent sans interrompre le son, puis revenir. La vue se détache donc de
 //! la lecture au premier défilement, et s'y recolle sur demande.
 
-/// Ancre de la fenêtre affichée.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ViewAnchor {
     /// Bloc sur lequel la vue est épinglée, ou `None` si elle suit la lecture.
@@ -29,14 +28,6 @@ impl ViewAnchor {
     pub fn scroll(&mut self, delta: isize, current: usize, last: usize) {
         let from = self.pinned.unwrap_or(current) as isize;
         self.pinned = Some((from + delta).clamp(0, last as isize) as usize);
-    }
-
-    /// Épingle la vue sur `block`, sans compter de crans.
-    ///
-    /// La fenêtre sait quel bloc est en haut de l'écran après un coup de
-    /// molette : elle l'épingle directement.
-    pub fn pin(&mut self, block: usize) {
-        self.pinned = Some(block);
     }
 
     /// Recolle la vue sur la lecture.
@@ -81,16 +72,6 @@ mod tests {
         view.scroll(-5, 30, 99);
         view.follow();
         assert!(view.is_following());
-        assert_eq!(view.block(30), 30);
-    }
-
-    #[test]
-    fn pinning_freezes_the_view_on_the_given_block() {
-        let mut view = ViewAnchor::default();
-        view.pin(12);
-        assert!(!view.is_following());
-        assert_eq!(view.block(30), 12);
-        view.follow();
         assert_eq!(view.block(30), 30);
     }
 

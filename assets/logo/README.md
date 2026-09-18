@@ -17,7 +17,7 @@ relancer quand le tracé change, dans cet ordre.
 | `sillon-lockup.svg` | la marque et le mot, pour un en-tête |
 | `sillon-app.svg` | l'icône d'application, plaque comprise |
 | `sillon-app-small.svg` | la même, pour les tuiles de 16 et 32 points |
-| `sillon.icns` | l'icône macOS assemblée, posée par `package.sh` |
+| `sillon.icns` | la marque au format d'icône macOS |
 | `sillon.png` | 512 pixels, pour les thèmes d'icônes de Linux |
 
 Chaque SVG a son jumeau `-dark`, à servir sur fond sombre : l'encre y devient
@@ -29,8 +29,7 @@ logo redessiné pour tenir, pas un autre logo.
 
 ## Couleurs
 
-Elles viennent du thème de la fenêtre (`src/gui/theme.rs`) — un seul endroit
-décide de l'orange.
+Elles sont définies dans `scripts/logo_gen.py`.
 
 | | |
 |---|---|
@@ -41,7 +40,7 @@ décide de l'orange.
 
 ## Le mot
 
-« sillon » est composé en **Atkinson Hyperlegible Bold**, la police que le
-lecteur emploie déjà, et converti en contours : le lockup s'affiche partout
+« sillon » est composé en **Atkinson Hyperlegible Bold** et converti en
+contours : le lockup s'affiche partout
 sans rien exiger de la machine. La police est sous licence OFL — voir
 `assets/fonts/OFL-AtkinsonHyperlegible.txt`.

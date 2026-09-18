@@ -1,8 +1,3 @@
-//! Des arguments à un lecteur prêt : ce que les deux binaires partagent.
-//!
-//! Le terminal et la fenêtre lisent les mêmes options, chargent le même moteur
-//! et préparent le même document. Seul le rendu diffère, et il commence après.
-
 use anyhow::{Context, Result};
 use clap::Parser;
 use std::io::IsTerminal;

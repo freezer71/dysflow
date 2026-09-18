@@ -7,15 +7,10 @@
 # restent courts, lisibles, et retouchables.
 #
 #   ./venv/bin/python scripts/logo_gen.py     # fonttools requis pour le mot
-#
-# La géométrie tient dans une case de 64 unités, comme les icônes de la
-# fenêtre (src/gui/icons.rs) ; les couleurs viennent du thème clair et du
-# thème sombre (src/gui/theme.rs) — un seul endroit décide de l'orange.
 
 import math
 import os
 
-# --- Couleurs, reprises de src/gui/theme.rs -------------------------------
 ENCRE = "#161616"   # thème clair : bright
 CREME = "#FBF9F5"   # thème clair : background
 CLAIR = "#EEEEEE"   # thème sombre : bright

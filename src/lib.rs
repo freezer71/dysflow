@@ -3,7 +3,7 @@
 //! L'organisation suit le trajet du texte :
 //!
 //! ```text
-//! entrée ──▶ doc ──▶ tts ──▶ audio ──▶ app ──▶ tui | gui
+//! entrée ──▶ doc ──▶ tts ──▶ audio ──▶ app ──▶ tui
 //! (flux,    (blocs,  (pool    (sortie,  (état,   (rendu,
 //!  blocs)   phrases) parallèle) position) commandes) touches)
 //! ```
@@ -13,12 +13,10 @@ pub mod audio;
 pub mod bookmark;
 pub mod config;
 pub mod doc;
-pub mod gui;
 pub mod input;
 pub mod launch;
 pub mod logging;
 pub mod models;
-pub mod notes;
 pub mod paths;
 pub mod position;
 pub mod source;

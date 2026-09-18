@@ -20,8 +20,6 @@ pub struct Config {
     pub voice: VoiceConfig,
     pub sampling: SamplingConfig,
     pub reading: ReadingConfig,
-    /// Réglages de la fenêtre. Le terminal ne les lit pas.
-    pub gui: GuiConfig,
     /// Options transmises telles quelles au modèle TTS.
     ///
     /// Échappatoire pour tout paramètre propre à une famille que le lecteur ne
@@ -142,48 +140,6 @@ impl Default for ReadingConfig {
             line_spacing: 1,
             reading_ruler: true,
         }
-    }
-}
-
-/// Réglages propres à la fenêtre. Le terminal ne les lit pas.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(default)]
-pub struct GuiConfig {
-    /// Police de lecture : `atkinson`, `opendyslexic` ou `default`.
-    pub font: String,
-    /// Taille du texte de lecture, en pixels.
-    pub font_size: f32,
-    /// Interlignage, en fraction de la taille.
-    pub line_height: f32,
-    /// `dark` ou `light`.
-    pub theme: String,
-}
-
-impl Default for GuiConfig {
-    fn default() -> Self {
-        Self {
-            font: "atkinson".to_string(),
-            // Grande, pour un grand écran et une lecture longue.
-            font_size: 22.0,
-            // La recommandation courante pour la lecture accompagnée.
-            line_height: 1.6,
-            theme: "dark".to_string(),
-        }
-    }
-}
-
-impl GuiConfig {
-    pub const FONTS: &'static [&'static str] = &["atkinson", "opendyslexic", "default"];
-    pub const THEMES: &'static [&'static str] = &["dark", "light"];
-
-    /// Taille bornée : un fichier édité à la main ne doit pas rendre la
-    /// fenêtre illisible.
-    pub fn font_size(&self) -> f32 {
-        self.font_size.clamp(14.0, 40.0)
-    }
-
-    pub fn line_height(&self) -> f32 {
-        self.line_height.clamp(1.0, 2.5)
     }
 }
 
@@ -456,18 +412,14 @@ mod tests {
     }
 
     #[test]
-    fn a_config_without_a_gui_section_gets_the_window_defaults() {
-        let parsed: Config = toml::from_str("[voice]\nspeed = 1.5\n").unwrap();
-        assert_eq!(parsed.gui.font, "atkinson");
-        assert_eq!(parsed.gui.font_size, 22.0);
-        assert_eq!(parsed.gui.line_height, 1.6);
-        assert_eq!(parsed.gui.theme, "dark");
-    }
-
-    #[test]
-    fn window_sizes_are_kept_within_reason() {
-        let gui = GuiConfig { font_size: 200.0, line_height: 0.2, ..GuiConfig::default() };
-        assert_eq!(gui.font_size(), 40.0);
-        assert_eq!(gui.line_height(), 1.0);
+    fn legacy_window_settings_are_ignored_and_not_saved() {
+        let parsed: Config = toml::from_str(
+            "[voice]\nspeed = 1.5\n[gui]\nfont = \"atkinson\"\nfont_size = 22.0\n",
+        ).unwrap();
+        assert_eq!(parsed.voice.speed, 1.5);
+        let saved = toml::to_string(&parsed).unwrap();
+        assert!(!saved.contains("[gui]"));
+        assert!(!saved.contains("font_size"));
+        assert_eq!(toml::from_str::<Config>(&saved).unwrap(), parsed);
     }
 }

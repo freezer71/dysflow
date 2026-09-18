@@ -3,18 +3,10 @@
 //! Trois contextes se succèdent, du plus captif au plus général : la saisie d'un
 //! champ texte, l'écran de configuration, puis la lecture. Chacun consomme les
 //! touches qui lui reviennent avant de rendre la main.
-//!
-//! Le terminal et la fenêtre convertissent leurs événements en `Key` : la
-//! logique n'existe qu'une fois, et les deux aides disent la même chose.
 
 use super::config::Page;
 use super::{App, Panel};
 
-/// Blocs parcourus par une page de défilement, au terminal.
-///
-/// Une page entière ferait perdre le fil ; quatre blocs laissent toujours de
-/// quoi se raccrocher à ce qu'on vient de lire. La fenêtre, qui connaît sa
-/// hauteur, défile en pixels et n'emprunte pas ce chemin.
 const VIEW_STEP: isize = 4;
 
 /// Aide de la vue de lecture.
