@@ -97,7 +97,7 @@ fn render_header(frame: &mut Frame, app: &App, area: Rect) {
             Style::default().fg(BRIGHT).add_modifier(Modifier::BOLD),
         ),
         Span::styled("· ", Style::default().fg(FAINT)),
-        Span::styled(truncate(&app.source, 24), Style::default().fg(DIM)),
+        Span::styled(truncate(&app.source_label(), 24), Style::default().fg(DIM)),
     ];
     if !section.is_empty() && section != doc.title {
         spans.push(Span::styled("  ▸ ", Style::default().fg(FAINT)));
@@ -174,7 +174,7 @@ impl Prefix {
     fn width(&self) -> usize {
         self.marker
             .as_ref()
-            .map_or(0, |(text, _)| text.chars().count() + 1)
+            .map_or(0, |(text, _)| columns(text) + 1)
     }
 
     /// Décalage des lignes qui prolongent la première.
@@ -325,7 +325,7 @@ fn space_out(lines: Vec<Line<'static>>, spacing: usize) -> Vec<Line<'static>> {
 /// Les spans qui portent déjà un fond — le mot prononcé — gardent le leur.
 fn ruled(line: Line<'static>, width: usize, background: Color) -> Line<'static> {
     let mut spans = line.spans;
-    let used: usize = spans.iter().map(|s| s.content.chars().count()).sum();
+    let used: usize = spans.iter().map(|s| columns(&s.content)).sum();
     for span in spans.iter_mut() {
         // Le mot prononcé porte déjà un fond : la règle passe dessous.
         if span.style.bg.is_none() {
@@ -344,6 +344,15 @@ fn ruled(line: Line<'static>, width: usize, background: Color) -> Line<'static> 
 /// Découpe une ligne en mots, chacun précédé de son écart.
 ///
 /// L'écart est compté plutôt qu'écrasé : c'est lui qui aligne une colonne.
+/// Colonnes qu'un texte occupe à l'écran.
+///
+/// Un idéogramme en prend deux, un caractère combinant aucune : compter les
+/// caractères faisait déborder le chinois et le coréen, que le catalogue
+/// annonce pourtant, et le mot prononcé pouvait sortir de l'écran.
+fn columns(text: &str) -> usize {
+    unicode_width::UnicodeWidthStr::width(text)
+}
+
 fn cells(source: &str) -> Vec<(usize, String)> {
     let mut out = Vec::new();
     let mut gap = 0usize;
@@ -375,7 +384,7 @@ fn open_line(prefix: &Prefix, marked: bool) -> (Vec<Span<'static>>, usize) {
     // L'espace qui suit la marque vient de l'écart du premier mot, comme
     // entre deux mots : la marque compte pour un mot de plus.
     if let (true, Some((text, style))) = (marked, prefix.marker.as_ref()) {
-        used += text.chars().count();
+        used += columns(text);
         spans.push(Span::styled(text.clone(), *style));
     }
     (spans, used)
@@ -411,7 +420,7 @@ fn layout_tracked(
     let recomposed: Vec<String>;
     let source: &[String] = if source.iter().enumerate().all(|(n, line)| {
         let marked = usize::from(n == 0 || prefix.every_line) * head;
-        prefix.indent + marked + line.chars().count() <= width
+        prefix.indent + marked + columns(line) <= width
     }) {
         source
     } else {
@@ -433,7 +442,7 @@ fn layout_tracked(
             // L'écart du fichier ouvre la ligne — c'est son indentation — et
             // sépare ensuite deux mots sans jamais les coller.
             let mut gap = if placed { written.max(1) } else { written };
-            let len = text.chars().count();
+            let len = columns(&text);
             if placed && used + gap + len > width {
                 lines.push(Line::from(std::mem::take(&mut spans)));
                 let (opened, at) = open_line(prefix, prefix.every_line);
@@ -525,7 +534,7 @@ fn fixed_lines(
 ) -> Vec<Line<'static>> {
     let (style, gutter) = fixed_style(kind, current);
     let (opening, continuation) = gutters(kind);
-    let room = width.saturating_sub(opening.chars().count()).max(1);
+    let room = width.saturating_sub(columns(opening)).max(1);
 
     let mut lines = Vec::new();
     for source_line in source {
@@ -1558,7 +1567,7 @@ fn render_config_footer(frame: &mut Frame, app: &App, area: Rect) {
     } else if app.screen.page == Page::Menu {
         format!("↑↓ choisir · Entrée ouvrir · 1…5 accès direct · t écouter · {exit}")
     } else if app.screen.current_section() == Section::Models {
-        "↑↓ modèle · Entrée installer/choisir · t écouter · d supprimer · Échap menu".to_string()
+        "↑↓ modèle · Entrée installer/choisir · t écouter · d d supprimer · Échap menu".to_string()
     } else {
         "↑↓ réglage · ←→ valeur · Entrée éditer · a tout voir · w enregistrer · Échap menu"
             .to_string()
@@ -2202,5 +2211,19 @@ mod tests {
                 .any(|s| s.style.add_modifier.contains(Modifier::BOLD)),
             "l'en-tête doit se distinguer de ses lignes"
         );
+    }
+
+
+    #[test]
+    fn wide_characters_count_for_the_columns_they_take() {
+        use unicode_width::UnicodeWidthStr;
+        // Un idéogramme prend deux colonnes : compté pour une, la ligne
+        // déborde et le mot prononcé peut sortir de l'écran.
+        let (lines, _) = layout(&["漢字漢字 漢字漢字 漢字漢字"], 12, 0);
+        assert!(lines.len() >= 3, "{lines:?}");
+        for line in &lines {
+            let width: usize = line.spans.iter().map(|s| s.content.width()).sum();
+            assert!(width <= 12, "ligne trop large : {width}");
+        }
     }
 }

@@ -42,7 +42,7 @@ pub const CONFIG_HELP: &[(&str, &str)] = &[
     ("Échap", "Revenir au menu, puis fermer"),
     ("t", "Écouter un aperçu de la voix"),
     ("a", "Montrer les réglages sans effet"),
-    ("d", "Supprimer un modèle · annuler"),
+    ("d", "Supprimer un modèle (d deux fois) · annuler"),
     ("w", "Enregistrer la configuration"),
 ];
 

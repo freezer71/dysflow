@@ -62,8 +62,12 @@ pub fn load_with_cache(path: &Path, cached: bool) -> Result<String> {
     }
 
     let markdown = match kind {
-        Kind::Text => std::fs::read_to_string(path)
-            .with_context(|| format!("lecture de {}", path.display()))?,
+        // Lu octet par octet et non comme de l'UTF-8 strict : un fichier en
+        // latin-1 se lit avec quelques caractères de remplacement plutôt
+        // que d'être refusé.
+        Kind::Text => crate::input::decode_text(
+            &std::fs::read(path).with_context(|| format!("lecture de {}", path.display()))?,
+        ),
         Kind::Pdf => layout::to_markdown(&pdf::pages(path)?),
         #[cfg(feature = "ocr")]
         Kind::Image => layout::to_markdown(&ocr::pages(path)?),
@@ -126,7 +130,7 @@ mod tests {
 
     #[test]
     fn a_pdf_comes_back_as_markdown() {
-        let out = load(&fixture("spec.pdf")).expect("la fixture doit se lire");
+        let out = load_with_cache(&fixture("spec.pdf"), false).expect("la fixture doit se lire");
         assert!(out.contains("Spécification"), "accents perdus : {out}");
         assert!(out.contains("2. Contraintes"), "seconde page absente : {out}");
     }
@@ -134,7 +138,7 @@ mod tests {
     #[cfg(feature = "ocr")]
     #[test]
     fn an_image_is_read_by_the_recogniser() {
-        let out = load(&fixture("capture.png")).expect("l'image doit se lire");
+        let out = load_with_cache(&fixture("capture.png"), false).expect("l'image doit se lire");
         assert!(out.contains("Spécification"), "accents perdus : {out}");
         assert!(
             out.contains("## 1. Contexte"),
@@ -167,5 +171,16 @@ mod tests {
             message.contains("dossier") || message.contains("aucune image"),
             "l'erreur doit dire ce qui bloque : {message}"
         );
+    }
+
+
+    #[test]
+    fn a_latin1_text_file_is_read_rather_than_refused() {
+        let path = std::env::temp_dir().join(format!("sillon-latin1-{}.txt", std::process::id()));
+        std::fs::write(&path, b"\xEF\xBB\xBFcaf\xE9 cr\xE8me\n").unwrap();
+        let out = load_with_cache(&path, false).expect("un texte mal encodé se lit quand même");
+        assert!(out.starts_with("caf"), "BOM ou octet fautif en tête : {out:?}");
+        assert!(out.contains("cr\u{FFFD}me"), "{out:?}");
+        std::fs::remove_file(&path).ok();
     }
 }

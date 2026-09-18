@@ -163,7 +163,7 @@ impl Config {
         }
         match std::fs::read_to_string(&path) {
             Ok(text) => match toml::from_str::<Config>(&text) {
-                Ok(config) => (config, None),
+                Ok(config) => (config.normalised(), None),
                 Err(err) => (
                     Self::default(),
                     Some(format!("configuration ignorée ({}) : {err}", path.display())),
@@ -178,21 +178,53 @@ impl Config {
 
     pub fn save(&self) -> Result<PathBuf> {
         let path = Self::path().context("répertoire de configuration introuvable")?;
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)
-                .with_context(|| format!("création de {}", parent.display()))?;
-        }
-        let text = toml::to_string_pretty(self).context("sérialisation de la configuration")?;
-        std::fs::write(&path, text).with_context(|| format!("écriture de {}", path.display()))?;
+        self.save_to(&path)?;
         Ok(path)
+    }
+
+    fn save_to(&self, path: &std::path::Path) -> Result<()> {
+        let text = toml::to_string_pretty(self).context("sérialisation de la configuration")?;
+        crate::paths::write_atomic(path, text.as_bytes())
+            .with_context(|| format!("écriture de {}", path.display()))?;
+        Ok(())
+    }
+
+    /// Ramène chaque réglage dans les bornes que l'écran lui donne.
+    ///
+    /// Les flèches bornent ce qu'elles touchent ; un fichier écrit à la main
+    /// ne l'est pas. `line_width = 5` donnait un écran vide sans un mot,
+    /// `sessions = 200` ouvrait deux cents sessions de 460 Mo, et un `nan`
+    /// passait tel quel au moteur. Une valeur hors bornes est ramenée à la
+    /// borne, un nombre sans valeur au défaut.
+    pub fn normalised(mut self) -> Self {
+        let defaults = Config::default();
+        let finite = |value: f32, fallback: f32| if value.is_finite() { value } else { fallback };
+        self.voice.speed = finite(self.voice.speed, defaults.voice.speed).clamp(0.5, 3.0);
+        self.voice.pitch = finite(self.voice.pitch, defaults.voice.pitch).clamp(-1.0, 1.0);
+        self.voice.energy = finite(self.voice.energy, defaults.voice.energy).clamp(0.0, 2.0);
+        self.voice.volume = finite(self.voice.volume, defaults.voice.volume).clamp(0.0, 2.0);
+        self.engine.threads = self.engine.threads.clamp(1, 64);
+        self.engine.sessions = self.engine.sessions.min(16);
+        self.engine.prefetch = self.engine.prefetch.clamp(2, 64);
+        self.reading.seek_step = self.reading.seek_step.clamp(1, 50);
+        // Zéro reste « plein écran » ; une largeur posée se lit de 40 à 120.
+        if self.reading.line_width != 0 {
+            self.reading.line_width = self.reading.line_width.clamp(40, 120);
+        }
+        self.reading.line_spacing = self.reading.line_spacing.min(3);
+        self
     }
 
     /// Paramètres de synthèse dérivés de la configuration.
     pub fn tts_params(&self) -> TtsParams {
         TtsParams {
             // Une voix que la famille ne connaît pas ne doit jamais atteindre
-            // le moteur : elle y provoque une erreur illisible.
-            voice: crate::models::sanitised_voice(&self.engine.family, &self.voice.voice),
+            // le moteur : elle y provoque une erreur illisible. Un chemin de
+            // WAV sous `~` est développé : le moteur ne le ferait pas.
+            voice: expand_tilde(&crate::models::sanitised_voice(
+                &self.engine.family,
+                &self.voice.voice,
+            )),
             language: self.voice.language.clone(),
             speaking_rate: self.voice.speed.clamp(0.25, 4.0),
             pitch_shift: self.voice.pitch.clamp(-1.0, 1.0),
@@ -421,5 +453,55 @@ mod tests {
         assert!(!saved.contains("[gui]"));
         assert!(!saved.contains("font_size"));
         assert_eq!(toml::from_str::<Config>(&saved).unwrap(), parsed);
+    }
+
+
+    #[test]
+    fn saving_leaves_no_temporary_file_next_to_the_config() {
+        let dir = std::env::temp_dir().join(format!("sillon-cfg-atomic-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("config.toml");
+        Config::default().save_to(&path).expect("écriture");
+        let names: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(Result::ok)
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(names, vec!["config.toml"]);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+
+    #[test]
+    fn a_config_read_from_disk_is_brought_back_within_bounds() {
+        // Les flèches bornent chaque réglage ; un fichier écrit à la main ne
+        // l'est pas. `line_width = 5` donnait un écran vide sans un mot.
+        let parsed: Config = toml::from_str(
+            "[reading]\nline_width = 5\nline_spacing = 500\nseek_step = 0\n\
+             [engine]\nsessions = 200\nprefetch = 0\nthreads = 0\n\
+             [voice]\nspeed = nan\nvolume = 9.0\npitch = -4.0\n",
+        )
+        .unwrap();
+        let c = parsed.normalised();
+        assert_eq!(c.reading.line_width, 40);
+        assert_eq!(c.reading.line_spacing, 3);
+        assert_eq!(c.reading.seek_step, 1);
+        assert_eq!(c.engine.sessions, 16);
+        assert_eq!(c.engine.prefetch, 2);
+        assert_eq!(c.engine.threads, 1);
+        assert_eq!(c.voice.speed, 1.0, "NaN redevient le défaut");
+        assert_eq!(c.voice.volume, 2.0);
+        assert_eq!(c.voice.pitch, -1.0);
+        // Zéro reste « plein écran », et les valeurs sages ne bougent pas.
+        assert_eq!(Config::default().normalised(), Config::default());
+    }
+
+    #[test]
+    fn a_reference_wav_under_the_home_is_expanded() {
+        let mut config = Config::default();
+        config.voice.voice = "~/voix.wav".into();
+        let voice = config.tts_params().voice;
+        assert!(!voice.starts_with('~'), "{voice}");
+        assert!(voice.ends_with("voix.wav"), "{voice}");
     }
 }

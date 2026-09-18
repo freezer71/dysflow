@@ -358,7 +358,11 @@ impl Field {
                     }
                     // Un enregistrement fourni : son nom suffit, le chemin
                     // complet déborderait de la colonne.
-                    None if std::path::Path::new(config.voice.voice.trim()).is_file() => {
+                    None if std::path::Path::new(&crate::config::expand_tilde(
+                        config.voice.voice.trim(),
+                    ))
+                    .is_file() =>
+                    {
                         std::path::Path::new(config.voice.voice.trim())
                             .file_name()
                             .map(|n| n.to_string_lossy().into_owned())
@@ -687,7 +691,12 @@ pub struct ConfigScreen {
     pub download: Option<models::Download>,
     /// Dernier message d'installation ou d'erreur.
     pub notice: String,
+    /// Suppression demandée une première fois, en attente de la seconde.
+    pending_delete: Option<(&'static models::ModelPackage, std::time::Instant)>,
 }
+
+/// Délai pendant lequel une seconde pression confirme la suppression.
+const DELETE_CONFIRM_WINDOW: std::time::Duration = std::time::Duration::from_secs(5);
 
 impl Default for ConfigScreen {
     fn default() -> Self {
@@ -705,7 +714,29 @@ impl ConfigScreen {
             editing: None,
             download: None,
             notice: String::new(),
+            pending_delete: None,
         }
+    }
+
+    /// Vrai si cette pression confirme une suppression demandée juste avant.
+    ///
+    /// Un modèle pèse jusqu'à 1,6 Go : la touche qui retire un signet ne doit
+    /// pas le supprimer d'un seul geste. La première pression arme, la
+    /// seconde — sur le même paquet, dans les secondes qui suivent — agit.
+    pub fn confirm_delete(&mut self, package: &'static models::ModelPackage) -> bool {
+        self.confirm_delete_at(package, std::time::Instant::now())
+    }
+
+    fn confirm_delete_at(
+        &mut self,
+        package: &'static models::ModelPackage,
+        now: std::time::Instant,
+    ) -> bool {
+        let confirmed = self
+            .pending_delete
+            .is_some_and(|(p, t)| std::ptr::eq(p, package) && now.duration_since(t) <= DELETE_CONFIRM_WINDOW);
+        self.pending_delete = if confirmed { None } else { Some((package, now)) };
+        confirmed
     }
 
     pub fn current_section(&self) -> Section {
@@ -1167,5 +1198,24 @@ mod tests {
     fn the_reading_section_shows_the_column_before_the_code_policy() {
         let config = Config::default();
         assert_eq!(Section::Reading.summary(&config), "plein écran · announce");
+    }
+
+
+    #[test]
+    fn deleting_a_model_asks_to_press_again() {
+        // Un modèle pèse jusqu'à 1,6 Go : la touche qui retire un signet ne
+        // doit pas le supprimer d'un seul geste.
+        let mut screen = ConfigScreen::new();
+        let first = &models::CATALOG[0];
+        let second = &models::CATALOG[1];
+        let t0 = std::time::Instant::now();
+        let s = std::time::Duration::from_secs;
+        assert!(!screen.confirm_delete_at(first, t0));
+        assert!(screen.confirm_delete_at(first, t0 + s(2)));
+        // Confirmé : la demande est consommée.
+        assert!(!screen.confirm_delete_at(first, t0 + s(3)));
+        // Trop tard, ou un autre paquet : on redemande.
+        assert!(!screen.confirm_delete_at(first, t0 + s(20)));
+        assert!(!screen.confirm_delete_at(second, t0 + s(21)));
     }
 }

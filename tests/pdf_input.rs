@@ -29,7 +29,7 @@ fn the_binary_writes_the_extracted_markdown_and_stops() {
 
 #[test]
 fn a_pdf_becomes_markdown_the_reader_can_navigate() {
-    let markdown = sillon::source::load(&fixture("spec.pdf")).expect("le PDF doit se lire");
+    let markdown = sillon::source::load_with_cache(&fixture("spec.pdf"), false).expect("le PDF doit se lire");
     let blocks = sillon::input::split_blocks(&markdown);
     assert!(
         blocks.len() >= 2,
@@ -42,7 +42,7 @@ fn a_pdf_becomes_markdown_the_reader_can_navigate() {
 fn a_pdf_produces_sentences_to_speak() {
     use sillon::doc::builder::{parse_document, CodePolicy};
 
-    let markdown = sillon::source::load(&fixture("spec.pdf")).expect("le PDF doit se lire");
+    let markdown = sillon::source::load_with_cache(&fixture("spec.pdf"), false).expect("le PDF doit se lire");
     let doc = parse_document(&markdown, CodePolicy::Announce);
     assert!(!doc.sentences.is_empty(), "aucune phrase à prononcer");
     let spoken: String = doc.sentences.iter().map(|s| s.text.as_str()).collect();
@@ -54,7 +54,7 @@ fn a_pdf_produces_sentences_to_speak() {
 
 #[test]
 fn a_laid_out_pdf_is_rebuilt_into_readable_markdown() {
-    let markdown = sillon::source::load(&fixture("rapport.pdf")).expect("le PDF doit se lire");
+    let markdown = sillon::source::load_with_cache(&fixture("rapport.pdf"), false).expect("le PDF doit se lire");
 
     assert!(
         !markdown.contains("Confidentiel"),
@@ -94,7 +94,7 @@ fn a_laid_out_pdf_is_rebuilt_into_readable_markdown() {
 fn the_rebuilt_pdf_fills_the_table_of_contents() {
     use sillon::doc::builder::{parse_document, CodePolicy};
 
-    let markdown = sillon::source::load(&fixture("rapport.pdf")).expect("le PDF doit se lire");
+    let markdown = sillon::source::load_with_cache(&fixture("rapport.pdf"), false).expect("le PDF doit se lire");
     let doc = parse_document(&markdown, CodePolicy::Announce);
     assert!(
         doc.sections.len() >= 4,

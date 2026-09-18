@@ -26,7 +26,7 @@ static NUMBER_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
         // Identifiants : M5, F1, v3, v1.2 — des noms, pas des quantités.
         r"(?P<ident>[A-Za-zÀ-ÖØ-öø-ÿ]+\d+[A-Za-zÀ-ÖØ-öø-ÿ0-9.]*)",
         r"|(?P<version>\d+(?:\.\d+)+)",
-        r"|(?P<fraction>\d+/\d+)",
+        r"|(?P<fraction>\d+(?:/\d+)+)",
         // Téléphone : dix chiffres derrière un 0 ou un +33, groupés ou non.
         r"|(?P<phone>(?:\+33|0)[ .\-]?\d(?:[ .\-]?\d{2}){4})\b",
         // Heures : 14h30, 14 h 30, 14h. Le \b final écarte « 5 hommes ».
@@ -40,9 +40,11 @@ static NUMBER_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
         // dernier groupe plus long ne doit pas être coupé en deux — « 000 »
         // puis « 15 » donnait « millequinze ». La suite est reconnue entière,
         // et c'est le rendu qui décide si elle compte ou identifie.
-        "|(?P<grp>\\d{1,3}(?:[ \u{202F}\u{00A0}]\\d{3,5})+)\\b",
+        // Blocs de quatre : IBAN, cartes. Jamais une quantité.
+        "|(?P<blocks>\\d{4}(?:[ \u{202F}\u{00A0}]\\d{4})+(?:[ \u{202F}\u{00A0}]\\d{1,4})?)\\b",
+        "|(?P<grp>\\d{1,3}(?:[ \u{202F}\u{00A0}]\\d{3,5})+)(?:,(?P<grpf>\\d+))?\\b",
         r"|(?P<deci>\d+),(?P<decf>\d+)",
-        r"|(?P<ordn>\d+)(?P<ords>ers|er|res|re|ères|ère|ndes|nde|nds|nd|èmes|ème|emes|eme|es|e)\b",
+        r"|(?P<ordn>\d+)(?P<ords>ers|er|res|re|ères|ère|eres|ere|ndes|nde|nds|nd|èmes|ème|emes|eme|es|e)\b",
         r"|(?P<card>\d+)",
     ))
     .unwrap()
@@ -146,6 +148,14 @@ fn render(caps: &Captures, text: &str) -> Option<String> {
     if let (Some(value), Some(unit)) = (caps.name("letn"), caps.name("lets")) {
         return spell_quantity(value.as_str(), unit.as_str());
     }
+    if let Some(blocks) = caps.name("blocks") {
+        let groups: Vec<&str> = blocks
+            .as_str()
+            .split(|c: char| !c.is_ascii_digit())
+            .filter(|g| !g.is_empty())
+            .collect();
+        return Some(spell_digits(&groups));
+    }
     if let Some(grouped) = caps.name("grp") {
         let groups: Vec<&str> = grouped
             .as_str()
@@ -153,7 +163,10 @@ fn render(caps: &Captures, text: &str) -> Option<String> {
             .filter(|g| !g.is_empty())
             .collect();
         if is_thousands(&groups) && !IDENTIFIER_CONTEXT.is_match(&text[..grouped.start()]) {
-            return spell_plain(&groups.concat());
+            return match caps.name("grpf") {
+                Some(fraction) => spell_decimal(&groups.concat(), fraction.as_str()),
+                None => spell_plain(&groups.concat()),
+            };
         }
         return Some(spell_digits(&groups));
     }
@@ -163,8 +176,16 @@ fn render(caps: &Captures, text: &str) -> Option<String> {
     if let (Some(rank), Some(suffix)) = (caps.name("ordn"), caps.name("ords")) {
         let n: u64 = rank.as_str().parse().ok()?;
         let suffix = suffix.as_str().to_lowercase();
-        // Seul le premier rang distingue le féminin.
-        let feminine = suffix.starts_with('r') || suffix.starts_with('è') || suffix.starts_with("nde");
+        // Seul le premier rang distingue le féminin ; « 1ere » sans accent
+        // est la graphie la plus courante au clavier.
+        let feminine = suffix.starts_with('r')
+            || suffix.starts_with('è')
+            || suffix.starts_with("ere")
+            || suffix.starts_with("nde");
+        // « 2nd » se dit « second », pas « deuxième ».
+        if n == 2 && suffix.starts_with("nd") {
+            return Some(if feminine { "seconde".to_string() } else { "second".to_string() });
+        }
         return Some(spell_ordinal(n, feminine));
     }
     let card = caps.name("card")?.as_str();
@@ -180,7 +201,12 @@ fn is_thousands(groups: &[&str]) -> bool {
     let Some(first) = groups.first() else {
         return false;
     };
-    first.len() <= 3 && !starts_with_zero(first) && groups[1..].iter().all(|g| g.len() == 3)
+    // Un premier groupe « 0 » n'ouvre pas un nombre de millions : c'est un
+    // numéro, à dicter chiffre par chiffre.
+    first.len() <= 3
+        && !starts_with_zero(first)
+        && *first != "0"
+        && groups[1..].iter().all(|g| g.len() == 3)
 }
 
 fn starts_with_zero(group: &str) -> bool {
@@ -261,8 +287,23 @@ fn spell_quantity(value: &str, unit: &str) -> Option<String> {
         None => spell_plain(&digits)?,
     };
     let plural = digits.parse::<u64>().ok()? >= 2;
-    let (_, singular, many) = UNITS.iter().find(|(symbol, _, _)| *symbol == unit)?;
-    Some(format!("{spoken} {}", if plural { many } else { singular }))
+    // Une unité de plusieurs lettres se reconnaît quelle que soit sa casse —
+    // « Kg », « KM ». Une lettre seule reste sensible : « M » n'est pas le
+    // mètre. Une unité inconnue garde sa graphie, mais son nombre se dit :
+    // « cinq G » vaut mieux que « 5G » lu par un moteur sans lexique.
+    let lowered = unit.to_lowercase();
+    let known = UNITS
+        .iter()
+        .find(|(symbol, _, _)| *symbol == unit)
+        .or_else(|| {
+            (unit.chars().count() > 1)
+                .then(|| UNITS.iter().find(|(symbol, _, _)| *symbol == lowered))
+                .flatten()
+        });
+    Some(match known {
+        Some((_, singular, many)) => format!("{spoken} {}", if plural { many } else { singular }),
+        None => format!("{spoken} {unit}"),
+    })
 }
 
 /// « 14h30 » se dit « quatorze heures trente ».
@@ -575,5 +616,51 @@ mod tests {
             "Le plafond de un million deux cent trente-quatre mille cinq cent soixante-sept euros"
         );
     }
-}
 
+
+    #[test]
+    fn a_decimal_with_thousands_keeps_its_comma() {
+        assert_eq!(
+            verbalize_numbers("1 234,56"),
+            "mille deux cent trente-quatre virgule cinquante-six"
+        );
+        assert_eq!(
+            verbalize_numbers("12 500,00 euros"),
+            "douze mille cinq cents virgule zéro zéro euros"
+        );
+    }
+
+    #[test]
+    fn an_unknown_unit_still_gets_its_number_spelled() {
+        assert_eq!(verbalize_numbers("réseau 5G"), "réseau cinq G");
+        assert_eq!(verbalize_numbers("10 Kg"), "dix kilogrammes");
+        assert_eq!(verbalize_numbers("30 KM"), "trente kilomètres");
+    }
+
+    #[test]
+    fn a_leading_zero_group_is_never_a_quantity() {
+        assert!(verbalize_numbers("0 800 123 456").starts_with("zéro, huit zéro zéro"));
+    }
+
+    #[test]
+    fn groups_of_four_digits_are_dictated_digit_by_digit() {
+        assert_eq!(
+            verbalize_numbers("1234 5678 9012"),
+            "un deux trois quatre, cinq six sept huit, neuf zéro un deux"
+        );
+    }
+
+    #[test]
+    fn a_short_date_is_left_whole_rather_than_half_spelled() {
+        // « 26/08/29 » n'est pas une date certaine : il reste en chiffres,
+        // mais entier — pas « 26/08/vingt-neuf ».
+        assert_eq!(verbalize_numbers("le 26/08/29"), "le 26/08/29");
+    }
+
+    #[test]
+    fn unaccented_ordinal_suffixes_are_understood() {
+        assert_eq!(verbalize_numbers("la 1ere fois"), "la première fois");
+        assert_eq!(verbalize_numbers("le 2nd tour"), "le second tour");
+        assert_eq!(verbalize_numbers("la 2nde chance"), "la seconde chance");
+    }
+}

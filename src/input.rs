@@ -14,6 +14,15 @@ use std::time::{Duration, Instant};
 /// Sans lui, un flux qui s'interrompt au milieu d'un paragraphe resterait muet.
 const IDLE_FLUSH: Duration = Duration::from_millis(400);
 
+/// Délai accordé à un bloc visiblement inachevé — tableau en cours, phrase
+/// sans point final.
+///
+/// Un générateur lent écrit une ligne à la fois : livrée seule, une ligne
+/// `| a | b |` n'est pas un tableau et ses barres seraient lues ; un
+/// paragraphe coupé en pleine phrase donnerait deux phrases à la voix. On
+/// attend un peu plus, sans jamais attendre indéfiniment.
+const IDLE_FLUSH_UNFINISHED: Duration = Duration::from_millis(1500);
+
 /// Message remonté par le lecteur d'entrée.
 pub enum InputEvent {
     Line(String),
@@ -25,22 +34,57 @@ pub enum InputEvent {
 pub fn spawn_reader<R: Read + Send + 'static>(source: R) -> Receiver<InputEvent> {
     let (tx, rx) = mpsc::channel();
     thread::spawn(move || {
-        let reader = BufReader::new(source);
-        for line in reader.lines() {
-            let message = match line {
-                Ok(text) => InputEvent::Line(text),
+        let mut reader = BufReader::new(source);
+        let mut raw = Vec::new();
+        let mut first = true;
+        loop {
+            raw.clear();
+            match reader.read_until(b'\n', &mut raw) {
+                Ok(0) => break,
+                Ok(_) => {}
                 Err(err) => {
                     let _ = tx.send(InputEvent::Error(err.to_string()));
                     return;
                 }
-            };
-            if tx.send(message).is_err() {
+            }
+            let line = decode_line(&raw, first);
+            first = false;
+            if tx.send(InputEvent::Line(line)).is_err() {
                 return; // Le lecteur a quitté.
             }
         }
         let _ = tx.send(InputEvent::Eof);
     });
     rx
+}
+
+/// Une ligne de texte, quels que soient ses octets.
+///
+/// Un `.txt` en latin-1 est courant, et une ligne fautive arrêtait tout le
+/// flux : le reste du document était perdu. Un octet qui n'est pas de l'UTF-8
+/// devient le caractère de remplacement, et le document se lit. La marque
+/// d'ordre des octets qu'un éditeur Windows pose en tête n'est pas du texte,
+/// et un retour chariot non plus.
+fn decode_line(raw: &[u8], first: bool) -> String {
+    let mut text = String::from_utf8_lossy(raw).into_owned();
+    if first {
+        if let Some(rest) = text.strip_prefix('\u{feff}') {
+            text = rest.to_string();
+        }
+    }
+    while text.ends_with('\n') || text.ends_with('\r') {
+        text.pop();
+    }
+    text
+}
+
+/// Un texte entier, tel que [`decode_line`] l'aurait lu ligne à ligne.
+pub fn decode_text(raw: &[u8]) -> String {
+    let mut text = String::from_utf8_lossy(raw).into_owned();
+    if let Some(rest) = text.strip_prefix('\u{feff}') {
+        text = rest.to_string();
+    }
+    text.replace("\r\n", "\n")
 }
 
 /// Regroupe des lignes en blocs markdown analysables isolément.
@@ -63,7 +107,11 @@ impl BlockAssembler {
 
     /// Absorbe une ligne ; renvoie un bloc dès qu'il est complet.
     pub fn push(&mut self, line: &str) -> Option<String> {
-        self.last_activity = Some(Instant::now());
+        self.push_at(line, Instant::now())
+    }
+
+    fn push_at(&mut self, line: &str, now: Instant) -> Option<String> {
+        self.last_activity = Some(now);
         let trimmed = line.trim_start();
 
         if let Some(marker) = fence_marker(trimmed) {
@@ -93,15 +141,34 @@ impl BlockAssembler {
 
     /// Livre le bloc en cours si l'entrée est silencieuse depuis assez longtemps.
     pub fn poll_idle(&mut self) -> Option<String> {
+        self.poll_idle_at(Instant::now())
+    }
+
+    fn poll_idle_at(&mut self, now: Instant) -> Option<String> {
         if self.in_fence || self.buffer.is_empty() {
             return None;
         }
-        let idle = self.last_activity.is_some_and(|t| t.elapsed() >= IDLE_FLUSH);
+        let patience = if self.looks_unfinished() { IDLE_FLUSH_UNFINISHED } else { IDLE_FLUSH };
+        let idle = self
+            .last_activity
+            .is_some_and(|t| now.saturating_duration_since(t) >= patience);
         if idle {
             self.take()
         } else {
             None
         }
+    }
+
+    /// Vrai quand la dernière ligne annonce une suite : une ligne de tableau,
+    /// ou une phrase qui n'a pas trouvé sa ponctuation finale.
+    fn looks_unfinished(&self) -> bool {
+        let Some(last) = self.buffer.last().map(|l| l.trim_end()) else {
+            return false;
+        };
+        if last.starts_with('|') {
+            return true;
+        }
+        !last.ends_with(['.', '!', '?', ':', '…', ')', '»', '"', '`'])
     }
 
     /// Vide le tampon, quelle que soit son état — à appeler à EOF.
@@ -286,5 +353,68 @@ mod tests {
             }
         }
         assert_eq!(lines, vec!["a", "b"]);
+    }
+
+
+    fn drain(rx: Receiver<InputEvent>) -> (Vec<String>, Option<String>) {
+        let mut lines = Vec::new();
+        loop {
+            match rx.recv().unwrap() {
+                InputEvent::Line(l) => lines.push(l),
+                InputEvent::Eof => return (lines, None),
+                InputEvent::Error(e) => return (lines, Some(e)),
+            }
+        }
+    }
+
+    #[test]
+    fn an_invalid_byte_does_not_stop_the_stream() {
+        // Un `.txt` en latin-1 est courant ; une ligne fautive arrêtait tout
+        // le flux, le reste du document perdu.
+        let rx = spawn_reader(std::io::Cursor::new(b"ok\n\xE9t\xE9\napres\n".to_vec()));
+        let (lines, error) = drain(rx);
+        assert_eq!(error, None);
+        assert_eq!(lines, vec!["ok", "\u{FFFD}t\u{FFFD}", "apres"]);
+    }
+
+    #[test]
+    fn a_byte_order_mark_is_dropped() {
+        let rx = spawn_reader(std::io::Cursor::new("\u{feff}# Titre\nsuite\n"));
+        assert_eq!(drain(rx).0, vec!["# Titre", "suite"]);
+    }
+
+    #[test]
+    fn windows_line_endings_are_dropped() {
+        let rx = spawn_reader(std::io::Cursor::new("a\r\nb\r\nc"));
+        assert_eq!(drain(rx).0, vec!["a", "b", "c"]);
+    }
+
+    #[test]
+    fn a_finished_paragraph_is_delivered_after_a_short_pause() {
+        let mut assembler = BlockAssembler::new();
+        let t0 = Instant::now();
+        assembler.push_at("Une phrase entière.", t0);
+        assert!(assembler.poll_idle_at(t0 + Duration::from_millis(500)).is_some());
+    }
+
+    #[test]
+    fn an_open_table_waits_longer_before_being_delivered() {
+        // Livrée ligne par ligne, une ligne « | a | b | » seule n'est pas un
+        // tableau : ses barres seraient lues.
+        let mut assembler = BlockAssembler::new();
+        let t0 = Instant::now();
+        assembler.push_at("| Route | Auth |", t0);
+        assembler.push_at("|---|---|", t0);
+        assert!(assembler.poll_idle_at(t0 + Duration::from_millis(500)).is_none());
+        assert!(assembler.poll_idle_at(t0 + Duration::from_millis(1600)).is_some());
+    }
+
+    #[test]
+    fn an_unfinished_sentence_waits_longer_too() {
+        let mut assembler = BlockAssembler::new();
+        let t0 = Instant::now();
+        assembler.push_at("Une phrase coupée au milieu", t0);
+        assert!(assembler.poll_idle_at(t0 + Duration::from_millis(500)).is_none());
+        assert!(assembler.poll_idle_at(t0 + Duration::from_millis(1600)).is_some());
     }
 }

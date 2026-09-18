@@ -74,12 +74,29 @@ impl BookmarkStore {
 
     pub fn save(&self) -> Result<()> {
         let path = Self::path().context("répertoire de données introuvable")?;
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
+        self.save_to(&path)
+    }
+
+    fn save_to(&self, path: &std::path::Path) -> Result<()> {
         let text = serde_json::to_string_pretty(self)?;
-        std::fs::write(&path, text).with_context(|| format!("écriture de {}", path.display()))?;
+        crate::paths::write_atomic(path, text.as_bytes())
+            .with_context(|| format!("écriture de {}", path.display()))?;
         Ok(())
+    }
+
+    /// Rattache au nom courant les signets posés sous un ancien nom.
+    ///
+    /// Les signets étaient rattachés au nom du fichier seul ; ils le sont
+    /// désormais à son chemin. Un signet ne se perd pas pour un renommage.
+    pub fn adopt(&mut self, former: &str, current: &str) {
+        if former == current {
+            return;
+        }
+        for item in &mut self.items {
+            if item.document == former {
+                item.document = current.to_string();
+            }
+        }
     }
 
     /// Ajoute un signet, ou le retire s'il existe déjà à cet endroit.
@@ -216,5 +233,33 @@ mod tests {
         assert!(!store.contains("a.md", 2));
         // Un même index dans deux documents ne se confond pas.
         assert!(!store.contains("b.md", 1));
+    }
+
+
+    #[test]
+    fn saving_leaves_no_temporary_file_next_to_the_bookmarks() {
+        let dir = std::env::temp_dir().join(format!("sillon-bm-atomic-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("bookmarks.json");
+        let mut store = BookmarkStore::default();
+        store.toggle("a.md", 5, 2, "S", "x");
+        store.save_to(&path).expect("écriture");
+        let names: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(Result::ok)
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(names, vec!["bookmarks.json"]);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn bookmarks_kept_under_a_former_name_follow_the_document() {
+        let mut store = BookmarkStore::default();
+        store.toggle("spec.pdf", 1, 0, "S", "x");
+        store.toggle("spec.pdf", 7, 0, "S", "y");
+        store.adopt("spec.pdf", "/docs/a/spec.pdf");
+        assert_eq!(store.for_document("/docs/a/spec.pdf").count(), 2);
+        assert_eq!(store.for_document("spec.pdf").count(), 0);
     }
 }

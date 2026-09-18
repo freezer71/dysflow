@@ -83,6 +83,11 @@ const MAGPIE_LANGUAGES: &[&str] = &[
 /// message. Un modèle dont le sélecteur de voix ne fait rien n'a pas sa place
 /// dans un catalogue qui promet des voix nommées.
 ///
+/// La variante Supertonic « origine » n'y figure pas non plus : sur le dépôt,
+/// `supertonic-3-orig.gguf` et `supertonic-3-q8_0.gguf` sont le même fichier,
+/// à l'octet près — même taille, même empreinte. Deux entrées feraient
+/// télécharger 454 Mo deux fois pour rien.
+///
 /// Restreint aux familles réellement compilées dans le binaire : proposer un
 /// modèle que le moteur ne saurait pas charger n'aiderait personne.
 pub const CATALOG: &[ModelPackage] = &[
@@ -127,21 +132,6 @@ pub const CATALOG: &[ModelPackage] = &[
         repo: "audio-cpp/audio.cpp-gguf",
         revision: "main",
         file: "Supertonic-3-GGUF/supertonic-3-q8_0.gguf",
-        languages_label: "31 langues, dont le français",
-        bytes: 454_072_836,
-        recommended: false,
-        pace: "Vingt fois plus vite que la parole : lecture fluide, sauts immédiats.",
-    },
-    ModelPackage {
-        id: "supertonic_3_orig",
-        family: "supertonic",
-        display_name: "Supertonic 3 · origine",
-        description: "Poids non quantifiés, la référence en qualité.",
-        precision: "orig",
-        languages: SUPERTONIC_LANGUAGES,
-        repo: "audio-cpp/audio.cpp-gguf",
-        revision: "main",
-        file: "Supertonic-3-GGUF/supertonic-3-orig.gguf",
         languages_label: "31 langues, dont le français",
         bytes: 454_072_836,
         recommended: false,
@@ -339,9 +329,24 @@ fn fetch(
             .with_context(|| format!("création de {}", parent.display()))?;
     }
     let partial = destination.with_extension("part");
-    let already = std::fs::metadata(&partial).map(|m| m.len()).unwrap_or(0);
+    let expected = total.load(Ordering::Relaxed);
+    let already = match resume_from(&partial, expected) {
+        // Tout est déjà là : le serveur répondrait 416 à une reprise.
+        Resume::Complete => {
+            received.store(expected, Ordering::Relaxed);
+            return settle(&partial, destination, expected);
+        }
+        Resume::At(bytes) => bytes,
+        Resume::FromScratch => 0,
+    };
 
-    let mut request = ureq::get(url);
+    // Un serveur qui ne répond plus ne doit pas figer l'installation : sans
+    // délai, `d` restait sans effet et toute autre installation refusée.
+    let agent = ureq::AgentBuilder::new()
+        .timeout_connect(std::time::Duration::from_secs(20))
+        .timeout_read(std::time::Duration::from_secs(30))
+        .build();
+    let mut request = agent.get(url);
     if already > 0 {
         // Reprend là où le transfert précédent s'est arrêté.
         request = request.set("Range", &format!("bytes={already}-"));
@@ -382,7 +387,59 @@ fn fetch(
     file.flush()?;
     drop(file);
 
-    std::fs::rename(&partial, destination)
+    settle(&partial, destination, expected)
+}
+
+/// Ce qu'un `.part` laissé par un transfert précédent permet.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Resume {
+    /// Rien : il n'y en a pas, ou il ne vient pas du même fichier.
+    FromScratch,
+    /// Reprendre à cet octet.
+    At(u64),
+    /// Tout est déjà là.
+    Complete,
+}
+
+/// Décide de la reprise d'après la taille du `.part` et celle qu'on attend.
+///
+/// Un `.part` plus long que le fichier annoncé ne vient pas de lui : il est
+/// retiré, sans quoi la reprise le prolongerait sans fin.
+fn resume_from(partial: &Path, expected: u64) -> Resume {
+    let Ok(len) = std::fs::metadata(partial).map(|m| m.len()) else {
+        return Resume::FromScratch;
+    };
+    if expected > 0 && len == expected {
+        Resume::Complete
+    } else if expected > 0 && len > expected {
+        let _ = std::fs::remove_file(partial);
+        Resume::FromScratch
+    } else if len > 0 {
+        Resume::At(len)
+    } else {
+        Resume::FromScratch
+    }
+}
+
+/// Met en place un transfert terminé, si sa taille est celle annoncée.
+///
+/// Un fichier plus court vient d'un disque plein ou d'un serveur qui a coupé
+/// court ; un fichier plus long, d'une reprise sur un blob qui a changé entre
+/// temps. Dans les deux cas le moteur refuserait de l'ouvrir sur un message
+/// illisible, et le `.part` ne peut plus servir de base : il est retiré.
+fn settle(partial: &Path, destination: &Path, expected: u64) -> Result<()> {
+    let len = std::fs::metadata(partial)
+        .with_context(|| format!("lecture de {}", partial.display()))?
+        .len();
+    if expected > 0 && len != expected {
+        let _ = std::fs::remove_file(partial);
+        anyhow::bail!(
+            "fichier reçu de {} au lieu de {} : le transfert est à refaire",
+            human_size(len),
+            human_size(expected)
+        );
+    }
+    std::fs::rename(partial, destination)
         .with_context(|| format!("installation de {}", destination.display()))?;
     Ok(())
 }
@@ -738,5 +795,65 @@ mod tests {
         for ignored in ["pitch_shift", "energy", "emotion", "instruction"] {
             assert!(!honours("supertonic", ignored), "{ignored}");
         }
+    }
+
+
+    #[test]
+    fn no_two_packages_of_a_family_are_the_same_file() {
+        // « Q8_0 » et « origine » de Supertonic pointaient le même blob sur le
+        // dépôt — même taille, même empreinte : deux entrées pour 454 Mo
+        // téléchargés deux fois.
+        for (i, a) in CATALOG.iter().enumerate() {
+            for b in &CATALOG[i + 1..] {
+                assert!(
+                    !(a.family == b.family && a.bytes == b.bytes),
+                    "{} et {} sont le même fichier",
+                    a.id,
+                    b.id
+                );
+            }
+        }
+    }
+
+    fn scratch(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("sillon-models-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn a_download_of_the_wrong_size_is_refused_and_forgotten() {
+        // Une reprise sur un blob qui a changé donne un fichier de la bonne
+        // apparence et du mauvais contenu ; un disque plein, un fichier court.
+        // La taille annoncée fait foi, et un `.part` faux ne sert pas de base.
+        let dir = scratch("tronque");
+        let destination = dir.join("m.gguf");
+        let partial = dir.join("m.part");
+        std::fs::write(&partial, [0u8; 7]).unwrap();
+        assert!(settle(&partial, &destination, 10).is_err());
+        assert!(!partial.exists(), "le .part faux ne doit pas servir de reprise");
+        assert!(!destination.exists());
+        std::fs::write(&partial, [0u8; 10]).unwrap();
+        settle(&partial, &destination, 10).unwrap();
+        assert!(destination.is_file());
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn a_partial_file_already_complete_needs_nothing_from_the_network() {
+        // Un `.part` de la taille annoncée n'a plus rien à recevoir : le
+        // redemander au serveur rend 416, et l'installation échouait là.
+        let dir = scratch("complet");
+        let partial = dir.join("m.part");
+        std::fs::write(&partial, [0u8; 10]).unwrap();
+        assert_eq!(resume_from(&partial, 10), Resume::Complete);
+        std::fs::write(&partial, [0u8; 4]).unwrap();
+        assert_eq!(resume_from(&partial, 10), Resume::At(4));
+        // Plus long que prévu : il ne vient pas du même fichier.
+        std::fs::write(&partial, [0u8; 12]).unwrap();
+        assert_eq!(resume_from(&partial, 10), Resume::FromScratch);
+        assert!(!partial.exists());
+        std::fs::remove_dir_all(&dir).ok();
     }
 }

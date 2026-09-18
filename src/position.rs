@@ -59,12 +59,30 @@ impl PositionStore {
     }
 
     fn save_to(&self, path: &Path) -> Result<()> {
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
         let text = serde_json::to_string_pretty(self)?;
-        std::fs::write(path, text).with_context(|| format!("écriture de {}", path.display()))?;
+        crate::paths::write_atomic(path, text.as_bytes())
+            .with_context(|| format!("écriture de {}", path.display()))?;
         Ok(())
+    }
+
+    /// Fait passer une position retenue sous un ancien nom au nom courant.
+    ///
+    /// Les positions étaient retenues sous le nom du fichier seul ; elles le
+    /// sont désormais sous son chemin. Ce qui existe déjà sous le nom courant
+    /// l'emporte : c'est le plus récent.
+    pub fn adopt(&mut self, former: &str, current: &str) {
+        if former == current {
+            return;
+        }
+        if self.get(current).is_some() {
+            self.forget(former);
+            return;
+        }
+        for item in &mut self.items {
+            if item.document == former {
+                item.document = current.to_string();
+            }
+        }
     }
 
     /// Retient où en est la lecture de ce document.
@@ -174,5 +192,38 @@ mod tests {
         store.record("a.md", 1, "x");
         // Postérieur à 2020, donc pas une constante.
         assert!(store.items[0].updated_at > 1_577_836_800);
+    }
+
+
+    #[test]
+    fn saving_leaves_no_temporary_file_next_to_the_positions() {
+        let dir = std::env::temp_dir().join(format!("sillon-pos-atomic-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("positions.json");
+        let mut store = PositionStore::default();
+        store.record("a.md", 4, "Une phrase.");
+        store.save_to(&path).expect("écriture");
+        let names: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(Result::ok)
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(names, vec!["positions.json"]);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn a_place_kept_under_a_former_name_follows_the_document() {
+        // Les positions étaient retenues sous le nom du fichier seul ; elles
+        // le sont désormais sous son chemin. Ce qui a été retenu ne se perd pas.
+        let mut store = PositionStore::default();
+        store.record("spec.pdf", 12, "Une phrase.");
+        store.adopt("spec.pdf", "/docs/a/spec.pdf");
+        assert_eq!(store.get("/docs/a/spec.pdf").map(|p| p.sentence_id), Some(12));
+        assert!(store.get("spec.pdf").is_none(), "l'ancienne clé ne traîne pas");
+        // Une position déjà retenue sous le chemin l'emporte.
+        store.record("spec.pdf", 3, "Autre.");
+        store.adopt("spec.pdf", "/docs/a/spec.pdf");
+        assert_eq!(store.get("/docs/a/spec.pdf").map(|p| p.sentence_id), Some(12));
     }
 }

@@ -26,6 +26,8 @@ permanence.
 - **Accepte un PDF** qui porte une couche texte, et le reconstruit : titres
   rendus au sommaire, mots coupés recollés, en-têtes et pieds de page retirés.
   `--to-markdown` écrit le texte extrait sans lancer la lecture.
+  Une page qui n'est qu'une image — une couverture photographiée — ne bloque
+  pas le reste : sans l'option `ocr`, elle le dit et la lecture continue.
 - **Lit aussi les images**, avec reconnaissance de texte : une capture d'écran,
   une photo de page, un dossier de scans, un **PDF photocopié**, ou une image
   collée. Les pages sont reconnues en parallèle et le résultat mémorisé : la
@@ -126,7 +128,6 @@ installe, puis sélectionne. Rien n'est jamais téléchargé sans cette action.
 | MagpieTTS Multilingual · Q8_0 | 1,6 Go | 11, dont le français | Aria · Jason · John · Leo · Sofia |
 | Supertonic 3 · F16 | 298 Mo | 31, dont le français | `M1`–`M5`, `F1`–`F5` |
 | Supertonic 3 · Q8_0 | 433 Mo | 31, dont le français | idem |
-| Supertonic 3 · précision d'origine | 433 Mo | 31, dont le français | idem |
 
 Le catalogue ne retient que des modèles **à voix nommées** : aucun n'exige qu'on
 lui fabrique une voix — enregistrement à cloner ou description à composer —
@@ -321,8 +322,9 @@ système (`say` sur macOS, `espeak-ng` ailleurs). La barre d'état affiche alors
 | `t` *(dans la configuration)* | Écouter un aperçu de la voix |
 | `--config` | Ouvrir la configuration au lancement |
 | `f` | Revenir à la lecture après un défilement |
+| `w` | Enregistrer la configuration |
 | `?` | Aide |
-| `q` | Quitter |
+| `q` · `Échap` | Quitter — `Échap` referme d'abord un panneau ouvert |
 
 La vitesse agit **à la synthèse**, pas par ré-échantillonnage : la voix accélère
 sans monter dans les aigus. Changer de vitesse relance donc la phrase en cours.
@@ -480,7 +482,9 @@ nouveau, et une voix inconnue n'atteint jamais le moteur.
 C'est aussi pourquoi la variante MagpieTTS en précision d'origine n'est pas au
 catalogue. Sa spécification nomme l'option `speaker`, alors que le code
 d'audio.cpp ne lit que `voice_id` : le paquet se charge, parle, et rend un
-signal identique au bit près pour ses cinq locuteurs.
+signal identique au bit près pour ses cinq locuteurs. La variante Supertonic
+« origine » n'y est pas non plus : sur le dépôt, c'est le même fichier que la
+Q8_0, à l'octet près.
 
 Le nom de l'option de débit diffère d'une famille à l'autre — `speaking_rate`
 chez Supertonic, `speed` ailleurs. Les deux clés sont émises quand la famille

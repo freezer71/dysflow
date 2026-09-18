@@ -25,6 +25,8 @@ const SPOKEN: &[(&str, &str)] = &[
     ("SAS", "sass"),
     ("KBIS", "ka bisse"),
     ("OK", "okay"),
+    ("MM", "messieurs"),
+    ("SCI", "esse cé i"),
     ("SA", "esse a"),
     ("APE", "a pé e"),
     ("API", "a pé i"),
@@ -161,6 +163,15 @@ fn pronounceable(word: &str) -> bool {
 fn cluster_fits(cluster: &[char], opening: bool, closing: bool) -> bool {
     match cluster.len() {
         1 => true,
+        // Un « s » initial s'ajoute devant une attaque : « smic », « stop »,
+        // « stress ». Le reste doit ouvrir à son tour.
+        _ if opening && cluster[0] == 's' && cluster.len() <= 3 => {
+            cluster_fits(&cluster[1..], true, closing && cluster.len() == 1)
+        }
+        // Un « s » final s'ajoute derrière une coda : « temps », « corps ».
+        _ if closing && cluster.len() == 3 && cluster[2] == 's' => {
+            cluster_fits(&cluster[..2], opening, true)
+        }
         2 if opening => {
             // Une attaque double se termine par une liquide : « br », « cl »,
             // « ch ». « TV », « CD », « PM » n'ouvrent rien.
@@ -240,5 +251,20 @@ mod tests {
         // « sas » et « sarl » existent en français : seule la casse distingue
         // le sigle du mot.
         assert_eq!(verbalize_acronyms("le sas d'entrée"), "le sas d'entrée");
+    }
+
+
+    #[test]
+    fn a_french_word_in_capitals_is_left_to_the_engine() {
+        // « s » ouvre une attaque devant une consonne, et « mps » ferme
+        // « temps » : ces mots se disent, on ne les épelle pas.
+        for word in ["SMIC", "TEMPS", "CORPS", "STATUT", "SPORT", "SKI", "STOP", "STRESS"] {
+            assert_eq!(verbalize_acronyms(word), word, "{word}");
+        }
+    }
+
+    #[test]
+    fn messieurs_is_read_as_the_word_it_abbreviates() {
+        assert_eq!(verbalize_acronyms("MM. Dupont et Martin"), "messieurs. Dupont et Martin");
     }
 }

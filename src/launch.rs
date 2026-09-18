@@ -61,7 +61,7 @@ pub struct Args {
     #[arg(long)]
     pub compute: Option<String>,
 
-    /// Sessions de synthèse simultanées.
+    /// Sessions de synthèse simultanées ; 0 laisse la famille décider.
     #[arg(long)]
     pub sessions: Option<u32>,
 
@@ -202,7 +202,12 @@ pub fn prepare(args: &Args) -> Result<Launch> {
     // Un fichier a une identité stable : sa lecture reprend où elle en était.
     // Un flux et un collage n'en ont pas — la même position leur désignerait
     // un autre texte.
-    if args.file.is_some() {
+    if let Some(path) = &args.file {
+        // Positions et signets ont pu être retenus sous le nom seul, par une
+        // version antérieure : ils suivent le document.
+        if let Some(former) = path.file_name().map(|n| n.to_string_lossy().into_owned()) {
+            app.adopt_former_identity(&former);
+        }
         app.resume_where_left();
     }
 
@@ -212,6 +217,19 @@ pub fn prepare(args: &Args) -> Result<Launch> {
         has_input,
         quiet,
     }))
+}
+
+/// Ce qui identifie un document d'une ouverture à l'autre : son chemin entier.
+///
+/// Le nom seul ne suffit pas — deux `spec.pdf` dans deux dossiers se
+/// partageraient positions et signets, et l'un enverrait la lecture de
+/// l'autre n'importe où. Le chemin est résolu pour qu'un même fichier, atteint
+/// par deux chemins, reste un seul document.
+pub fn document_identity(path: &std::path::Path) -> String {
+    std::fs::canonicalize(path)
+        .unwrap_or_else(|_| path.to_path_buf())
+        .to_string_lossy()
+        .into_owned()
 }
 
 /// Le texte d'une source qui en porte un, pour `--to-markdown`.
@@ -255,11 +273,7 @@ fn read_input(
             for block in input::split_blocks(&text) {
                 builder.push_block(&block);
             }
-            let name = path
-                .file_name()
-                .map(|n| n.to_string_lossy().into_owned())
-                .unwrap_or_else(|| path.to_string_lossy().into_owned());
-            Ok((builder, None, name))
+            Ok((builder, None, document_identity(path)))
         }
         None if std::io::stdin().is_terminal() => {
             // Lancé sans rien : il n'y a rien à lire, mais tout à régler.
@@ -365,7 +379,8 @@ fn apply_overrides(config: &mut Config, args: &Args, notices: &mut Vec<String>) 
         config.engine.compute = v.clone();
     }
     if let Some(v) = args.sessions {
-        config.engine.sessions = v.max(1);
+        // Zéro est « auto » : ce que la famille demande.
+        config.engine.sessions = v.min(16);
     }
     if let Some(v) = args.prefetch {
         config.engine.prefetch = v.max(2);
@@ -389,4 +404,48 @@ fn apply_overrides(config: &mut Config, args: &Args, notices: &mut Vec<String>) 
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn scratch(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("sillon-launch-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn two_files_of_the_same_name_are_two_documents() {
+        // Positions et signets étaient rattachés au nom seul : ouvrir
+        // b/spec.pdf écrasait la place retenue dans a/spec.pdf.
+        let a = scratch("a");
+        let b = scratch("b");
+        std::fs::write(a.join("spec.pdf"), "x").unwrap();
+        std::fs::write(b.join("spec.pdf"), "y").unwrap();
+        assert_ne!(document_identity(&a.join("spec.pdf")), document_identity(&b.join("spec.pdf")));
+        std::fs::remove_dir_all(&a).ok();
+        std::fs::remove_dir_all(&b).ok();
+    }
+
+    #[test]
+    fn the_same_file_has_one_identity_however_it_is_named() {
+        let dir = scratch("c");
+        std::fs::write(dir.join("notes.md"), "x").unwrap();
+        let detour = dir.join("..").join(dir.file_name().unwrap()).join("notes.md");
+        assert_eq!(document_identity(&dir.join("notes.md")), document_identity(&detour));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+
+    #[test]
+    fn sessions_zero_on_the_command_line_means_auto() {
+        let mut config = Config::default();
+        config.engine.sessions = 3;
+        let args = Args { sessions: Some(0), ..Args::default() };
+        apply_overrides(&mut config, &args, &mut Vec::new()).unwrap();
+        assert_eq!(config.engine.sessions, 0);
+    }
 }

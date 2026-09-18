@@ -100,6 +100,8 @@ pub struct App {
     /// Vrai dès la première phrase produite : le démarrage ne s'annonce qu'une
     /// fois, même quand un changement de vitesse vide le cache ensuite.
     synthesis_started: bool,
+    /// Un choix fait à l'écran attend d'être écrit dans `config.toml`.
+    config_dirty: bool,
 }
 
 impl App {
@@ -164,6 +166,7 @@ impl App {
             notices,
             started_at: Instant::now(),
             synthesis_started: false,
+            config_dirty: false,
         };
         if !has_stream {
             app.builder.finish();
@@ -185,8 +188,8 @@ impl App {
         if !self.synth.requires_reference() {
             return false;
         }
-        let voice = self.config.voice.voice.trim();
-        voice.is_empty() || !std::path::Path::new(voice).is_file()
+        let voice = crate::config::expand_tilde(self.config.voice.voice.trim());
+        voice.is_empty() || !std::path::Path::new(&voice).is_file()
     }
 
     /// Nom du moteur, tel qu'il doit s'afficher à cet instant.
@@ -652,6 +655,25 @@ impl App {
         }
     }
 
+    /// Le document tel qu'il se nomme à l'écran : son nom de fichier.
+    ///
+    /// L'identité, elle, est le chemin entier ; il déborderait de l'en-tête.
+    pub fn source_label(&self) -> String {
+        std::path::Path::new(&self.source)
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| self.source.clone())
+    }
+
+    /// Rattache à ce document ce qui a été retenu sous un ancien nom.
+    ///
+    /// Positions et signets étaient rattachés au nom du fichier seul ; ils le
+    /// sont désormais à son chemin. Rien de ce qui a été posé ne se perd.
+    pub fn adopt_former_identity(&mut self, former: &str) {
+        self.positions.adopt(former, &self.source);
+        self.bookmarks.adopt(former, &self.source);
+    }
+
     /// Retient la position dans ce document, et reprend où l'on s'était arrêté.
     ///
     /// Réservé aux documents qui ont une identité stable : un flux et un
@@ -998,6 +1020,14 @@ impl App {
         if !models::is_installed(package) {
             return;
         }
+        if !self.screen.confirm_delete(package) {
+            self.screen.notice = format!(
+                "supprimer {} ({}) ? d à nouveau pour confirmer",
+                package.display_name,
+                models::human_size(package.bytes)
+            );
+            return;
+        }
         match models::remove(package) {
             Ok(()) => {
                 self.screen.notice = format!("{} supprimé", package.display_name);
@@ -1020,6 +1050,9 @@ impl App {
         self.config.engine.model_path = path.to_string_lossy().into_owned();
         self.config.engine.family = package.family.to_string();
         self.config.engine.engine = "audio_cpp".to_string();
+        // Le choix doit survivre au relancement : sans écriture, le premier
+        // modèle installé revenait à la place de celui qu'on avait pris.
+        self.config_dirty = true;
         // Le modèle change, ses voix aussi : celle qui était retenue n'existe
         // peut-être plus.
         let remplacée = self.config.align_voice_with_family();
@@ -1178,6 +1211,10 @@ impl App {
             synth.push(sentence.text.clone(), sentence.trailing_pause_ms);
         }
         self.published = self.builder.sentence_count();
+        // La cadence mesurée valait pour l'ancien moteur, et une phrase qu'il
+        // avait refusée mérite sa chance avec le nouveau.
+        self.pace = Pace::default();
+        self.skipped.clear();
 
         let previous = std::mem::replace(&mut self.synth, synth);
         std::thread::spawn(move || drop(previous));
@@ -1197,9 +1234,38 @@ impl App {
 
     pub fn save_config(&mut self) {
         match self.config.save() {
-            Ok(path) => self.notify(&format!("Configuration écrite : {}", path.display())),
+            Ok(path) => {
+                self.config_dirty = false;
+                self.notify(&format!("Configuration écrite : {}", path.display()));
+            }
             Err(err) => self.notify(&format!("Écriture impossible : {err}")),
         }
+    }
+
+    /// Vrai quand un choix fait à l'écran n'est pas encore sur le disque.
+    pub fn config_needs_saving(&self) -> bool {
+        self.config_dirty
+    }
+
+    /// Écrit la configuration si un choix l'attend, sans rien dire.
+    pub fn flush_config(&mut self) {
+        if self.config_dirty && self.config.save().is_ok() {
+            self.config_dirty = false;
+        }
+    }
+
+    /// Ce que la fermeture doit dire, si elle ne peut pas être immédiate.
+    ///
+    /// Quitter attend la synthèse en cours : sur un modèle lent, plusieurs
+    /// secondes de terminal muet, qu'on prend pour un blocage.
+    pub fn closing_notice(&self) -> Option<String> {
+        let stats = self.synth.stats();
+        (stats.in_flight > 0).then(|| {
+            format!(
+                "sillon : une synthèse se termine avant de rendre la main ({})…",
+                self.engine_name()
+            )
+        })
     }
 
     // ----------------------------------------------------------------- statut
@@ -1508,5 +1574,99 @@ pub(crate) mod tests {
         app.config_set_text(Field::Instruction, "  lentement ".to_string());
         assert_eq!(app.config.voice.instruction, "lentement");
         assert!(Arc::ptr_eq(&engine, &app.synth.engine()), "une consigne ne recharge rien");
+    }
+
+
+    #[test]
+    fn the_screen_names_the_file_not_its_whole_path() {
+        let mut app = app_reading(DOC);
+        app.source = "/tres/long/chemin/vers/spec.pdf".to_string();
+        assert_eq!(app.source_label(), "spec.pdf");
+    }
+
+    #[test]
+    fn a_place_kept_under_the_bare_file_name_is_found_under_the_path() {
+        let mut app = app_reading(DOC);
+        app.source = "/docs/test.md".to_string();
+        let snippet = app.doc().sentence(2).unwrap().written();
+        app.positions.record("test.md", 2, &snippet);
+        app.bookmarks.toggle("test.md", 1, 0, "Titre", "x");
+
+        app.adopt_former_identity("test.md");
+        app.resume_where_left();
+
+        assert_eq!(app.current_sentence(), 2);
+        assert!(app.bookmarks.contains("/docs/test.md", 1));
+    }
+
+
+    #[test]
+    fn reloading_the_engine_forgets_the_old_pace_and_the_skipped_sentences() {
+        // La cadence de l'ancien moteur ne dit rien du nouveau, et une phrase
+        // qu'il avait refusée mérite sa chance.
+        let mut app = app_reading(DOC);
+        app.pace.record(4.0, 10);
+        app.skipped.insert(1);
+        app.reload_engine();
+        assert!(app.estimated_total().is_none());
+        assert_eq!(app.skipped_count(), 0);
+    }
+
+    #[test]
+    fn choosing_a_model_asks_for_the_configuration_to_be_written() {
+        // Le choix ne survivait pas au relancement : seul `w` écrivait, et le
+        // premier modèle installé revenait à la place de celui qu'on avait pris.
+        let mut app = app_reading(DOC);
+        assert!(!app.config_needs_saving());
+        app.select_model(&models::CATALOG[0]);
+        assert!(app.config_needs_saving());
+    }
+
+    struct SlowEngine;
+    struct SlowSession;
+
+    impl TtsEngine for SlowEngine {
+        fn name(&self) -> String {
+            "lent".into()
+        }
+        fn open_session(&self) -> Result<Box<dyn TtsSession>> {
+            Ok(Box::new(SlowSession))
+        }
+        fn max_sessions(&self) -> usize {
+            1
+        }
+    }
+
+    impl TtsSession for SlowSession {
+        fn synthesize(&mut self, _text: &str, _params: &TtsParams) -> Result<PcmBuffer> {
+            std::thread::sleep(Duration::from_millis(300));
+            Ok(PcmBuffer::new(vec![0.0; 100], 1000, 1))
+        }
+    }
+
+    #[test]
+    fn closing_says_when_a_synthesis_still_has_to_finish() {
+        // Quitter attend la synthèse en cours : sur un modèle lent, plusieurs
+        // secondes de terminal muet. Le dire vaut mieux que laisser croire à
+        // un blocage.
+        let mut builder = DocumentBuilder::new(CodePolicy::Announce);
+        for block in crate::input::split_blocks(DOC) {
+            builder.push_block(&block);
+        }
+        let mut config = Config::default();
+        config.reading.autoplay = false;
+        let app = App::new(
+            builder,
+            None,
+            Arc::new(SlowEngine),
+            config,
+            "test.md".to_string(),
+            Vec::new(),
+            crate::audio::Player::silent(),
+        );
+        assert!(wait_for(|| app.synth.stats().in_flight > 0));
+        assert!(app.closing_notice().is_some());
+        assert!(wait_for(|| app.synth.stats().ready >= 3 && app.synth.stats().in_flight == 0));
+        assert!(app.closing_notice().is_none());
     }
 }

@@ -4,7 +4,7 @@ pub mod keymap;
 pub mod ui;
 
 use anyhow::{Context, Result};
-use crossterm::event::{self, DisableMouseCapture, EnableMouseCapture, Event};
+use crossterm::event::{self, Event};
 use crossterm::execute;
 use crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
@@ -28,9 +28,16 @@ pub fn run(mut app: App) -> Result<()> {
     // La position se retient même si la boucle a échoué : c'est justement
     // quand quelque chose casse qu'on tient à ne pas tout reprendre.
     app.remember_position();
-    // Le terminal est restauré même si la boucle a échoué.
-    restore(&mut terminal)?;
-    result
+    app.flush_config();
+    // Le terminal est restauré même si la boucle a échoué, et l'erreur de
+    // la boucle passe avant celle de la restauration.
+    let restored = restore(&mut terminal);
+    // La sortie attend la synthèse en cours ; sur un modèle lent, le dire
+    // évite de croire à un blocage.
+    if let Some(notice) = app.closing_notice() {
+        eprintln!("{notice}");
+    }
+    result.and(restored)
 }
 
 fn event_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) -> Result<()> {
@@ -53,6 +60,9 @@ fn event_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) 
                     break;
                 }
             }
+            // Un choix de modèle s'écrit tout de suite : une fermeture
+            // brutale ne doit pas le perdre.
+            app.flush_config();
         }
         last_frame = Instant::now();
     }
@@ -65,24 +75,24 @@ fn setup() -> Result<Terminal<CrosstermBackend<Stdout>>> {
     let previous = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         let _ = disable_raw_mode();
-        let _ = execute!(io::stdout(), LeaveAlternateScreen, DisableMouseCapture);
+        let _ = execute!(io::stdout(), LeaveAlternateScreen, crossterm::cursor::Show);
+        // Le message doit atteindre le terminal, pas le journal.
+        crate::logging::release_for_panic();
         previous(info);
     }));
 
     enable_raw_mode()?;
     let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+    // Pas de capture de la souris : rien ne l'écoute, et elle interdirait la
+    // sélection et la copie du texte dans le terminal.
+    execute!(stdout, EnterAlternateScreen)?;
     let terminal = Terminal::new(CrosstermBackend::new(stdout))?;
     Ok(terminal)
 }
 
 fn restore(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<()> {
     disable_raw_mode()?;
-    execute!(
-        terminal.backend_mut(),
-        LeaveAlternateScreen,
-        DisableMouseCapture
-    )?;
+    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
     terminal.show_cursor()?;
     Ok(())
 }

@@ -1,13 +1,18 @@
 //! Mémorisation du markdown produit par une extraction coûteuse.
 
 use anyhow::Result;
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
 /// Octets lus en tête pour distinguer deux fichiers de même taille.
 const SAMPLE: usize = 64 * 1024;
+
+/// Version de la reconstruction dont le cache garde le résultat.
+///
+/// À incrémenter quand `layout` ou l'extraction changent ce qu'ils rendent :
+/// sans cela, un document déjà lu resterait servi dans son ancienne forme
+/// jusqu'à un `--no-cache` que personne ne pense à passer.
+pub const CACHE_VERSION: u32 = 2;
 
 /// Empreinte d'un fichier : sa taille, sa date, son début.
 ///
@@ -15,19 +20,31 @@ const SAMPLE: usize = 64 * 1024;
 /// deux cents pages en entier pour cela coûterait plus que l'extraction.
 pub fn fingerprint(path: &Path) -> Result<String> {
     let meta = std::fs::metadata(path)?;
-    let mut hasher = DefaultHasher::new();
-    meta.len().hash(&mut hasher);
+    let mut bytes = Vec::with_capacity(SAMPLE + 16);
+    bytes.extend_from_slice(&meta.len().to_le_bytes());
     if let Ok(time) = meta.modified() {
         if let Ok(since) = time.duration_since(std::time::UNIX_EPOCH) {
-            since.as_secs().hash(&mut hasher);
+            bytes.extend_from_slice(&since.as_secs().to_le_bytes());
         }
     }
     let mut head = vec![0u8; SAMPLE];
     let mut file = std::fs::File::open(path)?;
     let read = file.read(&mut head)?;
-    head.truncate(read);
-    head.hash(&mut hasher);
-    Ok(format!("{:016x}", hasher.finish()))
+    bytes.extend_from_slice(&head[..read]);
+    Ok(format!("v{CACHE_VERSION}-{:016x}", stable_hash(&bytes)))
+}
+
+/// FNV-1a sur 64 bits : figé, donc le même d'une version de Rust à l'autre.
+///
+/// `DefaultHasher` ne le promet pas, et un cache dont les clés changent avec
+/// la toolchain se remplit de fichiers que plus rien ne relit.
+fn stable_hash(bytes: &[u8]) -> u64 {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for &b in bytes {
+        hash ^= u64::from(b);
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    hash
 }
 
 /// Répertoire du cache, créé au besoin.
@@ -39,7 +56,7 @@ fn dir() -> Option<PathBuf> {
 
 /// Markdown déjà produit pour cette empreinte.
 pub fn read(key: &str) -> Option<String> {
-    std::fs::read_to_string(dir()?.join(format!("{key}.md"))).ok()
+    read_in(&dir()?, key)
 }
 
 /// Mémorise le markdown produit.
@@ -47,14 +64,17 @@ pub fn read(key: &str) -> Option<String> {
 /// Un cache qui échoue n'est pas une erreur : le document a été lu, c'est tout
 /// ce qui compte.
 pub fn write(key: &str, markdown: &str) {
-    let Some(dir) = dir() else {
-        return;
-    };
-    let file = dir.join(format!("{key}.md"));
-    let temp = dir.join(format!("{key}.{}.tmp", std::process::id()));
-    if std::fs::write(&temp, markdown).is_ok() {
-        let _ = std::fs::rename(&temp, &file);
+    if let Some(dir) = dir() {
+        write_in(&dir, key, markdown);
     }
+}
+
+fn read_in(dir: &Path, key: &str) -> Option<String> {
+    std::fs::read_to_string(dir.join(format!("{key}.md"))).ok()
+}
+
+fn write_in(dir: &Path, key: &str, markdown: &str) {
+    let _ = crate::paths::write_atomic(&dir.join(format!("{key}.md")), markdown.as_bytes());
 }
 
 #[cfg(test)]
@@ -81,15 +101,51 @@ mod tests {
         assert_ne!(one, two);
     }
 
+    fn scratch() -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "sillon-cache-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
     #[test]
     fn what_is_written_comes_back() {
-        let key = "essai-du-cache-sillon";
-        write(key, "## Titre\n\nDu texte.");
-        assert_eq!(read(key).as_deref(), Some("## Titre\n\nDu texte."));
+        // Dans un répertoire à part : les tests n'écrivent jamais dans le
+        // cache de l'utilisateur.
+        let dir = scratch();
+        write_in(&dir, "essai", "## Titre\n\nDu texte.");
+        assert_eq!(read_in(&dir, "essai").as_deref(), Some("## Titre\n\nDu texte."));
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]
     fn an_unknown_key_yields_nothing() {
-        assert_eq!(read("cle-qui-n-existe-pas-du-tout"), None);
+        let dir = scratch();
+        assert_eq!(read_in(&dir, "cle-qui-n-existe-pas-du-tout"), None);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn the_key_is_stable_from_one_build_to_the_next() {
+        // `DefaultHasher` ne promet rien d'une version de Rust à l'autre : un
+        // cache rempli hier serait orphelin demain. L'empreinte repose sur un
+        // hachage figé, dont la valeur se vérifie ici.
+        assert_eq!(stable_hash(b"abc"), 0xe71f_a219_0541_574b);
+    }
+
+    #[test]
+    fn the_key_carries_the_version_of_the_reconstruction() {
+        // Une amélioration de la reconstruction doit se voir sur les documents
+        // déjà lus : la clé change avec elle.
+        let dir = scratch();
+        let file = dir.join("doc.bin");
+        std::fs::write(&file, b"contenu").unwrap();
+        let key = fingerprint(&file).unwrap();
+        assert!(key.starts_with(&format!("v{CACHE_VERSION}-")), "{key}");
+        std::fs::remove_dir_all(&dir).ok();
     }
 }

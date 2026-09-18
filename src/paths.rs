@@ -33,6 +33,29 @@ pub fn cache_dir() -> Option<PathBuf> {
 ///
 /// Ni copie ni fusion : un renommage, ou rien. Si les deux existent, on n'y
 /// touche pas — l'ancien reste là, intact, pour qui voudra y regarder.
+/// Écrit un fichier d'un seul tenant : temporaire à côté, puis renommage.
+///
+/// Un `fs::write` direct tronque avant d'écrire : une coupure au mauvais
+/// moment laisse un fichier vide, et des signets ou une configuration
+/// disparaissent en silence. Le renommage, lui, est atomique : l'ancien
+/// contenu reste en place jusqu'à ce que le nouveau soit entier.
+pub fn write_atomic(path: &Path, contents: &[u8]) -> std::io::Result<()> {
+    let parent = path.parent().filter(|p| !p.as_os_str().is_empty());
+    if let Some(parent) = parent {
+        std::fs::create_dir_all(parent)?;
+    }
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "fichier".to_string());
+    let temp = path.with_file_name(format!(".{name}.{}.tmp", std::process::id()));
+    let outcome = std::fs::write(&temp, contents).and_then(|()| std::fs::rename(&temp, path));
+    if outcome.is_err() {
+        let _ = std::fs::remove_file(&temp);
+    }
+    outcome
+}
+
 fn adopt(base: &Path) -> PathBuf {
     let current = base.join(APP);
     let former = base.join(FORMER);
@@ -95,6 +118,34 @@ mod tests {
         let dir = adopt(&base);
         assert_eq!(dir, base.join("sillon"));
         assert!(!dir.exists(), "le répertoire n'est créé qu'à la première écriture");
+        std::fs::remove_dir_all(&base).ok();
+    }
+
+
+    #[test]
+    fn an_atomic_write_replaces_the_file_and_leaves_no_temporary_behind() {
+        let base = scratch();
+        let file = base.join("etat.json");
+        std::fs::write(&file, "ancien").unwrap();
+
+        write_atomic(&file, b"nouveau").expect("écriture");
+
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "nouveau");
+        let leftovers: Vec<_> = std::fs::read_dir(&base)
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|e| e.file_name() != "etat.json")
+            .collect();
+        assert!(leftovers.is_empty(), "restes : {leftovers:?}");
+        std::fs::remove_dir_all(&base).ok();
+    }
+
+    #[test]
+    fn an_atomic_write_creates_the_parent_directory() {
+        let base = scratch();
+        let file = base.join("profond").join("etat.json");
+        write_atomic(&file, b"x").expect("écriture");
+        assert!(file.is_file());
         std::fs::remove_dir_all(&base).ok();
     }
 }

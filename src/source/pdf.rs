@@ -29,16 +29,24 @@ pub fn pages(path: &Path) -> Result<Vec<Page>> {
     let numbered: Vec<(u32, ObjectId)> = doc.get_pages().into_iter().collect();
     let numbers: Vec<ObjectId> = numbered.iter().map(|(_, id)| *id).collect();
     let mut out = Vec::new();
+    let mut failures = Vec::new();
     for (number, _) in &numbered {
         let mut text = String::new();
         {
             let mut sink = PlainTextOutput::new(&mut text);
-            output_doc_page(&doc, &mut sink, *number)
-                .with_context(|| format!("page {number} de {}", path.display()))?;
+            // Une page au flux invalide ne condamne pas les autres : elle
+            // reste vide, et l'erreur n'est rendue que si rien ne se lit.
+            if let Err(err) = output_doc_page(&doc, &mut sink, *number) {
+                failures.push(format!("page {number} : {err}"));
+                text.clear();
+            }
         }
         out.push(Page {
             lines: text.lines().map(|line| line.trim_end().to_string()).collect(),
         });
+    }
+    if failures.len() == out.len() {
+        bail!("{} : aucune page ne se lit ({})", path.display(), failures.join(" ; "));
     }
 
     // Une page sans couche texte n'est pas vide : son contenu est une image.
@@ -145,23 +153,38 @@ fn recognise_scanned(
 }
 
 /// Sans l'option `ocr`, une page scannée le dit plutôt que de rester vide.
+///
+/// Un document entièrement scanné est refusé : il n'y a rien à lire. Une page
+/// image parmi des pages de texte — une couverture photographiée — ne condamne
+/// pas le reste : elle porte une ligne qui dit ce qui manque, et la lecture
+/// continue.
 #[cfg(not(feature = "ocr"))]
 fn recognise_scanned(
     doc: &Document,
     numbers: &[ObjectId],
     blank: &[usize],
-    _out: &mut [Page],
+    out: &mut [Page],
     path: &Path,
 ) -> Result<()> {
-    let has_image = blank
+    let scanned: Vec<usize> = blank
         .iter()
-        .filter_map(|&i| numbers.get(i))
-        .any(|id| !page_images(doc, *id).is_empty());
-    if has_image {
+        .copied()
+        .filter(|&i| numbers.get(i).is_some_and(|id| !page_images(doc, *id).is_empty()))
+        .collect();
+    if scanned.is_empty() {
+        return Ok(());
+    }
+    if scanned.len() == out.len() {
         bail!(
             "{} est un document scanné : ce binaire a été compilé sans l'option `ocr`",
             path.display()
         );
+    }
+    for i in scanned {
+        out[i].lines.push(format!(
+            "(page {} : image sans couche texte — sa lecture demande l'option `ocr`)",
+            i + 1
+        ));
     }
     Ok(())
 }
@@ -313,5 +336,26 @@ mod tests {
             err.to_string().contains("tronque.pdf"),
             "l'erreur doit nommer le fichier : {err}"
         );
+    }
+
+
+    #[cfg(not(feature = "ocr"))]
+    #[test]
+    fn one_image_page_does_not_forbid_the_rest_of_the_document() {
+        // Une couverture photographiée dans un rapport textuel est le cas
+        // courant : refuser tout le document pour elle, c'est ne rien lire.
+        let read = pages(&fixture("mixte.pdf")).expect("le texte doit se lire");
+        assert_eq!(read.len(), 2);
+        assert!(read[0].lines.join("\n").contains("Contexte"));
+        let note = read[1].lines.join("\n");
+        assert!(note.contains("ocr"), "la page image doit dire ce qui manque : {note:?}");
+    }
+
+    #[cfg(feature = "ocr")]
+    #[test]
+    fn an_image_page_among_text_pages_is_recognised() {
+        let read = pages(&fixture("mixte.pdf")).expect("la fixture doit se lire");
+        assert!(read[0].lines.join("\n").contains("Contexte"));
+        assert!(read[1].lines.join("\n").contains("Spécification"), "{:?}", read[1]);
     }
 }

@@ -54,8 +54,11 @@ static PATTERNS: LazyLock<Patterns> = LazyLock::new(|| Patterns {
         Regex::new(r"~~([^\s~](?:[^~]*[^\s~])?)~~").unwrap(),
         Regex::new(r"`([^`\n]+)`").unwrap(),
     ],
-    bullet: Regex::new(r"(?m)^[ \t]*[-*+•·][ \t]+").unwrap(),
-    numbered: Regex::new(r"(?m)^[ \t]*\d+[.)][ \t]+").unwrap(),
+    // Ancrés au début d'une ligne prise à part : voir `strip_list_markers`,
+    // qui décide quelle ligne est un item et laquelle n'est qu'une ligne
+    // repliée commençant par un nombre ou un signe.
+    bullet: Regex::new(r"\A[ \t]*[-*+•·][ \t]+").unwrap(),
+    numbered: Regex::new(r"\A[ \t]*\d+[.)][ \t]+").unwrap(),
     arrow: Regex::new(r"(-->|<--|->|=>|<-|<=|=>|↔|⇔|→|←|⇒|⇐|↑|↓)").unwrap(),
     // Filets ASCII : ---- ==== ____ ****, au moins trois.
     rule: Regex::new(r"[-=_*+~]{3,}").unwrap(),
@@ -117,8 +120,7 @@ fn strip_markup(raw: &str) -> String {
     text = p.footnote.replace_all(&text, "").into_owned();
     text = p.url.replace_all(&text, " ").into_owned();
     text = p.heading_marker.replace_all(&text, "").into_owned();
-    text = p.bullet.replace_all(&text, "").into_owned();
-    text = p.numbered.replace_all(&text, "").into_owned();
+    text = strip_list_markers(&text);
 
     // L'emphase peut être imbriquée (***gras italique***) : deux passes
     // suffisent en pratique et bornent le coût.
@@ -137,6 +139,33 @@ fn strip_markup(raw: &str) -> String {
     text = p.rule.replace_all(&text, " ").into_owned();
     // Les barres de tableau deviennent des séparations parlées.
     text.replace('|', " , ")
+}
+
+/// Retire puces et numéros des lignes qui sont des items, et d'elles seules.
+///
+/// Une ligne est un item si elle ouvre le texte, suit une ligne vide, ou suit
+/// un autre item. Une ligne repliée au milieu d'un paragraphe — « prévue
+/// pour\n2027. Le budget suit. », « Température :\n- 5 °C » — n'en est pas
+/// un : y voir une puce ferait disparaître le nombre ou le signe, de l'écran
+/// comme de la voix.
+fn strip_list_markers(text: &str) -> String {
+    let p = &*PATTERNS;
+    let mut out = Vec::new();
+    let mut previous_opens_item = true;
+    for line in text.split('\n') {
+        let marker = p.bullet.find(line).or_else(|| p.numbered.find(line));
+        match marker {
+            Some(m) if previous_opens_item => {
+                out.push(&line[m.end()..]);
+                previous_opens_item = true;
+            }
+            _ => {
+                out.push(line);
+                previous_opens_item = line.trim().is_empty();
+            }
+        }
+    }
+    out.join("\n")
 }
 
 /// Recolle la ponctuation isolée par les suppressions précédentes.
@@ -352,5 +381,20 @@ mod tests {
         // L'URL retirée laissait « doc . » avant recollage.
         let clean = sanitize("voir la doc https://example.com .");
         assert!(clean.ends_with("doc."), "obtenu: {clean:?}");
+    }
+
+
+    #[test]
+    fn a_number_opening_a_continuation_line_is_not_a_list_marker() {
+        // Une ligne repliée qui commence par un nombre n'est pas un item :
+        // « 2027. » doit rester à l'écran comme à la voix.
+        assert_eq!(
+            sanitize("prévue pour\n2027. Le budget suit."),
+            "prévue pour 2027. Le budget suit."
+        );
+        assert_eq!(
+            sanitize_layout("Température :\n- 5 °C"),
+            "Température :\n- 5 °C"
+        );
     }
 }

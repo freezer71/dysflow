@@ -25,8 +25,11 @@ const EXISTING_DETERMINERS: &[&str] = &["le", "du", "au", "ce", "cet", "les", "d
 static DATE_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(concat!(
         r"(?i)",
-        // ISO : 2026-08-29
-        r"\b(?P<iy>\d{4})-(?P<im>\d{1,2})-(?P<id>\d{1,2})\b",
+        // ISO : 2026-08-29, ou horodaté : 2026-08-29T10:30:00Z. L'heure est
+        // consommée avec la date, sans quoi le « T » collé ferait échouer la
+        // frontière de mot et la date resterait en chiffres.
+        r"\b(?P<iy>\d{4})-(?P<im>\d{1,2})-(?P<id>\d{1,2})",
+        r"(?:T(?P<ih>\d{2}):(?P<imn>\d{2})(?::\d{2}(?:\.\d+)?)?(?:Z|[+\-]\d{2}:?\d{2})?)?\b",
         r"|",
         // Numérique : 26/08/2029, 26.08.2029, 26-08-2029, 1er/01/2030
         r"\b(?P<na>\d{1,2})(?:er)?[/.\-](?P<nb>\d{1,2})[/.\-](?P<ny>\d{4})\b",
@@ -56,6 +59,12 @@ pub fn verbalize_dates(text: &str) -> String {
         out.push_str(&text[last..matched.start()]);
         out.push_str(article_before(&text[..matched.start()]));
         out.push_str(&spell_date(day, month, year));
+        if let Some(hours) = caps.name("ih") {
+            if let Some(clock) = spell_hour(hours.as_str(), caps.name("imn").map(|m| m.as_str())) {
+                out.push_str(" à ");
+                out.push_str(&clock);
+            }
+        }
         last = matched.end();
     }
     out.push_str(&text[last..]);
@@ -113,6 +122,26 @@ fn fold(month: &str) -> String {
             other => other,
         })
         .collect()
+}
+
+/// L'heure d'un horodatage : « dix heures trente », « une heure ».
+fn spell_hour(hours: &str, minutes: Option<&str>) -> Option<String> {
+    let hours: u64 = hours.parse().ok()?;
+    let mut out = match hours {
+        0 => "zéro heure".to_string(),
+        1 => "une heure".to_string(),
+        other => format!("{} heures", spell_cardinal(other)),
+    };
+    match minutes.map(str::parse::<u64>) {
+        None | Some(Ok(0)) => {}
+        Some(Ok(1)) => out.push_str(" une"),
+        Some(Ok(other)) => {
+            out.push(' ');
+            out.push_str(&spell_cardinal(other));
+        }
+        Some(Err(_)) => return None,
+    }
+    Some(out)
 }
 
 fn spell_date(day: u64, month: usize, year: u64) -> String {
@@ -281,6 +310,19 @@ mod tests {
         assert_eq!(
             verbalize_dates("Du 26/08/2029 au 02/09/2029."),
             "Du vingt-six août deux mille vingt-neuf au deux septembre deux mille vingt-neuf."
+        );
+    }
+
+
+    #[test]
+    fn an_iso_timestamp_is_a_date_followed_by_its_hour() {
+        assert_eq!(
+            verbalize_dates("2026-08-29T10:30:00Z"),
+            "Le vingt-neuf août deux mille vingt-six à dix heures trente"
+        );
+        assert_eq!(
+            verbalize_dates("2026-08-29T10:00:00+02:00"),
+            "Le vingt-neuf août deux mille vingt-six à dix heures"
         );
     }
 }
