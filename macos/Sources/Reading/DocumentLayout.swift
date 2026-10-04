@@ -12,7 +12,8 @@ struct ReadingStyle: Equatable {
 ///
 /// Les mots sont séparés d'une espace, les blocs d'un retour à la ligne ; un
 /// bloc qui a des lignes à montrer telles quelles (code, tableau) les montre
-/// en chasse fixe, et ses mots — une annonce — ne sont pas surlignés.
+/// en chasse fixe, et ses mots — une annonce — ne sont pas surlignés ; sa
+/// phrase couvre le bloc entier.
 struct DocumentLayout {
     let text: NSAttributedString
     let wordRanges: [UInt32: NSRange]
@@ -35,8 +36,14 @@ struct DocumentLayout {
 
             if isVerbatim(block.kind), !block.displayLines.isEmpty {
                 attrs[.font] = mono
+                let start = out.length
                 out.append(NSAttributedString(string: block.displayLines.joined(separator: "\n"),
                                               attributes: attrs))
+                // Ses mots ne se suivent pas, mais sa phrase — l'annonce —
+                // couvre le bloc entier : pendant qu'on l'annonce, la vue
+                // sait où il est.
+                let whole = NSRange(location: start, length: out.length - start)
+                for sentence in block.sentences { sentences[sentence.id] = whole }
                 continue
             }
             if let prefix = prefix(for: block.kind) {

@@ -78,7 +78,12 @@ final class ReaderModel {
         updateTicking()
     }
 
+    /// Compte les commandes envoyées : la vue de lecture reprend le suivi à
+    /// chacune, même si l'utilisateur faisait défiler le texte.
+    private(set) var commandCount = 0
+
     func send(_ command: ReaderCommand) {
+        commandCount &+= 1
         reader.command(command: command)
         wake()
     }

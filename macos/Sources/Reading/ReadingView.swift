@@ -11,6 +11,7 @@ struct ReadingView: NSViewRepresentable {
         var revision: UInt64 = .max
         var style: ReadingStyle?
         var layout: DocumentLayout?
+        var commandCount: Int?
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
@@ -31,6 +32,8 @@ struct ReadingView: NSViewRepresentable {
         guard let text = scroll.documentView as? ReadingTextView else { return }
         let c = context.coordinator
         let snapshot = model.snapshot
+        // La fermeture change avec la vue SwiftUI : on garde la dernière.
+        text.onContentHeight = onContentHeight
         text.theme = style.theme
         text.ruler = style.ruler
         if c.revision != snapshot.revision || c.style != style {
@@ -39,6 +42,12 @@ struct ReadingView: NSViewRepresentable {
             c.layout = layout
             c.revision = snapshot.revision
             c.style = style
+        }
+        // Une commande de lecture ramène la vue sur la ligne lue, même si
+        // l'utilisateur relisait plus haut. (Un nouveau document le fait déjà.)
+        if c.commandCount != model.commandCount {
+            if c.commandCount != nil { text.resumeFollowing() }
+            c.commandCount = model.commandCount
         }
         guard let layout = c.layout else { return }
         let sentence = layout.sentenceRanges[snapshot.sentence]

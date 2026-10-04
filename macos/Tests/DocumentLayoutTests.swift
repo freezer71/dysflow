@@ -52,4 +52,15 @@ final class DocumentLayoutTests: XCTestCase {
                                          effectiveRange: nil) as! NSFont
         XCTAssertTrue(font.fontDescriptor.symbolicTraits.contains(.bold))
     }
+
+    /// Un bloc de code n'a pas de mots à suivre, mais sa phrase (l'annonce)
+    /// couvre tout le bloc : la vue sait où il est pendant qu'on l'annonce.
+    func testCodeBlockSentenceCoversTheBlock() {
+        let d = doc("Avant.\n\n```rust\nfn main() {}\n```\n\nAprès.")
+        let layout = DocumentLayout.build(d, style: style)
+        let s = layout.text.string as NSString
+        let code = d.blocks.first { if case .code = $0.kind { true } else { false } }!
+        let range = try! XCTUnwrap(layout.sentenceRanges[code.sentences[0].id])
+        XCTAssertEqual(s.substring(with: range), "fn main() {}")
+    }
 }
