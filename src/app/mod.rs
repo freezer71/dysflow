@@ -112,6 +112,15 @@ struct StartAt {
     sentence: usize,
     word: usize,
     ratio: f32,
+    /// Le décalage a servi à l'entrée en file : il ne doit pas servir deux
+    /// fois, mais le relais d'affichage reste jusqu'à une position réelle.
+    consumed: bool,
+}
+
+/// Le relais d'un saut peut tomber : le lecteur donne enfin une position pour
+/// la phrase visée, et l'offset a déjà été appliqué.
+fn relay_done(start: &StartAt, playing_sentence: Option<usize>) -> bool {
+    start.consumed && playing_sentence == Some(start.sentence)
 }
 
 impl App {
@@ -374,6 +383,10 @@ impl App {
         if let Some(position) = self.player.position() {
             self.last_known = position.sentence_id;
         }
+        let playing = self.player.position().map(|p| p.sentence_id);
+        if self.start_at.is_some_and(|s| relay_done(&s, playing)) {
+            self.start_at = None;
+        }
     }
 
     /// Alimente la sortie audio, sans jamais la laisser prendre trop d'avance.
@@ -397,9 +410,9 @@ impl App {
                     .map(|s| s.words.len())
                     .unwrap_or(0);
                 self.pace.record(rendered.speech.as_secs_f64(), words);
-                let offset = match self.start_at {
-                    Some(start) if start.sentence == self.queue_head => {
-                        self.start_at = None;
+                let offset = match self.start_at.as_mut() {
+                    Some(start) if start.sentence == self.queue_head && !start.consumed => {
+                        start.consumed = true;
                         rendered.speech.mul_f32(start.ratio)
                     }
                     _ => Duration::ZERO,
@@ -506,7 +519,7 @@ impl App {
             .and_then(|s| s.word_start(word))
             .unwrap_or(0.0);
         self.seek_to(target);
-        self.start_at = Some(StartAt { sentence: target, word, ratio });
+        self.start_at = Some(StartAt { sentence: target, word, ratio, consumed: false });
     }
 
     /// Déplace la lecture à la phrase `target`.
@@ -1784,6 +1797,46 @@ pub(crate) mod tests {
         assert!(app.closing_notice().is_some());
         assert!(wait_for(|| app.synth.stats().ready >= 3 && app.synth.stats().in_flight == 0));
         assert!(app.closing_notice().is_none());
+    }
+
+    #[test]
+    fn every_word_start_lands_on_its_own_word() {
+        let mut app = app_reading(
+            "Un deux extraordinairement trois a quatre cinquante-six, sept huit neuf dix.",
+        );
+        let speech = Duration::from_millis(3700);
+        let count = app.doc().sentence(0).unwrap().words.len();
+        assert!(count >= 10);
+        for i in 0..count {
+            let ratio = app.doc().sentence(0).unwrap().word_start(i).unwrap();
+            app.player.simulate(0, speech.mul_f32(ratio), speech);
+            assert_eq!(app.current_word(), Some(i), "mot {i}");
+            assert_eq!(app.reading_word(), Some(i), "mot {i}");
+        }
+    }
+
+    #[test]
+    fn the_jump_relay_survives_the_enqueue_until_a_position_exists() {
+        let mut start = StartAt { sentence: 3, word: 2, ratio: 0.4, consumed: false };
+        // Avant l'entrée en file : rien ne tombe.
+        assert!(!relay_done(&start, Some(3)));
+        // Entrée en file faite, mais pas encore de position : le relais reste.
+        start.consumed = true;
+        assert!(!relay_done(&start, None));
+        // Une autre phrase sonne encore : le relais reste.
+        assert!(!relay_done(&start, Some(2)));
+        // La phrase visée a une position : le relais tombe.
+        assert!(relay_done(&start, Some(3)));
+    }
+
+    #[test]
+    fn a_seek_clears_a_pending_relay() {
+        let mut app = app_reading("Un deux trois quatre. Cinq six.");
+        app.seek_words(2);
+        assert!(app.start_at.is_some());
+        app.seek_to(1);
+        assert!(app.start_at.is_none());
+        assert_eq!(app.reading_word(), None);
     }
 
     #[test]

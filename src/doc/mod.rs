@@ -195,7 +195,10 @@ impl Sentence {
         let mut acc = 0.0;
         for (i, word) in self.words.iter().enumerate() {
             acc += word.weight();
-            if target < acc {
+            // Tolérance d'un cheveu sous la frontière : `word_start` puis
+            // `word_at` repasse par des flottants et peut tomber un ulp en
+            // dessous ; sans cela, un saut au mot surlignerait le précédent.
+            if target < acc - sum * 1e-5 {
                 return Some(i);
             }
         }
