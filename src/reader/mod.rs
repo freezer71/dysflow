@@ -17,6 +17,7 @@ use crate::tts::{Synthesizer, TtsEngine};
 
 pub mod command;
 pub mod handle;
+pub mod settings;
 pub mod view;
 
 pub type VoiceFactory = Box<dyn Fn(&Config) -> Arc<dyn TtsEngine>>;
@@ -42,6 +43,8 @@ pub struct Reader {
     resting_at: Option<usize>,
     revision: u64,
     last_activity: Instant,
+    /// Téléchargement de voix en cours, sondé à chaque tour.
+    download: Option<crate::models::Download>,
 }
 
 impl Reader {
@@ -56,6 +59,7 @@ impl Reader {
             resting_at: None,
             revision: 0,
             last_activity: now,
+            download: None,
         }
     }
 
@@ -128,6 +132,7 @@ impl Reader {
     }
 
     pub fn tick(&mut self, now: Instant) {
+        self.poll_download(now);
         let Some(app) = self.session.as_mut() else {
             // Voix préparée sans texte : le délai court quand même.
             if self.engine.is_some() && self.idle_expired(now) {

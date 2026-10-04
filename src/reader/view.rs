@@ -62,6 +62,8 @@ pub struct Snapshot {
     pub bookmarked: bool,
     /// Nombre de phrases sautées.
     pub skipped: usize,
+    /// Téléchargement de voix en cours ou échoué.
+    pub download: Option<super::settings::DownloadView>,
 }
 
 /// Un mot, avec sa mise en valeur.
@@ -160,6 +162,7 @@ pub fn snapshot(reader: &Reader) -> Snapshot {
             speed: reader.config().voice.speed,
             volume: reader.config().voice.volume,
             voice,
+            download: reader.download(),
             ..Snapshot::default()
         };
     };
@@ -194,6 +197,7 @@ pub fn snapshot(reader: &Reader) -> Snapshot {
         }),
         bookmarked: app.bookmarked_here(),
         skipped: app.skipped_count(),
+        download: reader.download(),
     }
 }
 
