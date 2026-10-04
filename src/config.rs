@@ -20,11 +20,27 @@ pub struct Config {
     pub voice: VoiceConfig,
     pub sampling: SamplingConfig,
     pub reading: ReadingConfig,
+    pub app: AppConfig,
     /// Options transmises telles quelles au modèle TTS.
     ///
     /// Échappatoire pour tout paramètre propre à une famille que le lecteur ne
     /// connaît pas nommément.
     pub extra: BTreeMap<String, String>,
+}
+
+/// Réglages propres à l'app macOS.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct AppConfig {
+    /// Minutes pendant lesquelles la voix reste chargée après la dernière
+    /// lecture. `-1` : toujours ; `0` : relâchée dès l'arrêt.
+    pub keep_voice_minutes: i64,
+}
+
+impl Default for AppConfig {
+    fn default() -> Self {
+        Self { keep_voice_minutes: 10 }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

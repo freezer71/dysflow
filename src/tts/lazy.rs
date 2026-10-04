@@ -96,6 +96,14 @@ impl LazyEngine {
 }
 
 impl TtsEngine for LazyEngine {
+    fn readiness(&self) -> super::Readiness {
+        match &*self.shared.state.lock().unwrap() {
+            State::Loading => super::Readiness::Loading,
+            State::Ready(_) => super::Readiness::Ready,
+            State::Failed(err) => super::Readiness::Fallback(err.clone()),
+        }
+    }
+
     fn name(&self) -> String {
         match &*self.shared.state.lock().unwrap() {
             State::Loading => format!("{} · chargement…", self.shared.label),

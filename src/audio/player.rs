@@ -123,8 +123,8 @@ impl Player {
     /// Lecteur sans sortie audio, pour les essais.
     ///
     /// Ouvrir un vrai flux dans chaque test bloque la suite dès que deux
-    /// s'ouvrent de front : la carte son n'est pas partageable ainsi.
-    #[cfg(test)]
+    /// s'ouvrent de front : la carte son n'est pas partageable ainsi. Sert
+    /// aussi au mode de test de l'app.
     pub fn silent() -> Self {
         Self {
             _stream: None,

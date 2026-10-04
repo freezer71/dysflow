@@ -3,6 +3,7 @@
 pub mod lazy;
 pub mod pool;
 pub mod preview;
+pub mod silent;
 pub mod system;
 
 #[cfg(feature = "audio-cpp")]
@@ -172,6 +173,15 @@ impl PcmBuffer {
     }
 }
 
+/// Où en est un moteur, vu de l'interface.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Readiness {
+    Ready,
+    Loading,
+    /// Le moteur voulu a échoué ; la voix de repli parle à sa place.
+    Fallback(String),
+}
+
 /// Un moteur TTS : détient le modèle, et ouvre des sessions de synthèse.
 ///
 /// La séparation moteur / session reflète audio.cpp, où les poids sont
@@ -194,6 +204,11 @@ pub trait TtsEngine: Send + Sync {
     /// fois, au bon endroit.
     fn requires_reference(&self) -> bool {
         false
+    }
+
+    /// État du moteur, pour l'annoncer. Un moteur ordinaire est prêt.
+    fn readiness(&self) -> Readiness {
+        Readiness::Ready
     }
 }
 
