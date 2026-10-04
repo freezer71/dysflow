@@ -35,10 +35,15 @@ final class ReaderModelTests: XCTestCase {
 
 @MainActor
 final class ReaderModelTickingTests: XCTestCase {
+    private var clock = Date()
+
     private func hiddenModel() -> ReaderModel {
-        let m = ReaderModel(reader: SillonReader.silent())
+        let m = ReaderModel(reader: SillonReader.silent(), now: { [unowned self] in self.clock })
         m.open(text: "Un. Deux.", source: "test")
         XCTAssertTrue(waitUntil { m.refresh(); return m.snapshot.revision == 1 })
+        // La période de grâce passée, le modèle masqué au repos s'arrête.
+        clock += ReaderModel.gracePeriod + 0.1
+        m.refresh()
         return m
     }
 
@@ -57,10 +62,18 @@ final class ReaderModelTickingTests: XCTestCase {
         XCTAssertFalse(m.isTicking)
     }
 
-    func testPlayingTicksWhileHidden() {
+    func testHiddenPlayIsSeenWithoutManualRefresh() {
         let m = hiddenModel()
         m.send(.togglePlay)
-        XCTAssertTrue(waitUntil { m.refresh(); return m.snapshot.playing })
+        // Aucun refresh manuel : seul le suivi à l'image peut voir `playing`.
+        XCTAssertTrue(waitUntil { m.snapshot.playing })
         XCTAssertTrue(m.isTicking)
+        m.send(.togglePlay)
+        XCTAssertTrue(waitUntil { !m.snapshot.playing })
+        // Encore dans la période de grâce : le suivi continue.
+        XCTAssertTrue(m.isTicking)
+        clock += ReaderModel.gracePeriod + 0.1
+        m.refresh()
+        XCTAssertFalse(m.isTicking)
     }
 }

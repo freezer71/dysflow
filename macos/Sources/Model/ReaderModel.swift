@@ -10,13 +10,19 @@ import Observation
 final class ReaderModel {
     @ObservationIgnored private let reader: SillonReader
     @ObservationIgnored private var ticker: DisplayTicker?
+    @ObservationIgnored private let now: () -> Date
+    /// Après une commande, l'effet n'arrive que quelques ms plus tard : le suivi
+    /// ne peut pas s'arrêter avant cette échéance.
+    @ObservationIgnored private var keepAliveUntil = Date.distantPast
+    static let gracePeriod: TimeInterval = 0.5
 
     private(set) var snapshot: Snapshot
     private(set) var document: DocView
     var message: String?
 
-    init(reader: SillonReader) {
+    init(reader: SillonReader, now: @escaping () -> Date = Date.init) {
         self.reader = reader
+        self.now = now
         snapshot = reader.snapshot()
         document = reader.document()
     }
@@ -46,7 +52,7 @@ final class ReaderModel {
     }
 
     private func updateTicking() {
-        if isDisplayed || snapshot.playing {
+        if isDisplayed || snapshot.playing || now() < keepAliveUntil {
             start()
         } else {
             stop()
@@ -55,6 +61,7 @@ final class ReaderModel {
 
     /// Relance le suivi et relit tout de suite l'état.
     private func wake() {
+        keepAliveUntil = now().addingTimeInterval(Self.gracePeriod)
         start()
         refresh()
     }
