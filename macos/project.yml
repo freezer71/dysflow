@@ -1,0 +1,84 @@
+name: Sillon
+options:
+  bundleIdPrefix: fr.sillon
+  deploymentTarget:
+    macOS: "14.0"
+packages:
+  KeyboardShortcuts:
+    url: https://github.com/sindresorhus/KeyboardShortcuts
+    from: 2.2.0
+configFiles:
+  Debug: Generated/Link.xcconfig
+  Release: Generated/Link.xcconfig
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    ARCHS: arm64
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    CODE_SIGN_IDENTITY: "-"
+    ENABLE_HARDENED_RUNTIME: NO
+    # Link.xcconfig s'applique à toutes les cibles, tests compris.
+    LIBRARY_SEARCH_PATHS: $(SRCROOT)/Libraries
+targets:
+  Sillon:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources
+      - path: Generated/sillon_ffi.swift
+      - path: Resources
+        optional: true
+    dependencies:
+      - package: KeyboardShortcuts
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: fr.sillon.app
+        PRODUCT_NAME: Sillon
+        SWIFT_INCLUDE_PATHS: $(SRCROOT)/Generated
+        LD_RUNPATH_SEARCH_PATHS: "@executable_path/../Frameworks"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_LSUIElement: YES
+        INFOPLIST_KEY_CFBundleDisplayName: sillon
+        INFOPLIST_KEY_NSHumanReadableCopyright: ""
+    postBuildScripts:
+      - name: Joindre le shim audio.cpp
+        basedOnDependencyAnalysis: false
+        script: |
+          SHIM="$SRCROOT/Libraries/libaudiocpp_shim.dylib"
+          if [ -f "$SHIM" ]; then
+            DEST="$TARGET_BUILD_DIR/$FRAMEWORKS_FOLDER_PATH"
+            mkdir -p "$DEST"
+            cp "$SHIM" "$DEST/"
+            codesign --force --sign - "$DEST/libaudiocpp_shim.dylib"
+          fi
+  SillonTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources: [Tests]
+    dependencies:
+      - target: Sillon
+    settings:
+      base:
+        SWIFT_INCLUDE_PATHS: $(SRCROOT)/Generated
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/Sillon.app/Contents/MacOS/Sillon
+        BUNDLE_LOADER: $(TEST_HOST)
+        GENERATE_INFOPLIST_FILE: YES
+  SillonUITests:
+    type: bundle.ui-testing
+    platform: macOS
+    sources: [UITests]
+    dependencies:
+      - target: Sillon
+    settings:
+      base:
+        TEST_TARGET_NAME: Sillon
+        # Le test d'interface pilote l'app de l'extérieur : aucune liaison au moteur.
+        OTHER_LDFLAGS: ""
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  Sillon:
+    build:
+      targets:
+        Sillon: all
+    test:
+      targets: [SillonTests, SillonUITests]

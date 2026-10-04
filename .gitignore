@@ -11,3 +11,4 @@ __pycache__/
 macos/Generated/
 macos/Libraries/
 macos/*.xcodeproj
+macos/build/
