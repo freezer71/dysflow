@@ -196,6 +196,24 @@ capture ouvre une session ; la position de la précédente est retenue.
 | Première phrase prête | +0,35 s | ~580 Mo |
 | Après déchargement | — | 185–200 Mo (≈ 90 Mo au premier essai) |
 
+### Dix cycles (banc `examples/voice_cycles.rs`, M5, 2026-10-05)
+
+| Modèle | Chargé (moyenne) | Relâché cycle 1 | Relâché cycle 3 | Relâché cycle 10 | Verdict |
+|---|---|---|---|---|---|
+| `supertonic-3-orig` | 638 Mo | 256 Mo | 284 Mo | 289 Mo | Pas de fuite : plafond ~290 Mo |
+| `supertonic-3-f16` | 479 Mo | 51 Mo | 272 Mo | 268 Mo | Pas de fuite : plafond ~270 Mo |
+
+- Écart cycle 3 → cycle 10 : 5 Mo (orig), 4 Mo (f16). Sous le seuil de 20 Mo.
+- Le relevé « relâché » ne monte pas à chaque cycle : il oscille (orig 32 à
+  289 Mo, f16 47 à 272 Mo). Cache Metal ou allocateur, pas une fuite.
+- **Le palier dépasse 120 Mo** (~270 à 290 Mo, pointes basses à 32–51 Mo). Le
+  seuil « < 120 Mo au repos » devra être revu avec l'utilisateur à la
+  Tâche 21.
+- Chargement 0,25–0,4 s, première phrase ~0,5 s à chaud (1,3–1,5 s au premier
+  cycle).
+- **Modèle par défaut : `f16`**, ~160 Mo de moins une fois chargé, même temps
+  de chargement et de première phrase. Qualité égale à confirmer à l'écoute.
+
 ### Politique
 
 - **Voix par défaut : Supertonic** (20× le temps réel, saut en 0,25 s).
