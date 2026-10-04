@@ -76,6 +76,9 @@ pub struct App {
     /// Cadence mesurée sur ce qui a été synthétisé, d'où sortent les temps
     /// affichés. Elle suit le débit : le changer la transpose aussitôt.
     pace: Pace,
+    /// Saut au mot en attente de son audio : la phrase, le mot, et la part
+    /// de la parole à passer. Tombe dès que la phrase entre en file.
+    start_at: Option<StartAt>,
 
     pub panel: Panel,
     pub selection: usize,
@@ -102,6 +105,13 @@ pub struct App {
     synthesis_started: bool,
     /// Un choix fait à l'écran attend d'être écrit dans `config.toml`.
     config_dirty: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct StartAt {
+    sentence: usize,
+    word: usize,
+    ratio: f32,
 }
 
 impl App {
@@ -152,6 +162,7 @@ impl App {
             last_known: 0,
             skipped: HashSet::new(),
             pace: Pace::default(),
+            start_at: None,
             panel: Panel::None,
             selection: 0,
             show_help: false,
@@ -361,8 +372,19 @@ impl App {
                     .map(|s| s.words.len())
                     .unwrap_or(0);
                 self.pace.record(rendered.speech.as_secs_f64(), words);
-                self.player
-                    .enqueue(self.queue_head, &rendered.audio, rendered.speech);
+                let offset = match self.start_at {
+                    Some(start) if start.sentence == self.queue_head => {
+                        self.start_at = None;
+                        rendered.speech.mul_f32(start.ratio)
+                    }
+                    _ => Duration::ZERO,
+                };
+                self.player.enqueue_from(
+                    self.queue_head,
+                    &rendered.audio,
+                    rendered.speech,
+                    offset,
+                );
                 self.queue_head += 1;
                 continue;
             }
@@ -433,6 +455,35 @@ impl App {
         self.notify(if playing { "Lecture" } else { "Pause" });
     }
 
+    /// Mot lu dans la phrase courante, saut en attente compris.
+    ///
+    /// Entre un saut et l'arrivée de son audio, aucune position n'existe ;
+    /// sans ce relais, le surlignage reviendrait au début de la phrase.
+    pub fn reading_word(&self) -> Option<usize> {
+        self.current_word().or_else(|| {
+            self.start_at
+                .filter(|s| s.sentence == self.current_sentence())
+                .map(|s| s.word)
+        })
+    }
+
+    /// Déplace la lecture de `delta` mots, en franchissant les phrases.
+    pub fn seek_words(&mut self, delta: isize) {
+        let sentence = self.current_sentence();
+        let word = self.reading_word().unwrap_or(0);
+        let Some((target, word)) = word_target(self.doc(), sentence, word, delta) else {
+            self.notify("Aucun mot de ce côté");
+            return;
+        };
+        let ratio = self
+            .doc()
+            .sentence(target)
+            .and_then(|s| s.word_start(word))
+            .unwrap_or(0.0);
+        self.seek_to(target);
+        self.start_at = Some(StartAt { sentence: target, word, ratio });
+    }
+
     /// Déplace la lecture à la phrase `target`.
     ///
     /// Vider la sortie puis réamorcer au bon endroit est ce qui rend l'avance et
@@ -442,6 +493,7 @@ impl App {
         if total == 0 {
             return;
         }
+        self.start_at = None;
         let target = target.min(total - 1);
         self.player.flush();
         // Ce qu'on rejoint mérite d'être tenté à nouveau : un refus du moteur
@@ -1280,6 +1332,30 @@ impl App {
     }
 }
 
+/// Phrase et mot atteints en avançant de `delta` mots depuis
+/// (`sentence`, `word`). `None` au-delà du document.
+pub(crate) fn word_target(
+    doc: &Document,
+    sentence: usize,
+    word: usize,
+    delta: isize,
+) -> Option<(usize, usize)> {
+    let mut s = sentence;
+    let mut w = word as isize + delta;
+    loop {
+        let len = doc.sentence(s)?.words.len() as isize;
+        if w < 0 {
+            s = s.checked_sub(1)?;
+            w += doc.sentence(s)?.words.len() as isize;
+        } else if w >= len {
+            w -= len;
+            s += 1;
+        } else {
+            return Some((s, w as usize));
+        }
+    }
+}
+
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
@@ -1668,5 +1744,36 @@ pub(crate) mod tests {
         assert!(app.closing_notice().is_some());
         assert!(wait_for(|| app.synth.stats().ready >= 3 && app.synth.stats().in_flight == 0));
         assert!(app.closing_notice().is_none());
+    }
+
+    #[test]
+    fn word_target_crosses_sentences_both_ways() {
+        let app = app_reading("Un deux trois quatre. Cinq six.");
+        let doc = app.doc();
+        assert_eq!(word_target(doc, 0, 1, 2), Some((0, 3)));
+        assert_eq!(word_target(doc, 0, 2, 3), Some((1, 1)));
+        assert_eq!(word_target(doc, 1, 0, -1), Some((0, 3)));
+        assert_eq!(word_target(doc, 0, 0, -1), None);
+        assert_eq!(word_target(doc, 1, 1, 1), None);
+    }
+
+    #[test]
+    fn seeking_words_moves_the_reading_word_before_any_audio() {
+        let mut app = app_reading("Un deux trois quatre. Cinq six.");
+        app.seek_words(2);
+        assert_eq!(app.current_sentence(), 0);
+        assert_eq!(app.reading_word(), Some(2));
+        // Un second saut part du mot visé, pas du début de la phrase.
+        app.seek_words(3);
+        assert_eq!(app.current_sentence(), 1);
+        assert_eq!(app.reading_word(), Some(1));
+    }
+
+    #[test]
+    fn seeking_words_at_the_edge_says_so_and_stays() {
+        let mut app = app_reading("Un deux.");
+        app.seek_words(-1);
+        assert_eq!(app.current_sentence(), 0);
+        assert_eq!(app.status(), "Aucun mot de ce côté");
     }
 }
