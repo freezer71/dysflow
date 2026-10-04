@@ -126,7 +126,13 @@ impl Reader {
     }
 
     pub fn tick(&mut self, now: Instant) {
-        let Some(app) = self.session.as_mut() else { return };
+        let Some(app) = self.session.as_mut() else {
+            // Voix préparée sans texte : le délai court quand même.
+            if self.engine.is_some() && self.idle_expired(now) {
+                self.rest();
+            }
+            return;
+        };
         app.tick();
         if app.player.is_playing() && !app.is_finished() {
             self.last_activity = now;
@@ -300,6 +306,25 @@ mod tests {
         let app = r.session().unwrap();
         assert_eq!(app.current_sentence(), 1);
         assert!(!app.player.is_playing());
+    }
+
+    #[test]
+    fn a_prepared_voice_without_text_is_released_after_the_delay() {
+        let (mut r, _, t0) = reader(10);
+        r.prepare_voice(t0);
+        r.tick(t0 + 9 * MIN);
+        assert!(r.voice_loaded());
+        r.tick(t0 + 11 * MIN);
+        assert!(!r.voice_loaded());
+        assert!(!r.is_resting(), "pas de texte à reprendre");
+    }
+
+    #[test]
+    fn a_prepared_voice_kept_forever_stays_loaded() {
+        let (mut r, _, t0) = reader(-1);
+        r.prepare_voice(t0);
+        r.tick(t0 + 600 * MIN);
+        assert!(r.voice_loaded());
     }
 
     #[test]
