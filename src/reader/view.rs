@@ -137,9 +137,26 @@ pub fn snapshot(reader: &Reader) -> Snapshot {
         },
     };
     let Some(app) = reader.session() else {
+        // Au repos, la position retenue reste celle où l'on s'est arrêté ;
+        // le document se reconstruit pour en tirer section et avancement.
+        let sentence = reader.resting_at.unwrap_or(0);
+        let (section, progress) = match reader.text_markdown() {
+            Some(markdown) => {
+                let doc = crate::doc::builder::parse_document(markdown, reader.config().code_policy());
+                let total = doc.sentences.len().max(1) as f32;
+                (
+                    doc.section_of_sentence(sentence).map(|s| s.id),
+                    (sentence as f32 / total).clamp(0.0, 1.0),
+                )
+            }
+            None => (None, 0.0),
+        };
         return Snapshot {
             revision: reader.revision(),
             has_document: reader.text_markdown().is_some(),
+            sentence,
+            section,
+            progress,
             speed: reader.config().voice.speed,
             volume: reader.config().voice.volume,
             voice,
@@ -327,5 +344,19 @@ mod tests {
         assert!(s.has_document);
         assert_eq!(s.voice, VoiceState::Resting);
         assert_eq!(document(&r).sentence_count, 2);
+    }
+
+    #[test]
+    fn a_resting_reader_keeps_the_position_where_it_stopped() {
+        let mut r = reader_with("# Titre\n\nUn. Deux. Trois. Quatre.");
+        r.with_session(Instant::now(), |app| app.seek_sentences(3));
+        let avant = snapshot(&r);
+        r.rest();
+        let s = snapshot(&r);
+        assert_eq!(s.voice, VoiceState::Resting);
+        assert_eq!(s.sentence, avant.sentence);
+        assert!(s.sentence >= 3);
+        assert_eq!(s.section, avant.section);
+        assert!(s.progress > 0.0);
     }
 }
