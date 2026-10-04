@@ -14,6 +14,9 @@ GEN=macos/Generated
 LIB=macos/Libraries
 mkdir -p "$GEN" "$LIB"
 
+# L'app vise macOS 14 : rustc et CMake (crate `cmake`) lisent cette variable.
+export MACOSX_DEPLOYMENT_TARGET=14.0
+
 # La liaison d'abord : le binaire bindgen recompile le crate sans les options
 # lourdes, et écraserait sinon la bibliothèque finale.
 cargo build --release -p sillon-ffi
@@ -21,18 +24,31 @@ cargo run --release -p sillon-ffi --features bindgen --bin uniffi-bindgen -- \
     generate --library target/release/libsillon_ffi.dylib --language swift --out-dir "$GEN"
 mv "$GEN/sillon_ffiFFI.modulemap" "$GEN/module.modulemap"
 
-cargo build --release -p sillon-ffi ${FEATURES:+--features "$FEATURES"}
+BUILD_LOG=$(mktemp)
+trap 'rm -f "$BUILD_LOG"' EXIT
+cargo build --release -p sillon-ffi ${FEATURES:+--features "$FEATURES"} \
+    --message-format=json-render-diagnostics > "$BUILD_LOG"
 cp target/release/libsillon_ffi.a "$LIB/"
 
 FLAGS="-lsillon_ffi -lc++ -framework CoreAudio -framework AudioToolbox -framework AudioUnit -framework CoreFoundation -framework Security -framework Metal -framework Accelerate"
 rm -f "$LIB/libaudiocpp_shim.dylib"
-shim=$(ls -t target/release/build/sillon-*/out/lib/libaudiocpp_shim.dylib 2>/dev/null | head -1 || true)
-if [ -n "$shim" ]; then
+# Le shim vient de CE build : le out_dir du script de construction du crate
+# `sillon`, jamais d'un ancien dossier target/release/build/sillon-*.
+case ",$FEATURES," in
+*,audio-cpp,*)
+    out_dir=$(jq -r 'select(.reason=="build-script-executed" and (.package_id | test("#sillon@"))) | .out_dir' "$BUILD_LOG" | head -1)
+    shim="$out_dir/lib/libaudiocpp_shim.dylib"
+    if [ -z "$out_dir" ] || [ ! -f "$shim" ]; then
+        echo "Erreur : audio-cpp demandé mais libaudiocpp_shim.dylib introuvable (out_dir='$out_dir')" >&2
+        exit 1
+    fi
     cp "$shim" "$LIB/"
     # Le binaire de l'app le cherchera dans Contents/Frameworks.
     install_name_tool -id @rpath/libaudiocpp_shim.dylib "$LIB/libaudiocpp_shim.dylib"
+    codesign -f -s - "$LIB/libaudiocpp_shim.dylib"
     FLAGS="$FLAGS -laudiocpp_shim"
     echo "Shim joint : $shim"
-fi
+    ;;
+esac
 echo "OTHER_LDFLAGS = $FLAGS" > "$GEN/Link.xcconfig"
 echo "Liaison prête dans $GEN et $LIB"
