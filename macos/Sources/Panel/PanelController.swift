@@ -6,9 +6,13 @@ import SwiftUI
 @Observable
 final class PanelController {
     @ObservationIgnored let model: ReaderModel
-    @ObservationIgnored private let window = ReadingPanel()
+    @ObservationIgnored let window = ReadingPanel()
+    /// Durée d'affichage d'un message passager (« Phrase copiée »).
+    @ObservationIgnored var messageDuration: TimeInterval = 2
     @ObservationIgnored private var keyMonitor: Any?
     @ObservationIgnored private var contentHeight: CGFloat = 0
+    @ObservationIgnored private var resizePending = false
+    @ObservationIgnored private var closeGuard: PanelCloseGuard?
 
     private(set) var mode: PanelMode = .hidden
     /// Réglages de lecture du moteur (interlignage, règle), relus à chaque
@@ -25,6 +29,10 @@ final class PanelController {
         let host = NSHostingView(rootView: PanelContent(controller: self))
         window.contentView = host
         host.setAccessibilityIdentifier("panneau-lecture")
+        // Toute fermeture (⌘W, close(), performClose:) passe par le masquage.
+        let guardian = PanelCloseGuard { [weak self] in self?.hide() }
+        closeGuard = guardian
+        window.delegate = guardian
     }
 
     private var screenFrame: CGRect {
@@ -59,23 +67,35 @@ final class PanelController {
             animate(to: PanelGeometry.panelFrame(contentHeight: contentHeight, screen: screenFrame))
             updateIdentifier()
         case .panel:
-            model.send(.pause)
-            window.orderOut(nil)
-            mode = .hidden
-            model.isDisplayed = false
-            removeKeyMonitor()
+            hide()
         case .hidden:
             break
         }
+    }
+
+    /// Le seul chemin qui masque : pause, fenêtre retirée, suivi et clavier
+    /// arrêtés. Sans effet si le panneau est déjà masqué.
+    private func hide() {
+        guard mode != .hidden else { return }
+        model.send(.pause)
+        mode = .hidden
+        if window.isVisible { window.orderOut(nil) }
+        model.isDisplayed = false
+        removeKeyMonitor()
     }
 
     func contentHeightChanged(_ height: CGFloat) {
         guard height != contentHeight else { return }
         contentHeight = height
         // Appelé pendant la mise à jour SwiftUI : redimensionner la fenêtre
-        // au milieu de cette passe est annulé. On le fait au tour suivant.
+        // au milieu de cette passe est annulé. On le fait au tour suivant,
+        // une seule fois pour toutes les hauteurs reçues entre-temps.
+        guard !resizePending else { return }
+        resizePending = true
         DispatchQueue.main.async { [weak self] in
-            guard let self, self.mode == .panel else { return }
+            guard let self else { return }
+            self.resizePending = false
+            guard self.mode == .panel else { return }
             self.animate(to: PanelGeometry.panelFrame(contentHeight: self.contentHeight,
                                                       screen: self.screenFrame))
         }
@@ -92,7 +112,7 @@ final class PanelController {
         case .copySentence:
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(model.currentSentenceText, forType: .string)
-            model.message = "Phrase copiée"
+            flash("Phrase copiée")
         case .openSearch:
             if mode == .panel { expand() }
             searchActive = true
@@ -108,6 +128,18 @@ final class PanelController {
             NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
         }
     }
+
+    /// Un message qui s'efface seul, sauf si un autre l'a remplacé.
+    private func flash(_ text: String) {
+        model.message = text
+        messageToken &+= 1
+        let token = messageToken
+        DispatchQueue.main.asyncAfter(deadline: .now() + messageDuration) { [weak self] in
+            guard let self, self.messageToken == token, self.model.message == text else { return }
+            self.model.message = nil
+        }
+    }
+    @ObservationIgnored private var messageToken = 0
 
     private func animate(to frame: CGRect) {
         if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
@@ -140,5 +172,22 @@ final class PanelController {
     private func removeKeyMonitor() {
         if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
         keyMonitor = nil
+    }
+}
+
+/// Le délégué de la fenêtre : une fermeture demandée devient un masquage.
+@MainActor
+private final class PanelCloseGuard: NSObject, NSWindowDelegate {
+    let hide: () -> Void
+    init(hide: @escaping () -> Void) { self.hide = hide }
+
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        hide()
+        return false
+    }
+
+    /// `close()` ne demande pas l'avis du délégué : on remet l'état d'accord.
+    func windowWillClose(_ notification: Notification) {
+        hide()
     }
 }

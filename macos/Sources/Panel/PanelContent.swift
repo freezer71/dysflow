@@ -25,11 +25,6 @@ struct PanelContent: View {
             if controller.mode == .expanded {
                 ExpandedReader(controller: controller, style: style)
             } else {
-                if let message = model.message ?? emptyMessage {
-                    Text(message)
-                        .font(.system(size: 13))
-                        .foregroundStyle(Color(nsColor: theme.chrome))
-                }
                 ReadingView(model: model, style: style) { height in
                     controller.contentHeightChanged(height)
                 }
@@ -38,6 +33,16 @@ struct PanelContent: View {
                     hint("⏎", "agrandir")
                     hint("esc", "masquer")
                     hint("?", "raccourcis")
+                    // Le message prend place dans la rangée des aides : la
+                    // hauteur réservée autour du texte (PanelGeometry.chrome)
+                    // ne change pas quand il paraît.
+                    if let message = model.message ?? emptyMessage {
+                        Spacer(minLength: 8)
+                        Text(message)
+                            .font(.system(size: 13))
+                            .lineLimit(1)
+                            .foregroundStyle(Color(nsColor: theme.chrome))
+                    }
                 }
             }
         }
@@ -50,6 +55,9 @@ struct PanelContent: View {
                     .stroke(Color(nsColor: theme.border), lineWidth: 1))
         )
         .overlay { if controller.helpVisible { HelpOverlay(theme: theme) } }
+        // La barre de titre est transparente et invisible : sans cela, sa
+        // zone sûre repousse le contenu de ~30 pt et rogne le texte.
+        .ignoresSafeArea()
     }
 
     private var emptyMessage: String? {

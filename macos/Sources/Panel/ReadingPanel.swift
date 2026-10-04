@@ -29,7 +29,7 @@ enum PanelGeometry {
 final class ReadingPanel: NSPanel {
     init() {
         super.init(contentRect: NSRect(x: 0, y: 0, width: 720, height: 200),
-                   styleMask: [.nonactivatingPanel, .titled, .fullSizeContentView, .resizable],
+                   styleMask: [.nonactivatingPanel, .titled, .closable, .fullSizeContentView, .resizable],
                    backing: .buffered, defer: false)
         isFloatingPanel = true
         level = .floating
@@ -42,6 +42,8 @@ final class ReadingPanel: NSPanel {
         backgroundColor = .clear
         isOpaque = false
         hasShadow = true
+        // Fermable (⌘W, performClose:) pour que la fermeture passe par le
+        // délégué ; les boutons restent cachés.
         for button in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
             standardWindowButton(button)?.isHidden = true
         }
