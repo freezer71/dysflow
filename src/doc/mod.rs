@@ -195,11 +195,27 @@ impl Sentence {
         let mut acc = 0.0;
         for (i, word) in self.words.iter().enumerate() {
             acc += word.weight();
-            if target <= acc {
+            if target < acc {
                 return Some(i);
             }
         }
         Some(self.words.len() - 1)
+    }
+
+    /// Instant où commence le mot `word`, en fraction de la parole.
+    ///
+    /// Réciproque de `word_at`, sur la même répartition par poids : un saut au
+    /// mot tombe là où le surlignage le placerait.
+    pub fn word_start(&self, word: usize) -> Option<f32> {
+        if word >= self.words.len() {
+            return None;
+        }
+        let sum: f32 = self.words.iter().map(Word::weight).sum();
+        if sum <= 0.0 {
+            return Some(0.0);
+        }
+        let before: f32 = self.words[..word].iter().map(Word::weight).sum();
+        Some(before / sum)
     }
 }
 
@@ -299,5 +315,47 @@ impl Document {
                 return Some(first);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sentence_of(words: &[&str]) -> Sentence {
+        Sentence {
+            id: 0,
+            block_id: 0,
+            section_id: 0,
+            text: words.join(" "),
+            words: words
+                .iter()
+                .enumerate()
+                .map(|(index, text)| Word {
+                    text: text.to_string(),
+                    index,
+                    punctuation: None,
+                    spoken: None,
+                    emphasis: Emphasis::default(),
+                })
+                .collect(),
+            trailing_pause_ms: 0,
+        }
+    }
+
+    #[test]
+    fn a_word_starts_where_the_highlight_places_it() {
+        let s = sentence_of(&["un", "deux", "trois", "quatre"]);
+        for word in 0..4 {
+            let start = s.word_start(word).unwrap();
+            assert_eq!(s.word_at(start, 1.0), Some(word), "mot {word}");
+        }
+    }
+
+    #[test]
+    fn the_first_word_starts_at_zero_and_past_the_end_is_none() {
+        let s = sentence_of(&["un", "deux"]);
+        assert_eq!(s.word_start(0), Some(0.0));
+        assert_eq!(s.word_start(2), None);
     }
 }

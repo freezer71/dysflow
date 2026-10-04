@@ -21,6 +21,9 @@ struct Queued {
     sentence_id: usize,
     total: Duration,
     speech: Duration,
+    /// Parole déjà passée au moment où la phrase entre en file : un saut au
+    /// mot la fait commencer en son milieu.
+    offset: Duration,
 }
 
 /// La phrase qui sonne actuellement.
@@ -165,18 +168,35 @@ impl Player {
         self.queued.len()
     }
 
-    /// Empile une phrase à jouer.
+    /// Empile une phrase à jouer depuis son début.
     pub fn enqueue(&mut self, sentence_id: usize, audio: &Arc<PcmBuffer>, speech: Duration) {
+        self.enqueue_from(sentence_id, audio, speech, Duration::ZERO);
+    }
+
+    /// Empile une phrase à jouer à partir de `offset` dans sa parole.
+    ///
+    /// La position rendue compte depuis le début de la phrase : le
+    /// surlignage reste juste, comme si le début avait été entendu.
+    pub fn enqueue_from(
+        &mut self,
+        sentence_id: usize,
+        audio: &Arc<PcmBuffer>,
+        speech: Duration,
+        offset: Duration,
+    ) {
         let Some(sink) = &self.sink else { return };
-        sink.append(SamplesBuffer::new(
-            audio.channels,
-            audio.sample_rate,
-            audio.samples.to_vec(),
-        ));
+        let offset = offset.min(speech);
+        let samples = if offset.is_zero() {
+            audio.samples.to_vec()
+        } else {
+            audio.skip(offset).samples.to_vec()
+        };
+        sink.append(SamplesBuffer::new(audio.channels, audio.sample_rate, samples));
         self.queued.push_back(Queued {
             sentence_id,
             total: audio.duration,
             speech,
+            offset,
         });
         if self.playing {
             sink.play();
@@ -209,7 +229,7 @@ impl Player {
                         sentence_id: front.sentence_id,
                         total: front.total,
                         speech: front.speech,
-                        accumulated: Duration::ZERO,
+                        accumulated: front.offset,
                         resumed_at: self.playing.then(Instant::now),
                     });
                 }

@@ -143,6 +143,16 @@ pub struct PcmBuffer {
 }
 
 impl PcmBuffer {
+    /// Le même son, privé de ses `offset` premières secondes.
+    ///
+    /// La coupe tombe sur une trame entière : couper entre deux canaux
+    /// inverserait gauche et droite pour toute la suite.
+    pub fn skip(&self, offset: Duration) -> PcmBuffer {
+        let frames = (offset.as_secs_f64() * self.sample_rate as f64) as usize;
+        let start = (frames * self.channels as usize).min(self.samples.len());
+        PcmBuffer::new(self.samples[start..].to_vec(), self.sample_rate, self.channels)
+    }
+
     pub fn new(samples: Vec<f32>, sample_rate: u32, channels: u16) -> Self {
         let channels = channels.max(1);
         let sample_rate = sample_rate.max(1);
@@ -285,6 +295,22 @@ pub struct EngineSettings {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn skipping_drops_whole_frames_from_the_start() {
+        // Stéréo, 10 trames par seconde : 0,3 s = 3 trames = 6 échantillons.
+        let pcm = PcmBuffer::new((0..20).map(|i| i as f32).collect(), 10, 2);
+        let rest = pcm.skip(Duration::from_millis(300));
+        assert_eq!(rest.samples.len(), 14);
+        assert_eq!(rest.samples[0], 6.0);
+        assert_eq!(rest.channels, 2);
+    }
+
+    #[test]
+    fn skipping_past_the_end_leaves_silence() {
+        let pcm = PcmBuffer::new(vec![0.5; 10], 10, 1);
+        assert!(pcm.skip(Duration::from_secs(5)).is_empty());
+    }
 
     #[test]
     fn the_speaking_rate_travels_as_a_model_option() {
