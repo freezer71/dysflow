@@ -45,6 +45,9 @@ pub struct Reader {
     last_activity: Instant,
     /// Téléchargement de voix en cours, sondé à chaque tour.
     download: Option<crate::models::Download>,
+    /// Le document au repos, reconstruit une fois à la mise au repos : la
+    /// vue le relit à chaque instantané sans le ré-analyser.
+    resting_doc: Option<crate::doc::Document>,
 }
 
 impl Reader {
@@ -60,6 +63,7 @@ impl Reader {
             revision: 0,
             last_activity: now,
             download: None,
+            resting_doc: None,
         }
     }
 
@@ -78,6 +82,10 @@ impl Reader {
 
     pub fn voice_loaded(&self) -> bool {
         self.engine.is_some()
+    }
+
+    pub fn resting_document(&self) -> Option<&crate::doc::Document> {
+        self.resting_doc.as_ref()
     }
 
     pub fn is_resting(&self) -> bool {
@@ -161,6 +169,9 @@ impl Reader {
         self.config = app.config.clone();
         self.resting_at = Some(app.current_sentence());
         drop(app);
+        self.resting_doc = self.text.as_ref().map(|t| {
+            crate::doc::builder::parse_document(&t.markdown, self.config.code_policy())
+        });
         self.engine = None;
     }
 
@@ -191,6 +202,7 @@ impl Reader {
     fn open(&mut self, text: Text, now: Instant) {
         self.last_activity = now;
         self.resting_at = None;
+        self.resting_doc = None;
         let engine = self.ensure_engine();
         let (synth, player) = match self.session.take() {
             Some(mut old) => {

@@ -83,6 +83,9 @@ impl Reader {
 
     pub fn install_voice(&mut self, id: &str) -> Result<()> {
         let package = package(id)?;
+        if self.download.as_ref().is_some_and(|d| !d.is_finished()) {
+            return Err(anyhow!("téléchargement déjà en cours"));
+        }
         self.download = Some(Download::start(package)?);
         Ok(())
     }
@@ -94,13 +97,19 @@ impl Reader {
         let path = models::install_path(package)
             .filter(|_| models::is_installed(package))
             .ok_or_else(|| anyhow!("voix non installée : {id}"))?;
-        self.sync_config();
-        self.config.engine.model_path = path.to_string_lossy().into_owned();
-        self.config.engine.family = package.family.to_string();
-        self.config.align_voice_with_family();
-        self.config.save()?;
+        // Au repos d'abord : la mise au repos recopie la configuration du
+        // texte ouvert, qui écraserait la voix choisie.
         self.rest();
+        self.switch_voice_config(&path.to_string_lossy(), package.family);
+        self.config.save()?;
         Ok(())
+    }
+
+    /// La partie sans disque du changement de voix.
+    fn switch_voice_config(&mut self, model_path: &str, family: &str) {
+        self.config.engine.model_path = model_path.to_string();
+        self.config.engine.family = family.to_string();
+        self.config.align_voice_with_family();
     }
 
     pub fn download(&self) -> Option<DownloadView> {
@@ -200,5 +209,41 @@ mod tests {
     fn using_an_unknown_voice_is_an_error() {
         let mut r = reader();
         assert!(r.use_voice("n-existe-pas").is_err());
+    }
+
+    #[test]
+    fn a_voice_switch_survives_the_rest_and_reaches_the_next_engine() {
+        use std::sync::Mutex;
+        let seen: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+        let log = Arc::clone(&seen);
+        let mut config = Config::default();
+        config.reading.autoplay = false;
+        let mut r = Reader::new(
+            config,
+            Box::new(move |c| {
+                log.lock().unwrap().push(c.engine.model_path.clone());
+                Arc::new(SilentEngine) as Arc<dyn TtsEngine>
+            }),
+            Box::new(Player::silent),
+            Instant::now(),
+        );
+        r.open_text("Un. Deux.", "a", Instant::now());
+        r.rest();
+        r.switch_voice_config("/nouvelle/voix.onnx", "supertonic");
+        r.with_session(Instant::now(), |_| {});
+        assert_eq!(seen.lock().unwrap().last().unwrap(), "/nouvelle/voix.onnx");
+        assert_eq!(r.config().engine.model_path, "/nouvelle/voix.onnx");
+    }
+
+    #[test]
+    fn the_resting_document_is_kept_once_and_dropped_on_open() {
+        let mut r = reader();
+        r.open_text("Un. Deux.", "a", Instant::now());
+        assert!(r.resting_document().is_none());
+        r.rest();
+        assert!(r.resting_document().is_some());
+        assert_eq!(crate::reader::view::document(&r).sentence_count, 2);
+        r.open_text("Trois.", "b", Instant::now());
+        assert!(r.resting_document().is_none());
     }
 }

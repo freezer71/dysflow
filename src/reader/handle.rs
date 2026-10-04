@@ -15,6 +15,18 @@ use super::view::{self, DocView, Snapshot};
 use super::Reader;
 
 const TICK: Duration = Duration::from_millis(16);
+/// Sans texte à lire ni téléchargement, le fil se contente de veiller : la
+/// mise au repos de la voix et le sondage restent assurés.
+const TICK_IDLE: Duration = Duration::from_secs(1);
+
+/// Cadence du fil : vive tant qu'un texte est ouvert, lente sinon.
+fn tick_interval(reader: &Reader) -> Duration {
+    if reader.session().is_some() || reader.download().is_some() {
+        TICK
+    } else {
+        TICK_IDLE
+    }
+}
 
 pub enum Request {
     OpenText { markdown: String, source: String },
@@ -90,7 +102,7 @@ impl Drop for ReaderHandle {
 fn run(mut reader: Reader, rx: Receiver<Request>, out: Arc<Mutex<Published>>) {
     let mut revision = u64::MAX;
     'outer: loop {
-        match rx.recv_timeout(TICK) {
+        match rx.recv_timeout(tick_interval(&reader)) {
             Ok(request) => {
                 if !handle(&mut reader, request) {
                     break 'outer;
@@ -198,5 +210,22 @@ mod tests {
     fn dropping_the_handle_stops_the_thread() {
         let h = silent_handle();
         drop(h); // ne doit pas bloquer
+    }
+
+    #[test]
+    fn the_thread_ticks_fast_with_a_text_and_slowly_without() {
+        let mut config = Config::default();
+        config.reading.autoplay = false;
+        let mut reader = Reader::new(
+            config,
+            Box::new(|_| Arc::new(SilentEngine) as Arc<dyn TtsEngine>),
+            Box::new(Player::silent),
+            Instant::now(),
+        );
+        assert_eq!(tick_interval(&reader), Duration::from_secs(1));
+        reader.open_text("Un.", "t", Instant::now());
+        assert_eq!(tick_interval(&reader), Duration::from_millis(16));
+        reader.rest();
+        assert_eq!(tick_interval(&reader), Duration::from_secs(1));
     }
 }

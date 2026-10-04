@@ -142,9 +142,8 @@ pub fn snapshot(reader: &Reader) -> Snapshot {
         // Au repos, la position retenue reste celle où l'on s'est arrêté ;
         // le document se reconstruit pour en tirer section et avancement.
         let sentence = reader.resting_at.unwrap_or(0);
-        let (section, progress) = match reader.text_markdown() {
-            Some(markdown) => {
-                let doc = crate::doc::builder::parse_document(markdown, reader.config().code_policy());
+        let (section, progress) = match reader.resting_document() {
+            Some(doc) => {
                 let total = doc.sentences.len().max(1) as f32;
                 (
                     doc.section_of_sentence(sentence).map(|s| s.id),
@@ -206,10 +205,7 @@ pub fn document(reader: &Reader) -> DocView {
         (Some(app), _) => view_of(app.doc()),
         // Au repos, le document se reconstruit à l'identique depuis son
         // texte : mêmes blocs, mêmes index.
-        (None, Some(markdown)) => {
-            view_of(&crate::doc::builder::parse_document(markdown, reader.config().code_policy()))
-        }
-        (None, None) => DocView::default(),
+        (None, _) => reader.resting_document().map(view_of).unwrap_or_default(),
     }
 }
 
