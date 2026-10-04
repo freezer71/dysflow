@@ -28,6 +28,14 @@ fn tick_interval(reader: &Reader) -> Duration {
     }
 }
 
+pub type ReplySender = Sender<Result<(), String>>;
+pub type ReplyReceiver = Receiver<Result<(), String>>;
+
+/// Canal de réponse d'un `OpenFile`, pour qui n'a pas `crossbeam` sous la main.
+pub fn reply_channel() -> (ReplySender, ReplyReceiver) {
+    crossbeam_channel::bounded(1)
+}
+
 pub enum Request {
     OpenText { markdown: String, source: String },
     OpenFile { path: PathBuf, reply: Sender<Result<(), String>> },
@@ -77,7 +85,11 @@ impl ReaderHandle {
         Arc::clone(&self.published.lock().unwrap().document)
     }
 
-    /// Exécute `f` sur le fil du lecteur et rend son résultat (bloquant).
+    /// Exécute `f` sur le fil du lecteur et rend son résultat.
+    ///
+    /// BLOQUE l'appelant jusqu'à ce que le fil du lecteur ait répondu (au plus
+    /// 5 s, puis `None`) : un travail long (ouvrir un fichier, reconnaître une
+    /// image) ne doit donc pas être demandé depuis le fil de l'interface.
     pub fn ask<T: Send + 'static>(
         &self,
         f: impl FnOnce(&mut Reader) -> T + Send + 'static,

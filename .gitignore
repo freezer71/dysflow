@@ -6,3 +6,8 @@ __pycache__/
 
 # Maquettes de brainstorming
 .superpowers/
+
+# App macOS : fichiers générés
+macos/Generated/
+macos/Libraries/
+macos/*.xcodeproj
