@@ -8,9 +8,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Lancée par les tests d'interface : lecteur muet, texte d'exemple.
     let isUITesting = ProcessInfo.processInfo.arguments.contains("--ui-testing")
     private(set) var reader: SillonReader!
+    private(set) var model: ReaderModel!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         Self.shared = self
         reader = isUITesting ? SillonReader.silent() : SillonReader()
+        model = ReaderModel(reader: reader)
+        model.start()
     }
 }
