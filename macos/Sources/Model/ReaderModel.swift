@@ -21,6 +21,19 @@ final class ReaderModel {
         document = reader.document()
     }
 
+    /// Vrai quand le panneau est affiché : le suivi à chaque image est alors utile.
+    var isDisplayed = false {
+        didSet {
+            if isDisplayed { refresh() }
+            updateTicking()
+        }
+    }
+
+    /// Le suivi à la cadence de l'écran tourne-t-il ?
+    var isTicking: Bool { ticker?.isRunning ?? false }
+
+    /// Le suivi ne tourne que si le panneau est affiché ou si la lecture avance :
+    /// au repos, une app de barre des menus ne coûte rien.
     func start() {
         if ticker == nil {
             ticker = DisplayTicker { [weak self] in self?.refresh() }
@@ -32,6 +45,20 @@ final class ReaderModel {
         ticker?.stop()
     }
 
+    private func updateTicking() {
+        if isDisplayed || snapshot.playing {
+            start()
+        } else {
+            stop()
+        }
+    }
+
+    /// Relance le suivi et relit tout de suite l'état.
+    private func wake() {
+        start()
+        refresh()
+    }
+
     func refresh() {
         let next = reader.snapshot()
         if next.revision != snapshot.revision {
@@ -41,37 +68,42 @@ final class ReaderModel {
         if next != snapshot {
             snapshot = next
         }
+        updateTicking()
     }
 
     func send(_ command: ReaderCommand) {
         reader.command(command: command)
+        wake()
     }
 
     func open(text: String, source: String) {
         message = nil
         reader.openText(markdown: text, source: source)
+        wake()
     }
 
-    /// Bloque jusqu'à 5 s (fil du lecteur) : pas de long travail sur le fil principal.
-    func openClipboard() throws {
+    /// Le lecteur lit le presse-papiers sur le fil appelant et peut passer
+    /// une image à l'OCR (plusieurs secondes) : hors du fil principal.
+    func openClipboard() async throws {
         message = nil
-        try reader.openClipboard()
+        let reader = reader
+        try await Task.detached { try reader.openClipboard() }.value
+        wake()
     }
 
-    func prepareVoice() { reader.prepareVoice() }
+    func prepareVoice() {
+        reader.prepareVoice()
+        wake()
+    }
     func restVoice() { reader.restVoice() }
 
-    /// Bloque jusqu'à 5 s (fil du lecteur) : pas de long travail sur le fil principal.
+    // Ces appels passent par le fil du lecteur et bloquent jusqu'à 5 s :
+    // pas de long travail sur le fil principal.
     func bookmarks() -> [BookmarkView] { reader.bookmarks() }
-    /// Bloque jusqu'à 5 s (fil du lecteur) : pas de long travail sur le fil principal.
     func settings() -> SettingsView { reader.settings() }
-    /// Bloque jusqu'à 5 s (fil du lecteur) : pas de long travail sur le fil principal.
     func updateSettings(_ s: SettingsView) throws { try reader.updateSettings(settings: s) }
-    /// Bloque jusqu'à 5 s (fil du lecteur) : pas de long travail sur le fil principal.
     func voices() -> [VoiceModel] { reader.voices() }
-    /// Bloque jusqu'à 5 s (fil du lecteur) : pas de long travail sur le fil principal.
     func installVoice(_ id: String) throws { try reader.installVoice(id: id) }
-    /// Bloque jusqu'à 5 s (fil du lecteur) : pas de long travail sur le fil principal.
     func useVoice(_ id: String) throws { try reader.useVoice(id: id) }
 
     /// La phrase en cours telle qu'elle est écrite.

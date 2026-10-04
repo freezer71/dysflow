@@ -32,3 +32,35 @@ final class ReaderModelTests: XCTestCase {
         XCTAssertNil(m.message)
     }
 }
+
+@MainActor
+final class ReaderModelTickingTests: XCTestCase {
+    private func hiddenModel() -> ReaderModel {
+        let m = ReaderModel(reader: SillonReader.silent())
+        m.open(text: "Un. Deux.", source: "test")
+        XCTAssertTrue(waitUntil { m.refresh(); return m.snapshot.revision == 1 })
+        return m
+    }
+
+    func testIdleHiddenModelDoesNotTick() {
+        let m = hiddenModel()
+        XCTAssertFalse(m.snapshot.playing)
+        XCTAssertFalse(m.isTicking)
+    }
+
+    func testDisplayedTicksThenStopsWhenHidden() {
+        let m = hiddenModel()
+        m.isDisplayed = true
+        XCTAssertTrue(m.isTicking)
+        m.isDisplayed = false
+        m.refresh()
+        XCTAssertFalse(m.isTicking)
+    }
+
+    func testPlayingTicksWhileHidden() {
+        let m = hiddenModel()
+        m.send(.togglePlay)
+        XCTAssertTrue(waitUntil { m.refresh(); return m.snapshot.playing })
+        XCTAssertTrue(m.isTicking)
+    }
+}

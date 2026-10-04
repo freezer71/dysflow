@@ -14,6 +14,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Self.shared = self
         reader = isUITesting ? SillonReader.silent() : SillonReader()
         model = ReaderModel(reader: reader)
-        model.start()
+        model.refresh()
     }
 }
