@@ -316,7 +316,12 @@ fn worker_loop(shared: Arc<Shared>) {
             match shared.engine.open_session() {
                 Ok(s) => session = Some(s),
                 Err(err) => {
-                    finish(&shared, id, Err(format!("ouverture de session : {err}")));
+                    finish_generation(
+                        &shared,
+                        id,
+                        generation,
+                        Err(format!("ouverture de session : {err}")),
+                    );
                     continue;
                 }
             }
@@ -360,11 +365,6 @@ fn with_trailing_silence(speech: PcmBuffer, pause_ms: u64) -> Rendered {
         audio: Arc::new(PcmBuffer::new(samples, speech.sample_rate, speech.channels)),
         speech: speech_duration,
     }
-}
-
-fn finish(shared: &Arc<Shared>, id: usize, outcome: Result<Rendered, String>) {
-    let generation = shared.state.lock().unwrap().generation;
-    finish_generation(shared, id, generation, outcome);
 }
 
 fn finish_generation(
@@ -514,6 +514,112 @@ mod tests {
         synth.push("bb".into(), 0);
         assert_eq!(wait_ready(&synth, 0).audio.samples.len(), 20);
         assert_eq!(opened.load(Ordering::SeqCst), 1);
+    }
+
+    /// Moteur dont la première ouverture de session attend un feu vert, puis
+    /// échoue ; les suivantes réussissent.
+    struct SlowFailingOpen {
+        opens: AtomicUsize,
+        started: std::sync::Mutex<std::sync::mpsc::Sender<()>>,
+        gate: std::sync::Mutex<std::sync::mpsc::Receiver<()>>,
+    }
+
+    impl TtsEngine for SlowFailingOpen {
+        fn name(&self) -> String {
+            "ouverture lente".into()
+        }
+        fn open_session(&self) -> Result<Box<dyn TtsSession>> {
+            if self.opens.fetch_add(1, Ordering::SeqCst) == 0 {
+                self.started.lock().unwrap().send(()).unwrap();
+                self.gate.lock().unwrap().recv().unwrap();
+                anyhow::bail!("refusée");
+            }
+            Ok(Box::new(LengthSession))
+        }
+        fn max_sessions(&self) -> usize {
+            1
+        }
+    }
+
+    #[test]
+    fn a_failed_open_for_the_old_text_does_not_poison_the_new_one() {
+        let (started_tx, started) = std::sync::mpsc::channel();
+        let (release, gate) = std::sync::mpsc::channel();
+        let engine = Arc::new(SlowFailingOpen {
+            opens: AtomicUsize::new(0),
+            started: std::sync::Mutex::new(started_tx),
+            gate: std::sync::Mutex::new(gate),
+        });
+        let synth = Synthesizer::new(engine, TtsParams::default(), 1, 4);
+        synth.push("aaaa".into(), 0);
+        started.recv_timeout(Duration::from_secs(5)).unwrap();
+
+        synth.reset();
+        synth.push("bb".into(), 0);
+        release.send(()).unwrap();
+
+        assert_eq!(wait_ready(&synth, 0).audio.samples.len(), 20);
+        assert_eq!(synth.failure(0), None);
+    }
+
+    /// Moteur dont chaque synthèse annonce son départ puis attend un feu vert.
+    struct GatedSynthesis {
+        calls: Arc<AtomicUsize>,
+        started: std::sync::Mutex<std::sync::mpsc::Sender<()>>,
+        gate: Arc<std::sync::Mutex<std::sync::mpsc::Receiver<()>>>,
+    }
+    struct GatedSession {
+        calls: Arc<AtomicUsize>,
+        started: std::sync::mpsc::Sender<()>,
+        gate: Arc<std::sync::Mutex<std::sync::mpsc::Receiver<()>>>,
+    }
+
+    impl TtsEngine for GatedSynthesis {
+        fn name(&self) -> String {
+            "à feu vert".into()
+        }
+        fn open_session(&self) -> Result<Box<dyn TtsSession>> {
+            Ok(Box::new(GatedSession {
+                calls: Arc::clone(&self.calls),
+                started: self.started.lock().unwrap().clone(),
+                gate: Arc::clone(&self.gate),
+            }))
+        }
+        fn max_sessions(&self) -> usize {
+            1
+        }
+    }
+
+    impl TtsSession for GatedSession {
+        fn synthesize(&mut self, text: &str, _: &TtsParams) -> Result<PcmBuffer> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            self.started.send(()).unwrap();
+            self.gate.lock().unwrap().recv().unwrap();
+            Ok(PcmBuffer::new(vec![0.1; text.len() * 10], 1000, 1))
+        }
+    }
+
+    #[test]
+    fn a_synthesis_in_flight_across_a_reset_is_dropped_and_the_id_reused() {
+        let (started_tx, started) = std::sync::mpsc::channel();
+        let (release, gate) = std::sync::mpsc::channel();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let engine = Arc::new(GatedSynthesis {
+            calls: Arc::clone(&calls),
+            started: std::sync::Mutex::new(started_tx),
+            gate: Arc::new(std::sync::Mutex::new(gate)),
+        });
+        let synth = Synthesizer::new(engine, TtsParams::default(), 1, 4);
+        synth.push("aaaa".into(), 0);
+        started.recv_timeout(Duration::from_secs(5)).unwrap();
+
+        synth.reset();
+        synth.push("bb".into(), 0);
+        release.send(()).unwrap();
+        release.send(()).unwrap();
+
+        assert_eq!(wait_ready(&synth, 0).audio.samples.len(), 20);
+        assert_eq!(calls.load(Ordering::SeqCst), 2, "une fois l'ancien, une fois le nouveau");
     }
 
     #[test]

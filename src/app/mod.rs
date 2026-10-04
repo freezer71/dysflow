@@ -209,8 +209,12 @@ impl App {
             app.builder.sync_word_total();
         }
         app.publish_new_sentences();
+        // Une sortie reprise du texte précédent peut jouer encore : l'état se
+        // fixe ici, il ne se déduit pas de ce que la sortie faisait.
         if autoplay {
             app.player.play();
+        } else {
+            app.player.pause();
         }
         app
     }
@@ -1436,6 +1440,21 @@ pub(crate) mod tests {
         assert_eq!(app.doc().sentences.len(), 1);
         assert_eq!(app.doc().sentences[0].written(), "Second texte.");
         assert_eq!(app.player.queue_len(), 0);
+    }
+
+    #[test]
+    fn a_carried_over_player_follows_autoplay() {
+        let mut app = app_reading("Premier texte.");
+        app.player.play();
+        assert!(app.player.is_playing());
+        let (synth, player) = app.into_parts();
+        synth.reset();
+        let mut builder = DocumentBuilder::new(CodePolicy::Announce);
+        builder.push_block("Second texte.");
+        let mut config = Config::default();
+        config.reading.autoplay = false;
+        let app = App::from_parts(builder, None, synth, config, "b".into(), Vec::new(), player);
+        assert!(!app.player.is_playing());
     }
 
     pub(crate) fn app_reading(markdown: &str) -> App {
