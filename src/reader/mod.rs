@@ -15,6 +15,8 @@ use crate::config::Config;
 use crate::doc::DocumentBuilder;
 use crate::tts::{Synthesizer, TtsEngine};
 
+pub mod command;
+pub mod handle;
 pub mod view;
 
 pub type VoiceFactory = Box<dyn Fn(&Config) -> Arc<dyn TtsEngine>>;
