@@ -3,3 +3,6 @@
 .DS_Store
 __pycache__/
 *.pyc
+
+# Maquettes de brainstorming
+.superpowers/
