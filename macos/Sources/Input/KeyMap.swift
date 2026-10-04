@@ -13,14 +13,16 @@ struct KeyPress: Equatable {
     var option = false
     var shift = false
     var command = false
+    var control = false
 
     init(characters: String, keyCode: UInt16 = 0, option: Bool = false,
-         shift: Bool = false, command: Bool = false) {
+         shift: Bool = false, command: Bool = false, control: Bool = false) {
         self.characters = characters
         self.keyCode = keyCode
         self.option = option
         self.shift = shift
         self.command = command
+        self.control = control
     }
 
     init(_ event: NSEvent) {
@@ -29,7 +31,8 @@ struct KeyPress: Equatable {
                   keyCode: event.keyCode,
                   option: flags.contains(.option),
                   shift: flags.contains(.shift),
-                  command: flags.contains(.command))
+                  command: flags.contains(.command),
+                  control: flags.contains(.control))
     }
 }
 
@@ -49,6 +52,8 @@ enum KeyMap {
             default: return nil
             }
         }
+
+        // Les touches sans caractère : flèches, entrée, etc.
         switch key.keyCode {
         case KeyCode.space: return .command(.togglePlay)
         case KeyCode.enter: return .expand
@@ -60,10 +65,20 @@ enum KeyMap {
             if key.option { return .command(.words(delta: sign)) }
             if key.shift { return .command(.sentences(delta: sign * seekStep)) }
             return .command(.sentences(delta: sign))
-        case KeyCode.up: return .command(.blocks(delta: -1))
-        case KeyCode.down: return .command(.blocks(delta: 1))
+        case KeyCode.up:
+            // ⌥↑ pour volume, sinon bloc
+            if key.option { return .command(.changeVolume(delta: 0.05)) }
+            return .command(.blocks(delta: -1))
+        case KeyCode.down:
+            // ⌥↓ pour volume, sinon bloc
+            if key.option { return .command(.changeVolume(delta: -0.05)) }
+            return .command(.blocks(delta: 1))
         default: break
         }
+
+        // Les raccourcis caractères : bloqués si Option ou Control
+        if key.option || key.control { return nil }
+
         switch key.characters {
         case "n": return .command(.sections(delta: 1))
         case "p": return .command(.sections(delta: -1))
@@ -71,10 +86,11 @@ enum KeyMap {
         case "P": return .command(.searchAdvance(delta: -1))
         case "+", "=": return .command(.changeSpeed(delta: 0.1))
         case "-", "_": return .command(.changeSpeed(delta: -0.1))
-        case "1": return .command(.setSpeed(speed: 0.75))
-        case "2": return .command(.setSpeed(speed: 1.0))
-        case "3": return .command(.setSpeed(speed: 1.5))
-        case "4": return .command(.setSpeed(speed: 2.0))
+        // QWERTY et accents French AZERTY non décalés
+        case "1", "&": return .command(.setSpeed(speed: 0.75))
+        case "2", "é": return .command(.setSpeed(speed: 1.0))
+        case "3", "\"": return .command(.setSpeed(speed: 1.5))
+        case "4", "'": return .command(.setSpeed(speed: 2.0))
         case "[": return .command(.changeVolume(delta: -0.05))
         case "]": return .command(.changeVolume(delta: 0.05))
         case "m": return .command(.toggleMute)

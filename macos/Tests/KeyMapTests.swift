@@ -3,9 +3,9 @@ import XCTest
 
 final class KeyMapTests: XCTestCase {
     private func act(_ c: String, _ code: UInt16 = 0, option: Bool = false,
-                     shift: Bool = false, command: Bool = false) -> ReaderAction? {
+                     shift: Bool = false, command: Bool = false, control: Bool = false) -> ReaderAction? {
         KeyMap.action(for: KeyPress(characters: c, keyCode: code, option: option,
-                                    shift: shift, command: command))
+                                    shift: shift, command: command, control: control))
     }
 
     func testPlayAndWords() {
@@ -55,5 +55,43 @@ final class KeyMapTests: XCTestCase {
     func testUnknownKeyIsIgnored() {
         XCTAssertNil(act("z"))
         XCTAssertNil(act("x", command: true))
+    }
+
+    func testLayoutIndependentVolume() {
+        // ⌥↑ et ⌥↓ pour le volume (indépendant du clavier)
+        XCTAssertEqual(act("", KeyCode.up, option: true), .command(.changeVolume(delta: 0.05)))
+        XCTAssertEqual(act("", KeyCode.down, option: true), .command(.changeVolume(delta: -0.05)))
+        // Les flèches sans Option sont toujours des blocs
+        XCTAssertEqual(act("", KeyCode.up), .command(.blocks(delta: -1)))
+        XCTAssertEqual(act("", KeyCode.down), .command(.blocks(delta: 1)))
+        // [ et ] restent disponibles pour QWERTY
+        XCTAssertEqual(act("["), .command(.changeVolume(delta: -0.05)))
+        XCTAssertEqual(act("]"), .command(.changeVolume(delta: 0.05)))
+    }
+
+    func testAZERTYSpeedAliases() {
+        // AZERTY non-décalées correspondent aux vitesses
+        XCTAssertEqual(act("&"), .command(.setSpeed(speed: 0.75)))
+        XCTAssertEqual(act("é"), .command(.setSpeed(speed: 1.0)))
+        XCTAssertEqual(act("\""), .command(.setSpeed(speed: 1.5)))
+        XCTAssertEqual(act("'"), .command(.setSpeed(speed: 2.0)))
+        // QWERTY décalées restent aussi
+        XCTAssertEqual(act("1"), .command(.setSpeed(speed: 0.75)))
+        XCTAssertEqual(act("2"), .command(.setSpeed(speed: 1.0)))
+        XCTAssertEqual(act("3"), .command(.setSpeed(speed: 1.5)))
+        XCTAssertEqual(act("4"), .command(.setSpeed(speed: 2.0)))
+    }
+
+    func testCharacterShortcutsBlockedByOptionAndControl() {
+        // Les raccourcis caractères sont bloqués par Option et Control
+        XCTAssertNil(act("n", option: true))
+        XCTAssertNil(act("b", control: true))
+        XCTAssertNil(act("/", option: true))
+        // Mais les flèches conservent leur traitement avec Option
+        XCTAssertEqual(act("", KeyCode.left, option: true), .command(.words(delta: -1)))
+        XCTAssertEqual(act("", KeyCode.right, option: true), .command(.words(delta: 1)))
+        XCTAssertEqual(act("", KeyCode.left, shift: true), .command(.sentences(delta: -5)))
+        // ⌥⇧← : Option a la priorité
+        XCTAssertEqual(act("", KeyCode.left, option: true, shift: true), .command(.words(delta: -1)))
     }
 }
