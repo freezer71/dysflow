@@ -122,16 +122,32 @@ impl App {
         config: Config,
         source: String,
         notices: Vec<String>,
-        mut player: Player,
+        player: Player,
     ) -> Self {
-        let params = config.tts_params();
         let synth = Synthesizer::new(
-            Arc::clone(&engine),
-            params,
+            engine,
+            config.tts_params(),
             config.sessions() as usize,
             config.engine.prefetch as usize,
         );
-        let previewer = Previewer::new(Arc::clone(&engine));
+        Self::from_parts(builder, input, synth, config, source, notices, player)
+    }
+
+    /// Un lecteur bâti sur une synthèse et une sortie déjà ouvertes.
+    ///
+    /// C'est ce qui rend un nouveau texte immédiat : ni session de synthèse
+    /// ni flux audio à rouvrir.
+    pub fn from_parts(
+        builder: DocumentBuilder,
+        input: Option<Receiver<InputEvent>>,
+        synth: Synthesizer,
+        config: Config,
+        source: String,
+        notices: Vec<String>,
+        mut player: Player,
+    ) -> Self {
+        synth.set_params(config.tts_params());
+        let previewer = Previewer::new(synth.engine());
         player.set_volume(config.voice.volume);
 
         let (bookmarks, bookmark_notice) = BookmarkStore::load();
@@ -188,6 +204,15 @@ impl App {
             app.player.play();
         }
         app
+    }
+
+    /// Rend synthèse et sortie pour le texte suivant.
+    ///
+    /// La sortie est vidée : l'audio de ce texte ne doit pas déborder sur
+    /// le suivant.
+    pub fn into_parts(mut self) -> (Synthesizer, Player) {
+        self.player.flush();
+        (self.synth, self.player)
     }
 
     /// Vrai quand le moteur exige un enregistrement de référence et n'en a pas.
@@ -1383,6 +1408,21 @@ pub(crate) mod tests {
         fn synthesize(&mut self, _text: &str, _params: &TtsParams) -> Result<PcmBuffer> {
             Ok(PcmBuffer::new(vec![0.0; 100], 1000, 1))
         }
+    }
+
+    #[test]
+    fn parts_carry_over_to_a_new_text() {
+        let app = app_reading("Premier texte.");
+        let (synth, player) = app.into_parts();
+        synth.reset();
+        let mut builder = DocumentBuilder::new(CodePolicy::Announce);
+        builder.push_block("Second texte.");
+        let mut config = Config::default();
+        config.reading.autoplay = false;
+        let app = App::from_parts(builder, None, synth, config, "b".into(), Vec::new(), player);
+        assert_eq!(app.doc().sentences.len(), 1);
+        assert_eq!(app.doc().sentences[0].written(), "Second texte.");
+        assert_eq!(app.player.queue_len(), 0);
     }
 
     pub(crate) fn app_reading(markdown: &str) -> App {

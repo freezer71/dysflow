@@ -243,6 +243,21 @@ impl Synthesizer {
         Arc::clone(&self.shared.engine)
     }
 
+    /// Repart d'un document vide, threads et sessions gardés ouverts.
+    ///
+    /// Les synthèses encore en cours portent l'ancienne génération : elles
+    /// seront jetées à leur arrivée, et libéreront alors leur place.
+    pub fn reset(&self) {
+        let mut state = self.shared.state.lock().unwrap();
+        state.jobs.clear();
+        state.cache.clear();
+        state.failures.clear();
+        state.cursor = 0;
+        state.generation += 1;
+        drop(state);
+        self.shared.wake.notify_all();
+    }
+
     pub fn stats(&self) -> SynthesisStats {
         let state = self.shared.state.lock().unwrap();
         SynthesisStats {
@@ -448,6 +463,57 @@ mod tests {
         fn synthesize(&mut self, _text: &str, _params: &TtsParams) -> Result<PcmBuffer> {
             Ok(PcmBuffer::new(vec![0.1; 10], 1000, 1))
         }
+    }
+
+    /// Compte les sessions ouvertes, et rend un son proportionnel au texte.
+    struct OpeningCounter {
+        opened: Arc<AtomicUsize>,
+    }
+    struct LengthSession;
+
+    impl TtsEngine for OpeningCounter {
+        fn name(&self) -> String {
+            "compteur".into()
+        }
+        fn open_session(&self) -> Result<Box<dyn TtsSession>> {
+            self.opened.fetch_add(1, Ordering::SeqCst);
+            Ok(Box::new(LengthSession))
+        }
+        fn max_sessions(&self) -> usize {
+            1
+        }
+    }
+
+    impl TtsSession for LengthSession {
+        fn synthesize(&mut self, text: &str, _: &TtsParams) -> Result<PcmBuffer> {
+            Ok(PcmBuffer::new(vec![0.1; text.len() * 10], 1000, 1))
+        }
+    }
+
+    fn wait_ready(synth: &Synthesizer, id: usize) -> Rendered {
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        loop {
+            if let Some(r) = synth.get(id) {
+                return r;
+            }
+            assert!(std::time::Instant::now() < deadline, "phrase {id} jamais prête");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    #[test]
+    fn reset_keeps_the_session_and_forgets_the_text() {
+        let opened = Arc::new(AtomicUsize::new(0));
+        let engine = Arc::new(OpeningCounter { opened: Arc::clone(&opened) });
+        let synth = Synthesizer::new(engine, TtsParams::default(), 1, 4);
+        synth.push("aaaa".into(), 0);
+        assert_eq!(wait_ready(&synth, 0).audio.samples.len(), 40);
+
+        synth.reset();
+        assert_eq!(synth.stats().total, 0);
+        synth.push("bb".into(), 0);
+        assert_eq!(wait_ready(&synth, 0).audio.samples.len(), 20);
+        assert_eq!(opened.load(Ordering::SeqCst), 1);
     }
 
     #[test]
