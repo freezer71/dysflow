@@ -11,6 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private(set) var model: ReaderModel!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        ReadingFont.registerBundled()
         Self.shared = self
         reader = isUITesting ? SillonReader.silent() : SillonReader()
         model = ReaderModel(reader: reader)

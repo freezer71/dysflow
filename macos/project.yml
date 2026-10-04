@@ -26,8 +26,9 @@ targets:
     sources:
       - path: Sources
       - path: Generated/sillon_ffi.swift
-      - path: Resources
-        optional: true
+      - path: Resources/Fonts
+        type: folder
+        buildPhase: resources
     dependencies:
       - package: KeyboardShortcuts
     settings:
