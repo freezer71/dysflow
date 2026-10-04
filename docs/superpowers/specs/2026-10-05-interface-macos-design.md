@@ -242,9 +242,14 @@ déchargement ne sert à rien tant qu'elle n'est pas corrigée. Comparer aussi
 - **Tout au clavier** : focus toujours visible, ordre de tabulation logique,
   réglages navigables au clavier.
 - **VoiceOver** : chaque contrôle a un nom et une valeur (« Vitesse, 1,4× »).
-  La lecture se met en pause quand VoiceOver parle.
+  Quand VoiceOver est actif, le mot surligné n'est jamais annoncé ; seuls les
+  changements d'état le sont (lecture, pause, nouvelle section), pour que les
+  deux voix ne se chevauchent pas. *(Révisé le 2026-10-05 : macOS n'offre
+  aucune API publique pour savoir quand VoiceOver parle ; « mettre en pause
+  quand VoiceOver parle » n'est pas réalisable.)*
 - Réglages système respectés : réduire les animations, augmenter le
-  contraste, réduire la transparence, taille du texte.
+  contraste, réduire la transparence. *(macOS n'a pas de taille de texte
+  système ; la taille du texte lu se règle dans sillon.)*
 
 ## Fluidité
 
