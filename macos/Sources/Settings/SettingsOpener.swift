@@ -5,8 +5,10 @@ import SwiftUI
 ///
 /// Depuis macOS 14, `showSettingsWindow:` n'ouvre plus la scène `Settings`
 /// de SwiftUI : seule l'action `openSettings` le fait, et elle ne s'obtient
-/// que dans une vue. Les vues toujours présentes (icône de la barre des
-/// menus, panneau) la donnent ici ; une demande arrivée avant elle attend.
+/// que dans une vue d'une scène. L'icône de la barre des menus, toujours
+/// présente, la donne ici ; une demande arrivée avant elle attend. La
+/// première action reçue reste : celle d'une vue hors scène (le panneau est
+/// un NSHostingView dans un NSPanel) pourrait ne rien ouvrir.
 @MainActor
 final class SettingsOpener {
     static let shared = SettingsOpener()
@@ -19,8 +21,9 @@ final class SettingsOpener {
         self.activate = activate
     }
 
-    /// L'action `openSettings` d'une vue.
+    /// L'action `openSettings` d'une vue ; la première seule est gardée.
     func install(_ action: @escaping () -> Void) {
+        guard self.action == nil else { return }
         self.action = action
         if pending {
             pending = false

@@ -13,6 +13,16 @@ final class SettingsOpenerTests: XCTestCase {
         XCTAssertEqual(log, ["active", "réglages"])
     }
 
+    /// L'action de l'icône de la barre des menus, donnée la première, reste.
+    func testTheFirstInstalledActionIsKept() {
+        var log: [String] = []
+        let opener = SettingsOpener(activate: {})
+        opener.install { log.append("icône") }
+        opener.install { log.append("autre vue") }
+        opener.open()
+        XCTAssertEqual(log, ["icône"])
+    }
+
     func testARequestBeforeTheActionWaitsForIt() {
         var log: [String] = []
         let opener = SettingsOpener(activate: { log.append("active") })
