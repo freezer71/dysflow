@@ -13,6 +13,7 @@ final class PanelController {
     @ObservationIgnored private var contentHeight: CGFloat = 0
     @ObservationIgnored private var resizePending = false
     @ObservationIgnored private var closeGuard: PanelCloseGuard?
+    @ObservationIgnored private var announcer = Announcer()
 
     private(set) var mode: PanelMode = .hidden
     /// Réglages de lecture du moteur (interlignage, règle), relus à chaque
@@ -84,6 +85,18 @@ final class PanelController {
         if window.isVisible { window.orderOut(nil) }
         model.isDisplayed = false
         removeKeyMonitor()
+    }
+
+    /// Dit à VoiceOver un changement d'état (lecture, pause, section), jamais
+    /// un mot. Sans effet quand VoiceOver est éteint.
+    func announce(_ s: Snapshot) {
+        // L'annonceur voit tous les instantanés, VoiceOver ou non : son
+        // état reste à jour et rien n'est dit en retard à l'activation.
+        let text = announcer.announcement(for: s, doc: model.document)
+        guard NSWorkspace.shared.isVoiceOverEnabled, let text else { return }
+        NSAccessibility.post(element: window, notification: .announcementRequested,
+                             userInfo: [.announcement: text,
+                                        .priority: NSAccessibilityPriorityLevel.medium.rawValue])
     }
 
     func contentHeightChanged(_ height: CGFloat) {

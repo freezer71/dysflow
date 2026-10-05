@@ -5,10 +5,12 @@ struct PanelContent: View {
     @AppStorage(DisplayDefaults.fontKey) private var fontName = ReadingFont.literata.rawValue
     @AppStorage(DisplayDefaults.sizeKey) private var size = DisplayDefaults.defaultSize
     @Environment(\.colorScheme) private var colorScheme
+    /// Suit « Augmenter le contraste » en direct, sans relancer l'app.
+    @State private var increaseContrast = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
 
     private var theme: Theme {
         Theme.resolve(dark: colorScheme == .dark,
-                      increaseContrast: NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast)
+                      increaseContrast: increaseContrast)
     }
 
     private var style: ReadingStyle {
@@ -58,6 +60,11 @@ struct PanelContent: View {
         // La barre de titre est transparente et invisible : sans cela, sa
         // zone sûre repousse le contenu de ~30 pt et rogne le texte.
         .ignoresSafeArea()
+        .onChange(of: controller.model.snapshot) { _, s in controller.announce(s) }
+        .onReceive(NSWorkspace.shared.notificationCenter.publisher(
+            for: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification)) { _ in
+            increaseContrast = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
+        }
     }
 
     private var emptyMessage: String? {
