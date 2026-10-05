@@ -8,5 +8,10 @@ struct SillonApp: App {
         MenuBarExtra("sillon", systemImage: "text.line.first.and.arrowtriangle.forward") {
             MenuContent()
         }
+        Settings {
+            if let model = AppDelegate.shared?.model {
+                ReglagesView(model: model)
+            }
+        }
     }
 }

@@ -21,6 +21,8 @@ struct MenuContent: View {
         }
         Button("Mettre la voix au repos") { model?.restVoice() }
         Divider()
+        SettingsLink { Text("Réglages…") }
+            .keyboardShortcut(",")
         Button("Quitter sillon") { NSApp.terminate(nil) }
             .keyboardShortcut("q")
     }

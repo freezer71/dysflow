@@ -25,6 +25,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if isUITesting {
             model.open(text: Self.sample, source: "exemple")
             if ProcessInfo.processInfo.arguments.contains("--show-panel") { panel.show() }
+            if ProcessInfo.processInfo.arguments.contains("--show-settings") {
+                NSApp.activate()
+                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+            }
         }
         guard !isUITesting, !isUnitTesting else { return }
         // Les raccourcis d'abord : l'alerte d'accessibilité bloque (runModal).

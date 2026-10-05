@@ -117,6 +117,34 @@ final class ReaderModel {
         let reader = reader
         return await Task.detached { reader.bookmarks() }.value
     }
+    /// Les réglages, lus hors du fil principal.
+    func loadSettings() async -> SettingsView {
+        let reader = reader
+        return await Task.detached { reader.settings() }.value
+    }
+    /// Relit les réglages, applique `change`, les écrit : hors du fil principal.
+    func changeSettings(_ change: @escaping @Sendable (inout SettingsView) -> Void) async throws {
+        let reader = reader
+        try await Task.detached {
+            var s = reader.settings()
+            change(&s)
+            try reader.updateSettings(settings: s)
+        }.value
+    }
+    /// Les voix du catalogue, lues hors du fil principal.
+    func loadVoices() async -> [VoiceModel] {
+        let reader = reader
+        return await Task.detached { reader.voices() }.value
+    }
+    func installVoiceAsync(_ id: String) async throws {
+        let reader = reader
+        try await Task.detached { try reader.installVoice(id: id) }.value
+        wake()
+    }
+    func useVoiceAsync(_ id: String) async throws {
+        let reader = reader
+        try await Task.detached { try reader.useVoice(id: id) }.value
+    }
     func settings() -> SettingsView { reader.settings() }
     func updateSettings(_ s: SettingsView) throws { try reader.updateSettings(settings: s) }
     func voices() -> [VoiceModel] { reader.voices() }
