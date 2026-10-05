@@ -19,6 +19,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ReadingFont.registerBundled()
         Self.shared = self
         reader = isUITesting ? SillonReader.silent() : SillonReader()
+        // Mode mesure : seul le lecteur et les mesures tournent. Retour avant le
+        // modèle, le panneau, les raccourcis, l'ouverture à la connexion et
+        // l'accueil ; sans l'argument, rien ne change.
+        if ProcessInfo.processInfo.arguments.contains("--measure"), !isUnitTesting {
+            Task { @MainActor [reader = reader!] in
+                await Measure.run(reader: reader)
+                NSApp.terminate(nil)
+            }
+            return
+        }
         model = ReaderModel(reader: reader)
         model.refresh()
         panel = PanelController(model: model)
