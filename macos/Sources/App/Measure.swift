@@ -51,19 +51,26 @@ enum Measure {
         // Sauts : phrase, puis mot.
         for _ in 1...5 {
             try await attendreSon(reader)
-            let cible = reader.snapshot().sentence + 1
+            let depart = reader.snapshot().sentence
             let t = ContinuousClock.now
             reader.command(command: .sentences(delta: 1))
-            try await attendre(reader) { $0.sentence == cible && $0.audible }
+            try await attendre(reader) { $0.sentence == depart + 1 && $0.audible }
             emit("saut_phrase", t.duration(to: .now))
+            // Retour, confirmé : sans cela l'itération suivante lirait un
+            // instantané périmé et viserait une phrase que le lecteur dépasse.
             reader.command(command: .sentences(delta: -1))
+            try await attendre(reader) { $0.sentence == depart && $0.audible }
         }
         for _ in 1...5 {
             try await attendreSon(reader)
+            let avant = reader.snapshot()
             let t = ContinuousClock.now
             reader.command(command: .words(delta: 3))
-            try? await Task.sleep(for: .milliseconds(20))
-            try await attendreSon(reader)
+            // Le chrono ne s'arrête qu'une fois la position publiée changée :
+            // `audible` seul serait encore vrai depuis l'état d'avant.
+            try await attendre(reader) {
+                ($0.sentence != avant.sentence || $0.word != avant.word) && $0.audible
+            }
             emit("saut_mot", t.duration(to: .now))
         }
         // Mémoire au repos, sur dix cycles.
@@ -72,7 +79,8 @@ enum Measure {
             try await ouvrirEtLire(reader, source: "cycle-\(cycle)")
             try await attendreSon(reader)
             reader.restVoice()
-            try? await Task.sleep(for: .seconds(1))
+            // Échantillon seulement une fois la voix réellement relâchée.
+            try await attendre(reader) { $0.voice == .resting }
             print("MESURE memoire_repos_\(cycle) \(residentMB()) Mo")
             fflush(stdout)
         }

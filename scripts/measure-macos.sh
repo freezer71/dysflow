@@ -5,7 +5,14 @@ cd "$(dirname "$0")/.."
 APP=macos/build/Release/Sillon.app
 [ -d "$APP" ] || ./scripts/build-macos.sh
 SORTIE=/tmp/sillon-mesures.txt
-"$APP/Contents/MacOS/Sillon" --measure 2>/dev/null | grep '^MESURE' | tee "$SORTIE"
+JOURNAL=/tmp/sillon-mesures.err
+# grep sans correspondance ne doit pas masquer le vrai diagnostic (|| true).
+"$APP/Contents/MacOS/Sillon" --measure 2>"$JOURNAL" | { grep '^MESURE' || true; } | tee "$SORTIE"
+if [ ! -s "$SORTIE" ]; then
+    echo "aucune ligne MESURE : l'app a planté ou n'a rien produit. Fin du journal d'erreurs :" >&2
+    tail -n 20 "$JOURNAL" >&2
+    exit 1
+fi
 if grep -q '^MESURE erreur' "$SORTIE"; then
     echo "mesure interrompue : voir la ligne « MESURE erreur » ci-dessus" >&2
     exit 1
