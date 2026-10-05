@@ -149,10 +149,11 @@ impl Reader {
             return;
         };
         app.tick();
+        // Le délai ne court qu'à l'arrêt : avec « relâchée dès l'arrêt »
+        // (0 min), il serait sinon écoulé à chaque tour, lecture comprise.
         if app.player.is_playing() && !app.is_finished() {
             self.last_activity = now;
-        }
-        if self.idle_expired(now) {
+        } else if self.idle_expired(now) {
             self.rest();
         }
     }
@@ -352,6 +353,29 @@ mod tests {
         r.open_text("Un.", "a", t0);
         r.tick(t0 + 600 * MIN);
         assert!(r.voice_loaded());
+    }
+
+    #[test]
+    fn released_at_stop_never_rests_while_reading() {
+        let (mut r, _, t0) = reader(0);
+        r.open_text("Un. Deux. Trois.", "a", t0);
+        r.with_session(t0, |app| app.toggle_play());
+        assert!(r.session().unwrap().player.is_playing());
+        r.tick(t0 + MIN);
+        assert!(r.voice_loaded(), "la lecture en cours garde sa voix");
+        assert!(!r.is_resting());
+    }
+
+    #[test]
+    fn released_at_stop_rests_once_paused() {
+        let (mut r, _, t0) = reader(0);
+        r.open_text("Un. Deux. Trois.", "a", t0);
+        r.with_session(t0, |app| app.toggle_play());
+        r.with_session(t0, |app| app.toggle_play());
+        assert!(!r.session().unwrap().player.is_playing());
+        r.tick(t0);
+        assert!(!r.voice_loaded());
+        assert!(r.is_resting());
     }
 
     #[test]
