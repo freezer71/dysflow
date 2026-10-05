@@ -104,12 +104,12 @@ final class ReaderModel {
         wake()
     }
 
-    /// Le lecteur lit le presse-papiers sur le fil appelant et peut passer
-    /// une image à l'OCR (plusieurs secondes) : hors du fil principal.
-    func openClipboard() async throws {
+    /// Une image copiée, déjà vérifiée : le moteur la passe à l'OCR
+    /// (plusieurs secondes), hors du fil principal.
+    func openImage(_ data: Data) async throws {
         message = nil
         let reader = reader
-        try await Task.detached { try reader.openClipboard() }.value
+        try await Task.detached { try reader.openImage(bytes: data) }.value
         wake()
     }
 

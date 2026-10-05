@@ -1,3 +1,5 @@
+import Foundation
+
 /// Ce que fait le raccourci « Lire », dans l'ordre de la spec : la voix se
 /// charge pendant que le texte se capture ; la capture se fait avant que le
 /// panneau ne prenne le clavier, sinon ⌘C le viserait lui.
@@ -9,8 +11,9 @@ struct ReadFlow {
     let open: (_ text: String, _ source: String) -> Void
     /// Le presse-papiers vérifié et lu d'un seul coup (voir `ClipboardSnapshot`).
     let readClipboard: () -> ClipboardRead
-    /// Une image passe au moteur, hors de l'acteur principal (l'OCR peut durer).
-    let openImage: () async throws -> Void
+    /// Une image passe au moteur avec ses octets vérifiés, hors de l'acteur
+    /// principal (l'OCR peut durer).
+    let openImage: (Data) async throws -> Void
     let say: (String) -> Void
     let show: () -> Void
 
@@ -33,8 +36,8 @@ struct ReadFlow {
         switch readClipboard() {
         case .text(let text):
             open(text, "presse-papiers")
-        case .image:
-            do { try await openImage() } catch { say("Sélectionnez ou copiez du texte") }
+        case .image(let data):
+            do { try await openImage(data) } catch { say("Sélectionnez ou copiez du texte") }
         case .concealed:
             say("Presse-papiers protégé : rien n'est lu")
         case .empty:

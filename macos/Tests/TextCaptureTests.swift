@@ -29,7 +29,9 @@ final class FakePasteboard: PasteboardAccess {
             .flatMap { String(data: $0.data, encoding: .utf8) }
     }
     var isConcealed: Bool { Sillon.isConcealed(items) }
-    var hasImage: Bool { items.contains { $0.types.contains { imageTypes.contains($0.type) } } }
+    func imageData() -> Data? {
+        items.lazy.compactMap { $0.types.first { imageTypes.contains($0.type) }?.data }.first
+    }
 }
 
 struct FakeKeys: KeystrokeSender {

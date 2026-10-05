@@ -62,7 +62,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 capture: { await capture?() ?? .unsupported },
                 open: { model.open(text: $0, source: $1) },
                 readClipboard: { ClipboardSnapshot(pasteboard: pasteboard).read() },
-                openImage: { try await model.openClipboard() },
+                openImage: { try await model.openImage($0) },
                 say: { model.message = $0 },
                 show: { panel.show() }
             ).run()

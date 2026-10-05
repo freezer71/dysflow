@@ -36,8 +36,11 @@ final class SystemPasteboard: PasteboardAccess {
         }
     }
 
-    var hasImage: Bool {
-        (board.types ?? []).contains { imageTypes.contains($0.rawValue) }
+    func imageData() -> Data? {
+        for type in board.types ?? [] where imageTypes.contains(type.rawValue) {
+            if let data = board.data(forType: type) { return data }
+        }
+        return nil
     }
 }
 

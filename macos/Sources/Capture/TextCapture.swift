@@ -108,8 +108,9 @@ func isConcealed(_ items: [SavedItem]) -> Bool {
 /// Ce que contient le presse-papiers au moment de « Lire ».
 enum ClipboardRead: Equatable {
     case text(String)
-    /// Une image : seul cas confié au moteur (reconnaissance de texte).
-    case image
+    /// Une image, avec ses octets vérifiés : seul cas confié au moteur
+    /// (reconnaissance de texte), qui ne relit pas le presse-papiers.
+    case image(Data)
     /// Copie d'un gestionnaire de mots de passe : rien n'est lu.
     case concealed
     case empty
@@ -123,10 +124,27 @@ struct ClipboardSnapshot {
     func read() -> ClipboardRead {
         let before = pasteboard.changeCount
         if pasteboard.isConcealed { return .concealed }
-        if pasteboard.hasImage { return .image }
-        let string = pasteboard.string()
-        guard pasteboard.changeCount == before, let text = nonBlank(string) else { return .empty }
-        return .text(text)
+        let string = nonBlank(pasteboard.string())
+        let image = pasteboard.imageData()
+        guard pasteboard.changeCount == before else { return .empty }
+        // Le texte d'abord : Numbers, Excel, Keynote ou Pages posent une
+        // image à côté, qu'il serait absurde de reconnaître. L'image ne
+        // l'emporte que seule, ou à côté de sa seule adresse (navigateur).
+        if let text = string, image == nil || !isOnlyAddress(text) { return .text(text) }
+        if let image { return .image(image) }
+        return .empty
+    }
+}
+
+/// Vrai si le texte n'est qu'une adresse web, rien autour.
+func isOnlyAddress(_ text: String) -> Bool {
+    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.contains(where: \.isWhitespace),
+          let url = URL(string: trimmed), let scheme = url.scheme?.lowercased() else { return false }
+    switch scheme {
+    case "http", "https": return url.host != nil
+    case "file": return true
+    default: return false
     }
 }
 
@@ -161,8 +179,9 @@ protocol PasteboardAccess: AnyObject {
     func string() -> String?
     /// Un élément porte le marqueur « dissimulé » (gestionnaire de mots de passe).
     var isConcealed: Bool { get }
-    /// Une image que le moteur peut passer à la reconnaissance de texte.
-    var hasImage: Bool { get }
+    /// Les octets d'une image que le moteur sait passer à la reconnaissance
+    /// de texte (PNG, TIFF), s'il y en a une.
+    func imageData() -> Data?
 }
 
 /// Types d'image que le moteur sait lire (arboard : PNG, TIFF).

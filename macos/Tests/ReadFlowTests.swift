@@ -12,8 +12,8 @@ final class ReadFlowTests: XCTestCase {
             capture: { self.log.append("capture"); return capture },
             open: { self.log.append("ouvre:\($0):\($1)") },
             readClipboard: { self.log.append("presse-papiers"); return clipboard },
-            openImage: {
-                self.log.append("image")
+            openImage: { data in
+                self.log.append("image:\(String(decoding: data, as: UTF8.self))")
                 if !imageOpens { throw SillonError.Failed(message: "illisible") }
             },
             say: { self.log.append("dit:\($0)") },
@@ -35,15 +35,16 @@ final class ReadFlowTests: XCTestCase {
         XCTAssertEqual(log, ["voix", "capture", "presse-papiers", "ouvre:copié:presse-papiers", "montre"])
     }
 
-    /// Seule une image passe par le moteur (reconnaissance de texte).
+    /// Seule une image passe par le moteur (reconnaissance de texte), avec
+    /// les octets vérifiés : le moteur ne relit pas le presse-papiers.
     func testImageGoesToTheEngine() async {
-        await flow(capture: .unsupported, clipboard: .image).run()
-        XCTAssertEqual(log, ["voix", "capture", "presse-papiers", "image", "montre"])
+        await flow(capture: .unsupported, clipboard: .image(Data("png".utf8))).run()
+        XCTAssertEqual(log, ["voix", "capture", "presse-papiers", "image:png", "montre"])
     }
 
     func testUnreadableImageSaysSo() async {
-        await flow(capture: .unsupported, clipboard: .image, imageOpens: false).run()
-        XCTAssertEqual(log, ["voix", "capture", "presse-papiers", "image",
+        await flow(capture: .unsupported, clipboard: .image(Data("png".utf8)), imageOpens: false).run()
+        XCTAssertEqual(log, ["voix", "capture", "presse-papiers", "image:png",
                              "dit:Sélectionnez ou copiez du texte", "montre"])
     }
 
@@ -76,8 +77,8 @@ final class ReadFlowTests: XCTestCase {
     func testShowWaitsForAsyncImage() async {
         let flow = ReadFlow(
             prepare: {}, capture: { .unsupported }, open: { _, _ in },
-            readClipboard: { .image },
-            openImage: {
+            readClipboard: { .image(Data()) },
+            openImage: { _ in
                 try await Task.sleep(for: .milliseconds(50))
                 await MainActor.run { self.log.append("image") }
             },
@@ -119,7 +120,34 @@ final class ClipboardSnapshotTests: XCTestCase {
     }
 
     func testImage() {
-        XCTAssertEqual(ClipboardSnapshot(pasteboard: board(["public.png": "x"])).read(), .image)
+        XCTAssertEqual(ClipboardSnapshot(pasteboard: board(["public.png": "x"])).read(),
+                       .image(Data("x".utf8)))
+    }
+
+    /// Numbers, Excel, Keynote, Pages posent une image à côté du texte : le
+    /// texte l'emporte, la reconnaissance ne sert qu'à défaut.
+    func testTextWinsOverAnAccompanyingImage() {
+        let pb = board(["public.utf8-plain-text": "A1\tB1", "public.png": "x"])
+        XCTAssertEqual(ClipboardSnapshot(pasteboard: pb).read(), .text("A1\tB1"))
+    }
+
+    /// Une image copiée depuis un navigateur porte souvent son adresse en
+    /// texte : l'adresse seule ne vaut pas le contenu de l'image.
+    func testAnImageWhoseTextIsOnlyItsAddressIsAnImage() {
+        let pb = board(["public.utf8-plain-text": " https://exemple.fr/schema.png\n", "public.tiff": "x"])
+        XCTAssertEqual(ClipboardSnapshot(pasteboard: pb).read(), .image(Data("x".utf8)))
+    }
+
+    func testAnAddressWithoutImageIsText() {
+        let pb = board(["public.utf8-plain-text": "https://exemple.fr"])
+        XCTAssertEqual(ClipboardSnapshot(pasteboard: pb).read(), .text("https://exemple.fr"))
+    }
+
+    /// L'image change pendant la lecture : rien n'est passé au moteur.
+    func testImageChangingDuringReadIsEmpty() {
+        let pb = board(["public.png": "x"])
+        pb.lateCopy = (afterReads: 2, text: "arrivé entre-temps")
+        XCTAssertEqual(ClipboardSnapshot(pasteboard: pb).read(), .empty)
     }
 
     /// Une copie arrive entre la vérification et la lecture : on ne lit rien

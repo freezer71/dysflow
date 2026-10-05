@@ -255,13 +255,16 @@ impl SillonReader {
             .map_err(failed)
     }
 
-    /// Le presse-papiers : son texte, ou son image reconnue (option `ocr`).
-    pub fn open_clipboard(&self) -> Result<(), SillonError> {
-        let markdown = sillon::source::clipboard().map_err(failed)?;
+    /// Une image copiée, donnée par ses octets (PNG, TIFF) : son texte
+    /// reconnu (option `ocr`) s'ouvre. Le presse-papiers n'est jamais relu
+    /// ici : l'app a vérifié ce qu'elle passe. Bloque le temps de la
+    /// reconnaissance : à appeler hors du fil principal.
+    pub fn open_image(&self, bytes: Vec<u8>) -> Result<(), SillonError> {
+        let markdown = sillon::source::image_bytes(&bytes).map_err(failed)?;
         if markdown.trim().is_empty() {
-            return Err(failed("le presse-papiers est vide"));
+            return Err(failed("aucun texte reconnu dans l'image"));
         }
-        self.open_text(markdown, "presse-papiers".into());
+        self.open_text(markdown, "image".into());
         Ok(())
     }
 
@@ -501,6 +504,13 @@ mod tests {
             std::thread::sleep(Duration::from_millis(5));
         }
         assert!(matches!(reader.snapshot().voice, VoiceState::Ready));
+    }
+
+    #[test]
+    fn bytes_that_are_not_an_image_open_nothing() {
+        let reader = SillonReader::silent();
+        assert!(reader.open_image(b"pas une image".to_vec()).is_err());
+        assert_eq!(reader.snapshot().revision, 0);
     }
 
     #[test]
