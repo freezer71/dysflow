@@ -312,13 +312,15 @@ qui suffit en nuit (`#9a9286`, 5,6:1, inchangé).)*
 
 ## Critères d'acceptation mesurés
 
-| Mesure | Seuil |
-|---|---|
-| Raccourci → premier son, voix chargée | < 0,5 s |
-| Raccourci → premier son, à froid | < 0,9 s |
-| Saut de mot ou de phrase | < 0,3 s |
-| Images perdues pendant la lecture (Instruments) | aucune |
-| Mémoire au repos, voix déchargée | < 120 Mo, stable sur dix cycles |
+| Mesure | Seuil | Mesuré le 2026-10-05 (M5, Release) |
+|---|---|---|
+| Raccourci → premier son, voix chargée | < 0,5 s | Médiane 377 ms (5 essais 372–381). Atteint. |
+| Raccourci → premier son, à froid | < 0,9 s | Médiane 594 ms (essais 8973, 696, 594, 594, 561). Atteint en médiane, mais premier essai à 8,97 s, cause non établie. Hypothèse : premier chargement du modèle et compilation des noyaux Metal après une construction neuve. À mesurer après redémarrage. |
+| Saut de mot ou de phrase | < 0,3 s | Saut de phrase : médiane 21 ms (premier 192 ms). Saut de mot : médiane 20 ms. Atteint. |
+| Images perdues pendant la lecture (Instruments) | aucune | Non mesuré. Enregistrement Instruments interactif à faire. |
+| Mémoire au repos, voix déchargée | < 120 Mo, stable sur dix cycles | Voix relâchée (phys_footprint), dix cycles : 95, 305, 318, 293, 215, 211, 212, 227, 303, 341 Mo. Manqué : seuil dépassé et série non stable. Seuil à revoir avec l'utilisateur, ou cause à chercher. |
+
+Le « premier son » mesuré exclut la latence de sortie du périphérique audio.
 
 ## Construction
 

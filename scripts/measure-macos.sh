@@ -3,7 +3,10 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 APP=macos/build/Release/Sillon.app
-[ -d "$APP" ] || ./scripts/build-macos.sh
+# Toujours reconstruire (incrémental), sinon on mesure une app périmée.
+if [ "${1:-}" != "--sans-construire" ]; then
+    ./scripts/build-macos.sh
+fi
 SORTIE=/tmp/sillon-mesures.txt
 JOURNAL=/tmp/sillon-mesures.err
 # grep sans correspondance ne doit pas masquer le vrai diagnostic (|| true).
