@@ -78,4 +78,44 @@ final class CommitterTests: XCTestCase {
         XCTAssertTrue(ok)
         XCTAssertEqual(c.saved, 0)
     }
+
+    /// L'écriture reçoit aussi la valeur déjà écrite : elle peut n'envoyer
+    /// que ce qui a changé.
+    func testWriteReceivesThePreviouslySavedValue() async throws {
+        var pairs: [[Int]] = []
+        let c = Committer<Int>(delay: .zero, saved: 0, writeChange: { new, previous in
+            pairs.append([previous, new])
+        })
+        c.change(1, immediate: true)
+        _ = await eventually { pairs.count == 1 }
+        c.change(2, immediate: true)
+        let ok = await eventually { pairs.count == 2 }
+        XCTAssertTrue(ok)
+        XCTAssertEqual(pairs, [[0, 1], [1, 2]])
+    }
+}
+
+/// L'onglet Lecture n'écrit que le réglage touché : basculer la règle ne
+/// remet pas la vitesse changée entre-temps au clavier.
+final class ReadingValuesPatchTests: XCTestCase {
+    func testOnlyTheChangedFieldIsWritten() {
+        var current = SettingsView(speed: 1.5, lineSpacing: 2, readingRuler: true, keepVoiceMinutes: 10)
+        var old = ReadingValues(); old.speed = 1.0; old.lineSpacing = 2; old.ruler = true
+        var new = old; new.ruler = false
+        ReadingValues.write(new, over: old, into: &current)
+        XCTAssertEqual(current.speed, 1.5, "la vitesse prise au clavier reste")
+        XCTAssertFalse(current.readingRuler)
+        XCTAssertEqual(current.lineSpacing, 2)
+    }
+
+    func testEachChangedFieldIsWritten() {
+        var current = SettingsView(speed: 1.5, lineSpacing: 2, readingRuler: true, keepVoiceMinutes: 10)
+        let old = ReadingValues()
+        var new = old; new.speed = 2.0; new.lineSpacing = 3
+        ReadingValues.write(new, over: old, into: &current)
+        XCTAssertEqual(current.speed, 2.0)
+        XCTAssertEqual(current.lineSpacing, 3)
+        XCTAssertTrue(current.readingRuler)
+        XCTAssertEqual(current.keepVoiceMinutes, 10)
+    }
 }

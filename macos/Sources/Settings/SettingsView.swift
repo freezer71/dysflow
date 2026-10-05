@@ -64,12 +64,10 @@ private struct ReadingSettings: View {
             // Une seule fois : revenir sur l'onglet ne relit rien.
             guard !loaded else { return }
             let values = ReadingValues(await model.loadSettings())
-            let c = Committer<ReadingValues>(saved: values, write: { [model] new in
-                try await model.changeSettings {
-                    $0.lineSpacing = UInt32(new.lineSpacing)
-                    $0.readingRuler = new.ruler
-                    $0.speed = Float(new.speed)
-                }
+            // Seul le réglage touché s'écrit, par-dessus les réglages relus
+            // juste avant : la vitesse changée au clavier entre-temps reste.
+            let c = Committer<ReadingValues>(saved: values, writeChange: { [model] new, old in
+                try await model.changeSettings { ReadingValues.write(new, over: old, into: &$0) }
             }, onResult: { error = $0.map(message(of:)) })
             committer = c
             settings = values
@@ -92,6 +90,13 @@ struct ReadingValues: Equatable {
         lineSpacing = Int(s.lineSpacing)
         ruler = s.readingRuler
         speed = Double(s.speed)
+    }
+
+    /// Reporte sur `s` les seuls champs que `new` change par rapport à `old`.
+    static func write(_ new: ReadingValues, over old: ReadingValues, into s: inout SettingsView) {
+        if new.lineSpacing != old.lineSpacing { s.lineSpacing = UInt32(new.lineSpacing) }
+        if new.ruler != old.ruler { s.readingRuler = new.ruler }
+        if new.speed != old.speed { s.speed = Float(new.speed) }
     }
 }
 
