@@ -32,4 +32,12 @@ enum KeepVoiceChoice: Hashable {
         case .always: "Toujours chargée"
         }
     }
+
+    /// Faut-il écrire ce choix ? Non tant que la valeur stockée n'est pas
+    /// chargée, ni si le choix n'est que l'affichage de cette valeur (7 min
+    /// s'affiche « 5 minutes » sans être réécrit).
+    static func needsSave(choice: KeepVoiceChoice, stored: Int64?) -> Bool {
+        guard let stored else { return false }
+        return choice != KeepVoiceChoice(minutes: stored)
+    }
 }

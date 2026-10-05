@@ -29,10 +29,10 @@ private struct ReadingSettings: View {
     @AppStorage(DisplayDefaults.fontKey) private var fontName = ReadingFont.literata.rawValue
     @AppStorage(DisplayDefaults.sizeKey) private var size = DisplayDefaults.defaultSize
     @State private var settings = ReadingValues()
-    /// Ce que le moteur a déjà : un changement identique n'est pas renvoyé.
-    @State private var saved: ReadingValues?
-    @State private var pending: Task<Void, Never>?
+    @State private var loaded = false
+    @State private var draggingSpeed = false
     @State private var error: String?
+    @State private var committer: Committer<ReadingValues>?
 
     var body: some View {
         Form {
@@ -48,8 +48,12 @@ private struct ReadingSettings: View {
                 .accessibilityLabel("Interlignage")
                 .accessibilityValue("\(settings.lineSpacing)")
             Toggle("Règle de lecture", isOn: $settings.ruler)
+            // La vitesse relance la synthèse : écrite au relâchement du curseur.
             Slider(value: $settings.speed, in: 0.5...3, step: 0.1) {
                 Text(String(format: "Vitesse : %.1f×", settings.speed))
+            } onEditingChanged: { editing in
+                draggingSpeed = editing
+                if !editing { committer?.change(settings, immediate: true) }
             }
             .accessibilityLabel("Vitesse de lecture")
             .accessibilityValue(String(format: "%.1f fois", settings.speed))
@@ -57,33 +61,22 @@ private struct ReadingSettings: View {
         }
         .formStyle(.grouped)
         .task {
-            let loaded = ReadingValues(await model.loadSettings())
-            saved = loaded
-            settings = loaded
-        }
-        .onChange(of: settings) { _, new in save(new) }
-    }
-
-    /// Une écriture à la fois, dans l'ordre, après une courte pause : un
-    /// curseur qu'on glisse n'envoie pas une écriture par pas.
-    private func save(_ new: ReadingValues) {
-        guard let saved, new != saved else { return }
-        let previous = pending
-        pending = Task {
-            await previous?.value
-            try? await Task.sleep(for: .milliseconds(150))
-            if Task.isCancelled { return }
-            do {
+            // Une seule fois : revenir sur l'onglet ne relit rien.
+            guard !loaded else { return }
+            let values = ReadingValues(await model.loadSettings())
+            let c = Committer<ReadingValues>(saved: values, write: { [model] new in
                 try await model.changeSettings {
                     $0.lineSpacing = UInt32(new.lineSpacing)
                     $0.readingRuler = new.ruler
                     $0.speed = Float(new.speed)
                 }
-                self.saved = new
-                error = nil
-            } catch {
-                self.error = message(of: error)
-            }
+            }, onResult: { error = $0.map(message(of:)) })
+            committer = c
+            settings = values
+            loaded = true
+        }
+        .onChange(of: settings) { _, new in
+            if !draggingSpeed { committer?.change(new) }
         }
     }
 }
@@ -116,7 +109,8 @@ private struct VoiceSettings: View {
     let model: ReaderModel
     @State private var voices: [VoiceModel] = []
     @State private var keep: KeepVoiceChoice = .minutes(10)
-    @State private var keepLoaded = false
+    /// La valeur stockée par le moteur, nil tant qu'elle n'est pas chargée.
+    @State private var storedKeep: Int64?
     @State private var error: String?
 
     /// Vrai tant qu'un téléchargement est en cours (pas un échec resté là).
@@ -154,13 +148,19 @@ private struct VoiceSettings: View {
         .formStyle(.grouped)
         .task {
             voices = await model.loadVoices()
-            keep = KeepVoiceChoice(minutes: await model.loadSettings().keepVoiceMinutes)
-            keepLoaded = true
+            let stored = await model.loadSettings().keepVoiceMinutes
+            keep = KeepVoiceChoice(minutes: stored)
+            storedKeep = stored
         }
         .onChange(of: keep) { _, new in
-            guard keepLoaded else { return }
-            Task { await act { try await model.changeSettings { $0.keepVoiceMinutes = new.minutes } } }
+            guard KeepVoiceChoice.needsSave(choice: new, stored: storedKeep) else { return }
+            Task {
+                await act { try await model.changeSettings { $0.keepVoiceMinutes = new.minutes } }
+                if error == nil { storedKeep = new.minutes }
+            }
         }
+        .onAppear { model.isSettingsVisible = true }
+        .onDisappear { model.isSettingsVisible = false }
         // Un téléchargement qui finit ou échoue change l'état des voix.
         .onChange(of: model.snapshot.download?.failed) { _, _ in refresh() }
         .onChange(of: downloading) { _, _ in refresh() }
@@ -202,11 +202,12 @@ private struct VoiceSettings: View {
 }
 
 private struct GeneralSettings: View {
-    @State private var login = LoginItem.isEnabled
+    @State private var login = false
 
     var body: some View {
         Form {
             Toggle("Ouvrir sillon à la connexion", isOn: $login)
+                .onAppear { login = LoginItem.isEnabled }
                 .onChange(of: login) { _, on in
                     // L'inscription peut être refusée : l'interrupteur dit l'état réel.
                     if LoginItem.isEnabled != on, !LoginItem.set(on) { login = LoginItem.isEnabled }

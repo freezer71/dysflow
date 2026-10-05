@@ -18,7 +18,7 @@ final class PanelController {
     private(set) var mode: PanelMode = .hidden
     /// Réglages de lecture du moteur (interlignage, règle), relus à chaque
     /// ouverture : un changement dans les réglages s'applique au suivant.
-    var reading: SettingsView
+    var reading = SettingsView(speed: 1, lineSpacing: 1, readingRuler: true, keepVoiceMinutes: 10)
     var sidebarVisible = true
     var bookmarksVisible = false
     var searchActive = false
@@ -28,7 +28,6 @@ final class PanelController {
 
     init(model: ReaderModel) {
         self.model = model
-        reading = model.settings()
         let host = NSHostingView(rootView: PanelContent(controller: self))
         window.contentView = host
         host.setAccessibilityIdentifier("panneau-lecture")
@@ -43,7 +42,8 @@ final class PanelController {
     }
 
     func show() {
-        reading = model.settings()
+        // Lu hors du fil principal : s'applique dès qu'il revient.
+        Task { reading = await model.loadSettings() }
         if mode == .hidden {
             window.setFrame(PanelGeometry.panelFrame(contentHeight: contentHeight, screen: screenFrame),
                             display: false)

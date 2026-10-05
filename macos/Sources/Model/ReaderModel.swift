@@ -51,8 +51,25 @@ final class ReaderModel {
         ticker?.stop()
     }
 
+    /// Les réglages ouverts : la progression d'un téléchargement doit avancer
+    /// même si le panneau est masqué.
+    var isSettingsVisible = false {
+        didSet { if isSettingsVisible { refresh() } else { updateTicking() } }
+    }
+
+    /// Un téléchargement est en cours (un échec resté là ne compte pas).
+    static func isDownloading(_ d: DownloadView?) -> Bool { d.map { $0.failed == nil } ?? false }
+
+    /// La décision de suivi, sans état : testable.
+    static func shouldTick(displayed: Bool, playing: Bool, grace: Bool,
+                           download: DownloadView?, settingsVisible: Bool) -> Bool {
+        displayed || playing || grace || isDownloading(download) || settingsVisible
+    }
+
     private func updateTicking() {
-        if isDisplayed || snapshot.playing || now() < keepAliveUntil {
+        if Self.shouldTick(displayed: isDisplayed, playing: snapshot.playing,
+                           grace: now() < keepAliveUntil, download: snapshot.download,
+                           settingsVisible: isSettingsVisible) {
             start()
         } else {
             stop()
@@ -111,7 +128,6 @@ final class ReaderModel {
 
     // Ces appels passent par le fil du lecteur et bloquent jusqu'à 5 s :
     // pas de long travail sur le fil principal.
-    func bookmarks() -> [BookmarkView] { reader.bookmarks() }
     /// Les signets, lus hors du fil principal.
     func loadBookmarks() async -> [BookmarkView] {
         let reader = reader
@@ -145,11 +161,6 @@ final class ReaderModel {
         let reader = reader
         try await Task.detached { try reader.useVoice(id: id) }.value
     }
-    func settings() -> SettingsView { reader.settings() }
-    func updateSettings(_ s: SettingsView) throws { try reader.updateSettings(settings: s) }
-    func voices() -> [VoiceModel] { reader.voices() }
-    func installVoice(_ id: String) throws { try reader.installVoice(id: id) }
-    func useVoice(_ id: String) throws { try reader.useVoice(id: id) }
 
     /// La phrase en cours telle qu'elle est écrite.
     var currentSentenceText: String {

@@ -19,3 +19,16 @@ final class KeepVoiceChoiceTests: XCTestCase {
         XCTAssertEqual(KeepVoiceChoice(minutes: 300), .minutes(30))
     }
 }
+
+final class KeepVoiceSaveTests: XCTestCase {
+    func testNothingSavedBeforeLoad() {
+        XCTAssertFalse(KeepVoiceChoice.needsSave(choice: .minutes(10), stored: nil))
+    }
+
+    func testUnlistedStoredValueIsNotRewritten() {
+        // 7 s'affiche « 5 minutes » : l'affichage seul n'écrit rien.
+        XCTAssertFalse(KeepVoiceChoice.needsSave(choice: .minutes(5), stored: 7))
+        XCTAssertTrue(KeepVoiceChoice.needsSave(choice: .minutes(10), stored: 7))
+        XCTAssertTrue(KeepVoiceChoice.needsSave(choice: .always, stored: 10))
+    }
+}
