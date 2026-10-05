@@ -146,7 +146,7 @@ fn handle(reader: &mut Reader, request: Request) -> bool {
         }
         Request::PrepareVoice => reader.prepare_voice(now),
         Request::Rest => reader.rest(),
-        Request::Command(command) => reader.with_session(now, |app| command.apply(app)),
+        Request::Command(command) => reader.apply(command, now),
         Request::Ask(f) => f(reader),
         Request::Shutdown => return false,
     }

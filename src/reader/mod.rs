@@ -139,6 +139,16 @@ impl Reader {
         }
     }
 
+    /// Applique une commande de l'interface. Une pause n'a rien à arrêter
+    /// sans texte ou voix au repos : elle ne réveille pas la voix pour rien.
+    pub fn apply(&mut self, command: command::Command, now: Instant) {
+        let idle = self.is_resting() || self.session.is_none();
+        if command == command::Command::Pause && idle {
+            return;
+        }
+        self.with_session(now, |app| command.apply(app));
+    }
+
     pub fn tick(&mut self, now: Instant) {
         self.poll_download(now);
         let Some(app) = self.session.as_mut() else {
@@ -376,6 +386,35 @@ mod tests {
         r.tick(t0);
         assert!(!r.voice_loaded());
         assert!(r.is_resting());
+    }
+
+    #[test]
+    fn pausing_a_resting_text_does_not_wake_the_voice() {
+        let (mut r, loads, t0) = reader(10);
+        r.open_text("Un. Deux.", "a", t0);
+        r.rest();
+        r.apply(command::Command::Pause, t0 + MIN);
+        assert_eq!(loads.load(Ordering::SeqCst), 1, "Échap ne recharge pas la voix");
+        assert!(r.is_resting());
+        assert!(!r.voice_loaded());
+    }
+
+    #[test]
+    fn pausing_without_a_text_does_nothing() {
+        let (mut r, loads, t0) = reader(10);
+        r.apply(command::Command::Pause, t0);
+        assert_eq!(loads.load(Ordering::SeqCst), 0);
+        assert!(r.session().is_none());
+    }
+
+    #[test]
+    fn other_commands_still_wake_a_resting_text() {
+        let (mut r, loads, t0) = reader(10);
+        r.open_text("Un. Deux.", "a", t0);
+        r.rest();
+        r.apply(command::Command::Sentences(1), t0);
+        assert_eq!(loads.load(Ordering::SeqCst), 2);
+        assert_eq!(r.session().unwrap().current_sentence(), 1);
     }
 
     #[test]
