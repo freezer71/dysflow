@@ -51,25 +51,18 @@ final class ReaderModel {
         ticker?.stop()
     }
 
-    /// Les réglages ouverts : la progression d'un téléchargement doit avancer
-    /// même si le panneau est masqué.
-    var isSettingsVisible = false {
-        didSet { if isSettingsVisible { refresh() } else { updateTicking() } }
-    }
-
     /// Un téléchargement est en cours (un échec resté là ne compte pas).
     static func isDownloading(_ d: DownloadView?) -> Bool { d.map { $0.failed == nil } ?? false }
 
     /// La décision de suivi, sans état : testable.
     static func shouldTick(displayed: Bool, playing: Bool, grace: Bool,
-                           download: DownloadView?, settingsVisible: Bool) -> Bool {
-        displayed || playing || grace || isDownloading(download) || settingsVisible
+                           download: DownloadView?) -> Bool {
+        displayed || playing || grace || isDownloading(download)
     }
 
     private func updateTicking() {
         if Self.shouldTick(displayed: isDisplayed, playing: snapshot.playing,
-                           grace: now() < keepAliveUntil, download: snapshot.download,
-                           settingsVisible: isSettingsVisible) {
+                           grace: now() < keepAliveUntil, download: snapshot.download) {
             start()
         } else {
             stop()

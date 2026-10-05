@@ -80,22 +80,19 @@ final class ReaderModelTickingTests: XCTestCase {
     func testDownloadInProgressKeepsTicking() {
         let running = DownloadView(id: "v", received: 1, total: 10, failed: nil)
         let failed = DownloadView(id: "v", received: 1, total: 10, failed: "réseau")
-        func tick(_ d: DownloadView?, settings: Bool = false) -> Bool {
-            ReaderModel.shouldTick(displayed: false, playing: false, grace: false,
-                                   download: d, settingsVisible: settings)
+        func tick(_ d: DownloadView?) -> Bool {
+            ReaderModel.shouldTick(displayed: false, playing: false, grace: false, download: d)
         }
         XCTAssertTrue(tick(running))
         XCTAssertFalse(tick(failed))
         XCTAssertFalse(tick(nil))
-        XCTAssertTrue(tick(nil, settings: true))
     }
 
-    func testSettingsVisibleKeepsHiddenModelTicking() {
+    func testHiddenModelWithoutDownloadDoesNotTick() {
         let m = hiddenModel()
+        XCTAssertNil(m.snapshot.download)
         XCTAssertFalse(m.isTicking)
-        m.isSettingsVisible = true
-        XCTAssertTrue(m.isTicking)
-        m.isSettingsVisible = false
+        m.refresh()
         XCTAssertFalse(m.isTicking)
     }
 }

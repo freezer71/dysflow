@@ -159,8 +159,8 @@ private struct VoiceSettings: View {
                 if error == nil { storedKeep = new.minutes }
             }
         }
-        .onAppear { model.isSettingsVisible = true }
-        .onDisappear { model.isSettingsVisible = false }
+        // À l'ouverture : l'état courant (un téléchargement peut avoir avancé).
+        .onAppear { model.refresh(); refresh() }
         // Un téléchargement qui finit ou échoue change l'état des voix.
         .onChange(of: model.snapshot.download?.failed) { _, _ in refresh() }
         .onChange(of: downloading) { _, _ in refresh() }
