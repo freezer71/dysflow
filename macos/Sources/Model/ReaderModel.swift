@@ -112,6 +112,11 @@ final class ReaderModel {
     // Ces appels passent par le fil du lecteur et bloquent jusqu'à 5 s :
     // pas de long travail sur le fil principal.
     func bookmarks() -> [BookmarkView] { reader.bookmarks() }
+    /// Les signets, lus hors du fil principal.
+    func loadBookmarks() async -> [BookmarkView] {
+        let reader = reader
+        return await Task.detached { reader.bookmarks() }.value
+    }
     func settings() -> SettingsView { reader.settings() }
     func updateSettings(_ s: SettingsView) throws { try reader.updateSettings(settings: s) }
     func voices() -> [VoiceModel] { reader.voices() }

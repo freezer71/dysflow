@@ -163,6 +163,13 @@ final class PanelController {
                event.keyCode != KeyCode.escape {
                 return event
             }
+            // Une liste (sommaire, signets) garde ses flèches verticales et
+            // Entrée : on la parcourt, puis on y va.
+            if self.window.firstResponder is NSTableView,
+               [KeyCode.up, KeyCode.down, KeyCode.enter].contains(event.keyCode),
+               !event.modifierFlags.contains(.option) {
+                return event
+            }
             guard let action = KeyMap.action(for: KeyPress(event)) else { return event }
             self.perform(action)
             return nil
