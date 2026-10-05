@@ -6,23 +6,22 @@ final class SystemPasteboard: PasteboardAccess {
 
     var changeCount: Int { board.changeCount }
 
-    /// Tous les éléments, sous tous leurs types : une image copiée revient
-    /// intacte, pas seulement le texte.
-    func save() -> [[String: Data]] {
+    /// Tous les éléments, sous tous leurs types et dans leur ordre : une image copiée
+    /// revient intacte. Les promesses (fichiers, fournisseurs paresseux) sont ignorées.
+    func save() -> [SavedItem] {
         (board.pasteboardItems ?? []).map { item in
-            var out: [String: Data] = [:]
-            for type in item.types {
-                if let data = item.data(forType: type) { out[type.rawValue] = data }
-            }
-            return out
+            SavedItem(types: item.types.compactMap { type in
+                guard !isPromised(type.rawValue), let data = item.data(forType: type) else { return nil }
+                return SavedType(type: type.rawValue, data: data)
+            })
         }
     }
 
-    func restore(_ items: [[String: Data]]) {
+    func restore(_ items: [SavedItem]) {
         board.clearContents()
-        let restored = items.map { saved -> NSPasteboardItem in
+        let restored = itemsForRestore(items).map { saved -> NSPasteboardItem in
             let item = NSPasteboardItem()
-            for (type, data) in saved { item.setData(data, forType: NSPasteboard.PasteboardType(type)) }
+            for t in saved.types { item.setData(t.data, forType: NSPasteboard.PasteboardType(t.type)) }
             return item
         }
         if !restored.isEmpty { board.writeObjects(restored) }
