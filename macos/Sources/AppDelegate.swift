@@ -27,31 +27,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if ProcessInfo.processInfo.arguments.contains("--show-panel") { panel.show() }
         }
         guard !isUITesting, !isUnitTesting else { return }
+        // Les raccourcis d'abord : l'alerte d'accessibilité bloque (runModal).
+        installShortcuts()
         LoginItem.enableOnFirstLaunch()
         Onboarding.runIfNeeded()
-        installShortcuts()
     }
 
-    /// « Lire » capture d'abord (l'application au premier plan garde le
-    /// clavier pour le ⌘C simulé), puis montre le panneau sans activer sillon.
-    private func installShortcuts() {
+    /// Une seule lecture à la fois, raccourci ou menu.
+    let readGate = ReadGate()
+
+    /// « Lire » : la capture d'abord (l'application au premier plan garde le
+    /// clavier pour le ⌘C simulé), puis le panneau, sans activer sillon.
+    /// `capture` nil : le presse-papiers seul (depuis le menu).
+    func read(capture: (() async -> CaptureOutcome)? = nil) async {
         let pasteboard = SystemPasteboard()
+        let model = model!, panel = panel!
+        await readGate.run {
+            await ReadFlow(
+                prepare: { model.prepareVoice() },
+                capture: { await capture?() ?? .unsupported },
+                open: { model.open(text: $0, source: $1) },
+                readClipboard: { ClipboardSnapshot(pasteboard: pasteboard).read() },
+                openImage: { try await model.openClipboard() },
+                say: { model.message = $0 },
+                show: { panel.show() }
+            ).run()
+        }
+    }
+
+    private func installShortcuts() {
         let chain = CaptureChain(sources: [
             SelectionSource(),
-            CopySource(pasteboard: pasteboard, keys: SystemKeystrokes()),
+            CopySource(pasteboard: SystemPasteboard(), keys: SystemKeystrokes()),
         ])
         KeyboardShortcuts.onKeyUp(for: .readSelection) { [unowned self] in
-            Task { @MainActor in
-                await ReadFlow(
-                    prepare: { self.model.prepareVoice() },
-                    capture: { await chain.capture() },
-                    open: { self.model.open(text: $0, source: "sélection") },
-                    clipboardIsConcealed: { pasteboard.isConcealed },
-                    openClipboard: { try await self.model.openClipboard() },
-                    say: { self.model.message = $0 },
-                    show: { self.panel.show() }
-                ).run()
-            }
+            Task { @MainActor in await self.read(capture: { await chain.capture() }) }
         }
         KeyboardShortcuts.onKeyUp(for: .showPanel) { [unowned self] in self.panel.show() }
     }

@@ -35,6 +35,10 @@ final class SystemPasteboard: PasteboardAccess {
             $0.types.contains(NSPasteboard.PasteboardType(concealedType))
         }
     }
+
+    var hasImage: Bool {
+        (board.types ?? []).contains { imageTypes.contains($0.rawValue) }
+    }
 }
 
 /// ⌘C envoyé à l'application au premier plan. Les modificateurs du raccourci

@@ -5,11 +5,12 @@
 struct ReadFlow {
     let prepare: () -> Void
     let capture: () async -> CaptureOutcome
-    let open: (String) -> Void
-    /// Une copie de gestionnaire de mots de passe n'est jamais lue.
-    let clipboardIsConcealed: () -> Bool
-    /// Hors de l'acteur principal (l'OCR d'une image peut durer) : attendu.
-    let openClipboard: () async throws -> Void
+    /// Le texte et sa source (« sélection », « presse-papiers »).
+    let open: (_ text: String, _ source: String) -> Void
+    /// Le presse-papiers vérifié et lu d'un seul coup (voir `ClipboardSnapshot`).
+    let readClipboard: () -> ClipboardRead
+    /// Une image passe au moteur, hors de l'acteur principal (l'OCR peut durer).
+    let openImage: () async throws -> Void
     let say: (String) -> Void
     let show: () -> Void
 
@@ -17,22 +18,45 @@ struct ReadFlow {
         prepare()
         switch await capture() {
         case .text(let text):
-            open(text)
+            open(text, "sélection")
         case .veto(.secure):
             say("Champ sécurisé : rien n'est lu")
         case .veto(.ownApp):
             say("sillon est au premier plan : sélectionnez dans une autre application")
         case .noSelection, .unsupported:
-            await readClipboard()
+            await openClipboard()
         }
         show()
     }
 
-    private func readClipboard() async {
-        guard !clipboardIsConcealed() else {
+    private func openClipboard() async {
+        switch readClipboard() {
+        case .text(let text):
+            open(text, "presse-papiers")
+        case .image:
+            do { try await openImage() } catch { say("Sélectionnez ou copiez du texte") }
+        case .concealed:
             say("Presse-papiers protégé : rien n'est lu")
-            return
+        case .empty:
+            say("Sélectionnez ou copiez du texte")
         }
-        do { try await openClipboard() } catch { say("Sélectionnez ou copiez du texte") }
+    }
+}
+
+/// Une seule lecture à la fois : deux captures simultanées se marcheraient
+/// dessus (la seconde sauvegarderait la copie de la première comme
+/// presse-papiers de l'utilisateur).
+@MainActor
+final class ReadGate {
+    private(set) var busy = false
+
+    /// Faux si une lecture est déjà en cours : l'appui est ignoré.
+    @discardableResult
+    func run(_ body: () async -> Void) async -> Bool {
+        guard !busy else { return false }
+        busy = true
+        defer { busy = false }
+        await body()
+        return true
     }
 }

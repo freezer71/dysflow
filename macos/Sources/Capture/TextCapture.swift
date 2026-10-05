@@ -105,6 +105,31 @@ func isConcealed(_ items: [SavedItem]) -> Bool {
     items.contains { $0.types.contains { $0.type == concealedType } }
 }
 
+/// Ce que contient le presse-papiers au moment de « Lire ».
+enum ClipboardRead: Equatable {
+    case text(String)
+    /// Une image : seul cas confié au moteur (reconnaissance de texte).
+    case image
+    /// Copie d'un gestionnaire de mots de passe : rien n'est lu.
+    case concealed
+    case empty
+}
+
+/// Le presse-papiers vérifié et lu d'un seul coup : si une copie arrive entre
+/// la vérification et la lecture, rien n'est lu plutôt qu'un contenu non vérifié.
+struct ClipboardSnapshot {
+    let pasteboard: PasteboardAccess
+
+    func read() -> ClipboardRead {
+        let before = pasteboard.changeCount
+        if pasteboard.isConcealed { return .concealed }
+        if pasteboard.hasImage { return .image }
+        let string = pasteboard.string()
+        guard pasteboard.changeCount == before, let text = nonBlank(string) else { return .empty }
+        return .text(text)
+    }
+}
+
 /// Types « promesse » : leurs octets n'existent pas tant que l'application source ne
 /// les fournit pas. Les matérialiser serait lent, voire impossible ; ils sont donc
 /// ignorés. LIMITE : une promesse de fichier (Finder, Photos) ne revient pas.
@@ -134,7 +159,14 @@ protocol PasteboardAccess: AnyObject {
     func save() -> [SavedItem]
     func restore(_ items: [SavedItem])
     func string() -> String?
+    /// Un élément porte le marqueur « dissimulé » (gestionnaire de mots de passe).
+    var isConcealed: Bool { get }
+    /// Une image que le moteur peut passer à la reconnaissance de texte.
+    var hasImage: Bool { get }
 }
+
+/// Types d'image que le moteur sait lire (arboard : PNG, TIFF).
+let imageTypes: Set<String> = ["public.png", "public.tiff"]
 
 protocol KeystrokeSender {
     func sendCopy()
@@ -178,9 +210,13 @@ struct CopySource: TextSource {
             if now == seen && pasteboard.string() != nil { break }
             seen = now
         }
-        let copied = pasteboard.string()
+        // Une copie de gestionnaire de mots de passe : jamais lue, et le
+        // presse-papiers de l'utilisateur revient quand même.
+        let concealed = pasteboard.isConcealed
+        let copied = concealed ? nil : pasteboard.string()
         pasteboard.restore(saved ?? [])
         saved = nil
+        if concealed { return .veto(.secure) }
         if let text = nonBlank(copied) { return .text(text) }
         return .noSelection
     }

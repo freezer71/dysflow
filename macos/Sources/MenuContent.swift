@@ -7,18 +7,7 @@ struct MenuContent: View {
         // Un clic dans le menu a déjà pris le focus à l'application : seule
         // la copie déjà faite est atteignable d'ici.
         Button("Lire le presse-papiers") {
-            Task { @MainActor in
-                guard let app = AppDelegate.shared else { return }
-                await ReadFlow(
-                    prepare: { app.model.prepareVoice() },
-                    capture: { .unsupported },
-                    open: { _ in },
-                    clipboardIsConcealed: { SystemPasteboard().isConcealed },
-                    openClipboard: { try await app.model.openClipboard() },
-                    say: { app.model.message = $0 },
-                    show: { app.panel.show() }
-                ).run()
-            }
+            Task { @MainActor in await AppDelegate.shared?.read() }
         }
         Button("Afficher sillon") { AppDelegate.shared?.panel.show() }
         Divider()

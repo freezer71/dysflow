@@ -28,12 +28,16 @@ final class FakePasteboard: PasteboardAccess {
         items.first?.types.first { $0.type == "public.utf8-plain-text" }
             .flatMap { String(data: $0.data, encoding: .utf8) }
     }
+    var isConcealed: Bool { Sillon.isConcealed(items) }
+    var hasImage: Bool { items.contains { $0.types.contains { imageTypes.contains($0.type) } } }
 }
 
 struct FakeKeys: KeystrokeSender {
     let pasteboard: FakePasteboard
     let copied: String?
     var delay: Duration? = nil   // copie tardive, après `sendCopy`
+    /// La copie porte le marqueur « dissimulé » (gestionnaire de mots de passe).
+    var concealed = false
     let calls = Counter()
     func sendCopy() {
         calls.n += 1
@@ -47,7 +51,9 @@ struct FakeKeys: KeystrokeSender {
             }
             return
         }
-        pasteboard.items = [text(copied)]
+        var item = text(copied)
+        if concealed { item.types.append(SavedType(type: concealedType, data: Data())) }
+        pasteboard.items = [item]
         pasteboard.changeCount += 1
     }
 }
@@ -68,6 +74,19 @@ final class TextCaptureTests: XCTestCase {
         let text = await source.outcome()
         XCTAssertEqual(text, .text("sélection"))
         XCTAssertEqual(pb.string(), "ancien")
+    }
+
+    /// 1Password au premier plan, un élément choisi : le ⌘C copie le mot de
+    /// passe marqué « dissimulé ». Il n'est ni lu ni laissé dans le presse-papiers.
+    func testConcealedCopyIsVetoedAndClipboardRestored() async {
+        let pb = FakePasteboard()
+        let keys = FakeKeys(pasteboard: pb, copied: "mot de passe", concealed: true)
+        let source = CopySource(pasteboard: pb, keys: keys, trusted: { true },
+                                secureInput: { false }, ownAppFrontmost: { false })
+        let outcome = await source.outcome()
+        XCTAssertEqual(outcome, .veto(.secure))
+        XCTAssertEqual(pb.string(), "ancien")
+        XCTAssertFalse(pb.isConcealed)
     }
 
     func testCopyThatChangesNothingTimesOutAndTouchesNothing() async {
