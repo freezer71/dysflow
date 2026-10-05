@@ -13,7 +13,15 @@ enum CaptureOutcome: Equatable {
     case unsupported
     /// Interdit : champ de mot de passe, saisie sécurisée, ou sillon lui-même
     /// au premier plan. Toute la capture s'arrête, rien n'est lu ni copié.
-    case veto
+    case veto(Veto)
+}
+
+/// Pourquoi la capture est refusée : le message dit la vraie raison.
+enum Veto: Equatable {
+    /// Champ de mot de passe ou saisie sécurisée.
+    case secure
+    /// sillon lui-même a le focus ou est au premier plan.
+    case ownApp
 }
 
 /// Une façon d'obtenir le texte que l'utilisateur veut entendre.
@@ -66,12 +74,13 @@ struct SelectionSource: TextSource {
 
     func outcome() async -> CaptureOutcome {
         guard trusted() else { return .unsupported }
-        if secureInput() { return .veto }
+        if secureInput() { return .veto(.secure) }
         switch read() {
         case .selected(let s): return .text(s)
         case .empty: return .noSelection
         case .unsupported: return .unsupported
-        case .secureField, .ownProcess: return .veto
+        case .secureField: return .veto(.secure)
+        case .ownProcess: return .veto(.ownApp)
         }
     }
 }
@@ -88,6 +97,13 @@ struct SavedItem: Equatable {
 }
 
 let transientType = "org.nspasteboard.TransientType"
+/// Posé par les gestionnaires de mots de passe sur ce qu'ils copient.
+let concealedType = "org.nspasteboard.ConcealedType"
+
+/// Vrai si un élément du presse-papiers est marqué « dissimulé » : on ne le lit pas.
+func isConcealed(_ items: [SavedItem]) -> Bool {
+    items.contains { $0.types.contains { $0.type == concealedType } }
+}
 
 /// Types « promesse » : leurs octets n'existent pas tant que l'application source ne
 /// les fournit pas. Les matérialiser serait lent, voire impossible ; ils sont donc
@@ -139,7 +155,8 @@ struct CopySource: TextSource {
 
     func outcome() async -> CaptureOutcome {
         guard trusted() else { return .unsupported }
-        if secureInput() || ownAppFrontmost() { return .veto }
+        if secureInput() { return .veto(.secure) }
+        if ownAppFrontmost() { return .veto(.ownApp) }
         var saved: [SavedItem]? = pasteboard.save()
         defer { saved = nil }
         let before = pasteboard.changeCount
@@ -170,18 +187,16 @@ struct CopySource: TextSource {
 }
 
 /// Essaie chaque source dans l'ordre ; la première qui répond l'emporte.
-/// Un veto, ou « rien de sélectionné » répondu par l'application, arrête tout.
+/// Un veto, ou « rien de sélectionné » répondu par l'application, arrête la
+/// chaîne et revient tel quel : c'est à l'appelant de décider de la suite.
 struct CaptureChain {
     let sources: [TextSource]
 
-    func capture() async -> String? {
+    func capture() async -> CaptureOutcome {
         for source in sources {
-            switch await source.outcome() {
-            case .text(let text): return text
-            case .noSelection, .veto: return nil
-            case .unsupported: continue
-            }
+            let outcome = await source.outcome()
+            if outcome != .unsupported { return outcome }
         }
-        return nil
+        return .unsupported
     }
 }

@@ -102,9 +102,9 @@ final class TextCaptureTests: XCTestCase {
     func testChainTakesTheFirstSourceThatAnswers() async {
         let chain = CaptureChain(sources: [Stub(.unsupported), Stub(.text("deux")), Stub(.text("trois"))])
         let t = await chain.capture()
-        XCTAssertEqual(t, "deux")
+        XCTAssertEqual(t, .text("deux"))
         let empty = await CaptureChain(sources: [Stub(.unsupported)]).capture()
-        XCTAssertNil(empty)
+        XCTAssertEqual(empty, .unsupported)
     }
 
     func testVetoStopsTheChainAndNoCopyIsSent() async {
@@ -116,7 +116,7 @@ final class TextCaptureTests: XCTestCase {
                        secureInput: { false }, ownAppFrontmost: { false }),
         ])
         let t = await chain.capture()
-        XCTAssertNil(t)
+        XCTAssertEqual(t, .veto(.secure))
         XCTAssertEqual(keys.calls.n, 0)
         XCTAssertEqual(pb.changeCount, 0)
     }
@@ -130,7 +130,7 @@ final class TextCaptureTests: XCTestCase {
                        secureInput: { false }, ownAppFrontmost: { false }),
         ])
         let t = await chain.capture()
-        XCTAssertNil(t)
+        XCTAssertEqual(t, .veto(.ownApp))
         XCTAssertEqual(keys.calls.n, 0)
     }
 
@@ -140,7 +140,7 @@ final class TextCaptureTests: XCTestCase {
         let source = CopySource(pasteboard: pb, keys: keys, trusted: { true },
                                 secureInput: { false }, ownAppFrontmost: { true })
         let o = await source.outcome()
-        XCTAssertEqual(o, .veto)
+        XCTAssertEqual(o, .veto(.ownApp))
         XCTAssertEqual(keys.calls.n, 0)
     }
 
@@ -151,8 +151,8 @@ final class TextCaptureTests: XCTestCase {
                                         read: { .selected("a") }).outcome()
         let copy = await CopySource(pasteboard: pb, keys: keys, trusted: { true },
                                     secureInput: { true }, ownAppFrontmost: { false }).outcome()
-        XCTAssertEqual(sel, .veto)
-        XCTAssertEqual(copy, .veto)
+        XCTAssertEqual(sel, .veto(.secure))
+        XCTAssertEqual(copy, .veto(.secure))
         XCTAssertEqual(keys.calls.n, 0)
     }
 
@@ -165,7 +165,7 @@ final class TextCaptureTests: XCTestCase {
                        secureInput: { false }, ownAppFrontmost: { false }),
         ])
         let t = await chain.capture()
-        XCTAssertNil(t)
+        XCTAssertEqual(t, .noSelection)
         XCTAssertEqual(keys.calls.n, 0)
     }
 
@@ -178,7 +178,7 @@ final class TextCaptureTests: XCTestCase {
                        secureInput: { false }, ownAppFrontmost: { false }),
         ])
         let t = await chain.capture()
-        XCTAssertEqual(t, "via copie")
+        XCTAssertEqual(t, .text("via copie"))
         XCTAssertEqual(keys.calls.n, 1)
     }
 

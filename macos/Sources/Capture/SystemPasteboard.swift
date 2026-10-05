@@ -28,6 +28,13 @@ final class SystemPasteboard: PasteboardAccess {
     }
 
     func string() -> String? { board.string(forType: .string) }
+
+    /// Une copie de gestionnaire de mots de passe : seuls les types sont lus.
+    var isConcealed: Bool {
+        (board.pasteboardItems ?? []).contains {
+            $0.types.contains(NSPasteboard.PasteboardType(concealedType))
+        }
+    }
 }
 
 /// ⌘C envoyé à l'application au premier plan. Les modificateurs du raccourci
