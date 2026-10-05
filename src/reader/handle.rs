@@ -1,8 +1,10 @@
 //! Le lecteur sur son propre fil.
 //!
-//! Les commandes arrivent par un canal et sont appliquées aussitôt ; entre
-//! deux, le fil fait tourner la lecture et publie un instantané toutes les
-//! 16 ms. Le document n'est republié qu'à chaque nouvelle révision.
+//! Les commandes arrivent par un canal et sont appliquées aussitôt, puis un
+//! instantané est publié. Entre deux, le fil fait tourner la lecture toutes
+//! les 16 ms tant que quelque chose avance seul, veille à la seconde quand il
+//! n'y a qu'un délai à surveiller, et dort sinon. Le document n'est republié
+//! qu'à chaque nouvelle révision.
 
 use crossbeam_channel::{Receiver, RecvTimeoutError, Sender};
 use std::path::PathBuf;
@@ -13,19 +15,60 @@ use std::time::{Duration, Instant};
 use super::command::Command;
 use super::view::{self, DocView, Snapshot};
 use super::Reader;
+use crate::tts::Readiness;
 
 const TICK: Duration = Duration::from_millis(16);
-/// Sans texte à lire ni téléchargement, le fil se contente de veiller : la
-/// mise au repos de la voix et le sondage restent assurés.
+/// Voix chargée mais rien qui avance : le fil se contente de veiller, pour
+/// que la mise au repos de la voix et le sondage restent assurés.
 const TICK_IDLE: Duration = Duration::from_secs(1);
 
-/// Cadence du fil : vive tant qu'un texte est ouvert, lente sinon.
-fn tick_interval(reader: &Reader) -> Duration {
-    if reader.session().is_some() || reader.download().is_some() {
-        TICK
-    } else {
-        TICK_IDLE
+/// Ce qui règle la cadence du fil, lu sur le lecteur.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+struct Activity {
+    /// Une lecture avance (lancée, pas arrivée au bout).
+    reading: bool,
+    /// La voix se charge : son état change sans commande.
+    loading: bool,
+    /// Un téléchargement est en cours.
+    downloading: bool,
+    /// Un téléchargement fini, échoué ou annulé attend d'être sondé.
+    download_settled: bool,
+    /// Une voix est chargée : son délai de garde court.
+    engine: bool,
+}
+
+impl Activity {
+    fn of(reader: &Reader) -> Self {
+        let reading = reader
+            .session()
+            .is_some_and(|app| app.player.is_playing() && !app.is_finished());
+        let loading = !reader.is_resting()
+            && reader.engine().is_some_and(|e| matches!(e.readiness(), Readiness::Loading));
+        let (downloading, download_settled) = match reader.download.as_ref() {
+            Some(d) if d.is_finished() => (false, true),
+            Some(_) => (true, false),
+            None => (false, false),
+        };
+        Self { reading, loading, downloading, download_settled, engine: reader.engine().is_some() }
     }
+}
+
+/// Cadence du fil : vive seulement quand quelque chose avance sans commande
+/// (lecture, chargement, téléchargement) ; lente quand il n'y a qu'un délai
+/// à surveiller ; `None` quand rien ne peut changer avant la prochaine
+/// requête — le fil dort alors jusqu'à elle.
+fn cadence(a: Activity) -> Option<Duration> {
+    if a.reading || a.loading || a.downloading {
+        Some(TICK)
+    } else if a.engine || a.download_settled {
+        Some(TICK_IDLE)
+    } else {
+        None
+    }
+}
+
+fn tick_interval(reader: &Reader) -> Option<Duration> {
+    cadence(Activity::of(reader))
 }
 
 pub type ReplySender = Sender<Result<(), String>>;
@@ -114,7 +157,11 @@ impl Drop for ReaderHandle {
 fn run(mut reader: Reader, rx: Receiver<Request>, out: Arc<Mutex<Published>>) {
     let mut revision = u64::MAX;
     'outer: loop {
-        match rx.recv_timeout(tick_interval(&reader)) {
+        let received = match tick_interval(&reader) {
+            Some(interval) => rx.recv_timeout(interval),
+            None => rx.recv().map_err(|_| RecvTimeoutError::Disconnected),
+        };
+        match received {
             Ok(request) => {
                 if !handle(&mut reader, request) {
                     break 'outer;
@@ -224,20 +271,56 @@ mod tests {
         drop(h); // ne doit pas bloquer
     }
 
-    #[test]
-    fn the_thread_ticks_fast_with_a_text_and_slowly_without() {
+    fn quiet_reader() -> Reader {
         let mut config = Config::default();
         config.reading.autoplay = false;
-        let mut reader = Reader::new(
+        Reader::new(
             config,
             Box::new(|_| Arc::new(SilentEngine) as Arc<dyn TtsEngine>),
             Box::new(Player::silent),
             Instant::now(),
-        );
-        assert_eq!(tick_interval(&reader), Duration::from_secs(1));
-        reader.open_text("Un.", "t", Instant::now());
-        assert_eq!(tick_interval(&reader), Duration::from_millis(16));
+        )
+    }
+
+    const FAST: Option<Duration> = Some(Duration::from_millis(16));
+    const SLOW: Option<Duration> = Some(Duration::from_secs(1));
+
+    #[test]
+    fn the_cadence_is_fast_only_while_something_moves_on_its_own() {
+        let none = Activity::default();
+        assert_eq!(cadence(Activity { reading: true, engine: true, ..none }), FAST);
+        assert_eq!(cadence(Activity { loading: true, engine: true, ..none }), FAST);
+        assert_eq!(cadence(Activity { downloading: true, ..none }), FAST);
+        // Un texte ouvert en pause, ou fini : seul le délai de la voix court.
+        assert_eq!(cadence(Activity { engine: true, ..none }), SLOW);
+        // Un téléchargement échoué ou annulé ne garde pas le rythme vif.
+        assert_eq!(cadence(Activity { download_settled: true, ..none }), SLOW);
+        // Ni voix ni téléchargement : le fil attend la prochaine requête.
+        assert_eq!(cadence(none), None);
+    }
+
+    #[test]
+    fn a_paused_text_ticks_slowly_and_a_resting_one_sleeps() {
+        let mut reader = quiet_reader();
+        assert_eq!(tick_interval(&reader), None);
+        reader.prepare_voice(Instant::now());
+        assert_eq!(tick_interval(&reader), SLOW, "voix préparée : son délai court");
+        reader.open_text("Un. Deux.", "t", Instant::now());
+        assert_eq!(tick_interval(&reader), SLOW, "texte en pause");
+        reader.with_session(Instant::now(), |app| app.toggle_play());
+        assert_eq!(tick_interval(&reader), FAST, "lecture en cours");
+        reader.with_session(Instant::now(), |app| app.toggle_play());
+        assert_eq!(tick_interval(&reader), SLOW);
         reader.rest();
-        assert_eq!(tick_interval(&reader), Duration::from_secs(1));
+        assert_eq!(tick_interval(&reader), None);
+    }
+
+    #[test]
+    fn a_sleeping_thread_still_answers_requests() {
+        let h = ReaderHandle::spawn(quiet_reader);
+        // Fil endormi sans délai : une requête le réveille.
+        assert_eq!(h.ask(|r| r.revision()), Some(0));
+        h.send(Request::OpenText { markdown: "Un.".into(), source: "t".into() });
+        eventually("révision 1", || h.snapshot().revision == 1);
     }
 }
