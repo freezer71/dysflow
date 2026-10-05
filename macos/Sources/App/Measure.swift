@@ -15,7 +15,13 @@ enum Measure {
     static let text = """
     Les monades permettent d'enchaîner des calculs qui portent un contexte. \
     On les retrouve partout : options, listes, promesses. \
-    Une seconde phrase pour avoir de quoi sauter. Et une troisième.
+    Une seconde phrase pour avoir de quoi sauter. Et une troisième. \
+    Une quatrième phrase, pour que la lecture automatique ne finisse pas. \
+    Une cinquième suit, avec assez de mots pour plusieurs sauts successifs. \
+    Une sixième rallonge encore le texte, sans rien dire de plus. \
+    Une septième, puis une huitième, afin de ne jamais atteindre la fin. \
+    Une neuvième phrase, longue à dessein, pour couvrir toute la série. \
+    Enfin une dixième, qui clôt ce texte de mesure.
     """
 
     /// Échec d'une mesure : la ligne `MESURE erreur …` est déjà écrite.
@@ -66,10 +72,16 @@ enum Measure {
             let avant = reader.snapshot()
             let t = ContinuousClock.now
             reader.command(command: .words(delta: 3))
-            // Le chrono ne s'arrête qu'une fois la position publiée changée :
-            // `audible` seul serait encore vrai depuis l'état d'avant.
-            try await attendre(reader) {
-                ($0.sentence != avant.sentence || $0.word != avant.word) && $0.audible
+            // Le chrono ne s'arrête que sur l'effet du saut lui-même : `word`
+            // est un index global, le saut fait +3 ; l'avance naturelle de la
+            // lecture ne fait que +1 en quelques ms et ne doit pas compter.
+            // Sans mot connu, un changement de phrase tient lieu de preuve.
+            try await attendre(reader) { s in
+                guard s.audible else { return false }
+                if let mot = s.word, let avantMot = avant.word {
+                    return mot >= avantMot + 3
+                }
+                return s.sentence != avant.sentence
             }
             emit("saut_mot", t.duration(to: .now))
         }
