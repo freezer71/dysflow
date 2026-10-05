@@ -120,6 +120,16 @@ final class PanelControllerTests: XCTestCase {
         RunLoop.main.run(until: Date().addingTimeInterval(0.5))
         XCTAssertEqual(c.model.message, "Autre chose")
     }
+
+    /// Chaque « / » redemande le focus du champ, même déjà ouvert.
+    func testEachSearchKeyAsksForTheField() {
+        let c = shownPanel("Un. Deux.")
+        c.perform(.openSearch)
+        XCTAssertTrue(c.searchActive)
+        XCTAssertEqual(c.openSearchRequests, 1)
+        c.perform(.openSearch)
+        XCTAssertEqual(c.openSearchRequests, 2)
+    }
 }
 
 final class PlayerBarFormatTests: XCTestCase {

@@ -34,6 +34,8 @@ struct ExpandedReader: View {
                             // Le champ n'accepte le focus qu'une fois posé dans la fenêtre :
                             // au tour suivant.
                             .onAppear { DispatchQueue.main.async { searchFocused = true } }
+                            // « / » de nouveau, champ déjà ouvert : le focus y revient.
+                            .onChange(of: controller.openSearchRequests) { searchFocused = true }
                     }
                     if let search = model.snapshot.search {
                         Text(search.count == 0 ? "Aucun résultat"
@@ -46,6 +48,10 @@ struct ExpandedReader: View {
                 }
                 .font(.system(size: 13))
                 .foregroundStyle(Color(nsColor: style.theme.chrome))
+                // Recherche fermée (Échap) : le champ rouvert repart vide.
+                .onChange(of: controller.searchActive) { _, active in
+                    if !active { query = "" }
+                }
 
                 ReadingView(model: model, style: style)
                 PlayerBar(model: model, theme: style.theme,

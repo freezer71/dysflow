@@ -21,6 +21,8 @@ final class PanelController {
     var sidebarVisible = true
     var bookmarksVisible = false
     var searchActive = false
+    /// Compte les « / » : chacun rend le focus au champ, même déjà ouvert.
+    private(set) var openSearchRequests = 0
     var helpVisible = false
 
     init(model: ReaderModel) {
@@ -116,6 +118,7 @@ final class PanelController {
         case .openSearch:
             if mode == .panel { expand() }
             searchActive = true
+            openSearchRequests &+= 1
         case .toggleSidebar:
             if mode == .expanded { sidebarVisible.toggle() }
         case .toggleBookmarks:

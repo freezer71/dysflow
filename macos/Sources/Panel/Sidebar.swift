@@ -10,6 +10,8 @@ struct Sidebar: View {
     /// du fil principal, à l'ouverture de la liste et quand un signet change,
     /// jamais à chaque évaluation du corps.
     @State private var bookmarks: [BookmarkView] = []
+    /// Vrai quand la liste a le focus clavier : on la parcourt.
+    @FocusState private var listFocused: Bool
 
     private struct Item: Identifiable {
         let id: UInt32
@@ -46,6 +48,7 @@ struct Sidebar: View {
             }
             .listStyle(.sidebar)
             .scrollContentBackground(.hidden)
+            .focused($listFocused)
             .accessibilityIdentifier("sommaire")
             // Entrée (ou double clic) sur la ligne choisie : on y va.
             .contextMenu(forSelectionType: UInt32.self, menu: { _ in }, primaryAction: go)
@@ -62,6 +65,15 @@ struct Sidebar: View {
         .onAppear { selection = showingBookmarks ? nil : model.snapshot.section }
         .onChange(of: showingBookmarks) { _, now in
             selection = now ? nil : model.snapshot.section
+        }
+        // La ligne choisie suit la section lue, sauf pendant qu'on parcourt
+        // la liste au clavier : ↓ part alors de la ligne où l'on est. En
+        // quittant la liste, elle se recale sur la section lue.
+        .onChange(of: model.snapshot.section) { _, section in
+            if !showingBookmarks && !listFocused { selection = section }
+        }
+        .onChange(of: listFocused) { _, focused in
+            if !showingBookmarks && !focused { selection = model.snapshot.section }
         }
         // Rechargés à l'ouverture des signets, et quand le signet de la
         // phrase en cours change (« b »).
