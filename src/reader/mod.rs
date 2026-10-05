@@ -265,7 +265,7 @@ impl Reader {
         for block in crate::input::split_blocks(&text.markdown) {
             builder.push_block(&block);
         }
-        let app = App::from_parts(
+        let mut app = App::from_parts(
             builder,
             None,
             synth,
@@ -274,6 +274,13 @@ impl Reader {
             Vec::new(),
             player,
         );
+        // Le terminal liste les avertissements de l'ouverture (sortie audio
+        // indisponible, signets illisibles) ; l'interface ne montre que le
+        // statut : ils y passent.
+        let notices = std::mem::take(&mut app.notices);
+        if !notices.is_empty() {
+            app.notify(&notices.join(" · "));
+        }
         self.session = Some(app);
         self.text = Some(text);
     }
@@ -484,6 +491,17 @@ mod tests {
         let found = r.bookmarks_in(&store);
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].sentence_id, 1);
+    }
+
+    #[test]
+    fn notices_of_the_opening_reach_the_status() {
+        let (mut r, _, t0) = reader(10);
+        r.open_text("Un.", "a", t0);
+        let app = r.session().unwrap();
+        // La sortie muette des essais se dit indisponible : l'interface le
+        // montre au lieu de le garder dans une liste qu'elle ne lit pas.
+        assert!(app.status().contains("sortie audio indisponible"), "{}", app.status());
+        assert!(app.notices.is_empty(), "dites une seule fois");
     }
 
     #[test]

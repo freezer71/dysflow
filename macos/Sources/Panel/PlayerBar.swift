@@ -29,6 +29,24 @@ struct PlayerBar: View {
             Text(Self.speedText(s.speed))
                 .accessibilityLabel("Vitesse")
                 .accessibilityValue(Self.speedSpoken(s.speed))
+            if let volume = Self.volumeText(volume: s.volume, muted: s.muted) {
+                Label(volume, systemImage: s.muted ? "speaker.slash.fill" : "speaker.wave.1.fill")
+                    .labelStyle(.titleAndIcon)
+                    .monospacedDigit()
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("Volume")
+                    .accessibilityValue(volume)
+                    .accessibilityIdentifier("volume")
+            }
+            if s.bookmarked {
+                Image(systemName: "bookmark.fill")
+                    .accessibilityLabel("Signet posé sur cette phrase")
+                    .accessibilityIdentifier("signet-pose")
+            }
+            if let skipped = Self.skippedText(s.skipped) {
+                Text(skipped)
+                    .accessibilityIdentifier("phrases-sautees")
+            }
         }
         .font(.system(size: 13))
         .foregroundStyle(Color(nsColor: theme.chrome))
@@ -39,6 +57,22 @@ struct PlayerBar: View {
     static func speedSpoken(_ speed: Float) -> String { decimal(speed) + " fois" }
     private static func decimal(_ speed: Float) -> String {
         String(format: "%.1f", speed).replacingOccurrences(of: ".", with: ",")
+    }
+
+    /// Le volume, seulement s'il n'est pas plein : « Muet » ou « 60 % ».
+    static func volumeText(volume: Float, muted: Bool) -> String? {
+        if muted { return "Muet" }
+        let percent = Int((volume * 100).rounded())
+        return percent >= 100 ? nil : "\(percent) %"
+    }
+
+    /// Les phrases que la voix n'a pas su dire, comme au terminal.
+    static func skippedText(_ count: UInt32) -> String? {
+        switch count {
+        case 0: return nil
+        case 1: return "1 phrase sautée"
+        default: return "\(count) phrases sautées"
+        }
     }
 
     static func time(_ seconds: Double?) -> String {

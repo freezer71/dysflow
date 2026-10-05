@@ -38,7 +38,8 @@ struct PanelContent: View {
                     // Le message prend place dans la rangée des aides : la
                     // hauteur réservée autour du texte (PanelGeometry.chrome)
                     // ne change pas quand il paraît.
-                    if let message = model.message ?? emptyMessage {
+                    if let message = PanelStatus.line(message: model.message,
+                                                      snapshot: model.snapshot) ?? emptyMessage {
                         Spacer(minLength: 8)
                         Text(message)
                             .font(.system(size: 13))
@@ -114,5 +115,20 @@ struct HelpOverlay: View {
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color(nsColor: theme.border)))
         .foregroundStyle(Color(nsColor: theme.text))
         .accessibilityIdentifier("aide-raccourcis")
+    }
+}
+
+/// La ligne de message du panneau : ce que l'app vient de dire (« Phrase
+/// copiée »), sinon le statut du lecteur (« Signet ajouté », « Aucun mot de
+/// ce côté », sortie audio indisponible), sinon, voix de repli, comment en
+/// installer une.
+enum PanelStatus {
+    static let fallbackHint = "Voix du système — installer une voix : ⌘,"
+
+    static func line(message: String?, snapshot: Snapshot) -> String? {
+        if let message { return message }
+        if !snapshot.status.isEmpty { return snapshot.status }
+        if case .fallback = snapshot.voice { return fallbackHint }
+        return nil
     }
 }

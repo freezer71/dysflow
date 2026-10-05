@@ -163,10 +163,59 @@ final class PlayerBarFormatTests: XCTestCase {
         XCTAssertEqual(PlayerBar.time(75), "1:15")
     }
 
+    func testVolumeShowsOnlyWhenItDiffersFromFull() {
+        XCTAssertNil(PlayerBar.volumeText(volume: 1, muted: false))
+        XCTAssertEqual(PlayerBar.volumeText(volume: 0.6, muted: false), "60 %")
+        XCTAssertEqual(PlayerBar.volumeText(volume: 0.6, muted: true), "Muet")
+        XCTAssertEqual(PlayerBar.volumeText(volume: 1, muted: true), "Muet")
+    }
+
+    func testSkippedSentencesAreCounted() {
+        XCTAssertNil(PlayerBar.skippedText(0))
+        XCTAssertEqual(PlayerBar.skippedText(1), "1 phrase sautée")
+        XCTAssertEqual(PlayerBar.skippedText(3), "3 phrases sautées")
+    }
+
     func testTimelineClampsProgress() {
         XCTAssertEqual(Timeline.clamped(-0.2), 0)
         XCTAssertEqual(Timeline.clamped(1.7), 1)
         XCTAssertEqual(Timeline.clamped(.nan), 0)
         XCTAssertEqual(Timeline.clamped(0.4), 0.4)
+    }
+}
+
+/// La ligne de message du panneau : ce que l'app dit, sinon ce que le
+/// lecteur dit, sinon la voix de repli.
+@MainActor
+final class PanelStatusTests: XCTestCase {
+    private func snapshot(status: String = "", voice: VoiceState = .ready) -> Snapshot {
+        var s = SillonReader.silent().snapshot()
+        s.hasDocument = true
+        s.status = status
+        s.voice = voice
+        return s
+    }
+
+    func testAppMessageWins() {
+        XCTAssertEqual(PanelStatus.line(message: "Phrase copiée",
+                                        snapshot: snapshot(status: "Signet ajouté")), "Phrase copiée")
+    }
+
+    func testReaderStatusShows() {
+        XCTAssertEqual(PanelStatus.line(message: nil, snapshot: snapshot(status: "Aucun mot de ce côté")),
+                       "Aucun mot de ce côté")
+    }
+
+    func testFallbackVoiceSaysHowToInstallOne() {
+        let s = snapshot(voice: .fallback(reason: "modèle absent"))
+        XCTAssertEqual(PanelStatus.line(message: nil, snapshot: s),
+                       "Voix du système — installer une voix : ⌘,")
+        XCTAssertEqual(PanelStatus.line(message: nil, snapshot: snapshot(status: "Signet ajouté",
+                                                                          voice: .fallback(reason: "x"))),
+                       "Signet ajouté")
+    }
+
+    func testNothingToSay() {
+        XCTAssertNil(PanelStatus.line(message: nil, snapshot: snapshot()))
     }
 }
