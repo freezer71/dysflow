@@ -1,4 +1,5 @@
 import XCTest
+import KeyboardShortcuts
 @testable import Sillon
 
 @MainActor
@@ -217,5 +218,24 @@ final class PanelStatusTests: XCTestCase {
 
     func testNothingToSay() {
         XCTAssertNil(PanelStatus.line(message: nil, snapshot: snapshot()))
+    }
+}
+
+/// L'invitation sans document dit le raccourci réellement choisi.
+@MainActor
+final class PanelInvitationTests: XCTestCase {
+    func testInvitationNamesTheChosenShortcut() {
+        let custom = KeyboardShortcuts.Shortcut(.r, modifiers: [.control, .option])
+        XCTAssertEqual(PanelInvitation.text(for: custom), "Sélectionnez ou copiez du texte, puis ⌃⌥R")
+    }
+
+    func testTheSpaceBarIsNamedInFrench() {
+        let space = KeyboardShortcuts.Shortcut(.space, modifiers: [.control, .option])
+        XCTAssertEqual(PanelInvitation.text(for: space), "Sélectionnez ou copiez du texte, puis ⌃⌥Espace")
+    }
+
+    func testWithoutShortcutItPointsToTheSettings() {
+        XCTAssertEqual(PanelInvitation.text(for: nil),
+                       "Sélectionnez ou copiez du texte, puis choisissez un raccourci : ⌘,")
     }
 }

@@ -5,7 +5,7 @@ enum PanelMode: Equatable { case hidden, panel, expanded }
 /// Tailles du panneau, calculées sans fenêtre pour être éprouvées.
 enum PanelGeometry {
     /// Barre de lecture, aides et marges autour du texte.
-    static let chrome: CGFloat = 96
+    static let chrome: CGFloat = 100
     static let minimumHeight: CGFloat = 150
     static let maximumWidth: CGFloat = 760
 

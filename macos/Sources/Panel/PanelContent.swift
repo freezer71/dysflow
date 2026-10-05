@@ -1,3 +1,4 @@
+import KeyboardShortcuts
 import SwiftUI
 
 struct PanelContent: View {
@@ -30,6 +31,17 @@ struct PanelContent: View {
                 ReadingView(model: model, style: style) { height in
                     controller.contentHeightChanged(height)
                 }
+                // Sans document, l'invitation occupe la zone du texte, au
+                // centre, à la taille des contrôles.
+                .overlay {
+                    if !model.snapshot.hasDocument {
+                        Text(PanelInvitation.text(for: KeyboardShortcuts.getShortcut(for: .readSelection)))
+                            .font(.system(size: 13))
+                            .multilineTextAlignment(.center)
+                            .foregroundStyle(Color(nsColor: theme.chrome))
+                            .accessibilityIdentifier("invitation")
+                    }
+                }
                 PlayerBar(model: model, theme: theme)
                 HStack(spacing: 14) {
                     hint("⏎", "agrandir")
@@ -38,8 +50,7 @@ struct PanelContent: View {
                     // Le message prend place dans la rangée des aides : la
                     // hauteur réservée autour du texte (PanelGeometry.chrome)
                     // ne change pas quand il paraît.
-                    if let message = PanelStatus.line(message: model.message,
-                                                      snapshot: model.snapshot) ?? emptyMessage {
+                    if let message = PanelStatus.line(message: model.message, snapshot: model.snapshot) {
                         Spacer(minLength: 8)
                         Text(message)
                             .font(.system(size: 13))
@@ -68,19 +79,15 @@ struct PanelContent: View {
         }
     }
 
-    private var emptyMessage: String? {
-        controller.model.snapshot.hasDocument ? nil : "Sélectionnez ou copiez du texte, puis ⌃⌥Espace"
-    }
-
     private func hint(_ key: String, _ label: String) -> some View {
         HStack(spacing: 5) {
             Text(key)
-                .font(.system(size: 11, design: .monospaced))
+                .font(.system(size: 13, design: .monospaced))
                 .padding(.horizontal, 5).padding(.vertical, 1)
                 .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color(nsColor: theme.border)))
             Text(label)
         }
-        .font(.system(size: 11))
+        .font(.system(size: 13))
         .foregroundStyle(Color(nsColor: theme.chrome))
         .accessibilityElement(children: .combine)
     }
@@ -130,5 +137,21 @@ enum PanelStatus {
         if !snapshot.status.isEmpty { return snapshot.status }
         if case .fallback = snapshot.voice { return fallbackHint }
         return nil
+    }
+}
+
+/// L'invitation du panneau vide, avec le raccourci « Lire » réellement choisi.
+enum PanelInvitation {
+    @MainActor
+    static func text(for shortcut: KeyboardShortcuts.Shortcut?) -> String {
+        let start = "Sélectionnez ou copiez du texte, puis "
+        guard let shortcut else { return start + "choisissez un raccourci : ⌘," }
+        var keys = shortcut.description
+        // La bibliothèque nomme la barre d'espace dans la langue de l'app,
+        // qui peut retomber sur l'anglais.
+        if shortcut.key == .space, keys.hasSuffix("Space") {
+            keys = String(keys.dropLast("Space".count)) + "Espace"
+        }
+        return start + keys
     }
 }
