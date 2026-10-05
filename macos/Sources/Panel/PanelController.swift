@@ -53,6 +53,10 @@ final class PanelController {
         window.makeKeyAndOrderFront(nil)
         // Le modèle ne suit l'état à chaque image que si le panneau est visible.
         model.isDisplayed = true
+        // L'annonceur ne voit rien panneau masqué : on repart de l'état
+        // courant pour ne rien annoncer de ce qui s'est passé entre-temps.
+        model.refresh()
+        announcer.reseed(with: model.snapshot)
         installKeyMonitor()
     }
 
@@ -87,13 +91,18 @@ final class PanelController {
         removeKeyMonitor()
     }
 
+    /// La phrase à dire, ou rien : jamais panneau masqué (fenêtre retirée).
+    /// L'annonceur voit tous les instantanés visibles, VoiceOver ou non, pour
+    /// que son état reste à jour.
+    func announcementText(for s: Snapshot) -> String? {
+        let text = announcer.announcement(for: s, doc: model.document)
+        return mode == .hidden ? nil : text
+    }
+
     /// Dit à VoiceOver un changement d'état (lecture, pause, section), jamais
     /// un mot. Sans effet quand VoiceOver est éteint.
     func announce(_ s: Snapshot) {
-        // L'annonceur voit tous les instantanés, VoiceOver ou non : son
-        // état reste à jour et rien n'est dit en retard à l'activation.
-        let text = announcer.announcement(for: s, doc: model.document)
-        guard NSWorkspace.shared.isVoiceOverEnabled, let text else { return }
+        guard let text = announcementText(for: s), NSWorkspace.shared.isVoiceOverEnabled else { return }
         NSAccessibility.post(element: window, notification: .announcementRequested,
                              userInfo: [.announcement: text,
                                         .priority: NSAccessibilityPriorityLevel.medium.rawValue])

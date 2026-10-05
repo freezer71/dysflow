@@ -50,11 +50,4 @@ struct Theme: Equatable {
         if increaseContrast { return .contrast }
         return dark ? .night : .paper
     }
-
-    @MainActor
-    static var current: Theme {
-        let dark = NSApp.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-        return resolve(dark: dark,
-                       increaseContrast: NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast)
-    }
 }

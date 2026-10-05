@@ -37,6 +37,23 @@ final class PanelControllerTests: XCTestCase {
         }, "le cadre du panneau ne se stabilise pas")
     }
 
+    func testNoAnnouncementWhenHiddenNorOnShowAfterHide() {
+        let c = shownPanel("Un. Deux.")
+        _ = c.announcementText(for: c.model.snapshot)
+        c.perform(.command(.togglePlay))
+        XCTAssertTrue(waitUntil { c.model.refresh(); return c.model.snapshot.playing })
+        XCTAssertEqual(c.announcementText(for: c.model.snapshot), "Lecture")
+        c.collapseOrHide()  // masque : pause
+        XCTAssertNil(c.announcementText(for: c.model.snapshot), "rien panneau masqué")
+        XCTAssertTrue(waitUntil { c.model.refresh(); return !c.model.snapshot.playing })
+        c.show()
+        settle(c)
+        XCTAssertNil(c.announcementText(for: c.model.snapshot), "rien à la réouverture")
+        c.perform(.command(.togglePlay))
+        XCTAssertTrue(waitUntil { c.model.refresh(); return c.model.snapshot.playing })
+        XCTAssertEqual(c.announcementText(for: c.model.snapshot), "Lecture")
+    }
+
     private func textView(_ c: PanelController) -> ReadingTextView? {
         func find(_ v: NSView) -> ReadingTextView? {
             if let t = v as? ReadingTextView { return t }

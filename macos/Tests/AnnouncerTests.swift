@@ -34,4 +34,50 @@ final class AnnouncerTests: XCTestCase {
         XCTAssertTrue(waitUntil { r.snapshot().word != nil })
         XCTAssertNil(a.announcement(for: r.snapshot(), doc: doc))
     }
+
+    func testPauseIsAnnounced() {
+        let (r, doc) = setup()
+        var a = Announcer()
+        _ = a.announcement(for: r.snapshot(), doc: doc)
+        r.command(command: .togglePlay)
+        XCTAssertTrue(waitUntil { r.snapshot().playing })
+        _ = a.announcement(for: r.snapshot(), doc: doc)
+        r.command(command: .togglePlay)
+        XCTAssertTrue(waitUntil { !r.snapshot().playing })
+        XCTAssertEqual(a.announcement(for: r.snapshot(), doc: doc), "Pause")
+    }
+
+    func testNewDocumentReseedsInsteadOfAnnouncingSection() {
+        let (r, doc) = setup()
+        var a = Announcer()
+        _ = a.announcement(for: r.snapshot(), doc: doc)
+        r.command(command: .sections(delta: 1))
+        XCTAssertTrue(waitUntil { r.snapshot().sentence == 3 })
+        _ = a.announcement(for: r.snapshot(), doc: doc)
+        r.openText(markdown: "# C\n\nUn.\n\n# D\n\nDeux.", source: "u")
+        XCTAssertTrue(waitUntil { r.snapshot().revision == 2 })
+        XCTAssertNil(a.announcement(for: r.snapshot(), doc: r.document()))
+    }
+
+    func testSectionBecomingNilAnnouncesNothing() {
+        var s = SillonReader.silent().snapshot()
+        var a = Announcer()
+        let doc = DocView(title: "", complete: true, sentenceCount: 0, sections: [], blocks: [])
+        s.section = 1
+        _ = a.announcement(for: s, doc: doc)
+        s.section = nil
+        XCTAssertNil(a.announcement(for: s, doc: doc))
+    }
+
+    func testPlayAndSectionTogetherAnnouncesPlayOnly() {
+        var s = SillonReader.silent().snapshot()
+        var a = Announcer()
+        let doc = DocView(title: "", complete: true, sentenceCount: 0,
+                          sections: [SectionView(id: 2, level: 1, title: "B", firstSentence: 3)], blocks: [])
+        s.playing = false; s.section = 1
+        _ = a.announcement(for: s, doc: doc)
+        s.playing = true; s.section = 2
+        XCTAssertEqual(a.announcement(for: s, doc: doc), "Lecture")
+        XCTAssertNil(a.announcement(for: s, doc: doc))
+    }
 }
