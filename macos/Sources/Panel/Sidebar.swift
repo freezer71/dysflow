@@ -26,7 +26,7 @@ struct Sidebar: View {
         let items: [Item] = showingBookmarks
             ? bookmarks.map { Item(id: $0.sentence, title: "« \($0.snippet) » · \($0.when)",
                                    indent: 0, sentence: $0.sentence) }
-            : SectionMarkers.tableOfContents(model.document).map {
+            : model.tableOfContents.map {
                 Item(id: $0.id, title: $0.title, indent: max(Int($0.level) - 1, 0),
                      sentence: $0.firstSentence)
             }

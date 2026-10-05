@@ -17,17 +17,33 @@ final class ReaderModel {
     static let gracePeriod: TimeInterval = 0.5
 
     private(set) var snapshot: Snapshot
-    private(set) var document: DocView
+    private(set) var document: DocView {
+        didSet { outline() }
+    }
     var message: String?
+    /// Le sommaire : les sections qui ont une phrase. Calculé une fois par
+    /// révision, pas à chaque évaluation de la vue.
+    private(set) var tableOfContents: [SectionView] = []
+    /// Les repères de section sur la ligne de temps, une fois par révision.
+    private(set) var sectionPositions: [Double] = []
+    /// Le fil d'Ariane de la section lue, recalculé quand elle change.
+    private(set) var breadcrumb = ""
 
     init(reader: SillonReader, now: @escaping () -> Date = Date.init) {
         self.reader = reader
         self.now = now
-        snapshot = reader.snapshot()
+        snapshot = Self.published(reader.snapshot())
         document = reader.document()
+        outline()
     }
 
-    /// Vrai quand le panneau est affiché : le suivi à chaque image est alors utile.
+    private func outline() {
+        tableOfContents = SectionMarkers.tableOfContents(document)
+        sectionPositions = SectionMarkers.positions(document)
+        breadcrumb = SectionMarkers.breadcrumb(document, section: snapshot.section)
+    }
+
+    /// Vrai quand le panneau est affiché.
     var isDisplayed = false {
         didSet {
             if isDisplayed { refresh() }
@@ -38,8 +54,45 @@ final class ReaderModel {
     /// Le suivi à la cadence de l'écran tourne-t-il ?
     var isTicking: Bool { ticker?.isRunning ?? false }
 
-    /// Le suivi ne tourne que si le panneau est affiché ou si la lecture avance :
-    /// au repos, une app de barre des menus ne coûte rien.
+    /// Le rythme auquel l'état est relu.
+    enum Cadence: Equatable {
+        /// Rien : panneau masqué, rien en cours.
+        case none
+        /// Un coup d'œil lent : panneau affiché en pause, pour qu'un message
+        /// s'efface ou que l'état de la voix change à l'écran.
+        case glance
+        /// À chaque image : la lecture avance, une commande vient de partir,
+        /// la voix se charge ou un téléchargement progresse.
+        case screen
+    }
+    @ObservationIgnored private(set) var cadence: Cadence = .none
+    @ObservationIgnored private var glanceTimer: Timer?
+    static let glanceInterval: TimeInterval = 0.25
+
+    /// Un téléchargement est en cours (un échec resté là ne compte pas).
+    static func isDownloading(_ d: DownloadView?) -> Bool { d.map { $0.failed == nil } ?? false }
+
+    /// La décision de suivi, sans état : testable. Masqué, une commande (la
+    /// grâce) ou une lecture se voient quand même ; affiché en pause, un coup
+    /// d'œil lent suffit — le panneau flotte, il peut rester visible des heures.
+    static func cadence(displayed: Bool, playing: Bool, grace: Bool, loading: Bool,
+                        download: DownloadView?) -> Cadence {
+        if playing || grace || loading || isDownloading(download) { return .screen }
+        return displayed ? .glance : .none
+    }
+
+    private func updateTicking() {
+        let loading: Bool
+        if case .loading = snapshot.voice { loading = true } else { loading = false }
+        let next = Self.cadence(displayed: isDisplayed, playing: snapshot.playing,
+                                grace: now() < keepAliveUntil, loading: loading,
+                                download: snapshot.download)
+        cadence = next
+        if next == .screen { start() } else { stop() }
+        if next == .glance { startGlance() } else { stopGlance() }
+    }
+
+    /// Le suivi à la cadence de l'écran.
     func start() {
         if ticker == nil {
             ticker = DisplayTicker { [weak self] in self?.refresh() }
@@ -51,22 +104,30 @@ final class ReaderModel {
         ticker?.stop()
     }
 
-    /// Un téléchargement est en cours (un échec resté là ne compte pas).
-    static func isDownloading(_ d: DownloadView?) -> Bool { d.map { $0.failed == nil } ?? false }
-
-    /// La décision de suivi, sans état : testable.
-    static func shouldTick(displayed: Bool, playing: Bool, grace: Bool,
-                           download: DownloadView?) -> Bool {
-        displayed || playing || grace || isDownloading(download)
+    private func startGlance() {
+        guard glanceTimer == nil else { return }
+        let timer = Timer(timeInterval: Self.glanceInterval, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refresh() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        glanceTimer = timer
     }
 
-    private func updateTicking() {
-        if Self.shouldTick(displayed: isDisplayed, playing: snapshot.playing,
-                           grace: now() < keepAliveUntil, download: snapshot.download) {
-            start()
-        } else {
-            stop()
-        }
+    private func stopGlance() {
+        glanceTimer?.invalidate()
+        glanceTimer = nil
+    }
+
+    /// L'instantané tel que l'écran le montre : temps à la seconde,
+    /// avancement au millième. Le reste de ce que Rust donne à chaque image
+    /// ne republie rien, et SwiftUI ne réévalue pas toute l'interface. (Le
+    /// mot surligné glisse avec son propre lien d'affichage.)
+    static func published(_ s: Snapshot) -> Snapshot {
+        var s = s
+        s.elapsed = s.elapsed.map { $0.isFinite ? $0.rounded(.down) : $0 }
+        s.total = s.total.map { $0.isFinite ? $0.rounded() : $0 }
+        s.progress = s.progress.isFinite ? (s.progress * 1000).rounded() / 1000 : s.progress
+        return s
     }
 
     /// Relance le suivi et relit tout de suite l'état.
@@ -77,13 +138,17 @@ final class ReaderModel {
     }
 
     func refresh() {
-        let next = reader.snapshot()
-        if next.revision != snapshot.revision {
-            document = reader.document()
-        }
+        let next = Self.published(reader.snapshot())
+        let newDocument = next.revision != snapshot.revision
+        let newSection = next.section != snapshot.section
         // Ne publier qu'un changement réel : SwiftUI ne redessine pas pour rien.
         if next != snapshot {
             snapshot = next
+        }
+        if newDocument {
+            document = reader.document()   // recalcule sommaire, repères et fil
+        } else if newSection {
+            breadcrumb = SectionMarkers.breadcrumb(document, section: snapshot.section)
         }
         updateTicking()
     }

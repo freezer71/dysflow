@@ -17,7 +17,7 @@ struct ExpandedReader: View {
             }
             VStack(alignment: .leading, spacing: 14) {
                 HStack {
-                    Text(SectionMarkers.breadcrumb(model.document, section: model.snapshot.section))
+                    Text(model.breadcrumb)
                         .lineLimit(1)
                         .accessibilityIdentifier("fil-ariane")
                     Spacer()
@@ -55,7 +55,7 @@ struct ExpandedReader: View {
 
                 ReadingView(model: model, style: style)
                 PlayerBar(model: model, theme: style.theme,
-                          markers: SectionMarkers.positions(model.document))
+                          markers: model.sectionPositions)
             }
         }
     }
