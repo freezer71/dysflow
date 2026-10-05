@@ -73,6 +73,7 @@ struct PanelContent: View {
         // zone sûre repousse le contenu de ~30 pt et rogne le texte.
         .ignoresSafeArea()
         .onChange(of: controller.model.snapshot) { _, s in controller.announce(s) }
+        .providesSettingsOpener()
         .onReceive(NSWorkspace.shared.notificationCenter.publisher(
             for: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification)) { _ in
             increaseContrast = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast

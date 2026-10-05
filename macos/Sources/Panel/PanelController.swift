@@ -149,8 +149,7 @@ final class PanelController {
             bookmarksVisible.toggle()
         case .showHelp: helpVisible.toggle()
         case .openSettings:
-            NSApp.activate()
-            NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+            SettingsOpener.shared.open()
         }
     }
 

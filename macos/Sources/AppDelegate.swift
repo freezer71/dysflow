@@ -36,8 +36,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             model.open(text: Self.sample, source: "exemple")
             if ProcessInfo.processInfo.arguments.contains("--show-panel") { panel.show() }
             if ProcessInfo.processInfo.arguments.contains("--show-settings") {
-                NSApp.activate()
-                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                // L'icône de la barre des menus donne l'action dès qu'elle paraît.
+                SettingsOpener.shared.open()
             }
         }
         guard !isUITesting, !isUnitTesting else { return }

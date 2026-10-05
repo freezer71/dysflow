@@ -5,8 +5,14 @@ struct SillonApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
 
     var body: some Scene {
-        MenuBarExtra("sillon", systemImage: "text.line.first.and.arrowtriangle.forward") {
+        MenuBarExtra {
             MenuContent()
+        } label: {
+            // Toujours présente : c'est elle qui donne l'action d'ouverture
+            // des réglages, panneau masqué compris.
+            Image(systemName: "text.line.first.and.arrowtriangle.forward")
+                .accessibilityLabel("sillon")
+                .providesSettingsOpener()
         }
         Settings {
             if let model = AppDelegate.shared?.model {
