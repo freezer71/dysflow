@@ -63,4 +63,13 @@ final class DocumentLayoutTests: XCTestCase {
         let range = try! XCTUnwrap(layout.sentenceRanges[code.sentences[0].id])
         XCTAssertEqual(s.substring(with: range), "fn main() {}")
     }
+
+    /// Une citation garde la couleur du texte : la teinte des contrôles
+    /// serait trop pâle pour lire.
+    func testQuoteUsesTheTextColor() {
+        let d = doc("> Une citation.")
+        let layout = DocumentLayout.build(d, style: style)
+        let color = layout.text.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor
+        XCTAssertEqual(color?.hex, Theme.paper.text.hex)
+    }
 }

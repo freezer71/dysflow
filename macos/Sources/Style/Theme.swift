@@ -33,7 +33,7 @@ struct Theme: Equatable {
         background: NSColor(hex: 0xFBF8F1), text: NSColor(hex: 0x2A2722),
         past: NSColor(hex: 0x9A948A), wordFill: NSColor(hex: 0xCFE3FF),
         wordText: NSColor(hex: 0x1B2A44), line: NSColor(hex: 0x7AA7E8),
-        chrome: NSColor(hex: 0x8A847A), border: NSColor(hex: 0xE6E0D3))
+        chrome: NSColor(hex: 0x6E685E), border: NSColor(hex: 0xE6E0D3))
 
     static let night = Theme(
         background: NSColor(hex: 0x1E1B17), text: NSColor(hex: 0xE8E1D4),
@@ -45,6 +45,21 @@ struct Theme: Equatable {
         background: .black, text: .white, past: NSColor(hex: 0xB0B0B0),
         wordFill: NSColor(hex: 0xFFE600), wordText: .black,
         line: NSColor(hex: 0xFFE600), chrome: .white, border: .white)
+
+    /// Rapport de contraste WCAG entre deux couleurs (1 à 21).
+    static func contrastRatio(_ a: NSColor, _ b: NSColor) -> Double {
+        func luminance(_ color: NSColor) -> Double {
+            let c = color.usingColorSpace(.sRGB) ?? color
+            func channel(_ v: CGFloat) -> Double {
+                let v = Double(v)
+                return v <= 0.03928 ? v / 12.92 : pow((v + 0.055) / 1.055, 2.4)
+            }
+            return 0.2126 * channel(c.redComponent) + 0.7152 * channel(c.greenComponent)
+                + 0.0722 * channel(c.blueComponent)
+        }
+        let (la, lb) = (luminance(a), luminance(b))
+        return (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
+    }
 
     static func resolve(dark: Bool, increaseContrast: Bool) -> Theme {
         if increaseContrast { return .contrast }

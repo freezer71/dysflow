@@ -101,9 +101,11 @@ struct DocumentLayout {
         }
     }
 
+    /// Toute la prose, citations comprises, garde la couleur du texte : la
+    /// teinte des contrôles serait trop pâle pour lire. La citation se
+    /// distingue par son retrait.
     private static func color(for kind: BlockKindView, style: ReadingStyle) -> NSColor {
-        if case .quote = kind { return style.theme.chrome }
-        return style.theme.text
+        style.theme.text
     }
 
     private static func prefix(for kind: BlockKindView) -> String? {

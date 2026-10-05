@@ -16,6 +16,15 @@ final class ThemeTests: XCTestCase {
         XCTAssertEqual(Theme.contrast.wordFill.hex, "#FFE600")
     }
 
+    /// Les contrôles (temps, vitesse, aides) se lisent : 4,5:1 au moins sur
+    /// le fond, comme le texte courant (WCAG AA).
+    func testChromeIsReadableOnItsBackground() {
+        for (name, theme) in [("papier", Theme.paper), ("nuit", .night), ("contraste", .contrast)] {
+            XCTAssertGreaterThanOrEqual(Theme.contrastRatio(theme.chrome, theme.background), 4.5, name)
+        }
+        XCTAssertEqual(Theme.paper.chrome.hex, "#6E685E")
+    }
+
     func testBundledFontsResolve() {
         ReadingFont.registerBundled()
         for font in ReadingFont.allCases {
