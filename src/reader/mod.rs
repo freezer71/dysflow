@@ -107,12 +107,41 @@ impl Reader {
         self.ensure_engine();
     }
 
+    /// Ouvre un texte capturé (sélection, presse-papiers). Son identité —
+    /// sous laquelle ses signets se rangent — est sa source suivie d'une
+    /// empreinte du texte : deux sélections ne partagent pas leurs signets,
+    /// et le même texte, recapturé, retrouve les siens.
     pub fn open_text(&mut self, markdown: &str, source: &str, now: Instant) {
-        self.open(
-            Text { markdown: markdown.to_string(), source: source.to_string(), identity: false },
-            now,
+        let source = format!(
+            "{source}:{:016x}",
+            crate::source::cache::stable_hash(markdown.as_bytes())
         );
+        self.open(Text { markdown: markdown.to_string(), source, identity: false }, now);
         self.revision += 1;
+    }
+
+    /// L'identité du document gardé, ouvert ou au repos.
+    pub fn document_identity(&self) -> Option<&str> {
+        match &self.session {
+            Some(app) => Some(app.source.as_str()),
+            None => self.text.as_ref().map(|t| t.source.as_str()),
+        }
+    }
+
+    /// Les signets du document gardé. Au repos, il n'y a plus de session
+    /// pour porter le magasin : on le relit.
+    pub fn bookmarks(&self) -> Vec<crate::bookmark::Bookmark> {
+        match &self.session {
+            Some(app) => self.bookmarks_in(&app.bookmarks),
+            None if self.text.is_some() => self.bookmarks_in(&crate::bookmark::BookmarkStore::load().0),
+            None => Vec::new(),
+        }
+    }
+
+    /// Les signets du document gardé, pris dans `store`.
+    pub fn bookmarks_in(&self, store: &crate::bookmark::BookmarkStore) -> Vec<crate::bookmark::Bookmark> {
+        let Some(identity) = self.document_identity() else { return Vec::new() };
+        store.for_document(identity).cloned().collect()
     }
 
     pub fn open_file(&mut self, path: &Path, now: Instant) -> anyhow::Result<()> {
@@ -415,6 +444,46 @@ mod tests {
         r.apply(command::Command::Sentences(1), t0);
         assert_eq!(loads.load(Ordering::SeqCst), 2);
         assert_eq!(r.session().unwrap().current_sentence(), 1);
+    }
+
+    fn bookmark(document: &str, sentence_id: usize) -> crate::bookmark::Bookmark {
+        crate::bookmark::Bookmark {
+            document: document.to_string(),
+            sentence_id,
+            block_id: 0,
+            section_title: String::new(),
+            snippet: String::new(),
+            created_at: 0,
+        }
+    }
+
+    #[test]
+    fn each_captured_text_has_its_own_identity() {
+        let (mut r, _, t0) = reader(10);
+        r.open_text("Premier texte.", "sélection", t0);
+        let first = r.document_identity().unwrap().to_string();
+        r.open_text("Second texte.", "sélection", t0);
+        let second = r.document_identity().unwrap().to_string();
+        assert_ne!(first, second, "deux sélections ne partagent pas leurs signets");
+        assert!(first.starts_with("sélection:"));
+        r.open_text("Premier texte.", "sélection", t0);
+        assert_eq!(r.document_identity().unwrap(), first, "le même texte se retrouve");
+        assert_eq!(r.session().unwrap().source, first);
+    }
+
+    #[test]
+    fn a_resting_text_reads_its_own_bookmarks() {
+        let (mut r, _, t0) = reader(10);
+        r.open_text("Un. Deux.", "sélection", t0);
+        let identity = r.document_identity().unwrap().to_string();
+        r.rest();
+        assert_eq!(r.document_identity(), Some(identity.as_str()));
+        let store = crate::bookmark::BookmarkStore {
+            items: vec![bookmark(&identity, 1), bookmark("sélection:autre", 0)],
+        };
+        let found = r.bookmarks_in(&store);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].sentence_id, 1);
     }
 
     #[test]

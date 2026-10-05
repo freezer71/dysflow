@@ -288,9 +288,10 @@ impl SillonReader {
     pub fn bookmarks(&self) -> Vec<BookmarkView> {
         self.handle
             .ask(|reader| {
-                let Some(app) = reader.session() else { return Vec::new() };
-                app.bookmarks
-                    .for_document(&app.source)
+                // Au repos aussi : le magasin est relu pour le texte gardé.
+                reader
+                    .bookmarks()
+                    .iter()
                     .map(|b| BookmarkView {
                         sentence: b.sentence_id as u32,
                         section_title: b.section_title.clone(),

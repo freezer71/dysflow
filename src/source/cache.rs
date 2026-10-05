@@ -38,7 +38,7 @@ pub fn fingerprint(path: &Path) -> Result<String> {
 ///
 /// `DefaultHasher` ne le promet pas, et un cache dont les clés changent avec
 /// la toolchain se remplit de fichiers que plus rien ne relit.
-fn stable_hash(bytes: &[u8]) -> u64 {
+pub(crate) fn stable_hash(bytes: &[u8]) -> u64 {
     let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
     for &b in bytes {
         hash ^= u64::from(b);
