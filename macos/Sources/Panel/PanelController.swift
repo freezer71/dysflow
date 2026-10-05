@@ -31,6 +31,7 @@ final class PanelController {
         let host = NSHostingView(rootView: PanelContent(controller: self))
         window.contentView = host
         host.setAccessibilityIdentifier("panneau-lecture")
+        host.setAccessibilityLabel("Panneau de lecture")
         // Toute fermeture (⌘W, close(), performClose:) passe par le masquage.
         let guardian = PanelCloseGuard { [weak self] in self?.hide() }
         closeGuard = guardian
@@ -173,8 +174,11 @@ final class PanelController {
         }
     }
 
+    /// L'identifiant pour les tests, le nom pour VoiceOver.
     private func updateIdentifier() {
-        window.contentView?.setAccessibilityIdentifier(mode == .expanded ? "lecteur-agrandi" : "panneau-lecture")
+        let expanded = mode == .expanded
+        window.contentView?.setAccessibilityIdentifier(expanded ? "lecteur-agrandi" : "panneau-lecture")
+        window.contentView?.setAccessibilityLabel(expanded ? "Lecteur agrandi" : "Panneau de lecture")
     }
 
     private func installKeyMonitor() {

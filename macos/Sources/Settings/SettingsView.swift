@@ -36,11 +36,12 @@ private struct ReadingSettings: View {
 
     var body: some View {
         Form {
-            Picker("Police", selection: $fontName) {
-                ForEach(ReadingFont.allCases) { Text($0.label).tag($0.rawValue) }
+            LabeledContent("Police de lecture") {
+                PopUpPicker(label: "Police de lecture", identifier: "police-lecture",
+                            options: ReadingFont.allCases.map { ($0.label, $0.rawValue) },
+                            selection: $fontName)
+                    .fixedSize()
             }
-            .accessibilityLabel("Police de lecture")
-            .accessibilityIdentifier("police-lecture")
             Slider(value: $size, in: 14...40, step: 1) { Text("Taille : \(Int(size)) pt") }
                 .accessibilityLabel("Taille du texte")
                 .accessibilityValue("\(Int(size)) points")
@@ -131,8 +132,10 @@ private struct VoiceSettings: View {
                     HStack {
                         VStack(alignment: .leading) {
                             Text(voice.name)
+                            // Couleur du texte, non « secondaire » : le gris
+                            // système, sur le fond clair d'un formulaire,
+                            // n'atteint pas 4,5:1.
                             Text(ByteCountFormatter.string(fromByteCount: Int64(voice.bytes), countStyle: .file))
-                                .foregroundStyle(.secondary)
                             if let d = model.snapshot.download, d.id == voice.id, let failed = d.failed {
                                 Text("Échec du téléchargement : \(failed)").foregroundStyle(.red)
                             }
@@ -143,11 +146,12 @@ private struct VoiceSettings: View {
                     .accessibilityElement(children: .contain)
                 }
             }
-            Picker("Garder la voix chargée", selection: $keep) {
-                ForEach(KeepVoiceChoice.allCases, id: \.self) { Text($0.label).tag($0) }
+            LabeledContent("Garder la voix chargée") {
+                PopUpPicker(label: "Garder la voix chargée", identifier: "garder-voix",
+                            options: KeepVoiceChoice.allCases.map { ($0.label, $0) },
+                            selection: $keep)
+                    .fixedSize()
             }
-            .accessibilityLabel("Garder la voix chargée")
-            .accessibilityIdentifier("garder-voix")
             if let error { Text(error).foregroundStyle(.red) }
         }
         .formStyle(.grouped)
@@ -174,7 +178,7 @@ private struct VoiceSettings: View {
     @ViewBuilder
     private func action(for voice: VoiceModel) -> some View {
         if voice.active {
-            Text("Active").foregroundStyle(.secondary)
+            Text("Active")
         } else if voice.installed {
             Button("Utiliser") { run { try await model.useVoiceAsync(voice.id) } }
                 .accessibilityLabel("Utiliser la voix \(voice.name)")

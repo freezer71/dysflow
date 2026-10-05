@@ -245,7 +245,7 @@ déchargement ne sert à rien tant qu'elle n'est pas corrigée. Comparer aussi
 | Texte déjà lu | `#9a948a` | `#8a8276` |
 | Mot surligné | fond `#cfe3ff`, texte `#1b2a44` | fond `#2c4a75`, texte `#e6efff` |
 | Ligne lue | soulignée `#7aa7e8` | soulignée `#7aa7e8` |
-| Texte des contrôles | `#6e685e` | `#9a9286` |
+| Texte des contrôles | `#575249` | `#9a9286` |
 | Police de lecture | **Literata** (embarquée, OFL) | idem |
 
 *(Révisé le 2026-10-05 : le texte des contrôles (temps, vitesse, aides,
@@ -253,6 +253,12 @@ messages) passe de `#8a847a` à `#6e685e` en clair — 3,5:1 sur le fond, sous
 le minimum de 4,5:1, contre 5,2:1 désormais. Les citations prennent la
 couleur du texte, non plus celle des contrôles, et se distinguent par leur
 retrait.)*
+
+*(Révisé le 2026-10-05, audit d'accessibilité de macOS : en clair, le texte
+des contrôles passe de `#6e685e` (5,2:1) à `#575249` (7,3:1) ; à 13 pt, les
+traits fins du temps (« –:–– / ~–:–– ») paraissaient plus pâles que leur
+couleur et l'audit les refusait. Le temps est aussi en graisse moyenne, ce
+qui suffit en nuit (`#9a9286`, 5,6:1, inchangé).)*
 
 - Polices de lecture proposées : Literata (défaut), Atkinson Hyperlegible,
   OpenDyslexic. Elles sont embarquées dans l'app.

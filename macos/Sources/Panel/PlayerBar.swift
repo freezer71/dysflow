@@ -20,12 +20,19 @@ struct PlayerBar: View {
 
             Timeline(progress: Double(s.progress), markers: markers, theme: theme)
                 .frame(height: 9)
-                .accessibilityElement()
-                .accessibilityLabel("Progression")
-                .accessibilityValue("\(Int(Timeline.clamped(Double(s.progress)) * 100)) %")
+                // Une barre de progression pour VoiceOver : un rôle connu,
+                // sa valeur en pourcentage.
+                .accessibilityRepresentation {
+                    ProgressView(value: Timeline.clamped(Double(s.progress)))
+                        .accessibilityLabel("Progression")
+                        .accessibilityValue("\(Int(Timeline.clamped(Double(s.progress)) * 100)) %")
+                }
 
             Text(Self.time(s.elapsed) + " / ~" + Self.time(s.total))
                 .monospacedDigit()
+                // Graisse moyenne : les traits fins de « –:–– » restent
+                // assez contrastés à 13 pt.
+                .fontWeight(.medium)
             Text(Self.speedText(s.speed))
                 .accessibilityLabel("Vitesse")
                 .accessibilityValue(Self.speedSpoken(s.speed))

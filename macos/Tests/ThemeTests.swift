@@ -22,7 +22,10 @@ final class ThemeTests: XCTestCase {
         for (name, theme) in [("papier", Theme.paper), ("nuit", .night), ("contraste", .contrast)] {
             XCTAssertGreaterThanOrEqual(Theme.contrastRatio(theme.chrome, theme.background), 4.5, name)
         }
-        XCTAssertEqual(Theme.paper.chrome.hex, "#6E685E")
+        // 7,3:1 en clair : à 13 pt, les traits fins du temps (« –:–– »)
+        // paraissent plus pâles que leur couleur, et 5,2:1 échouait à
+        // l'audit d'accessibilité de macOS.
+        XCTAssertEqual(Theme.paper.chrome.hex, "#575249")
     }
 
     func testBundledFontsResolve() {

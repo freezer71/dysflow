@@ -33,7 +33,7 @@ struct Theme: Equatable {
         background: NSColor(hex: 0xFBF8F1), text: NSColor(hex: 0x2A2722),
         past: NSColor(hex: 0x9A948A), wordFill: NSColor(hex: 0xCFE3FF),
         wordText: NSColor(hex: 0x1B2A44), line: NSColor(hex: 0x7AA7E8),
-        chrome: NSColor(hex: 0x6E685E), border: NSColor(hex: 0xE6E0D3))
+        chrome: NSColor(hex: 0x575249), border: NSColor(hex: 0xE6E0D3))
 
     static let night = Theme(
         background: NSColor(hex: 0x1E1B17), text: NSColor(hex: 0xE8E1D4),

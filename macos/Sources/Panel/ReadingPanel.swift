@@ -33,6 +33,8 @@ final class ReadingPanel: NSPanel {
                    backing: .buffered, defer: false)
         isFloatingPanel = true
         level = .floating
+        // Le titre ne s'affiche pas, mais nomme la fenêtre pour VoiceOver.
+        title = "sillon"
         titleVisibility = .hidden
         titlebarAppearsTransparent = true
         isMovableByWindowBackground = true

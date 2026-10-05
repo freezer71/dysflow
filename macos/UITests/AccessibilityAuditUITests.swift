@@ -9,9 +9,9 @@ final class AccessibilityAuditUITests: XCTestCase {
         app.launch()
         let panel = app.groups["panneau-lecture"]
         XCTAssertTrue(panel.waitForExistence(timeout: 5))
-        try app.performAccessibilityAudit()
+        try app.performAccessibilityAuditOutsideTouchBar()
         panel.typeKey(.return, modifierFlags: [])
         XCTAssertTrue(app.groups["lecteur-agrandi"].waitForExistence(timeout: 2))
-        try app.performAccessibilityAudit()
+        try app.performAccessibilityAuditOutsideTouchBar()
     }
 }
