@@ -1,30 +1,13 @@
 import KeyboardShortcuts
 import SwiftUI
 
-/// Le nom `SettingsView` est pris par l'enregistrement du moteur (UniFFI).
-struct ReglagesView: View {
-    let model: ReaderModel
-
-    var body: some View {
-        TabView {
-            ReadingSettings(model: model).tabItem { Label("Lecture", systemImage: "text.alignleft") }
-            ShortcutSettings().tabItem { Label("Raccourcis", systemImage: "keyboard") }
-            VoiceSettings(model: model).tabItem { Label("Voix", systemImage: "waveform") }
-            GeneralSettings().tabItem { Label("Général", systemImage: "gearshape") }
-        }
-        .navigationTitle("Réglages")
-        .frame(width: 520)
-        .font(.system(size: 13))
-    }
-}
-
 /// Le message d'une erreur du moteur, sans l'habillage de l'enum.
 private func message(of error: Error) -> String {
     if case SillonError.Failed(let message) = error { return message }
     return error.localizedDescription
 }
 
-private struct ReadingSettings: View {
+struct ReadingSettings: View {
     let model: ReaderModel
     @AppStorage(DisplayDefaults.fontKey) private var fontName = ReadingFont.literata.rawValue
     @AppStorage(DisplayDefaults.sizeKey) private var size = DisplayDefaults.defaultSize
@@ -103,7 +86,7 @@ struct ReadingValues: Equatable {
     }
 }
 
-private struct ShortcutSettings: View {
+struct ShortcutSettings: View {
     var body: some View {
         Form {
             KeyboardShortcuts.Recorder("Lire la sélection :", name: .readSelection)
@@ -113,7 +96,7 @@ private struct ShortcutSettings: View {
     }
 }
 
-private struct VoiceSettings: View {
+struct VoiceSettings: View {
     let model: ReaderModel
     @State private var voices: [VoiceModel] = []
     @State private var keep: KeepVoiceChoice = .minutes(10)
@@ -216,7 +199,7 @@ private struct VoiceSettings: View {
     }
 }
 
-private struct GeneralSettings: View {
+struct GeneralSettings: View {
     @State private var login = false
 
     var body: some View {
