@@ -1,8 +1,8 @@
 import XCTest
 @testable import Sillon
 
-/// La vue de lecture, hors SwiftUI : ce qu'elle atténue, souligne et
-/// surligne, sans jamais toucher au texte lui-même.
+/// La vue de lecture, hors SwiftUI : ce qu'elle atténue, encre et trace
+/// sous la ligne, sans jamais toucher au texte lui-même.
 @MainActor
 final class ReadingTextViewTests: XCTestCase {
     private var window: NSWindow!
@@ -42,47 +42,109 @@ final class ReadingTextViewTests: XCTestCase {
         return value
     }
 
-    func testPastIsDimmedWithoutTouchingTheText() {
-        let second = NSRange(location: 15, length: 16)
-        view.show(word: NSRange(location: 15, length: 6), sentence: second,
-                  pastUpTo: second.location, follow: false)
+    /// Le déjà-lu s'atténue mot par mot ; le mot lu prend une encre plus
+    /// sombre ; rien n'est souligné, rien n'est touché dans le texte.
+    func testPastIsDimmedWordByWordWithoutTouchingTheText() {
+        let cinq = NSRange(location: 22, length: 4)
+        view.show(word: cinq, sentence: NSRange(location: 15, length: 16),
+                  pastUpTo: cinq.location, follow: false)
 
         XCTAssertEqual(rendering(.foregroundColor, at: 0) as? NSColor, Theme.paper.past)
-        XCTAssertEqual(rendering(.foregroundColor, at: 15) as? NSColor, Theme.paper.wordText)
-        XCTAssertNil(rendering(.foregroundColor, at: 23))
-        XCTAssertNotNil(rendering(.underlineStyle, at: 23))
-        XCTAssertNil(rendering(.underlineStyle, at: 3))
+        // « Quatre », dans la phrase lue, est déjà dit.
+        XCTAssertEqual(rendering(.foregroundColor, at: 15) as? NSColor, Theme.paper.past)
+        XCTAssertEqual(rendering(.foregroundColor, at: 22) as? NSColor, Theme.paper.wordText)
+        XCTAssertNil(rendering(.foregroundColor, at: 27))
+        // Plus de soulignement de phrase : le trait le remplace.
+        XCTAssertNil(rendering(.underlineStyle, at: 22))
+        XCTAssertNil(rendering(.underlineStyle, at: 27))
         // Le texte garde sa couleur : seul le rendu change.
         XCTAssertEqual(view.textStorage!.attribute(.foregroundColor, at: 0, effectiveRange: nil)
                        as? NSColor, Theme.paper.text)
+        XCTAssertEqual(view.accessibilityValue(), "Quatre cinq six.")
+
+        // Le mot suivant : l'ancien passe au déjà-lu.
+        view.show(word: NSRange(location: 27, length: 4), sentence: NSRange(location: 15, length: 16),
+                  pastUpTo: 27, follow: false)
+        XCTAssertEqual(rendering(.foregroundColor, at: 22) as? NSColor, Theme.paper.past)
+        XCTAssertEqual(rendering(.foregroundColor, at: 27) as? NSColor, Theme.paper.wordText)
     }
 
     func testNewDocumentStartsClean() {
+        view.playing = true
         view.show(word: NSRange(location: 15, length: 6), sentence: NSRange(location: 15, length: 16),
                   pastUpTo: 15, follow: false)
         view.setDocument(NSAttributedString(string: "Autre texte, tout neuf."))
 
         XCTAssertNil(rendering(.foregroundColor, at: 0))
-        XCTAssertNil(rendering(.underlineStyle, at: 16))
-        XCTAssertNil(view.shown)
+        XCTAssertNil(view.wordRect)
+        XCTAssertNil(view.cursorLine)
+        XCTAssertFalse(view.isAnimatingLine)
     }
 
-    func testHighlightGlidesToTheNextWord() {
-        view.show(word: NSRange(location: 0, length: 2), sentence: NSRange(location: 0, length: 14),
-                  pastUpTo: 0, follow: false)
-        let first = try! XCTUnwrap(view.shown)
-        view.show(word: NSRange(location: 3, length: 4), sentence: NSRange(location: 0, length: 14),
-                  pastUpTo: 0, follow: false)
+    // MARK: - Le trait sous la ligne
 
-        // Il part de « Un » sans sauter…
-        XCTAssertEqual(view.shown, first)
-        // … et le glissement dure 80 ms : à 150 ms, il est posé sur « deux »
-        // et n'en bouge plus.
-        RunLoop.main.run(until: Date().addingTimeInterval(0.15))
-        let settled = try! XCTUnwrap(view.shown)
-        XCTAssertGreaterThan(settled.minX, first.maxX)
-        RunLoop.main.run(until: Date().addingTimeInterval(0.15))
-        XCTAssertEqual(view.shown, settled)
+    /// Pendant la lecture, le trait va du début de la ligne au point de la
+    /// voix, et avance avec elle à chaque image ; en pause, il disparaît et
+    /// plus rien ne tourne.
+    func testTheLineFollowsTheVoiceWhilePlaying() {
+        var progress: Float = 0.25
+        view.reduceMotion = { false }
+        view.liveProgress = { progress }
+        let deux = NSRange(location: 3, length: 4)
+        view.show(word: deux, sentence: NSRange(location: 0, length: 14), pastUpTo: 3, follow: false)
+        XCTAssertNil(view.cursorLine, "en pause, pas de trait")
+        XCTAssertFalse(view.isAnimatingLine)
+
+        view.playing = true
+        XCTAssertTrue(view.isAnimatingLine)
+        let word = try! XCTUnwrap(view.wordRect)
+        let un = try! XCTUnwrap(view.rectForTesting(NSRange(location: 0, length: 2)))
+        XCTAssertTrue(waitUntil(1) {
+            abs((view.cursorLine?.maxX ?? 0) - (word.minX + word.width * 0.25)) < 0.5
+        })
+        XCTAssertEqual(view.cursorLine!.minX, un.minX, accuracy: 0.5)
+
+        progress = 0.75
+        XCTAssertTrue(waitUntil(1) {
+            abs((view.cursorLine?.maxX ?? 0) - (word.minX + word.width * 0.75)) < 0.5
+        })
+
+        view.playing = false
+        XCTAssertNil(view.cursorLine)
+        XCTAssertFalse(view.isAnimatingLine)
+    }
+
+    /// Au premier mot d'une ligne, le trait repart de zéro : il ne traîne
+    /// pas de la ligne d'avant.
+    func testTheLineRestartsOnEachLine() {
+        view.setDocument(longText(60))
+        view.reduceMotion = { false }
+        view.liveProgress = { 0 }
+        view.playing = true
+        // Le premier mot de la deuxième ligne.
+        let first = try! XCTUnwrap(view.rectForTesting(range(of: "mot1 ")))
+        let second = (1...60).map { range(of: "mot\($0) ") }.first {
+            (view.rectForTesting($0)?.minY ?? 0) > first.minY
+        }!
+        view.show(word: second, sentence: nil, pastUpTo: second.location, follow: false)
+        XCTAssertTrue(waitUntil(1) { view.cursorLine != nil })
+        let wordRect = try! XCTUnwrap(view.wordRect)
+        XCTAssertEqual(view.cursorLine!.minX, wordRect.minX, accuracy: 0.5)
+        XCTAssertEqual(view.cursorLine!.width, 0, accuracy: 0.5)
+        XCTAssertGreaterThan(view.cursorLine!.minY, first.maxY - CursorLine.lift)
+    }
+
+    /// Réduire les animations : le trait se pose au bout du mot lu, mot par
+    /// mot, et aucun lien d'affichage ne tourne.
+    func testReduceMotionMovesTheLineWordByWord() {
+        view.reduceMotion = { true }
+        view.liveProgress = { 0.1 }
+        view.playing = true
+        view.show(word: NSRange(location: 3, length: 4), sentence: NSRange(location: 0, length: 14),
+                  pastUpTo: 3, follow: false)
+        XCTAssertFalse(view.isAnimatingLine)
+        let word = try! XCTUnwrap(view.wordRect)
+        XCTAssertEqual(view.cursorLine!.maxX, word.maxX, accuracy: 0.5)
     }
 
     // MARK: - Bloc annoncé, largeur qui change, défilement à la main
@@ -107,6 +169,7 @@ final class ReadingTextViewTests: XCTestCase {
         let layout = DocumentLayout.build(d, style: ReadingStyle(
             font: .literata, size: 20, lineSpacing: 1, ruler: true, theme: .paper))
         view.setDocument(layout.text)
+        view.playing = true
         let avant = layout.wordRanges[d.blocks[0].sentences[0].words[0].index]!
         view.show(word: avant, sentence: layout.sentenceRanges[d.blocks[0].sentences[0].id],
                   pastUpTo: 0, follow: false)
@@ -116,7 +179,9 @@ final class ReadingTextViewTests: XCTestCase {
         view.show(word: nil, sentence: block, pastUpTo: block.location, follow: false)
 
         XCTAssertEqual(rendering(.foregroundColor, at: 0) as? NSColor, Theme.paper.past)
-        XCTAssertNil(view.shown)
+        XCTAssertNil(view.wordRect)
+        XCTAssertNil(view.cursorLine, "pas de trait sous un bloc annoncé")
+        XCTAssertFalse(view.isAnimatingLine)
         let blockBand = try! XCTUnwrap(view.lineBand)
         XCTAssertGreaterThan(blockBand.height, wordBand.height * 2)
         XCTAssertGreaterThan(blockBand.minY, wordBand.minY)
@@ -126,8 +191,8 @@ final class ReadingTextViewTests: XCTestCase {
         XCTAssertNil(view.lineBand)
     }
 
-    /// Le panneau s'élargit en pause : le surlignage et la bande suivent le
-    /// mot là où il est maintenant, sans glisser, et la hauteur est renvoyée.
+    /// Le panneau s'élargit en pause : le mot lu et la bande sont repris là
+    /// où le mot est maintenant, et la hauteur est renvoyée.
     func testWidthChangeReplacesTheHighlightAndResendsHeight() {
         var heights: [CGFloat] = []
         view.onContentHeight = { heights.append($0) }
@@ -135,16 +200,13 @@ final class ReadingTextViewTests: XCTestCase {
         heights.removeAll()
         let word = range(of: "mot50")
         view.show(word: word, sentence: word, pastUpTo: 0, follow: false)
-        let before = try! XCTUnwrap(view.shown)
+        let before = try! XCTUnwrap(view.wordRect)
 
         view.setFrameSize(NSSize(width: 250, height: view.frame.height))
-        let after = try! XCTUnwrap(view.shown)
+        let after = try! XCTUnwrap(view.wordRect)
         XCTAssertGreaterThan(after.minY, before.minY)
         XCTAssertEqual(view.lineBand?.minY, after.minY - 2)
         XCTAssertEqual(heights.count, 1)
-        // Posé d'un coup : il n'en bouge plus.
-        RunLoop.main.run(until: Date().addingTimeInterval(0.15))
-        XCTAssertEqual(view.shown, after)
 
         // Seule la hauteur change : rien n'est renvoyé, pas de boucle avec
         // le panneau qui se redimensionne.

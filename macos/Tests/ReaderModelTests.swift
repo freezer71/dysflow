@@ -41,6 +41,26 @@ final class ReaderModelTests: XCTestCase {
         XCTAssertNotEqual(ReaderModel.published(a), ReaderModel.published(b))
     }
 
+    /// La part du mot dite change à chaque image : elle ne publie rien. La
+    /// vue de lecture la relit elle-même pendant la lecture.
+    func testPublishedSnapshotIgnoresTheWordProgress() {
+        var a = SillonReader.silent().snapshot()
+        a.wordProgress = 0.2
+        var b = a
+        b.wordProgress = 0.7
+        XCTAssertEqual(ReaderModel.published(a), ReaderModel.published(b))
+        XCTAssertEqual(ReaderModel.published(b).wordProgress, 0)
+        b.word = (a.word ?? 0) + 1
+        XCTAssertNotEqual(ReaderModel.published(a), ReaderModel.published(b))
+    }
+
+    func testLiveSnapshotReadsTheReaderWithoutPublishing() {
+        let m = model("Un deux trois.")
+        let published = m.snapshot
+        XCTAssertEqual(m.liveSnapshot().revision, published.revision)
+        XCTAssertEqual(m.snapshot, published)
+    }
+
     /// Sommaire, repères et fil d'Ariane : calculés une fois par révision (et
     /// par section pour le fil), pas à chaque évaluation de la vue.
     func testOutlineIsComputedPerRevision() {

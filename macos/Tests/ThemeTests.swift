@@ -16,6 +16,19 @@ final class ThemeTests: XCTestCase {
         XCTAssertEqual(Theme.contrast.wordFill.hex, "#FFE600")
     }
 
+    /// « Encre calme » : le mot lu change d'encre, le trait a sa couleur ;
+    /// en contraste élevé, le mot reste blanc (il n'a plus de fond jaune) et
+    /// le trait est jaune.
+    func testCursorInkAndLine() {
+        XCTAssertEqual(Theme.paper.wordText.hex, "#1B2A44")
+        XCTAssertEqual(Theme.night.wordText.hex, "#E6EFFF")
+        XCTAssertEqual(Theme.contrast.wordText.hex, "#FFFFFF")
+        XCTAssertEqual(Theme.contrast.line.hex, "#FFE600")
+        for (name, theme) in [("papier", Theme.paper), ("nuit", .night), ("contraste", .contrast)] {
+            XCTAssertGreaterThanOrEqual(Theme.contrastRatio(theme.wordText, theme.background), 7, name)
+        }
+    }
+
     /// Les contrôles (temps, vitesse, aides) se lisent : 4,5:1 au moins sur
     /// le fond, comme le texte courant (WCAG AA).
     func testChromeIsReadableOnItsBackground() {

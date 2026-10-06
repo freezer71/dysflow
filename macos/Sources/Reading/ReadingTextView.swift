@@ -1,30 +1,43 @@
 import AppKit
 import QuartzCore
 
-/// Le texte lu, avec son mot surligné qui glisse, sa ligne soulignée, et le
-/// déjà-lu atténué. TextKit 2 ne met en page que ce qui est visible.
+/// Le texte lu, « encre calme » : le mot lu d'une encre plus sombre, le
+/// déjà-lu atténué mot par mot, et un trait fin sous la ligne qui avance avec
+/// la voix. TextKit 2 ne met en page que ce qui est visible.
 final class ReadingTextView: NSTextView {
     var theme: Theme = .paper { didSet { if theme != oldValue { needsDisplay = true } } }
     var ruler = true
     var onContentHeight: ((CGFloat) -> Void)?
     /// L'horloge du suivi, remplaçable pour les tests.
     var now: () -> Date = Date.init
+    /// Réduire les animations, remplaçable pour les tests.
+    var reduceMotion: () -> Bool = { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
+    /// La part du mot lu que la voix a dite (0 à 1), relue à chaque image
+    /// pendant la lecture — hors de SwiftUI, qui ne doit pas la voir changer.
+    var liveProgress: (() -> Float)?
+    /// La lecture avance : le trait se montre et suit la voix. En pause, il
+    /// disparaît et le lien d'affichage s'arrête.
+    var playing = false {
+        didSet { if playing != oldValue { updateCursorLine() } }
+    }
 
-    /// Le rectangle surligné tel qu'il est dessiné, en glissement compris.
-    private(set) var shown: CGRect?
+    /// Le cadre du mot lu, s'il y en a un.
+    private(set) var wordRect: CGRect?
     /// La bande sous la ligne lue (ou sous le bloc annoncé).
     private(set) var lineBand: CGRect?
-    private var from: CGRect?
-    private var target: CGRect?
-    private var animationStart: CFTimeInterval = 0
+    /// Le trait sous la ligne tel qu'il est dessiné.
+    private(set) var cursorLine: CGRect?
+    /// Le début de la ligne du mot lu.
+    private var lineStartX: CGFloat = 0
+    /// La part du mot dite, qui ne recule pas dans un même mot.
+    private var progress: CGFloat = 0
     private var link: CADisplayLink?
     private var dimmedUpTo = 0
-    private var underlined: NSRange?
     private var colored: NSRange?
+    private var spoken: NSRange?
     private var lastLineY: CGFloat?
     private var followPolicy = FollowPolicy()
     private var liveScrollObserver: NSObjectProtocol?
-    private static let glide: CFTimeInterval = 0.08
 
     /// Le dernier appel à `show`, pour l'ignorer s'il se répète (60 à 120 fois
     /// par seconde pendant la lecture) et pour tout replacer si la largeur
@@ -61,22 +74,16 @@ final class ReadingTextView: NSTextView {
         if let liveScrollObserver { NotificationCenter.default.removeObserver(liveScrollObserver) }
     }
 
-    private var reduceMotion: Bool {
-        NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-    }
-
     func setDocument(_ text: NSAttributedString) {
         textStorage?.setAttributedString(text)
         // Les attributs de rendu tiennent au gestionnaire de mise en page, pas
         // au texte : ceux de l'ancien document ne doivent pas survivre.
         if let tlm = textLayoutManager {
-            for key in [NSAttributedString.Key.foregroundColor, .underlineStyle, .underlineColor] {
-                tlm.removeRenderingAttribute(key, for: tlm.documentRange)
-            }
+            tlm.removeRenderingAttribute(.foregroundColor, for: tlm.documentRange)
         }
-        stopLink()
-        shown = nil; target = nil; lineBand = nil; dimmedUpTo = 0; underlined = nil; colored = nil
+        wordRect = nil; lineBand = nil; dimmedUpTo = 0; spoken = nil; colored = nil; announced = nil
         lastLineY = nil; last = nil
+        updateCursorLine()
         followPolicy.resume()
         setAccessibilityValue(nil)
         needsDisplay = true
@@ -96,7 +103,8 @@ final class ReadingTextView: NSTextView {
     }
 
     /// Montre le mot lu et sa phrase. Sans mot (un bloc de code ou un tableau
-    /// qu'on annonce), la bande se pose sur la phrase, c'est-à-dire le bloc.
+    /// qu'on annonce), la bande se pose sur la phrase, c'est-à-dire le bloc,
+    /// et il n'y a pas de trait.
     func show(word: NSRange?, sentence: NSRange?, pastUpTo: Int, follow: Bool) {
         let call = Shown(word: word, sentence: sentence, pastUpTo: pastUpTo, follow: follow,
                          width: bounds.width)
@@ -104,7 +112,7 @@ final class ReadingTextView: NSTextView {
         let newSentence = sentence != last?.sentence
         last = call
         applyPast(upTo: pastUpTo)
-        applyUnderline(sentence)
+        announce(sentence)
         applyWordColor(word)
         let wanted = follow && followPolicy.shouldFollow(newSentence: newSentence, at: now())
         place(word: word, sentence: sentence, animated: true, follow: wanted)
@@ -150,7 +158,7 @@ final class ReadingTextView: NSTextView {
     // MARK: - Largeur qui change
 
     /// Le panneau s'élargit ou la fenêtre change de taille, même en pause : la
-    /// géométrie du surlignage est refaite, sans glissement, et la hauteur du
+    /// géométrie du mot lu, de la bande et du trait est refaite, et la hauteur du
     /// texte renvoyée. Seule la largeur compte : renvoyer la hauteur quand la
     /// hauteur change bouclerait avec le panneau qui se redimensionne.
     override func setFrameSize(_ newSize: NSSize) {
@@ -177,43 +185,35 @@ final class ReadingTextView: NSTextView {
             theme.wordFill.withAlphaComponent(0.25).setFill()
             band.fill()
         }
-        if let r = shown {
-            theme.wordFill.setFill()
-            NSBezierPath(roundedRect: r.insetBy(dx: -3, dy: -1), xRadius: 4, yRadius: 4).fill()
+        if let line = cursorLine, line.width > 0 {
+            theme.line.withAlphaComponent(0.9).setFill()
+            let radius = line.height / 2
+            NSBezierPath(roundedRect: line, xRadius: radius, yRadius: radius).fill()
         }
     }
 
-    /// Pose le surlignage, la bande et, si demandé, la ligne tenue.
+    /// Pose le mot lu, la bande, le trait et, si demandé, la ligne tenue.
     private func place(word: NSRange?, sentence: NSRange?, animated: Bool, follow: Bool) {
-        let wordRect = word.flatMap { rect(for: $0) }
-        guard let lineRect = wordRect ?? sentence.flatMap({ rect(for: $0) }) else {
-            stopLink()
-            shown = nil; target = nil; lineBand = nil
+        let rect = word.flatMap { rect(for: $0) }
+        if word != spoken { progress = 0 }
+        spoken = word
+        wordRect = rect
+        if let word, let rect { lineStartX = lineStart(of: word, rect: rect) }
+        updateCursorLine()
+        guard let lineRect = rect ?? sentence.flatMap({ self.rect(for: $0) }) else {
+            lineBand = nil
             needsDisplay = true
             return
         }
         lineBand = ruler
             ? CGRect(x: 0, y: lineRect.minY - 2, width: bounds.width, height: lineRect.height + 4)
             : nil
-        if let wordRect {
-            if shown == nil || !animated || reduceMotion {
-                stopLink()
-                shown = wordRect; target = wordRect
-            } else if wordRect != target {
-                from = shown; target = wordRect
-                animationStart = CACurrentMediaTime()
-                startLink()
-            }
-        } else {
-            stopLink()
-            shown = nil; target = nil
-        }
         needsDisplay = true
         guard follow else { return }
         // Un bloc haut se tient par sa première ligne, pour qu'on le voie
         // commencer.
-        let anchor = wordRect
-            ?? sentence.flatMap { rect(for: NSRange(location: $0.location, length: min(1, $0.length))) }
+        let anchor = rect
+            ?? sentence.flatMap { self.rect(for: NSRange(location: $0.location, length: min(1, $0.length))) }
             ?? lineRect
         if lastLineY != anchor.minY {
             lastLineY = anchor.minY
@@ -221,7 +221,41 @@ final class ReadingTextView: NSTextView {
         }
     }
 
-    // MARK: - Glissement du surlignage
+    // MARK: - Le trait sous la ligne
+
+    /// Vrai quand le trait suit la voix à chaque image.
+    var isAnimatingLine: Bool { link != nil }
+
+    /// Montre, déplace ou retire le trait, et ne fait tourner le lien
+    /// d'affichage que si la lecture avance et que le mouvement est permis.
+    private func updateCursorLine() {
+        let motion = !reduceMotion()
+        if playing, wordRect != nil, motion, window != nil {
+            startLink()
+        } else {
+            stopLink()
+        }
+        if playing, wordRect != nil, motion { readProgress() }
+        setCursorLine(playing ? wordRect.map {
+            CursorLine.rect(word: $0, lineStartX: lineStartX, progress: progress,
+                            reduceMotion: !motion)
+        } : nil)
+    }
+
+    /// Relit la voix ; dans un même mot, le trait ne recule pas.
+    private func readProgress() {
+        guard let live = liveProgress?() else { return }
+        progress = max(progress, CGFloat(live))
+    }
+
+    private func setCursorLine(_ line: CGRect?) {
+        guard line != cursorLine else { return }
+        // Seul le trait est redessiné, pas tout le texte.
+        for r in [cursorLine, line].compactMap({ $0 }) {
+            setNeedsDisplay(r.insetBy(dx: -2, dy: -2))
+        }
+        cursorLine = line
+    }
 
     private func startLink() {
         guard link == nil else { return }
@@ -231,20 +265,22 @@ final class ReadingTextView: NSTextView {
     }
 
     @objc private func step(_ link: CADisplayLink) {
-        guard let from, let target else { stopLink(); return }
-        let t = min(1, (CACurrentMediaTime() - animationStart) / Self.glide)
-        let e = 1 - pow(1 - t, 3)
-        shown = CGRect(x: from.minX + (target.minX - from.minX) * e,
-                       y: from.minY + (target.minY - from.minY) * e,
-                       width: from.width + (target.width - from.width) * e,
-                       height: from.height + (target.height - from.height) * e)
-        needsDisplay = true
-        if t >= 1 { stopLink() }
+        guard playing, let wordRect else { stopLink(); return }
+        readProgress()
+        setCursorLine(CursorLine.rect(word: wordRect, lineStartX: lineStartX,
+                                      progress: progress, reduceMotion: false))
     }
 
     private func stopLink() {
         link?.invalidate()
         link = nil
+    }
+
+    /// Hors fenêtre, le lien s'arrête (il retient la vue) ; de retour, il
+    /// reprend si la lecture avance.
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        updateCursorLine()
     }
 
     // MARK: - Attributs de rendu
@@ -261,12 +297,17 @@ final class ReadingTextView: NSTextView {
         colored = nil
     }
 
-    /// Le mot lu prend la couleur prévue sur son fond (noir sur jaune en
-    /// contraste élevé, où le blanc du texte ne se lirait pas).
+    /// Le mot lu prend une encre plus sombre — la couleur seule : changer
+    /// la graisse referait la ligne.
     private func applyWordColor(_ word: NSRange?) {
         guard word != colored, let tlm = textLayoutManager else { return }
         if let old = colored, let r = textRange(old) {
-            tlm.removeRenderingAttribute(.foregroundColor, for: r)
+            // L'ancien mot, s'il est maintenant derrière, rejoint le déjà-lu.
+            if old.location < dimmedUpTo {
+                tlm.addRenderingAttribute(.foregroundColor, value: theme.past, for: r)
+            } else {
+                tlm.removeRenderingAttribute(.foregroundColor, for: r)
+            }
         }
         if let new = word, let r = textRange(new) {
             tlm.addRenderingAttribute(.foregroundColor, value: theme.wordText, for: r)
@@ -274,19 +315,12 @@ final class ReadingTextView: NSTextView {
         colored = word
     }
 
-    /// La phrase lue est soulignée ; elle devient aussi la valeur lue par
-    /// VoiceOver — une fois par phrase, sans notification.
-    private func applyUnderline(_ sentence: NSRange?) {
-        guard sentence != underlined, let tlm = textLayoutManager else { return }
-        if let old = underlined, let r = textRange(old) {
-            tlm.removeRenderingAttribute(.underlineStyle, for: r)
-            tlm.removeRenderingAttribute(.underlineColor, for: r)
-        }
-        if let new = sentence, let r = textRange(new) {
-            tlm.addRenderingAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, for: r)
-            tlm.addRenderingAttribute(.underlineColor, value: theme.line, for: r)
-        }
-        underlined = sentence
+    /// La phrase lue devient la valeur lue par VoiceOver — une fois par
+    /// phrase, sans notification.
+    private var announced: NSRange?
+    private func announce(_ sentence: NSRange?) {
+        guard sentence != announced else { return }
+        announced = sentence
         setAccessibilityValue(sentence.flatMap { range in
             (textStorage?.string as NSString?)?.substring(with: range)
         })
@@ -299,6 +333,28 @@ final class ReadingTextView: NSTextView {
               let start = tcm.location(tcm.documentRange.location, offsetBy: range.location),
               let end = tcm.location(start, offsetBy: range.length) else { return nil }
         return NSTextRange(location: start, end: end)
+    }
+
+    func rectForTesting(_ range: NSRange) -> CGRect? { rect(for: range) }
+
+    /// Le début de la ligne où se trouve le mot : le bord gauche du premier
+    /// segment de son paragraphe qui est sur la même ligne.
+    private func lineStart(of word: NSRange, rect: CGRect) -> CGFloat {
+        guard let tlm = textLayoutManager, let tcm = tlm.textContentManager,
+              let wordRange = textRange(word),
+              let fragment = tlm.textLayoutFragment(for: wordRange.location) else { return rect.minX }
+        let paragraph = tcm.offset(from: tcm.documentRange.location,
+                                   to: fragment.rangeInElement.location)
+        guard paragraph <= word.location,
+              let span = textRange(NSRange(location: paragraph, length: NSMaxRange(word) - paragraph))
+        else { return rect.minX }
+        var start = rect.minX
+        tlm.enumerateTextSegments(in: span, type: .standard, options: []) { _, frame, _, _ in
+            let f = frame.offsetBy(dx: textContainerOrigin.x, dy: textContainerOrigin.y)
+            if abs(f.minY - rect.minY) < 1 { start = min(start, f.minX) }
+            return true
+        }
+        return start
     }
 
     private func rect(for range: NSRange) -> CGRect? {
@@ -317,7 +373,7 @@ final class ReadingTextView: NSTextView {
         guard let clip = enclosingScrollView?.contentView else { return }
         let y = max(0, rect.midY - clip.bounds.height * 0.35)
         let origin = NSPoint(x: 0, y: min(y, max(0, frame.height - clip.bounds.height)))
-        if reduceMotion || !animated {
+        if reduceMotion() || !animated {
             clip.setBoundsOrigin(origin)
         } else {
             NSAnimationContext.runAnimationGroup { ctx in

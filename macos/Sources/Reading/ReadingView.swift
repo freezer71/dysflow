@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Le texte lu, dans SwiftUI. Le document n'est remis en page qu'à chaque
-/// révision ou changement de style ; le reste n'est que surlignage.
+/// révision ou changement de style ; le reste n'est que mise en valeur.
 struct ReadingView: NSViewRepresentable {
     let model: ReaderModel
     let style: ReadingStyle
@@ -36,6 +36,7 @@ struct ReadingView: NSViewRepresentable {
         text.onContentHeight = onContentHeight
         text.theme = style.theme
         text.ruler = style.ruler
+        text.playing = snapshot.playing
         if c.revision != snapshot.revision || c.style != style {
             let layout = DocumentLayout.build(model.document, style: style)
             text.setDocument(layout.text)
@@ -52,7 +53,16 @@ struct ReadingView: NSViewRepresentable {
         guard let layout = c.layout else { return }
         let sentence = layout.sentenceRanges[snapshot.sentence]
         let word = snapshot.word.flatMap { layout.wordRanges[$0] }
+        // La part du mot dite, relue par la vue à chaque image. Si la voix
+        // est déjà au mot suivant sans que la vue le sache encore, le mot
+        // montré est dit en entier.
+        let shownWord = snapshot.word
+        text.liveProgress = { [weak model] in
+            guard let live = model?.liveSnapshot() else { return 0 }
+            return live.word == shownWord ? live.wordProgress : 1
+        }
+        // Le déjà-lu s'arrête au mot lu ; sans mot (bloc annoncé), à la phrase.
         text.show(word: word, sentence: sentence,
-                  pastUpTo: sentence?.location ?? 0, follow: true)
+                  pastUpTo: word?.location ?? sentence?.location ?? 0, follow: true)
     }
 }

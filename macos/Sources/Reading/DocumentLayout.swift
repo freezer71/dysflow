@@ -12,7 +12,7 @@ struct ReadingStyle: Equatable {
 ///
 /// Les mots sont séparés d'une espace, les blocs d'un retour à la ligne ; un
 /// bloc qui a des lignes à montrer telles quelles (code, tableau) les montre
-/// en chasse fixe, et ses mots — une annonce — ne sont pas surlignés ; sa
+/// en chasse fixe, et ses mots — une annonce — ne sont pas suivis ; sa
 /// phrase couvre le bloc entier.
 struct DocumentLayout {
     let text: NSAttributedString

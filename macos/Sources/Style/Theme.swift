@@ -22,8 +22,12 @@ struct Theme: Equatable {
     var background: NSColor
     var text: NSColor
     var past: NSColor
+    /// Teinte de la bande de lecture (posée à 25 %).
     var wordFill: NSColor
+    /// L'encre du mot lu : plus sombre que le texte (sur fond clair), sans
+    /// fond ni changement de graisse.
     var wordText: NSColor
+    /// Le trait sous la ligne lue.
     var line: NSColor
     /// Texte des contrôles.
     var chrome: NSColor
@@ -43,7 +47,7 @@ struct Theme: Equatable {
 
     static let contrast = Theme(
         background: .black, text: .white, past: NSColor(hex: 0xB0B0B0),
-        wordFill: NSColor(hex: 0xFFE600), wordText: .black,
+        wordFill: NSColor(hex: 0xFFE600), wordText: .white,
         line: NSColor(hex: 0xFFE600), chrome: .white, border: .white)
 
     /// Rapport de contraste WCAG entre deux couleurs (1 à 21).

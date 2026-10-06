@@ -120,14 +120,22 @@ final class ReaderModel {
 
     /// L'instantané tel que l'écran le montre : temps à la seconde,
     /// avancement au millième. Le reste de ce que Rust donne à chaque image
-    /// ne republie rien, et SwiftUI ne réévalue pas toute l'interface. (Le
-    /// mot surligné glisse avec son propre lien d'affichage.)
+    /// ne republie rien, et SwiftUI ne réévalue pas toute l'interface. La
+    /// part du mot dite n'en fait pas partie : le trait sous la ligne la
+    /// relit avec son propre lien d'affichage (voir `liveSnapshot`).
     static func published(_ s: Snapshot) -> Snapshot {
         var s = s
+        s.wordProgress = 0
         s.elapsed = s.elapsed.map { $0.isFinite ? $0.rounded(.down) : $0 }
         s.total = s.total.map { $0.isFinite ? $0.rounded() : $0 }
         s.progress = s.progress.isFinite ? (s.progress * 1000).rounded() / 1000 : s.progress
         return s
+    }
+
+    /// L'instantané tel que Rust le donne à l'instant, sans rien publier :
+    /// pour ce qui change à chaque image et que SwiftUI ne doit pas voir.
+    func liveSnapshot() -> Snapshot {
+        reader.snapshot()
     }
 
     /// Relance le suivi et relit tout de suite l'état.
