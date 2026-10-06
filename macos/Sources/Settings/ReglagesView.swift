@@ -15,7 +15,7 @@ struct ReglagesView: View {
         TabView(selection: SettingsNavigation.shared.binding) {
             VoiceTab(model: model, store: store).settingsTab(.voice)
             ReadingTab(store: store).settingsTab(.reading)
-            VoiceSettings(model: model).settingsTab(.models)
+            ModelsTab(model: model, settings: store).settingsTab(.models)
             ShortcutsTab().settingsTab(.shortcuts)
             GeneralTab(model: model, store: store).settingsTab(.general)
         }

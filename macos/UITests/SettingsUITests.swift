@@ -13,7 +13,7 @@ final class SettingsUITests: XCTestCase {
         window.typeKey("\t", modifierFlags: [])
         try app.performAccessibilityAuditOutsideTouchBar()
         window.toolbars.buttons["Modèles"].click()
-        XCTAssertTrue(window.popUpButtons["garder-voix"].waitForExistence(timeout: 2))
+        XCTAssertTrue(window.descendants(matching: .any)["onglet-modeles"].waitForExistence(timeout: 2))
         try app.performAccessibilityAuditOutsideTouchBar()
         window.toolbars.buttons["Voix"].click()
         XCTAssertTrue(window.popUpButtons["modele-actif"].waitForExistence(timeout: 2))

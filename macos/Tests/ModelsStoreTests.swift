@@ -1,0 +1,98 @@
+import XCTest
+@testable import Sillon
+
+@MainActor
+final class ModelsStoreTests: XCTestCase {
+    func testTheActiveModelIsRefusedWithoutAnAlert() {
+        let store = ModelsStore(backend: FakeModelsBackend())
+        let active = VoiceModel.sample(id: "a", name: "Supertonic 3 · F16", active: true)
+        guard case .refuse(let reason) = ModelsStore.deletionRequest(for: active) else {
+            return XCTFail("le modèle actif ne se supprime pas")
+        }
+        XCTAssertTrue(reason.contains("modèle actif"))
+        store.askDeletion(active)
+        XCTAssertNil(store.pendingDeletion, "aucune alerte")
+        XCTAssertEqual(store.error, reason)
+    }
+
+    func testAnInstalledModelAsksForConfirmation() {
+        let store = ModelsStore(backend: FakeModelsBackend())
+        let model = VoiceModel.sample(id: "b", name: "MagpieTTS", bytes: 1_562_142_912)
+        guard case .confirm(let title, let message) = ModelsStore.deletionRequest(for: model) else {
+            return XCTFail("confirmation attendue")
+        }
+        XCTAssertEqual(title, "Supprimer MagpieTTS ?")
+        XCTAssertTrue(message.contains(ByteCountFormatter.string(fromByteCount: 1_562_142_912, countStyle: .file)))
+        store.askDeletion(model)
+        XCTAssertEqual(store.pendingDeletion?.id, "b")
+    }
+
+    func testAConfirmedDeletionRemovesAndRereadsTheCatalogue() async {
+        let backend = FakeModelsBackend()
+        backend.catalogue = [.sample(id: "b")]
+        let store = ModelsStore(backend: backend)
+        await store.reload()
+        store.askDeletion(backend.catalogue[0])
+        await store.delete(backend.catalogue[0])
+        XCTAssertEqual(backend.removed, ["b"])
+        XCTAssertTrue(store.catalogue.isEmpty)
+        XCTAssertNil(store.pendingDeletion)
+        XCTAssertEqual(backend.loads, 2)
+    }
+
+    func testAFailedDeletionSaysWhyAndRereadsTheCatalogue() async {
+        let backend = FakeModelsBackend()
+        backend.catalogue = [.sample(id: "b")]
+        backend.failRemoval = "suppression de magpie.gguf : permission refusée"
+        let store = ModelsStore(backend: backend)
+        await store.reload()
+        await store.delete(backend.catalogue[0])
+        XCTAssertEqual(store.error, "suppression de magpie.gguf : permission refusée")
+        XCTAssertEqual(backend.loads, 2, "catalogue relu")
+        XCTAssertEqual(store.catalogue.count, 1)
+    }
+
+    func testTheFreeSpaceIsRead() async {
+        let backend = FakeModelsBackend()
+        let store = ModelsStore(backend: backend)
+        await store.reload()
+        XCTAssertEqual(store.freeSpace, 10_000_000_000)
+    }
+
+    func testUsingAModelTellsTheSettingsToReload() async {
+        let backend = FakeModelsBackend()
+        backend.catalogue = [.sample(id: "a", active: true), .sample(id: "b")]
+        var changes = 0
+        let store = ModelsStore(backend: backend, onActiveModelChanged: { changes += 1 })
+        await store.reload()
+        XCTAssertEqual(changes, 0, "un simple relevé ne change rien")
+        await store.use("b")
+        XCTAssertEqual(backend.used, ["b"])
+        XCTAssertEqual(changes, 1)
+        XCTAssertEqual(store.catalogue.first(where: \.active)?.id, "b")
+    }
+
+    func testADownloadThatActivatesAModelTellsTheSettingsToReload() async {
+        let backend = FakeModelsBackend()
+        backend.catalogue = [.sample(id: "a", active: true), .sample(id: "b", installed: false)]
+        var changes = 0
+        let store = ModelsStore(backend: backend, onActiveModelChanged: { changes += 1 })
+        await store.reload()
+        await store.downloadSettled()
+        XCTAssertEqual(changes, 0, "le modèle actif n'a pas bougé")
+        backend.finishDownloadActivating("b")
+        await store.downloadSettled()
+        XCTAssertEqual(changes, 1)
+        XCTAssertFalse(store.cancelling)
+    }
+
+    func testARefusedUseIsShown() async {
+        let backend = FakeModelsBackend()
+        backend.catalogue = [.sample(id: "a")]
+        backend.failRemoval = "mode d'essai : rien ne s'écrit"
+        let store = ModelsStore(backend: backend)
+        await store.reload()
+        await store.delete(backend.catalogue[0])
+        XCTAssertEqual(store.error, "mode d'essai : rien ne s'écrit")
+    }
+}
