@@ -129,6 +129,18 @@ final class SettingsStore {
         committer.change(values, after: reloadsVoice ? engineDelay : nil)
     }
 
+    /// Vitesse et volume changés depuis le panneau (touches + - 1-4, ⌥↑↓) :
+    /// l'écran les reprend et la référence du `Committer` aussi, pour que
+    /// revenir à l'ancienne valeur écrive. Un geste, une relecture ou une
+    /// écriture en attente l'emportent : leur valeur est la plus récente.
+    func followReader(speed: Float, volume: Float) {
+        guard loaded, !dragging, !reloading, committer.isIdle else { return }
+        guard values.speed != speed || values.volume != volume else { return }
+        values.speed = speed
+        values.volume = volume
+        committer.amendSaved { $0.speed = speed; $0.volume = volume }
+    }
+
     /// Un réglage qui recharge la voix : jamais d'écriture pendant un geste.
     func engineBinding<T>(_ key: WritableKeyPath<SettingsView, T>) -> Binding<T> {
         Binding(get: { self.values[keyPath: key] }, set: { self.set(key, $0, reloadsVoice: true) })

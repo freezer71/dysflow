@@ -22,6 +22,12 @@ final class Committer<Value: Equatable> {
     private var pendingWait: Duration = .zero
     /// Ce que le moteur a déjà : une valeur identique n'est pas renvoyée.
     private(set) var saved: Value?
+    /// L'attente en cours (pause puis écriture) ; nil une fois finie.
+    private var waitingID: Int?
+    private var waitCounter = 0
+
+    /// Rien n'attend sa pause, rien n'est en vol.
+    var isIdle: Bool { waitingID == nil && inFlight == nil }
 
     convenience init(delay: Duration = .milliseconds(150), saved: Value? = nil,
                      write: @escaping (Value) async throws -> Void,
@@ -59,9 +65,20 @@ final class Committer<Value: Equatable> {
         epoch += 1
         pending?.cancel()
         pending = nil
+        waitingID = nil
         pendingWait = .zero
         saved = value
         latest = value
+    }
+
+    /// Le moteur a changé une valeur de lui-même (le panneau l'a écrite) :
+    /// la référence la suit, sans rien écrire. Revenir ensuite à l'ancienne
+    /// valeur est un vrai changement, qui part.
+    func amendSaved(_ edit: (inout Value) -> Void) {
+        guard var value = saved else { return }
+        edit(&value)
+        saved = value
+        if var l = latest { edit(&l); latest = l }
     }
 
     /// `immediate` : sans pause (relâchement d'un curseur). `pause` : une pause
@@ -70,11 +87,17 @@ final class Committer<Value: Equatable> {
         guard let saved else { return }   // pas encore chargé
         latest = value
         pending?.cancel()
-        if value == saved && inFlight == nil { pending = nil; pendingWait = .zero; return }
+        if value == saved && inFlight == nil {
+            pending = nil; pendingWait = .zero; waitingID = nil; return
+        }
         pendingWait = immediate ? .zero : max(pendingWait, pause ?? delay)
         let wait = pendingWait
         let myEpoch = epoch
+        waitCounter += 1
+        let myWait = waitCounter
+        waitingID = myWait
         pending = Task {
+            defer { if waitingID == myWait { waitingID = nil } }
             if wait > .zero {
                 do { try await Task.sleep(for: wait) } catch { return }
             }
@@ -120,6 +143,7 @@ final class Committer<Value: Equatable> {
                 // et la pause de l'attente abandonnée ne vaut plus.
                 pending?.cancel()
                 pendingWait = .zero
+                waitingID = nil
             } else {
                 change(latest, immediate: true)
             }

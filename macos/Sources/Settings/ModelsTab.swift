@@ -1,24 +1,20 @@
 import SwiftUI
 
 /// Onglet Modèles : le catalogue, installer, annuler, supprimer.
+///
+/// Le magasin vient de la fenêtre : elle suit la fin des téléchargements
+/// quel que soit l'onglet affiché.
 struct ModelsTab: View {
     let model: ReaderModel
-    @State private var store: ModelsStore
-
-    /// `settings` est le magasin des autres onglets : il relit voix, langues
-    /// et filtres quand le modèle actif change.
-    init(model: ReaderModel, settings: SettingsStore) {
-        self.model = model
-        _store = State(initialValue: ModelsStore(backend: model,
-                                                 onActiveModelChanged: { await settings.reload() },
-                                                 isDownloading: { ReaderModel.isDownloading(model.snapshot.download) }))
-    }
+    let store: ModelsStore
+    let settings: SettingsStore
 
     private var download: DownloadView? { model.snapshot.download }
 
     var body: some View {
         Form {
             ErrorText(store.error, identifier: "erreur-modeles")
+            ErrorText(settings.error, identifier: "erreur-reglages")
             Section("Catalogue") {
                 if store.catalogue.isEmpty {
                     Text("Aucun modèle proposé : cette version est compilée sans audio.cpp.")
@@ -33,10 +29,6 @@ struct ModelsTab: View {
         .formStyle(.grouped)
         .accessibilityIdentifier("onglet-modeles")
         .task { await store.reload() }
-        // Un téléchargement qui finit, échoue ou s'annule change le catalogue.
-        .onChange(of: ReaderModel.isDownloading(download)) { _, running in
-            if !running { Task { await store.downloadSettled() } }
-        }
         .alert(deletionTitle, isPresented: deletionShown, presenting: store.pendingDeletion) { m in
             // Annuler est le bouton par défaut : Retour et Échap n'effacent rien.
             Button("Annuler", role: .cancel) { store.cancelDeletion() }

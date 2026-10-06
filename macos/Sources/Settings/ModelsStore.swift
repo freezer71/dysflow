@@ -105,6 +105,22 @@ final class ModelsStore {
         if !ok || !isDownloading() { cancelling = false }
     }
 
+    /// Un téléchargement suivi : son début relève le modèle actif, sa fin le
+    /// compare. Appelé par la fenêtre, quel que soit l'onglet affiché.
+    @ObservationIgnored private var downloading = false
+
+    func downloadChanged(downloading now: Bool) async {
+        let was = downloading
+        downloading = now
+        if now, !was {
+            // L'onglet Modèles n'a peut-être jamais été ouvert : le catalogue
+            // de départ sert de référence pour voir le modèle actif changer.
+            await reload()
+        } else if !now, was {
+            await downloadSettled()
+        }
+    }
+
     /// Un téléchargement terminé, échoué ou annulé : on relit le catalogue.
     func downloadSettled() async {
         cancelling = false

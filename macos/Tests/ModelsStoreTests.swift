@@ -148,4 +148,38 @@ final class ModelsStoreTests: XCTestCase {
         store.cancelDeletion()
         XCTAssertNil(store.pendingDeletion)
     }
+
+    /// P4 : la fin d'un téléchargement relit les réglages quel que soit
+    /// l'onglet affiché, même si l'onglet Modèles n'a jamais été ouvert.
+    func testADownloadEndingWithoutTheModelsTabStillReloadsTheSettings() async {
+        let backend = FakeModelsBackend()
+        backend.catalogue = [.sample(id: "a", active: true), .sample(id: "b", installed: false)]
+        let settingsBackend = FakeSettingsBackend()
+        let settings = SettingsStore(backend: settingsBackend)
+        await settings.load()
+        let store = ModelsStore(backend: backend, onActiveModelChanged: { await settings.reload() })
+        await store.downloadChanged(downloading: true)
+        settingsBackend.capabilities = Capabilities.magpie
+        backend.finishDownloadActivating("b")
+        await store.downloadChanged(downloading: false)
+        XCTAssertEqual(settings.capabilities.family, "magpie_tts")
+    }
+
+    /// Seule la fin d'un téléchargement compte, et seulement si elle change
+    /// le modèle actif.
+    func testOnlyTheEndOfADownloadThatChangesTheModelCounts() async {
+        let backend = FakeModelsBackend()
+        backend.catalogue = [.sample(id: "a", active: true), .sample(id: "b", installed: false)]
+        var changes = 0
+        let store = ModelsStore(backend: backend, onActiveModelChanged: { changes += 1 })
+        await store.downloadChanged(downloading: false)
+        XCTAssertEqual(changes, 0, "aucun téléchargement n'a commencé")
+        await store.downloadChanged(downloading: true)
+        await store.downloadChanged(downloading: false)
+        XCTAssertEqual(changes, 0, "le modèle actif n'a pas bougé")
+        await store.downloadChanged(downloading: true)
+        backend.finishDownloadActivating("b")
+        await store.downloadChanged(downloading: false)
+        XCTAssertEqual(changes, 1)
+    }
 }

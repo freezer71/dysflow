@@ -273,4 +273,44 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertEqual(backend.maxRunning, 1, "jamais deux écritures en même temps")
         XCTAssertEqual(backend.stored.speed, 1.4)
     }
+
+    /// Vitesse et volume changés depuis le panneau (touches + - 1-4, ⌥↑↓) :
+    /// l'onglet Voix les reprend sans rien écrire, et revenir à l'ancienne
+    /// valeur écrit quand même.
+    func testSpeedAndVolumeChangedFromThePanelAreAdopted() async throws {
+        let backend = FakeSettingsBackend()
+        backend.stored.speed = 1.0
+        backend.stored.volume = 1.0
+        let store = await loadedStore(backend)
+        // Le panneau a écrit : le moteur a déjà la nouvelle valeur.
+        backend.stored.speed = 1.5
+        backend.stored.volume = 0.8
+        store.followReader(speed: 1.5, volume: 0.8)
+        XCTAssertEqual(store.values.speed, 1.5)
+        XCTAssertEqual(store.values.volume, 0.8)
+        try await Task.sleep(for: .milliseconds(80))
+        XCTAssertTrue(backend.patches.isEmpty, "reprendre n'écrit rien")
+        store.set(\.speed, 1.0)
+        let sent = await eventuallyTrue { backend.patches.count == 1 }
+        XCTAssertTrue(sent, "revenir à l'ancienne valeur écrit")
+        XCTAssertEqual(backend.patches.first?.speed, 1.0)
+        XCTAssertNil(backend.patches.first?.volume)
+    }
+
+    /// Un changement qui attend sa pause, ou un geste en cours, l'emporte sur
+    /// ce que dit le panneau.
+    func testThePanelDoesNotOverrideAnEditInProgress() async {
+        let backend = FakeSettingsBackend()
+        let store = await loadedStore(backend, delay: .seconds(30))
+        store.set(\.speed, 2.0)
+        store.followReader(speed: 1.5, volume: store.values.volume)
+        XCTAssertEqual(store.values.speed, 2.0, "écriture en attente")
+
+        let other = await loadedStore(FakeSettingsBackend())
+        other.dragChanged(true)
+        other.set(\.speed, 2.5)
+        other.followReader(speed: 1.5, volume: other.values.volume)
+        XCTAssertEqual(other.values.speed, 2.5, "geste en cours")
+        other.endDragging()
+    }
 }
