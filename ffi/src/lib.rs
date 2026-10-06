@@ -102,6 +102,8 @@ pub struct Snapshot {
     pub has_document: bool,
     pub sentence: u32,
     pub word: Option<u32>,
+    /// Part du mot lu déjà prononcée, de 0 à 1.
+    pub word_progress: f32,
     pub section: Option<u32>,
     pub playing: bool,
     pub audible: bool,
@@ -391,6 +393,7 @@ fn snapshot_of(s: view::Snapshot) -> Snapshot {
         has_document: s.has_document,
         sentence: s.sentence as u32,
         word: s.word.map(|w| w as u32),
+        word_progress: s.word_progress,
         section: s.section.map(|w| w as u32),
         playing: s.playing,
         audible: s.audible,

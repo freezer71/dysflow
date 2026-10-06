@@ -295,12 +295,23 @@ impl App {
 
     /// Index du mot prononcé, dans la phrase courante.
     pub fn current_word(&self) -> Option<usize> {
+        self.current_word_fraction().map(|(word, _)| word)
+    }
+
+    /// Mot prononcé dans la phrase courante, et la part de ce mot déjà dite.
+    pub fn current_word_fraction(&self) -> Option<(usize, f32)> {
         let position = self.player.position()?;
         let sentence = self.doc().sentence(position.sentence_id)?;
-        sentence.word_at(
+        sentence.word_fraction(
             position.elapsed.as_secs_f32(),
             position.speech.as_secs_f32(),
         )
+    }
+
+    /// La part du mot lu déjà dite : zéro tant qu'aucun son ne la mesure
+    /// (un saut en attente, une pause avant le premier son).
+    pub fn reading_word_progress(&self) -> f32 {
+        self.current_word_fraction().map_or(0.0, |(_, fraction)| fraction)
     }
 
     // ---------------------------------------------------------------- cycle

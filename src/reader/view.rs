@@ -39,6 +39,9 @@ pub struct Snapshot {
     pub sentence: usize,
     /// Index global du mot lu, s'il y en a un.
     pub word: Option<usize>,
+    /// Part du mot lu déjà prononcée, de 0 à 1 : le trait sous la ligne
+    /// avance d'autant dans le mot.
+    pub word_progress: f32,
     /// Section de la phrase courante.
     pub section: Option<usize>,
     pub playing: bool,
@@ -177,6 +180,7 @@ pub fn snapshot(reader: &Reader) -> Snapshot {
         has_document: true,
         sentence,
         word,
+        word_progress: app.reading_word_progress(),
         section: doc.section_of_sentence(sentence).map(|s| s.id),
         playing: app.player.is_playing(),
         audible: app.player.is_playing() && app.player.position().is_some(),
@@ -332,6 +336,8 @@ mod tests {
         assert_eq!(s.revision, 1);
         assert_eq!(s.sentence, 1);
         assert_eq!(s.word, Some(3));
+        // Aucun son ne mesure encore le mot : rien n'en est dit.
+        assert_eq!(s.word_progress, 0.0);
         assert_eq!(s.voice, VoiceState::Ready);
         assert!(!s.playing);
     }

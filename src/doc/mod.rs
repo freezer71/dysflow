@@ -183,6 +183,14 @@ impl Sentence {
     /// La durée vient du PCM réellement décodé, pas d'une constante : le
     /// curseur suit donc le son au lieu de dériver.
     pub fn word_at(&self, elapsed: f32, total: f32) -> Option<usize> {
+        self.word_fraction(elapsed, total).map(|(word, _)| word)
+    }
+
+    /// Le mot prononcé à `elapsed`, et la part de ce mot déjà dite (0 à 1).
+    ///
+    /// Même répartition que `word_at` : le trait sous la ligne avance dans le
+    /// mot que le surlignage désigne, et repart de zéro au mot suivant.
+    pub fn word_fraction(&self, elapsed: f32, total: f32) -> Option<(usize, f32)> {
         if self.words.is_empty() || total <= 0.0 {
             return None;
         }
@@ -194,15 +202,18 @@ impl Sentence {
         let target = ratio * sum;
         let mut acc = 0.0;
         for (i, word) in self.words.iter().enumerate() {
-            acc += word.weight();
+            let weight = word.weight();
+            let start = acc;
+            acc += weight;
             // Tolérance d'un cheveu sous la frontière : `word_start` puis
             // `word_at` repasse par des flottants et peut tomber un ulp en
             // dessous ; sans cela, un saut au mot surlignerait le précédent.
             if target < acc - sum * 1e-5 {
-                return Some(i);
+                // Un poids vaut au moins 1 : la division est sûre.
+                return Some((i, ((target - start) / weight).clamp(0.0, 1.0)));
             }
         }
-        Some(self.words.len() - 1)
+        Some((self.words.len() - 1, 1.0))
     }
 
     /// Instant où commence le mot `word`, en fraction de la parole.
@@ -353,6 +364,60 @@ mod tests {
             let start = s.word_start(word).unwrap();
             assert_eq!(s.word_at(start, 1.0), Some(word), "mot {word}");
         }
+    }
+
+    #[test]
+    fn the_fraction_grows_through_the_word_and_restarts_at_the_next() {
+        // Deux mots de même poids : chacun tient la moitié de la parole.
+        let s = sentence_of(&["deux", "mots"]);
+        assert_eq!(s.word_fraction(0.0, 1.0), Some((0, 0.0)));
+        let (word, fraction) = s.word_fraction(0.25, 1.0).unwrap();
+        assert_eq!(word, 0);
+        assert!((fraction - 0.5).abs() < 1e-5, "{fraction}");
+        let (word, fraction) = s.word_fraction(0.75, 1.0).unwrap();
+        assert_eq!(word, 1);
+        assert!((fraction - 0.5).abs() < 1e-5, "{fraction}");
+        // Au bout de la parole, et au-delà : le dernier mot, entièrement dit.
+        assert_eq!(s.word_fraction(1.0, 1.0), Some((1, 1.0)));
+        assert_eq!(s.word_fraction(3.0, 1.0), Some((1, 1.0)));
+        // Avant le début : le premier mot, rien de dit.
+        assert_eq!(s.word_fraction(-1.0, 1.0), Some((0, 0.0)));
+    }
+
+    #[test]
+    fn the_fraction_follows_the_word_weights() {
+        // « a » pèse 1, « abc » 3 : le premier mot s'achève au quart.
+        let s = sentence_of(&["a", "abc"]);
+        let (word, fraction) = s.word_fraction(0.125, 1.0).unwrap();
+        assert_eq!(word, 0);
+        assert!((fraction - 0.5).abs() < 1e-5, "{fraction}");
+        let (word, fraction) = s.word_fraction(0.625, 1.0).unwrap();
+        assert_eq!(word, 1);
+        assert!((fraction - 0.5).abs() < 1e-5, "{fraction}");
+    }
+
+    #[test]
+    fn at_a_word_start_the_fraction_is_zero_and_agrees_with_word_at() {
+        let s = sentence_of(&["un", "deux", "trois", "quatre"]);
+        for word in 0..4 {
+            let start = s.word_start(word).unwrap();
+            // Même tolérance que `word_at` : un ulp sous la frontière reste
+            // au début du mot, pas à la fin du précédent.
+            let (w, fraction) = s.word_fraction(start, 1.0).unwrap();
+            assert_eq!(w, word, "mot {word}");
+            assert!((0.0..1e-3).contains(&fraction), "mot {word} : {fraction}");
+            for t in [start, start + 0.01, start + 0.1] {
+                let word_of = s.word_fraction(t, 1.0).map(|(w, _)| w);
+                assert_eq!(word_of, s.word_at(t, 1.0), "à {t}");
+            }
+        }
+    }
+
+    #[test]
+    fn no_words_or_no_speech_has_no_fraction() {
+        let s = sentence_of(&["un"]);
+        assert_eq!(s.word_fraction(0.5, 0.0), None);
+        assert_eq!(sentence_of(&[]).word_fraction(0.5, 1.0), None);
     }
 
     #[test]
