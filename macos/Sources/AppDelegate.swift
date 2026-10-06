@@ -14,6 +14,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private(set) var reader: SillonReader!
     private(set) var model: ReaderModel!
     private(set) var panel: PanelController!
+    /// Le magasin de la fenêtre des réglages tant qu'elle existe.
+    weak var settingsStore: SettingsStore?
+
+    /// Un réglage qui attend sa pause part avant la fin, attente bornée.
+    func applicationWillTerminate(_ notification: Notification) {
+        guard let store = settingsStore else { return }
+        var done = false
+        Task { @MainActor in await store.flush(); done = true }
+        let deadline = Date().addingTimeInterval(1.5)
+        while !done, Date() < deadline {
+            RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+        }
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         ReadingFont.registerBundled()

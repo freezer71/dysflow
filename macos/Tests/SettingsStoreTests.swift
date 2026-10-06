@@ -159,4 +159,110 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertEqual(backend.patches.last?.speed, 1.6)
         XCTAssertEqual(store.values.speed, 1.6)
     }
+
+    /// Course : un changement fait pendant la relecture survit à l'écran, et
+    /// seul ce champ part, par-dessus la config relue.
+    func testChangeDuringReloadSurvivesAndWritesOnlyThatField() async throws {
+        let backend = GatedSettingsBackend()
+        let store = SettingsStore(backend: backend, delay: .milliseconds(20))
+        await store.load()
+        backend.stored.voice = "Aria"        // changé ailleurs (nouveau modèle)
+        backend.stored.language = "de"
+        backend.gateLoads = true
+        let reloading = Task { await store.reload() }
+        _ = await eventuallyTrue { backend.waitingLoads == 1 }
+        store.set(\.speed, 1.7)
+        backend.releaseLoad()
+        await reloading.value
+        XCTAssertEqual(store.values.speed, 1.7, "le changement reste à l'écran")
+        XCTAssertEqual(store.values.voice, "Aria")
+        let sent = await eventuallyTrue { backend.patches.count == 1 }
+        XCTAssertTrue(sent)
+        var expected = SettingsPatch.empty
+        expected.speed = 1.7
+        XCTAssertEqual(backend.patches, [expected], "pas d'ancienne voix ni langue réécrites")
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(backend.patches.count, 1)
+    }
+
+    /// Deux relectures qui se chevauchent : seule la dernière s'applique.
+    func testOnlyTheLatestOverlappingReloadApplies() async {
+        let backend = GatedSettingsBackend()
+        let store = SettingsStore(backend: backend, delay: .milliseconds(20))
+        await store.load()
+        backend.gateLoads = true
+        backend.stored.voice = "ancienne"
+        let first = Task { await store.reload() }
+        _ = await eventuallyTrue { backend.waitingLoads == 1 }
+        backend.stored.voice = "récente"
+        let second = Task { await store.reload() }
+        _ = await eventuallyTrue { backend.waitingLoads == 2 }
+        backend.releaseLoad()    // la première rend « ancienne » (lue avant)
+        await first.value
+        XCTAssertNotEqual(store.values.voice, "ancienne")
+        backend.releaseLoad()
+        await second.value
+        XCTAssertEqual(store.values.voice, "récente")
+    }
+
+    /// Une relecture pendant un glissé remet le glissé à zéro.
+    func testReloadResetsTheDragState() async {
+        let backend = FakeSettingsBackend()
+        let store = await loadedStore(backend)
+        store.dragChanged(true)
+        await store.reload()
+        store.set(\.speed, 1.5)
+        let sent = await eventuallyTrue { backend.patches.count == 1 }
+        XCTAssertTrue(sent, "plus de glissé en cours : le changement part")
+    }
+
+    /// `flush` public : ce qui attend sa pause part tout de suite.
+    func testStoreFlushWritesAtOnce() async {
+        let backend = FakeSettingsBackend()
+        let store = await loadedStore(backend, delay: .seconds(30))
+        store.set(\.speed, 1.9)
+        await store.flush()
+        XCTAssertEqual(backend.patches.count, 1)
+    }
+
+    /// Un `flush` pendant une écriture qui porte déjà la valeur n'en ajoute pas.
+    func testFlushDuringTheSameWriteAddsNothing() async {
+        let backend = GatedSettingsBackend()
+        backend.gateWrites = true
+        let store = SettingsStore(backend: backend, delay: .zero)
+        await store.load()
+        store.set(\.speed, 2.2)
+        _ = await eventuallyTrue { backend.waitingWrites == 1 }
+        let flushing = Task { await store.flush() }
+        try? await Task.sleep(for: .milliseconds(50))
+        backend.releaseWrite()
+        await flushing.value
+        XCTAssertEqual(backend.patches.count, 1)
+    }
+
+    /// Trois changements pendant une écriture en vol : écritures en série, la dernière gagne.
+    func testWritesAreSerialisedAndTheLastWins() async throws {
+        let backend = GatedSettingsBackend()
+        backend.gateWrites = true
+        let store = SettingsStore(backend: backend, delay: .milliseconds(5))
+        await store.load()
+        store.set(\.speed, 1.1)
+        _ = await eventuallyTrue { backend.waitingWrites == 1 }
+        store.set(\.speed, 1.2)
+        try await Task.sleep(for: .milliseconds(30))
+        store.set(\.speed, 1.3)
+        try await Task.sleep(for: .milliseconds(30))
+        store.set(\.speed, 1.4)
+        try await Task.sleep(for: .milliseconds(30))
+        XCTAssertEqual(backend.patches.count, 1, "rien ne part tant que la première n'est pas finie")
+        backend.releaseWrite()
+        _ = await eventuallyTrue { backend.waitingWrites == 1 }
+        backend.releaseWrite()
+        _ = await eventuallyTrue { backend.patches.count == 2 && backend.running == 0 }
+        try await Task.sleep(for: .milliseconds(60))
+        XCTAssertEqual(backend.patches.count, 2)
+        XCTAssertEqual(backend.patches.last?.speed, 1.4)
+        XCTAssertEqual(backend.maxRunning, 1, "jamais deux écritures en même temps")
+        XCTAssertEqual(backend.stored.speed, 1.4)
+    }
 }

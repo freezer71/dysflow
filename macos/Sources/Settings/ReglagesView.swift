@@ -22,7 +22,12 @@ struct ReglagesView: View {
         .navigationTitle("Réglages")
         .frame(width: 600, height: 540)
         .font(.system(size: 13))
-        .task { await store.load() }
+        .task {
+            AppDelegate.shared?.settingsStore = store
+            await store.load()
+        }
+        // Fermer la fenêtre n'abandonne pas un changement qui attend sa pause.
+        .onDisappear { Task { await store.flush() } }
         // Panneau masqué, l'état de la voix (chargement, repli, aperçu) n'est
         // plus relu : la fenêtre le relit à 4 Hz tant qu'elle est ouverte. Un
         // instantané se lit sous verrou, sans passer par le fil du lecteur.

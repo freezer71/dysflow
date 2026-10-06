@@ -49,3 +49,43 @@ final class FakeSettingsBackend: SettingsBackend {
     func previewVoice() async throws { log.append("écoute") }
     func stopPreview() async { log.append("arrêt") }
 }
+
+/// Un moteur dont les lectures et les écritures attendent qu'on les libère :
+/// pour provoquer les courses (changement pendant une relecture, écritures
+/// qui se chevauchent).
+@MainActor
+final class GatedSettingsBackend: SettingsBackend {
+    var stored = SettingsView.defaults
+    var gateLoads = false
+    var gateWrites = false
+    private(set) var patches: [SettingsPatch] = []
+    private(set) var running = 0
+    private(set) var maxRunning = 0
+    private var loadGates: [CheckedContinuation<Void, Never>] = []
+    private var writeGates: [CheckedContinuation<Void, Never>] = []
+    var waitingLoads: Int { loadGates.count }
+    var waitingWrites: Int { writeGates.count }
+
+    func releaseLoad() { if !loadGates.isEmpty { loadGates.removeFirst().resume() } }
+    func releaseWrite() { if !writeGates.isEmpty { writeGates.removeFirst().resume() } }
+
+    func loadSettings() async -> SettingsView {
+        if gateLoads { await withCheckedContinuation { loadGates.append($0) } }
+        return stored
+    }
+    func loadCapabilities() async -> ModelCapabilities { Capabilities.supertonic }
+
+    func updateSettings(_ patch: SettingsPatch) async throws -> SettingsView {
+        running += 1
+        maxRunning = max(maxRunning, running)
+        patches.append(patch)
+        if gateWrites { await withCheckedContinuation { writeGates.append($0) } }
+        if let v = patch.voice { stored.voice = v }
+        if let v = patch.speed { stored.speed = v }
+        if let v = patch.language { stored.language = v }
+        running -= 1
+        return stored
+    }
+    func previewVoice() async throws {}
+    func stopPreview() async {}
+}

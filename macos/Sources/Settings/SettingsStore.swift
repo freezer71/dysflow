@@ -24,6 +24,11 @@ final class SettingsStore {
     @ObservationIgnored private let backend: SettingsBackend
     @ObservationIgnored private var committer: Committer<SettingsView>!
     @ObservationIgnored private var dragging = false
+    /// Un `reload` est en cours : les changements faits entre-temps sont mis
+    /// de côté et rejoués sur ce qui vient d'être relu, sans rien écrire d'ancien.
+    @ObservationIgnored private var reloading = false
+    @ObservationIgnored private var queuedEdits: [(inout SettingsView) -> Void] = []
+    @ObservationIgnored private var reloadGeneration = 0
 
     private(set) var values = SettingsView.defaults
     private(set) var capabilities = ModelCapabilities(family: "", voices: [], languages: [],
@@ -39,7 +44,9 @@ final class SettingsStore {
     init(backend: SettingsBackend, delay: Duration = .milliseconds(150)) {
         self.backend = backend
         committer = Committer(delay: delay, writeApplied: { [backend] new, old in
-            try await backend.updateSettings(SettingsDiff.patch(from: old, to: new))
+            let patch = SettingsDiff.patch(from: old, to: new)
+            if patch.isEmpty { return new }   // rien à écrire
+            return try await backend.updateSettings(patch)
         }, onApplied: { [weak self] sent, applied in
             // Une valeur changée depuis l'envoi reste : elle partira à son tour.
             guard let self, self.values == sent else { return }
@@ -67,17 +74,35 @@ final class SettingsStore {
     /// actif (la voix, la langue et les réglages honorés peuvent avoir changé).
     /// Ce qui attend encore sa pause part d'abord, pour ne pas être perdu.
     func reload() async {
+        reloadGeneration += 1
+        let generation = reloadGeneration
+        reloading = true
         await committer.flush()
         let fresh = await backend.loadSettings()
-        capabilities = await backend.loadCapabilities()
+        let freshCapabilities = await backend.loadCapabilities()
+        // Un `reload` plus récent a pris la suite : lui seul s'applique.
+        guard generation == reloadGeneration else { return }
+        capabilities = freshCapabilities
         committer.prime(fresh)
+        dragging = false
         values = fresh
         loaded = true
+        reloading = false
+        let edits = queuedEdits
+        queuedEdits = []
+        // Les changements faits pendant la relecture reviennent par-dessus.
+        for edit in edits { edit(&values) }
+        if !edits.isEmpty { committer.change(values) }
     }
+
+    /// Écrit tout de suite ce qui attend sa pause (fermeture de la fenêtre,
+    /// fin de l'application).
+    func flush() async { await committer.flush() }
 
     /// Change un réglage : l'écran suit tout de suite, l'écriture après la pause.
     func set<T>(_ key: WritableKeyPath<SettingsView, T>, _ value: T) {
         values[keyPath: key] = value
+        if reloading { queuedEdits.append { $0[keyPath: key] = value }; return }
         guard loaded, !dragging else { return }
         committer.change(values)
     }
@@ -92,7 +117,7 @@ final class SettingsStore {
     /// une seule écriture tout de suite.
     func dragChanged(_ editing: Bool) {
         dragging = editing
-        if !editing, loaded { committer.change(values, immediate: true) }
+        if !editing, loaded, !reloading { committer.change(values, immediate: true) }
     }
 
     func isIgnored(_ key: SettingKey) -> Bool { key.isIgnored(honoured: capabilities.honoured) }

@@ -11,7 +11,10 @@ final class Committer<Value: Equatable> {
     private let onApplied: (_ sent: Value, _ applied: Value) -> Void
     private let onResult: (Error?) -> Void
     private var pending: Task<Void, Never>?
-    private var inFlight: Task<Value, Error>?
+    private var inFlight: (id: Int, value: Value, job: Task<Value, Error>)?
+    private var jobCounter = 0
+    /// Change à chaque `prime` : ce qui date d'avant ne compte plus.
+    private var epoch = 0
     /// La dernière valeur demandée, pour `flush`.
     private var latest: Value?
     /// Ce que le moteur a déjà : une valeur identique n'est pas renvoyée.
@@ -46,8 +49,13 @@ final class Committer<Value: Equatable> {
         self.onResult = onResult
     }
 
-    /// Fixe la valeur de départ (chargée du moteur) sans rien écrire.
+    /// Fixe la valeur de départ (chargée du moteur) sans rien écrire. Tout ce
+    /// qui avait été demandé avant (attente ou écriture en vol) est périmé :
+    /// ni son écriture, ni son résultat ne touchent plus la référence.
     func prime(_ value: Value) {
+        epoch += 1
+        pending?.cancel()
+        pending = nil
         saved = value
         latest = value
     }
@@ -59,24 +67,36 @@ final class Committer<Value: Equatable> {
         pending?.cancel()
         if value == saved && inFlight == nil { pending = nil; return }
         let wait = immediate ? .zero : delay
+        let myEpoch = epoch
         pending = Task {
             if wait > .zero {
                 do { try await Task.sleep(for: wait) } catch { return }
             }
-            if let inFlight { _ = try? await inFlight.value }
-            if Task.isCancelled { return }
-            let previous = self.saved ?? value
+            // Une écriture en vol passe d'abord ; on relit tout après l'attente.
+            while let flying = inFlight {
+                _ = try? await flying.job.value
+                if Task.isCancelled || epoch != myEpoch { return }
+                // La tâche propriétaire nettoie `inFlight` à son tour : on lui laisse la main.
+                if inFlight?.id == flying.id { await Task.yield() }
+            }
+            if Task.isCancelled || epoch != myEpoch { return }
+            guard let previous = self.saved, value != previous else { return }
+            jobCounter += 1
+            let id = jobCounter
             let job = Task { try await write(value, previous) }
-            inFlight = job
+            inFlight = (id: id, value: value, job: job)
             do {
                 let applied = try await job.value
-                self.saved = applied
-                onApplied(value, applied)
-                onResult(nil)
+                if epoch == myEpoch {
+                    self.saved = applied
+                    onApplied(value, applied)
+                    onResult(nil)
+                }
             } catch {
-                onResult(error)
+                if epoch == myEpoch { onResult(error) }
             }
-            inFlight = nil
+            // Seulement si c'est encore la nôtre : une autre peut avoir pris la place.
+            if inFlight?.id == id { inFlight = nil }
         }
     }
 
@@ -84,8 +104,14 @@ final class Committer<Value: Equatable> {
     /// l'écriture faite : « Écouter » ne doit pas partir avant la voix choisie.
     func flush() async {
         if let latest, let saved, latest != saved {
-            change(latest, immediate: true)
+            if inFlight?.value == latest {
+                // L'écriture en vol porte déjà la dernière valeur : rien de plus.
+                pending?.cancel()
+            } else {
+                change(latest, immediate: true)
+            }
         }
         await pending?.value
+        _ = try? await inFlight?.job.value
     }
 }
