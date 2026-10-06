@@ -78,6 +78,9 @@ final class Committer<Value: Equatable> {
             if wait > .zero {
                 do { try await Task.sleep(for: wait) } catch { return }
             }
+            // Une tâche annulée avant d'avoir tourné (sans pause, rien ne l'a
+            // interrompue) ne touche pas à la pause de celle qui l'a remplacée.
+            if Task.isCancelled || epoch != myEpoch { return }
             pendingWait = .zero
             // Une écriture en vol passe d'abord. Elle met à jour `saved` et vide
             // `inFlight` dans sa propre tâche : une fois attendue, tout est à jour.
@@ -113,8 +116,10 @@ final class Committer<Value: Equatable> {
     func flush() async {
         if let latest, let saved, latest != saved {
             if inFlight?.value == latest {
-                // L'écriture en vol porte déjà la dernière valeur : rien de plus.
+                // L'écriture en vol porte déjà la dernière valeur : rien de plus,
+                // et la pause de l'attente abandonnée ne vaut plus.
                 pending?.cancel()
+                pendingWait = .zero
             } else {
                 change(latest, immediate: true)
             }

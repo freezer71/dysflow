@@ -119,4 +119,44 @@ final class CommitterTests: XCTestCase {
         await c.flush()
         XCTAssertEqual(writes, [4], "rien de plus à écrire")
     }
+
+    /// Une tâche annulée avant d'avoir tourné (changement immédiat aussitôt
+    /// remplacé) ne remet pas à zéro la pause longue de celle qui la remplace.
+    func testACancelledImmediateChangeKeepsTheLongPause() async throws {
+        var writes: [Int] = []
+        let c = Committer<Int>(delay: .milliseconds(20), saved: 0, write: { writes.append($0) })
+        c.change(1, immediate: true)
+        c.change(2, after: .milliseconds(600))
+        try await Task.sleep(for: .milliseconds(30))   // la première tâche, annulée, tourne
+        c.change(3)                                       // modification ordinaire
+        try await Task.sleep(for: .milliseconds(250))
+        XCTAssertTrue(writes.isEmpty, "la pause longue tient encore : \(writes)")
+        let ok = await eventually { writes == [3] }
+        XCTAssertTrue(ok)
+    }
+
+    /// `flush` qui renonce à l'attente (l'écriture en vol porte déjà la
+    /// valeur) oublie aussi sa pause longue : la modification suivante
+    /// attend la pause ordinaire.
+    func testFlushThatDropsThePendingWriteAlsoForgetsItsPause() async throws {
+        var writes: [Int] = []
+        var gate: CheckedContinuation<Void, Never>?
+        let c = Committer<Int>(delay: .milliseconds(20), saved: 0, write: { v in
+            if v == 1 { await withCheckedContinuation { gate = $0 } }
+            writes.append(v)
+        })
+        c.change(1, immediate: true)
+        _ = await eventually { gate != nil }              // 1 est en vol
+        c.change(2, after: .seconds(30))                  // pause longue
+        c.change(1)                                       // retour à la valeur en vol
+        let flushed = Task { await c.flush() }
+        try await Task.sleep(for: .milliseconds(20))
+        gate?.resume()
+        await flushed.value
+        XCTAssertEqual(writes, [1])
+        c.change(3)
+        let ok = await eventually { writes == [1, 3] }
+        // `eventually` attend 5 s au plus : la pause longue de 30 s le ferait échouer.
+        XCTAssertTrue(ok, "la pause ordinaire, pas celle de 30 s : \(writes)")
+    }
 }
