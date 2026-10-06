@@ -8,6 +8,7 @@ struct ReadingTab: View {
 
     var body: some View {
         Form {
+            ErrorText(store.error, identifier: "erreur-reglages")
             Section("Texte") {
                 LabeledContent("Police de lecture") {
                     PopUpPicker(label: "Police de lecture", identifier: "police-lecture",
@@ -37,7 +38,6 @@ struct ReadingTab: View {
                     .accessibilityLabel("Pas de l'avance rapide")
                     .accessibilityValue(Self.seekText(Int(store.values.seekStep)))
             }
-            if let error = store.error { Text(error).foregroundStyle(.red) }
         }
         .formStyle(.grouped)
         .accessibilityIdentifier("onglet-lecture")

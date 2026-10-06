@@ -8,13 +8,12 @@ struct GeneralTab: View {
     @State private var login = false
     @State private var bookmarks: [StoredBookmarkView] = []
     @State private var cacheReport: String?
-    @State private var dataError: String? {
-        didSet { if let dataError { GeneralTab.announce(dataError) } }
-    }
+    @State private var dataError = ErrorNote()
     @State private var pendingRemoval: StoredBookmarkView?
 
     var body: some View {
         Form {
+            ErrorText(store.error, identifier: "erreur-reglages")
             Section("Démarrage") {
                 Toggle("Ouvrir sillon à la connexion", isOn: $login)
                     .onAppear { login = LoginItem.isEnabled }
@@ -39,7 +38,7 @@ struct GeneralTab: View {
                 Text("Les documents se reconstruisent à la prochaine ouverture")
                 Button("Ouvrir le dossier de configuration") { openConfigFolder() }
                     .disabled(model.configDirectory == nil)
-                if let dataError { Text(dataError).foregroundStyle(.red) }
+                ErrorText(dataError.text, identifier: "erreur-donnees")
             }
             Section("Signets") {
                 if bookmarks.isEmpty { Text("Aucun signet") }
@@ -60,7 +59,6 @@ struct GeneralTab: View {
                     }
                 }
             }
-            if let error = store.error { Text(error).foregroundStyle(.red) }
         }
         .formStyle(.grouped)
         .accessibilityIdentifier("onglet-general")
@@ -90,23 +88,16 @@ struct GeneralTab: View {
 
     private func reload() async { bookmarks = await model.loadAllBookmarks() }
 
-    /// Dit à VoiceOver ce qui vient d'apparaître à l'écran.
-    static func announce(_ text: String) {
-        guard NSWorkspace.shared.isVoiceOverEnabled, let window = NSApp.keyWindow else { return }
-        NSAccessibility.post(element: window, notification: .announcementRequested,
-                             userInfo: [.announcement: text, .priority: NSAccessibilityPriorityLevel.high.rawValue])
-    }
-
     private func clearCache() {
         Task {
             do {
                 let text = CacheReport.text(freed: try await model.clearDocumentCache())
                 cacheReport = text
-                GeneralTab.announce(text)
-                dataError = nil
+                Announcement.post(text)
+                dataError.clear()
             } catch {
                 cacheReport = nil
-                dataError = SettingsStore.message(of: error)
+                dataError.fail(SettingsStore.message(of: error))
             }
         }
     }
@@ -115,9 +106,9 @@ struct GeneralTab: View {
         Task {
             do {
                 try await model.removeBookmarkAsync(document: b.document, sentence: b.sentence)
-                dataError = nil
+                dataError.clear()
             } catch {
-                dataError = SettingsStore.message(of: error)
+                dataError.fail(SettingsStore.message(of: error))
             }
             await reload()
         }
@@ -130,11 +121,11 @@ struct GeneralTab: View {
         do {
             try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         } catch {
-            dataError = "Le dossier de configuration est introuvable : \(error.localizedDescription)"
+            dataError.fail("Le dossier de configuration est introuvable : \(error.localizedDescription)")
             return
         }
-        if NSWorkspace.shared.open(url) { dataError = nil } else {
-            dataError = "Le dossier de configuration ne s'ouvre pas"
+        if NSWorkspace.shared.open(url) { dataError.clear() } else {
+            dataError.fail("Le dossier de configuration ne s'ouvre pas")
         }
     }
 }

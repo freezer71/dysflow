@@ -11,14 +11,14 @@ struct ModelsTab: View {
         self.model = model
         _store = State(initialValue: ModelsStore(backend: model,
                                                  onActiveModelChanged: { await settings.reload() },
-                                                 isDownloading: { ReaderModel.isDownloading(model.snapshot.download) },
-                                                 announce: { GeneralTab.announce($0) }))
+                                                 isDownloading: { ReaderModel.isDownloading(model.snapshot.download) }))
     }
 
     private var download: DownloadView? { model.snapshot.download }
 
     var body: some View {
         Form {
+            ErrorText(store.error, identifier: "erreur-modeles")
             Section("Catalogue") {
                 if store.catalogue.isEmpty {
                     Text("Aucun modèle proposé : cette version est compilée sans audio.cpp.")
@@ -28,10 +28,6 @@ struct ModelsTab: View {
             if let free = store.freeSpace {
                 Text("Espace libre : \(ByteCountFormatter.string(fromByteCount: Int64(free), countStyle: .file))")
                     .accessibilityIdentifier("espace-libre")
-            }
-            if let error = store.error {
-                Text(error).foregroundStyle(.red)
-                    .accessibilityIdentifier("erreur-modeles")
             }
         }
         .formStyle(.grouped)
@@ -59,7 +55,7 @@ struct ModelsTab: View {
                 Text("\(m.languagesLabel) · \(ByteCountFormatter.string(fromByteCount: Int64(m.bytes), countStyle: .file)) · \(m.precision.uppercased())")
                 Text(m.pace)
                 if let d = download, d.id == m.id, let failed = d.failed {
-                    Text("Téléchargement interrompu : \(failed)").foregroundStyle(.red)
+                    ErrorText("Téléchargement interrompu : \(failed)", identifier: "erreur-telechargement")
                 }
             }
             Spacer()

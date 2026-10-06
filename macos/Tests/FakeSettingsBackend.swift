@@ -47,7 +47,13 @@ final class FakeSettingsBackend: SettingsBackend {
         return stored
     }
 
-    func previewVoice() async throws { log.append("écoute") }
+    /// Refus rendu par chaque « Écouter ».
+    var failPreview: String?
+
+    func previewVoice() async throws {
+        log.append("écoute")
+        if let failPreview { throw SillonError.Failed(message: failPreview) }
+    }
     func stopPreview() async { log.append("arrêt") }
 }
 

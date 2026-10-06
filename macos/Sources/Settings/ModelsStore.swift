@@ -29,7 +29,8 @@ final class ModelsStore {
     @ObservationIgnored private let backend: ModelsBackend
     private(set) var catalogue: [VoiceModel] = []
     private(set) var freeSpace: UInt64?
-    private(set) var error: String?
+    var error: String? { note.text }
+    @ObservationIgnored private let note: ErrorNote
     /// Le modèle dont la suppression attend confirmation.
     var pendingDeletion: VoiceModel?
     /// Une annulation est demandée ; le transfert la voit à son prochain bloc.
@@ -42,23 +43,18 @@ final class ModelsStore {
     /// Un téléchargement tourne-t-il encore ? Sert à ne pas laisser
     /// « Annulation… » collé quand aucune fin de transfert ne suivra.
     @ObservationIgnored private let isDownloading: () -> Bool
-    /// Dit un refus à VoiceOver, chaque fois, même s'il est identique au précédent.
-    @ObservationIgnored private let announce: (String) -> Void
-
     init(backend: ModelsBackend,
          onActiveModelChanged: @escaping () async -> Void = {},
          isDownloading: @escaping () -> Bool = { false },
-         announce: @escaping (String) -> Void = { _ in }) {
+         announce: ((String) -> Void)? = nil) {
         self.backend = backend
         self.onActiveModelChanged = onActiveModelChanged
         self.isDownloading = isDownloading
-        self.announce = announce
+        // Un refus est dit à VoiceOver chaque fois, même identique au précédent.
+        note = ErrorNote(announce: announce)
     }
 
-    private func fail(_ text: String) {
-        error = text
-        announce(text)
-    }
+    private func fail(_ text: String) { note.fail(text) }
 
     func reload() async {
         if cancelling, !isDownloading() { cancelling = false }
@@ -78,7 +74,7 @@ final class ModelsStore {
     func askDeletion(_ model: VoiceModel) {
         switch Self.deletionRequest(for: model) {
         case .refuse(let reason): fail(reason)
-        case .confirm: error = nil; pendingDeletion = model
+        case .confirm: note.clear(); pendingDeletion = model
         }
     }
 
@@ -87,7 +83,7 @@ final class ModelsStore {
     /// L'alerte est refusée : rien n'a changé, un refus ancien ne reste pas.
     func cancelDeletion() {
         pendingDeletion = nil
-        error = nil
+        note.clear()
     }
 
     func delete(_ model: VoiceModel) async {
@@ -120,7 +116,7 @@ final class ModelsStore {
 
     @discardableResult
     private func run(_ action: () async throws -> Void) async -> Bool {
-        error = nil
+        note.clear()
         var ok = true
         do {
             try await action()

@@ -37,9 +37,11 @@ final class SettingsStore {
     /// Afficher aussi les réglages que le modèle actif ignore.
     var showIgnored = false
     /// La dernière écriture refusée ; le réglage reste affiché.
-    private(set) var error: String?
+    var error: String? { writeError.text }
     /// Le refus du dernier « Écouter ».
-    private(set) var previewNote: String?
+    var previewNote: String? { previewError.text }
+    @ObservationIgnored private let writeError: ErrorNote
+    @ObservationIgnored private let previewError: ErrorNote
 
     @ObservationIgnored private let engineDelay: Duration
     @ObservationIgnored private let dragTimeout: Duration
@@ -49,9 +51,13 @@ final class SettingsStore {
     /// calcul, fils, sessions, phrases d'avance) ; une rafale de pressions
     /// ne recharge qu'une fois. `dragTimeout` : un geste sans relâchement
     /// au bout de ce temps est abandonné.
+    /// `announce` : ce qui dit un refus à VoiceOver (VoiceOver lui-même par défaut).
     init(backend: SettingsBackend, delay: Duration = .milliseconds(150),
-         engineDelay: Duration = .milliseconds(800), dragTimeout: Duration = .seconds(3)) {
+         engineDelay: Duration = .milliseconds(800), dragTimeout: Duration = .seconds(3),
+         announce: ((String) -> Void)? = nil) {
         self.backend = backend
+        writeError = ErrorNote(announce: announce)
+        previewError = ErrorNote(announce: announce)
         self.engineDelay = engineDelay
         self.dragTimeout = dragTimeout
         committer = Committer(delay: delay, writeApplied: { [backend] new, old in
@@ -63,7 +69,8 @@ final class SettingsStore {
             guard let self, self.values == sent else { return }
             self.values = applied
         }, onResult: { [weak self] error in
-            self?.error = error.map(SettingsStore.message(of:))
+            guard let self else { return }
+            if let error { self.writeError.fail(SettingsStore.message(of: error)) } else { self.writeError.clear() }
         })
     }
 
@@ -170,9 +177,9 @@ final class SettingsStore {
 
     /// La phrase d'exemple, avec ce qui vient d'être choisi.
     func listen() async {
-        previewNote = nil
+        previewError.clear()
         await committer.flush()
-        do { try await backend.previewVoice() } catch { previewNote = Self.message(of: error) }
+        do { try await backend.previewVoice() } catch { previewError.fail(Self.message(of: error)) }
     }
 
     func stopListening() async { await backend.stopPreview() }

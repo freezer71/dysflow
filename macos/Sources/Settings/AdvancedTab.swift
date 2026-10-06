@@ -2,14 +2,18 @@ import SwiftUI
 
 /// Onglet Avancé : le moteur, l'échantillonnage, les options libres.
 struct AdvancedTab: View {
+    let model: ReaderModel
     @Bindable var store: SettingsStore
     @State private var newKey = ""
     @State private var newValue = ""
-    @State private var extraError: String?
+    @State private var extraError = ErrorNote()
 
     var body: some View {
         Form {
+            ErrorText(store.error, identifier: "erreur-reglages")
             Section("Moteur") {
+                // Les changements d'ici rechargent la voix : on voit le chargement.
+                VoiceStateLine(state: model.snapshot.voice)
                 LabeledContent("Moteur") {
                     PopUpPicker(label: "Moteur", identifier: "moteur",
                                 options: Self.engineOptions(current: store.values.engine),
@@ -96,10 +100,9 @@ struct AdvancedTab: View {
                     Button("Ajouter") { add() }
                         .disabled(newKey.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
-                if let extraError { Text(extraError).foregroundStyle(.red) }
+                ErrorText(extraError.text, identifier: "erreur-option")
                 Text("Transmises telles quelles au modèle (section [extra] de config.toml).")
             }
-            if let error = store.error { Text(error).foregroundStyle(.red) }
         }
         .formStyle(.grouped)
         .accessibilityIdentifier("onglet-avance")
@@ -108,13 +111,13 @@ struct AdvancedTab: View {
 
     private func add() {
         guard let next = ExtraOptions.adding(key: newKey, value: newValue, to: store.values.extra) else {
-            extraError = "Il faut une clé, sans « = »."
+            extraError.fail("Il faut une clé, sans « = ».")
             return
         }
         store.set(\.extra, next)
         newKey = ""
         newValue = ""
-        extraError = nil
+        extraError.clear()
     }
 
     static func engineOptions(current: String) -> [(title: String, value: String)] {

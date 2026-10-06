@@ -21,19 +21,14 @@ final class VoiceTabTests: XCTestCase {
 
     func testTheVoiceStateLine() {
         XCTAssertEqual(VoiceTab.voiceLine(.loading), "Voix en chargement…")
-        XCTAssertEqual(VoiceTab.voiceLine(.fallback(reason: "modèle absent")),
-                       "Voix du système : modèle absent")
         XCTAssertNil(VoiceTab.voiceLine(.ready))
+        XCTAssertNil(VoiceTab.voiceLine(.resting))
     }
 
-    /// Les capacités disent la famille configurée même quand la voix du
-    /// système parle à sa place : la liste des voix le signale.
-    func testTheFallbackIsAnnouncedAboveTheVoices() {
-        XCTAssertEqual(VoiceTab.fallbackNotice(.fallback(reason: "fichier manquant")),
-                       "Voix du système en repli — le modèle n'a pas pu se charger")
-        XCTAssertNil(VoiceTab.fallbackNotice(.ready))
-        XCTAssertNil(VoiceTab.fallbackNotice(.loading))
-        XCTAssertNil(VoiceTab.fallbackNotice(.resting))
+    /// 1c : le repli se dit une seule fois, avec sa raison.
+    func testTheFallbackIsSaidOnceWithItsReason() {
+        XCTAssertEqual(VoiceTab.voiceLine(.fallback(reason: "fichier manquant")),
+                       "Voix du système en repli : fichier manquant")
     }
 
     func testThePreviewLineSaysWhyFirst() {

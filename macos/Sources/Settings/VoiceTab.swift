@@ -8,31 +8,24 @@ struct VoiceTab: View {
     let model: ReaderModel
     @Bindable var store: SettingsStore
     @State private var installed: [VoiceModel] = []
-    @State private var modelError: String?
+    @State private var modelError = ErrorNote()
 
     var body: some View {
         Form {
+            ErrorText(store.error, identifier: "erreur-reglages")
             Section("Modèle") {
                 LabeledContent("Modèle actif") {
                     PopUpPicker(label: "Modèle actif", identifier: "modele-actif",
                                 options: Self.modelOptions(installed), selection: activeModel)
                         .fixedSize()
                 }
-                if let line = Self.voiceLine(model.snapshot.voice) {
-                    Text(line).accessibilityIdentifier("etat-voix")
-                }
+                VoiceStateLine(state: model.snapshot.voice)
                 if case .fallback = model.snapshot.voice {
                     Button("Voir les modèles") { SettingsNavigation.shared.select(.models) }
                 }
-                if let modelError { Text(modelError).foregroundStyle(.red) }
+                ErrorText(modelError.text, identifier: "erreur-modele-actif")
             }
             Section("Voix") {
-                // Les capacités disent le modèle configuré, même quand la voix
-                // du système parle à sa place : ses voix ne sont pas celles
-                // qu'on entend.
-                if let notice = Self.fallbackNotice(model.snapshot.voice) {
-                    Text(notice).accessibilityIdentifier("voix-en-repli")
-                }
                 voicePicker
                 HStack {
                     Button("Écouter") { Task { await store.listen() } }
@@ -56,7 +49,7 @@ struct VoiceTab: View {
                 }
                 if store.isShown(.speed) {
                     IgnorableNote(ignored: store.isIgnored(.speed)) {
-                        Slider(value: store.binding(\.speed), in: 0.5...3, step: 0.05) {
+                        Slider(value: rounded(\.speed), in: 0.5...3, step: 0.05) {
                             Text("Vitesse : \(SettingFormat.decimal(store.values.speed))×")
                         } onEditingChanged: { store.dragChanged($0) }
                         .accessibilityLabel("Vitesse de lecture")
@@ -64,7 +57,7 @@ struct VoiceTab: View {
                     }
                 }
                 // Le volume s'applique tout de suite, sans resynthèse.
-                Slider(value: store.binding(\.volume), in: 0...2, step: 0.05) {
+                Slider(value: rounded(\.volume), in: 0...2, step: 0.05) {
                     Text("Volume : \(SettingFormat.percent(store.values.volume))")
                 }
                 .accessibilityLabel("Volume")
@@ -74,11 +67,14 @@ struct VoiceTab: View {
                 Section("Expression") { expression }
             }
             Toggle("Afficher aussi les réglages ignorés par ce modèle", isOn: $store.showIgnored)
-            if let error = store.error { Text(error).foregroundStyle(.red) }
         }
         .formStyle(.grouped)
         .accessibilityIdentifier("onglet-voix")
         .task { installed = await model.loadVoices().filter(\.installed) }
+        // Un aperçu qui échoue après coup (synthèse refusée) se dit aussi.
+        .onChange(of: model.snapshot.preview.error) { _, error in
+            if let error { Announcement.post(error) }
+        }
     }
 
     @ViewBuilder private var voicePicker: some View {
@@ -90,8 +86,9 @@ struct VoiceTab: View {
             .frame(height: 150)
             .accessibilityLabel("Voix du modèle")
             .accessibilityIdentifier("liste-voix")
-            // Espace fait entendre la voix choisie, comme « Écouter ».
-            .onKeyPress(.space) {
+            // Espace fait entendre la voix choisie, comme « Écouter ». À
+            // l'appui seulement : Espace tenu ne relance pas la synthèse.
+            .onKeyPress(.space, phases: .down) { _ in
                 Task { await store.listen() }
                 return .handled
             }
@@ -117,7 +114,7 @@ struct VoiceTab: View {
         // Hauteur et énergie relancent la synthèse : écrites au relâchement.
         if store.isShown(.pitch) {
             IgnorableNote(ignored: store.isIgnored(.pitch)) {
-                Slider(value: store.binding(\.pitch), in: -1...1, step: 0.05) {
+                Slider(value: rounded(\.pitch), in: -1...1, step: 0.05) {
                     Text("Hauteur : \(SettingFormat.decimal(store.values.pitch))")
                 } onEditingChanged: { store.dragChanged($0) }
                 .accessibilityLabel("Hauteur")
@@ -126,7 +123,7 @@ struct VoiceTab: View {
         }
         if store.isShown(.energy) {
             IgnorableNote(ignored: store.isIgnored(.energy)) {
-                Slider(value: store.binding(\.energy), in: 0...2, step: 0.05) {
+                Slider(value: rounded(\.energy), in: 0...2, step: 0.05) {
                     Text("Énergie : \(SettingFormat.decimal(store.values.energy))")
                 } onEditingChanged: { store.dragChanged($0) }
                 .accessibilityLabel("Énergie")
@@ -166,9 +163,9 @@ struct VoiceTab: View {
                     Task {
                         do {
                             try await model.useVoiceAsync(id)
-                            modelError = nil
+                            modelError.clear()
                         } catch {
-                            modelError = SettingsStore.message(of: error)
+                            modelError.fail(SettingsStore.message(of: error))
                         }
                         installed = await model.loadVoices().filter(\.installed)
                         // Le modèle change : voix, langues et réglages honorés
@@ -195,19 +192,20 @@ struct VoiceTab: View {
         }
     }
 
+    /// L'état de la voix, une seule ligne : en chargement, ou la voix du
+    /// système en repli avec la raison. Les voix listées sont alors celles du
+    /// modèle configuré, pas celle qu'on entend.
     static func voiceLine(_ state: VoiceState) -> String? {
         switch state {
         case .loading: "Voix en chargement…"
-        case .fallback(let reason): "Voix du système : \(reason)"
+        case .fallback(let reason): "Voix du système en repli : \(reason)"
         default: nil
         }
     }
 
-    /// Au-dessus de la liste des voix : celles du modèle ne sont pas
-    /// entendues tant que la voix du système le remplace.
-    static func fallbackNotice(_ state: VoiceState) -> String? {
-        if case .fallback = state { return "Voix du système en repli — le modèle n'a pas pu se charger" }
-        return nil
+    /// Un curseur à deux décimales : pas de 1,0500001 dans config.toml.
+    private func rounded(_ key: WritableKeyPath<SettingsView, Float>) -> Binding<Float> {
+        Binding(get: { store.values[keyPath: key] }, set: { store.set(key, SettingFormat.rounded($0)) })
     }
 
     static func previewLine(_ preview: PreviewView, refusal: String?) -> String? {
@@ -234,5 +232,16 @@ struct VoiceTab: View {
         panel.allowsMultipleSelection = false
         panel.prompt = "Choisir"
         return panel.runModal() == .OK ? panel.url?.path : nil
+    }
+}
+
+/// L'état de la voix (chargement, repli), dans les onglets qui la rechargent.
+struct VoiceStateLine: View {
+    let state: VoiceState
+
+    var body: some View {
+        if let line = VoiceTab.voiceLine(state) {
+            Text(line).accessibilityIdentifier("etat-voix")
+        }
     }
 }

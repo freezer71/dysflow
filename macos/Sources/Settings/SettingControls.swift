@@ -2,15 +2,22 @@ import Foundation
 import SwiftUI
 
 /// Un réglage que le modèle actif ignore, montré sur demande : il le dit.
+/// VoiceOver l'entend en indice de chaque contrôle, pas comme un texte à
+/// part ; les enfants ne sont pas fusionnés, un curseur reste réglable.
 struct IgnorableNote<Content: View>: View {
     let ignored: Bool
     @ViewBuilder let content: Content
 
+    static var hint: String { "sans effet sur ce modèle" }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            content
             if ignored {
-                Text("sans effet sur ce modèle")
+                // Un `Group` porte l'indice jusqu'à chacun de ses enfants.
+                Group { content }.accessibilityHint(Self.hint)
+                Text(Self.hint).accessibilityHidden(true)
+            } else {
+                content
             }
         }
     }
