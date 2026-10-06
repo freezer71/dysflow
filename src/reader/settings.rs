@@ -369,12 +369,18 @@ impl Reader {
     fn reparse(&mut self, now: Instant) {
         if let Some(app) = self.session.as_ref() {
             let playing = app.player.is_playing() && !app.is_finished();
-            let rank = prose_rank(app.doc(), app.current_sentence());
+            let place = Place::of(app.doc(), app.current_sentence());
             let Some(text) = self.text.clone() else { return };
+            let identity = text.identity;
             self.open(text, now);
             if let Some(app) = self.session.as_mut() {
                 app.player.pause();
-                let target = sentence_at_prose_rank(app.doc(), rank);
+                // Le nouveau texte doit continuer à retenir sa position, comme
+                // au réveil : sans cela, elle ne serait plus écrite au repos.
+                if identity {
+                    app.resume_where_left();
+                }
+                let target = place.find(app.doc());
                 app.seek_to(target);
                 if playing {
                     app.player.play();
@@ -384,9 +390,9 @@ impl Reader {
             return;
         }
         let (Some(at), Some(text)) = (self.resting_at, self.text.as_ref()) else { return };
-        let rank = self.resting_doc.as_ref().map_or(0, |doc| prose_rank(doc, at));
+        let place = self.resting_doc.as_ref().map_or(Place { rank: 0, code: None }, |doc| Place::of(doc, at));
         let doc = crate::doc::builder::parse_document(&text.markdown, self.config.code_policy());
-        self.resting_at = Some(sentence_at_prose_rank(&doc, rank));
+        self.resting_at = Some(place.find(&doc));
         self.resting_doc = Some(doc);
         self.revision += 1;
     }
@@ -427,6 +433,10 @@ impl Reader {
             .filter(|_| models::is_installed(package))
             .ok_or_else(|| anyhow!("voix non installée : {id}"))?;
         self.sync_config();
+        // Déjà la voix active : rien à recharger.
+        if self.config.engine.model_path == path.to_string_lossy() && self.config.engine.family == package.family {
+            return Ok(());
+        }
         self.switch_voice_config(&path.to_string_lossy(), package.family);
         // Le texte ouvert recopie sa configuration à la mise au repos : il
         // doit porter le nouveau modèle avant le rechargement.
@@ -498,24 +508,62 @@ fn in_code(doc: &Document, block: usize) -> bool {
     doc.block(block).is_some_and(|b| matches!(b.kind, BlockKind::Code { .. }))
 }
 
-/// Rang d'une phrase parmi celles qui ne sont pas du code : il ne bouge pas
-/// quand la politique des blocs de code change.
-fn prose_rank(doc: &Document, sentence: usize) -> usize {
-    doc.sentences
-        .iter()
-        .take(sentence)
-        .filter(|s| !in_code(doc, s.block_id))
-        .count()
+/// Où en est la lecture, d'une manière qui survit à un changement de la
+/// politique des blocs de code (le numéro de phrase, lui, bouge).
+///
+/// Dans le texte : le rang parmi les phrases qui ne sont pas du code. Dans un
+/// bloc de code : le rang de ce bloc ; s'il existe encore on reprend à son
+/// début, sinon à la phrase de texte qui suit.
+struct Place {
+    rank: usize,
+    code: Option<usize>,
 }
 
-/// La phrase de texte de ce rang ; la dernière si le document est plus court.
-fn sentence_at_prose_rank(doc: &Document, rank: usize) -> usize {
-    doc.sentences
-        .iter()
-        .filter(|s| !in_code(doc, s.block_id))
-        .nth(rank)
-        .map(|s| s.id)
-        .unwrap_or_else(|| doc.sentences.len().saturating_sub(1))
+impl Place {
+    fn of(doc: &Document, sentence: usize) -> Self {
+        let rank = doc
+            .sentences
+            .iter()
+            .take(sentence)
+            .filter(|s| !in_code(doc, s.block_id))
+            .count();
+        let code = doc.sentences.get(sentence).filter(|s| in_code(doc, s.block_id)).map(|s| {
+            let mut blocks: Vec<usize> = doc
+                .sentences
+                .iter()
+                .filter(|x| in_code(doc, x.block_id))
+                .map(|x| x.block_id)
+                .collect();
+            blocks.dedup();
+            // Rang du bloc parmi les blocs de code du document actuel.
+            blocks.iter().position(|b| *b == s.block_id).unwrap_or(0)
+        });
+        Self { rank, code }
+    }
+
+    /// La phrase correspondante de `doc` ; la dernière si le document est plus court.
+    fn find(&self, doc: &Document) -> usize {
+        if let Some(n) = self.code {
+            let mut blocks: Vec<usize> = doc
+                .sentences
+                .iter()
+                .filter(|s| in_code(doc, s.block_id))
+                .map(|s| s.block_id)
+                .collect();
+            blocks.dedup();
+            if let Some(block) = blocks.get(n) {
+                if let Some(s) = doc.sentences.iter().find(|s| s.block_id == *block) {
+                    return s.id;
+                }
+            }
+        }
+        doc.sentences
+            .iter()
+            .filter(|s| !in_code(doc, s.block_id))
+            .nth(self.rank)
+            .map(|s| s.id)
+            .unwrap_or_else(|| doc.sentences.len().saturating_sub(1))
+    }
 }
 
 #[cfg(test)]
@@ -617,6 +665,11 @@ mod tests {
     /// Un nombre de fils sûrement différent du défaut (qui suit les cœurs).
     fn other_threads() -> u32 {
         if Config::default().engine.threads == 1 { 2 } else { 1 }
+    }
+
+    /// Un calcul sûrement différent du défaut (« cpu » sous Linux, « metal » sous macOS).
+    fn other_compute() -> String {
+        if Config::default().engine.compute == "cpu" { "metal".into() } else { "cpu".into() }
     }
 
     fn effect_of(change: impl FnOnce(&mut Config)) -> SettingsEffect {
@@ -741,7 +794,7 @@ mod tests {
         assert_eq!(effect_of(|c| { c.extra.insert("k".into(), "v".into()); }), Resynthesize);
         assert_eq!(effect_of(|c| c.reading.code_blocks = "skip".into()), Reparse);
         assert_eq!(effect_of(|c| c.engine.engine = "system".into()), Reload);
-        assert_eq!(effect_of(|c| c.engine.compute = "cpu".into()), Reload);
+        assert_eq!(effect_of(|c| c.engine.compute = other_compute()), Reload);
         assert_eq!(effect_of(|c| c.engine.threads = other_threads()), Reload);
         assert_eq!(effect_of(|c| c.engine.sessions = 3), Reload);
         assert_eq!(effect_of(|c| c.engine.prefetch = 9), Reload);
@@ -834,10 +887,10 @@ mod tests {
         let t0 = Instant::now();
         r.open_text("Un. Deux.", "a", t0);
         r.rest();
-        r.apply_patch(&SettingsPatch { compute: Some("cpu".into()), ..Default::default() }, t0);
+        r.apply_patch(&SettingsPatch { compute: Some(other_compute()), ..Default::default() }, t0);
         assert_eq!(loads.load(Ordering::SeqCst), 1, "rien ne se charge au repos");
         assert!(r.is_resting());
-        assert_eq!(r.config().engine.compute, "cpu");
+        assert_eq!(r.config().engine.compute, other_compute());
     }
 
     #[test]
@@ -865,6 +918,64 @@ mod tests {
         assert_eq!(app.doc().sentences[current].written(), "Après deux.");
         assert_eq!(current, 2, "l'annonce du code retirée : le numéro a bougé, pas la phrase");
         assert_eq!(r.revision(), revision + 1, "le document est republié");
+    }
+
+    #[test]
+    fn announce_to_read_keeps_the_same_prose_sentence() {
+        let (mut r, _) = counting_reader();
+        let t0 = Instant::now();
+        r.open_text(WITH_CODE, "a", t0);
+        r.with_session(t0, |app| app.seek_to(3));
+        r.apply_patch(&SettingsPatch { code_blocks: Some("read".into()), ..Default::default() }, t0);
+        let app = r.session().unwrap();
+        assert_eq!(app.doc().sentences[app.current_sentence()].written(), "Après deux.");
+    }
+
+    #[test]
+    fn inside_a_code_block_the_block_start_is_kept_or_the_next_prose() {
+        let (mut r, _) = counting_reader();
+        let t0 = Instant::now();
+        r.open_text(WITH_CODE, "a", t0);
+        r.with_session(t0, |app| app.seek_to(1)); // l'annonce du bloc
+        r.apply_patch(&SettingsPatch { code_blocks: Some("read".into()), ..Default::default() }, t0);
+        {
+            let app = r.session().unwrap();
+            assert_eq!(app.current_sentence(), 1, "le bloc existe encore : son début");
+            assert!(app.doc().sentences[1].written().starts_with("x = 1"));
+        }
+        r.apply_patch(&SettingsPatch { code_blocks: Some("skip".into()), ..Default::default() }, t0);
+        let app = r.session().unwrap();
+        assert_eq!(app.doc().sentences[app.current_sentence()].written(), "Après un.", "bloc disparu : la prose qui suit");
+    }
+
+    #[test]
+    fn a_reparsed_file_keeps_remembering_its_place() {
+        let (mut r, _) = counting_reader();
+        let t0 = Instant::now();
+        let dir = std::env::temp_dir().join(format!("sillon-reparse-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("doc.md");
+        std::fs::write(&file, WITH_CODE).unwrap();
+        r.open_file(&file, t0).unwrap();
+        r.with_session(t0, |app| app.seek_to(2));
+        assert!(r.session().unwrap().place_to_remember().is_some());
+        r.apply_patch(&SettingsPatch { code_blocks: Some("skip".into()), ..Default::default() }, t0);
+        let remembered = r.session().unwrap().place_to_remember();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(remembered.is_some(), "la position reste retenue après la remise en forme");
+    }
+
+    #[test]
+    fn using_the_active_voice_again_reloads_nothing() {
+        let (mut r, loads) = counting_reader();
+        let t0 = Instant::now();
+        r.open_text("Un.", "a", t0);
+        r.config.engine.model_path = "/m.gguf".into();
+        r.set_persistent(false);
+        // Une voix inconnue du catalogue échoue sans rien recharger.
+        let before = loads.load(Ordering::SeqCst);
+        assert!(r.use_voice("n-existe-pas", t0).is_err());
+        assert_eq!(loads.load(Ordering::SeqCst), before);
     }
 
     #[test]
