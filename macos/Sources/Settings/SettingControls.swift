@@ -39,3 +39,75 @@ enum LanguageName {
         return name.prefix(1).uppercased() + name.dropFirst()
     }
 }
+
+/// Un réglage que le modèle peut fixer seul. « Laisser le modèle décider »
+/// est un état à part, distinct de toute valeur ; sinon, une valeur posée au
+/// curseur. `onEditingChanged` reçoit le début et la fin du geste : rien ne
+/// part avant le relâchement.
+struct OptionalSlider: View {
+    let title: String
+    let ignored: Bool
+    @Binding var value: Float?
+    let range: ClosedRange<Float>
+    let step: Float
+    /// La valeur proposée quand on reprend la main.
+    let fallback: Float
+    var onEditingChanged: (Bool) -> Void = { _ in }
+
+    var body: some View {
+        IgnorableNote(ignored: ignored) {
+            Toggle("\(title) : laisser le modèle décider",
+                   isOn: Binding(get: { value == nil }, set: { value = $0 ? nil : fallback }))
+            if let current = value {
+                Slider(value: Binding(get: { current }, set: { value = $0 }), in: range, step: step) {
+                    Text("\(title) : \(SettingFormat.decimal(current))")
+                } onEditingChanged: { onEditingChanged($0) }
+                .accessibilityLabel(title)
+                .accessibilityValue(SettingFormat.decimal(current))
+            }
+        }
+    }
+}
+
+/// La même chose pour un entier.
+struct OptionalStepper: View {
+    let title: String
+    let ignored: Bool
+    @Binding var value: UInt32?
+    let range: ClosedRange<UInt32>
+    let fallback: UInt32
+    var onEditingChanged: (Bool) -> Void = { _ in }
+
+    var body: some View {
+        IgnorableNote(ignored: ignored) {
+            Toggle("\(title) : laisser le modèle décider",
+                   isOn: Binding(get: { value == nil }, set: { value = $0 ? nil : fallback }))
+            if let current = value {
+                Stepper("\(title) : \(current)",
+                        value: Binding(get: { current }, set: { value = $0 }), in: range,
+                        onEditingChanged: { onEditingChanged($0) })
+                    .accessibilityLabel(title)
+                    .accessibilityValue("\(current)")
+            }
+        }
+    }
+}
+
+/// La graine : un tirage au hasard, ou une valeur fixe pour une synthèse
+/// reproductible.
+struct SeedField: View {
+    let ignored: Bool
+    @Binding var seed: UInt64?
+
+    var body: some View {
+        IgnorableNote(ignored: ignored) {
+            Toggle("Graine : aléatoire",
+                   isOn: Binding(get: { seed == nil }, set: { seed = $0 ? nil : 0 }))
+            if seed != nil {
+                TextField("Graine", value: Binding(get: { seed ?? 0 }, set: { seed = $0 }),
+                          format: IntegerFormatStyle<UInt64>().grouping(.never))
+                    .accessibilityLabel("Graine")
+            }
+        }
+    }
+}

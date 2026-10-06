@@ -17,6 +17,7 @@ struct ReglagesView: View {
             ReadingTab(store: store).settingsTab(.reading)
             ModelsTab(model: model, settings: store).settingsTab(.models)
             ShortcutsTab().settingsTab(.shortcuts)
+            AdvancedTab(store: store).settingsTab(.advanced)
             GeneralTab(model: model, store: store).settingsTab(.general)
         }
         .navigationTitle("Réglages")
