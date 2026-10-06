@@ -417,6 +417,10 @@ impl Reader {
     }
 
     pub fn install_voice(&mut self, id: &str) -> Result<()> {
+        if !self.persist {
+            // Hors disque, rien ne se télécharge dans le dossier des modèles.
+            return Err(anyhow!(crate::reader::data::TRIAL));
+        }
         let package = package(id)?;
         if self.download.as_ref().is_some_and(|d| !d.is_finished()) {
             return Err(anyhow!("téléchargement déjà en cours"));
@@ -990,6 +994,15 @@ mod tests {
         assert_eq!(crate::reader::view::snapshot(&r).sentence, 2);
         assert_eq!(crate::reader::view::document(&r).sentence_count, 3);
         assert!(r.is_resting());
+    }
+
+    #[test]
+    fn a_reader_off_disk_downloads_nothing() {
+        let mut r = reader();
+        r.set_persistent(false);
+        let id = crate::models::CATALOG[0].id;
+        assert_eq!(r.install_voice(id).unwrap_err().to_string(), crate::reader::data::TRIAL);
+        assert!(r.download().is_none());
     }
 
     #[test]

@@ -2,9 +2,9 @@ import XCTest
 
 /// La fenêtre des réglages au clavier et sous l'audit d'accessibilité.
 /// Lancé à la main, avec l'accord de l'utilisateur :
-/// `-only-testing:SillonUITests/SettingsUITests`. Prérequis : « Navigation
-/// au clavier » activée (Réglages Système › Clavier), sans quoi Tab ne
-/// s'arrête que sur les champs de texte.
+/// `-only-testing:SillonUITests/SettingsUITests`. Le parcours au clavier
+/// exige « Navigation au clavier » (Réglages Système › Clavier) et se saute
+/// sans elle ; l'audit tourne toujours.
 final class SettingsUITests: XCTestCase {
     private let tabs = [
         ("Voix", "onglet-voix"), ("Lecture", "onglet-lecture"), ("Modèles", "onglet-modeles"),
@@ -23,23 +23,85 @@ final class SettingsUITests: XCTestCase {
             .matching(NSPredicate(format: "hasKeyboardFocus == true")).firstMatch
     }
 
-    /// Chaque onglet s'ouvre, se parcourt au clavier et passe l'audit.
-    func testEveryTabIsKeyboardReachableAndPassesTheAudit() throws {
+    /// Identité d'un contrôle : identifiant, libellé et cadre (pas la
+    /// description de débogage, qui peut se répéter ou changer).
+    private func identity(_ element: XCUIElement) -> String {
+        "\(element.identifier)|\(element.label)|\(element.frame)"
+    }
+
+    /// Bit 2 de `AppleKeyboardUIMode` : « Navigation au clavier » active.
+    private var fullKeyboardAccess: Bool {
+        let mode = UserDefaults(suiteName: UserDefaults.globalDomain)?.integer(forKey: "AppleKeyboardUIMode") ?? 0
+        return mode & 2 != 0
+    }
+
+    /// Ce que chaque onglet doit montrer pour qu'on le dise chargé.
+    private func waitForContent(of title: String, marker: String, in window: XCUIElement) {
+        let any = window.descendants(matching: .any)
+        XCTAssertTrue(any[marker].waitForExistence(timeout: 3), "\(title) : \(marker) absent")
+        switch title {
+        case "Voix":
+            XCTAssertTrue(any["ecouter"].waitForExistence(timeout: 3), "Voix : bouton Écouter absent")
+        case "Lecture":
+            XCTAssertTrue(any["police-lecture"].waitForExistence(timeout: 3), "Lecture : police absente")
+        case "Modèles":
+            // Selon la compilation et les modèles installés : l'espace libre,
+            // le message du catalogue vide, ou au moins une ligne de modèle.
+            let empty = window.staticTexts["Aucun modèle proposé : cette version est compilée sans audio.cpp."]
+            let deadline = Date().addingTimeInterval(3)
+            while Date() < deadline, !(any["espace-libre"].exists || empty.exists || self.modelButtons(in: window) > 0) {
+                RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+            }
+            XCTAssertTrue(any["espace-libre"].exists || empty.exists || modelButtons(in: window) > 0,
+                          "Modèles : ni espace libre, ni catalogue, ni message")
+        default:
+            break
+        }
+    }
+
+    /// Boutons d'action des lignes de modèles (Installer, Utiliser, …).
+    private func modelButtons(in window: XCUIElement) -> Int {
+        window.buttons.matching(NSPredicate(
+            format: "label BEGINSWITH 'Installer' OR label BEGINSWITH 'Utiliser' OR label BEGINSWITH 'Supprimer' OR label BEGINSWITH 'Annuler'"
+        )).count
+    }
+
+    /// Chaque onglet s'ouvre, montre son contenu et passe l'audit.
+    func testEveryTabShowsItsContentAndPassesTheAudit() throws {
         let app = launch(["--show-settings"])
         let window = app.windows["Réglages"]
         XCTAssertTrue(window.waitForExistence(timeout: 5))
         for (title, marker) in tabs {
             window.toolbars.buttons[title].click()
-            XCTAssertTrue(window.descendants(matching: .any)[marker].waitForExistence(timeout: 3), title)
+            waitForContent(of: title, marker: marker, in: window)
+            try app.performAccessibilityAuditOutsideTouchBar()
+        }
+    }
+
+    /// Chaque onglet se parcourt au clavier.
+    func testEveryTabIsKeyboardReachable() throws {
+        guard fullKeyboardAccess else {
+            throw XCTSkip("Activer Réglages Système › Clavier › Navigation au clavier pour ce test")
+        }
+        let app = launch(["--show-settings"])
+        let window = app.windows["Réglages"]
+        XCTAssertTrue(window.waitForExistence(timeout: 5))
+        for (title, marker) in tabs {
+            window.toolbars.buttons[title].click()
+            waitForContent(of: title, marker: marker, in: window)
+            // Le catalogue peut ne rien proposer : rien à parcourir alors.
+            if title == "Modèles", modelButtons(in: window) == 0 { continue }
             var seen = Set<String>()
             for _ in 0..<6 {
                 window.typeKey("\t", modifierFlags: [])
                 let element = focused(in: window)
-                XCTAssertTrue(element.exists, "\(title) : aucun contrôle n'a le focus")
-                seen.insert(element.debugDescription)
+                guard element.exists else {
+                    XCTFail("\(title) : aucun contrôle n'a le focus")
+                    continue
+                }
+                seen.insert(identity(element))
             }
             XCTAssertGreaterThan(seen.count, 1, "\(title) : Tab ne parcourt pas l'onglet")
-            try app.performAccessibilityAuditOutsideTouchBar()
         }
     }
 
