@@ -27,6 +27,9 @@ enum SettingFormat {
         return f.string(from: NSNumber(value: v)) ?? "\(v)"
     }
 
+    /// Deux décimales : pas de 0,35000002 dans config.toml.
+    static func rounded(_ v: Float) -> Float { (v * 100).rounded() / 100 }
+
     static func percent(_ v: Float) -> String { "\(Int((v * 100).rounded())) %" }
 }
 
@@ -59,7 +62,7 @@ struct OptionalSlider: View {
             Toggle("\(title) : laisser le modèle décider",
                    isOn: Binding(get: { value == nil }, set: { value = $0 ? nil : fallback }))
             if let current = value {
-                Slider(value: Binding(get: { current }, set: { value = $0 }), in: range, step: step) {
+                Slider(value: Binding(get: { current }, set: { value = SettingFormat.rounded($0) }), in: range, step: step) {
                     Text("\(title) : \(SettingFormat.decimal(current))")
                 } onEditingChanged: { onEditingChanged($0) }
                 .accessibilityLabel(title)
@@ -76,7 +79,6 @@ struct OptionalStepper: View {
     @Binding var value: UInt32?
     let range: ClosedRange<UInt32>
     let fallback: UInt32
-    var onEditingChanged: (Bool) -> Void = { _ in }
 
     var body: some View {
         IgnorableNote(ignored: ignored) {
@@ -84,8 +86,7 @@ struct OptionalStepper: View {
                    isOn: Binding(get: { value == nil }, set: { value = $0 ? nil : fallback }))
             if let current = value {
                 Stepper("\(title) : \(current)",
-                        value: Binding(get: { current }, set: { value = $0 }), in: range,
-                        onEditingChanged: { onEditingChanged($0) })
+                        value: Binding(get: { current }, set: { value = $0 }), in: range)
                     .accessibilityLabel(title)
                     .accessibilityValue("\(current)")
             }
@@ -107,6 +108,8 @@ struct SeedField: View {
                 TextField("Graine", value: Binding(get: { seed ?? 0 }, set: { seed = $0 }),
                           format: IntegerFormatStyle<UInt64>().grouping(.never))
                     .accessibilityLabel("Graine")
+                    .accessibilityHint("Entrée pour valider")
+                Text("Entrée pour valider")
             }
         }
     }

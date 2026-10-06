@@ -41,6 +41,7 @@ final class FakeSettingsBackend: SettingsBackend {
         }
         if let v = patch.voice { stored.voice = v }
         if let v = patch.speed { stored.speed = v }
+        if let v = patch.threads { stored.threads = v }
         if let v = patch.lineSpacing { stored.lineSpacing = min(v, 3) }
         if let v = patch.codeBlocks { stored.codeBlocks = v }
         return stored

@@ -60,13 +60,14 @@ final class Committer<Value: Equatable> {
         latest = value
     }
 
-    /// `immediate` : sans pause (relâchement d'un curseur).
-    func change(_ value: Value, immediate: Bool = false) {
+    /// `immediate` : sans pause (relâchement d'un curseur). `pause` : une pause
+    /// plus longue que d'ordinaire (réglages qui rechargent la voix).
+    func change(_ value: Value, immediate: Bool = false, after pause: Duration? = nil) {
         guard let saved else { return }   // pas encore chargé
         latest = value
         pending?.cancel()
         if value == saved && inFlight == nil { pending = nil; return }
-        let wait = immediate ? .zero : delay
+        let wait = immediate ? .zero : (pause ?? delay)
         let myEpoch = epoch
         pending = Task {
             if wait > .zero {

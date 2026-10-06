@@ -13,31 +13,34 @@ struct AdvancedTab: View {
                 LabeledContent("Moteur") {
                     PopUpPicker(label: "Moteur", identifier: "moteur",
                                 options: Self.engineOptions(current: store.values.engine),
-                                selection: store.binding(\.engine))
+                                selection: store.engineBinding(\.engine))
                         .fixedSize()
                 }
                 LabeledContent("Calcul") {
                     PopUpPicker(label: "Calcul", identifier: "calcul",
                                 options: Self.computeOptions(current: store.values.compute),
-                                selection: store.binding(\.compute))
+                                selection: store.engineBinding(\.compute))
                         .fixedSize()
                 }
-                Stepper("Fils de calcul : \(store.values.threads)", value: store.binding(\.threads), in: 1...64,
-                        onEditingChanged: { store.dragChanged($0) })
+                Stepper("Fils de calcul : \(store.values.threads)", value: store.engineBinding(\.threads), in: 1...64)
                     .accessibilityLabel("Fils de calcul")
                     .accessibilityValue("\(store.values.threads)")
-                Stepper(Self.sessionsText(store.values.sessions), value: store.binding(\.sessions), in: 0...16,
-                        onEditingChanged: { store.dragChanged($0) })
+                Stepper(Self.sessionsText(store.values.sessions), value: store.engineBinding(\.sessions), in: 0...16)
                     .accessibilityLabel("Sessions")
                     .accessibilityValue(Self.sessionsText(store.values.sessions))
                 Stepper("Phrases préparées d'avance : \(store.values.prefetch)",
-                        value: store.binding(\.prefetch), in: 2...64,
-                        onEditingChanged: { store.dragChanged($0) })
+                        value: store.engineBinding(\.prefetch), in: 2...64)
                     .accessibilityLabel("Phrases préparées d'avance")
                     .accessibilityValue("\(store.values.prefetch)")
+                if store.values.engine == "system" {
+                    Text("Sans effet avec la voix du système")
+                }
                 Text("Chaque changement ici recharge la voix ; la lecture reprend à la même phrase.")
             }
             Section("Échantillonnage") {
+                if store.values.engine == "system" {
+                    Text("Sans effet avec la voix du système")
+                }
                 if store.isShown(.temperature) {
                     OptionalSlider(title: "Température", ignored: store.isIgnored(.temperature),
                                    value: store.binding(\.temperature), range: 0...2, step: 0.05, fallback: 0.7,
@@ -50,8 +53,7 @@ struct AdvancedTab: View {
                 }
                 if store.isShown(.topK) {
                     OptionalStepper(title: "Top-k", ignored: store.isIgnored(.topK),
-                                    value: store.binding(\.topK), range: 1...200, fallback: 50,
-                                    onEditingChanged: { store.dragChanged($0) })
+                                    value: store.binding(\.topK), range: 1...200, fallback: 50)
                 }
                 if store.isShown(.guidance) {
                     OptionalSlider(title: "Guidage", ignored: store.isIgnored(.guidance),
@@ -66,8 +68,7 @@ struct AdvancedTab: View {
                 }
                 if store.isShown(.steps) {
                     OptionalStepper(title: "Pas d'inférence", ignored: store.isIgnored(.steps),
-                                    value: store.binding(\.inferenceSteps), range: 1...200, fallback: 16,
-                                    onEditingChanged: { store.dragChanged($0) })
+                                    value: store.binding(\.inferenceSteps), range: 1...200, fallback: 16)
                 }
                 if store.isShown(.seed) {
                     SeedField(ignored: store.isIgnored(.seed), seed: store.binding(\.seed))
@@ -100,6 +101,7 @@ struct AdvancedTab: View {
         }
         .formStyle(.grouped)
         .accessibilityIdentifier("onglet-avance")
+        .onDisappear { store.endDragging() }
     }
 
     private func add() {

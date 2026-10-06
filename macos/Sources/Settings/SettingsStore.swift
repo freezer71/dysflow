@@ -41,8 +41,19 @@ final class SettingsStore {
     /// Le refus du dernier « Écouter ».
     private(set) var previewNote: String?
 
-    init(backend: SettingsBackend, delay: Duration = .milliseconds(150)) {
+    @ObservationIgnored private let engineDelay: Duration
+    @ObservationIgnored private let dragTimeout: Duration
+    @ObservationIgnored private var dragWatchdog: Task<Void, Never>?
+
+    /// `engineDelay` : la pause des réglages qui rechargent la voix (moteur,
+    /// calcul, fils, sessions, phrases d'avance) ; une rafale de pressions
+    /// ne recharge qu'une fois. `dragTimeout` : un geste sans relâchement
+    /// au bout de ce temps est abandonné.
+    init(backend: SettingsBackend, delay: Duration = .milliseconds(150),
+         engineDelay: Duration = .milliseconds(800), dragTimeout: Duration = .seconds(3)) {
         self.backend = backend
+        self.engineDelay = engineDelay
+        self.dragTimeout = dragTimeout
         committer = Committer(delay: delay, writeApplied: { [backend] new, old in
             let patch = SettingsDiff.patch(from: old, to: new)
             if patch.isEmpty { return new }   // rien à écrire
@@ -84,6 +95,7 @@ final class SettingsStore {
         guard generation == reloadGeneration else { return }
         capabilities = freshCapabilities
         committer.prime(fresh)
+        dragWatchdog?.cancel()
         dragging = false
         values = fresh
         loaded = true
@@ -100,11 +112,18 @@ final class SettingsStore {
     func flush() async { await committer.flush() }
 
     /// Change un réglage : l'écran suit tout de suite, l'écriture après la pause.
-    func set<T>(_ key: WritableKeyPath<SettingsView, T>, _ value: T) {
+    /// `reloadsVoice` : le réglage recharge la voix, l'écriture attend une
+    /// pause plus longue pour qu'une rafale de pressions n'en fasse qu'une.
+    func set<T>(_ key: WritableKeyPath<SettingsView, T>, _ value: T, reloadsVoice: Bool = false) {
         values[keyPath: key] = value
         if reloading { queuedEdits.append { $0[keyPath: key] = value }; return }
         guard loaded, !dragging else { return }
-        committer.change(values)
+        committer.change(values, after: reloadsVoice ? engineDelay : nil)
+    }
+
+    /// Un réglage qui recharge la voix : jamais d'écriture pendant un geste.
+    func engineBinding<T>(_ key: WritableKeyPath<SettingsView, T>) -> Binding<T> {
+        Binding(get: { self.values[keyPath: key] }, set: { self.set(key, $0, reloadsVoice: true) })
     }
 
     func binding<T>(_ key: WritableKeyPath<SettingsView, T>) -> Binding<T> {
@@ -116,9 +135,27 @@ final class SettingsStore {
     /// geste et `false` au relâchement. Rien ne part avant le relâchement, puis
     /// une seule écriture tout de suite.
     func dragChanged(_ editing: Bool) {
+        dragWatchdog?.cancel()
+        dragWatchdog = nil
         dragging = editing
-        if !editing, loaded, !reloading { committer.change(values, immediate: true) }
+        if editing {
+            // Un « relâché » qui ne vient jamais ne doit pas figer toutes les écritures.
+            dragWatchdog = Task { [weak self, dragTimeout] in
+                try? await Task.sleep(for: dragTimeout)
+                guard !Task.isCancelled else { return }
+                self?.dragChanged(false)
+            }
+        } else if loaded, !reloading {
+            committer.change(values, immediate: true)
+        }
     }
+
+    /// Un geste encore marqué en cours (onglet quitté, fenêtre fermée) prend fin.
+    func endDragging() {
+        if dragging { dragChanged(false) }
+    }
+
+    var isDragging: Bool { dragging }
 
     func isIgnored(_ key: SettingKey) -> Bool { key.isIgnored(honoured: capabilities.honoured) }
 
