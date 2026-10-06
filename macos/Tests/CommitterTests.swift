@@ -120,24 +120,3 @@ final class CommitterTests: XCTestCase {
         XCTAssertEqual(writes, [4], "rien de plus à écrire")
     }
 }
-
-/// L'ancien onglet Lecture n'écrit que le réglage touché.
-final class ReadingValuesPatchTests: XCTestCase {
-    func testOnlyTheChangedFieldIsWritten() {
-        var old = ReadingValues(); old.speed = 1.0; old.lineSpacing = 2; old.ruler = true
-        var new = old; new.ruler = false
-        var expected = SettingsPatch.empty
-        expected.readingRuler = false
-        XCTAssertEqual(ReadingValues.patch(new, over: old), expected)
-    }
-
-    func testEachChangedFieldIsWritten() {
-        let old = ReadingValues()
-        var new = old; new.speed = 2.0; new.lineSpacing = 3
-        let p = ReadingValues.patch(new, over: old)
-        XCTAssertEqual(p.speed, 2.0)
-        XCTAssertEqual(p.lineSpacing, 3)
-        XCTAssertNil(p.readingRuler)
-        XCTAssertNil(p.keepVoiceMinutes)
-    }
-}
