@@ -486,7 +486,7 @@ impl Reader {
     }
 
     /// La configuration que le texte ouvert a pu modifier (vitesse…).
-    fn current_config(&self) -> &Config {
+    pub(super) fn current_config(&self) -> &Config {
         self.session.as_ref().map(|a| &a.config).unwrap_or(&self.config)
     }
 
@@ -497,7 +497,7 @@ impl Reader {
     }
 }
 
-fn package(id: &str) -> Result<&'static models::ModelPackage> {
+pub(super) fn package(id: &str) -> Result<&'static models::ModelPackage> {
     models::available()
         .into_iter()
         .find(|p| p.id == id)

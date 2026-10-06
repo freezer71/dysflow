@@ -69,6 +69,31 @@ pub fn write(key: &str, markdown: &str) {
     }
 }
 
+/// Vide le cache des documents ; rend les octets libérés.
+///
+/// Rien n'est perdu : un document se ré-extrait à sa prochaine ouverture.
+pub fn clear() -> Result<u64> {
+    let Some(dir) = crate::paths::cache_dir().map(|d| d.join("documents")) else {
+        return Ok(0);
+    };
+    if !dir.exists() {
+        return Ok(0);
+    }
+    Ok(clear_in(&dir)?)
+}
+
+fn clear_in(dir: &Path) -> std::io::Result<u64> {
+    let mut freed = 0;
+    for entry in std::fs::read_dir(dir)? {
+        let path = entry?.path();
+        if path.extension().is_some_and(|e| e == "md") {
+            freed += std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+            std::fs::remove_file(&path)?;
+        }
+    }
+    Ok(freed)
+}
+
 fn read_in(dir: &Path, key: &str) -> Option<String> {
     std::fs::read_to_string(dir.join(format!("{key}.md"))).ok()
 }
@@ -146,6 +171,19 @@ mod tests {
         std::fs::write(&file, b"contenu").unwrap();
         let key = fingerprint(&file).unwrap();
         assert!(key.starts_with(&format!("v{CACHE_VERSION}-")), "{key}");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn clearing_removes_only_the_cached_documents_and_counts_their_bytes() {
+        let dir = scratch();
+        write_in(&dir, "a", "12345");
+        write_in(&dir, "b", "123");
+        std::fs::write(dir.join("garde.txt"), b"x").unwrap();
+        assert_eq!(clear_in(&dir).unwrap(), 8);
+        assert_eq!(read_in(&dir, "a"), None);
+        assert!(dir.join("garde.txt").exists(), "seuls les .md partent");
+        assert_eq!(clear_in(&dir).unwrap(), 0, "déjà vide");
         std::fs::remove_dir_all(&dir).ok();
     }
 }

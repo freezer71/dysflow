@@ -43,6 +43,12 @@ impl BookmarkStore {
         let Some(path) = Self::path() else {
             return (Self::default(), None);
         };
+        Self::load_from(&path)
+    }
+
+    /// Lit les signets d'un fichier donné (les tests visent un fichier à eux).
+    pub(crate) fn load_from(path: &std::path::Path) -> (Self, Option<String>) {
+        let path = path.to_path_buf();
         if !path.exists() {
             return (Self::default(), None);
         }
@@ -77,7 +83,7 @@ impl BookmarkStore {
         self.save_to(&path)
     }
 
-    fn save_to(&self, path: &std::path::Path) -> Result<()> {
+    pub(crate) fn save_to(&self, path: &std::path::Path) -> Result<()> {
         let text = serde_json::to_string_pretty(self)?;
         crate::paths::write_atomic(path, text.as_bytes())
             .with_context(|| format!("écriture de {}", path.display()))?;
