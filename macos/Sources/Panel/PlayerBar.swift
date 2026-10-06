@@ -54,6 +54,16 @@ struct PlayerBar: View {
                 Text(skipped)
                     .accessibilityIdentifier("phrases-sautees")
             }
+            // L'écrou : les réglages de la voix, pour en essayer une autre.
+            Button {
+                SettingsOpener.shared.open(tab: .voice)
+            } label: {
+                Image(systemName: "gearshape")
+            }
+            .buttonStyle(.plain)
+            .help("Réglages de la voix (v)")
+            .accessibilityLabel("Réglages de la voix")
+            .accessibilityIdentifier("reglages-voix")
         }
         .font(.system(size: 13))
         .foregroundStyle(Color(nsColor: theme.chrome))

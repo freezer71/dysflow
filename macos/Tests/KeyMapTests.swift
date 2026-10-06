@@ -8,6 +8,16 @@ final class KeyMapTests: XCTestCase {
                                     shift: shift, command: command, control: control))
     }
 
+    func testVOpensTheVoiceSettings() {
+        XCTAssertEqual(KeyMap.action(for: KeyPress(characters: "v")), .openVoiceSettings)
+        XCTAssertNil(KeyMap.action(for: KeyPress(characters: "v", option: true)))
+    }
+
+    func testTheSeekStepComesFromTheSettings() {
+        let key = KeyPress(characters: "", keyCode: KeyCode.right, shift: true)
+        XCTAssertEqual(KeyMap.action(for: key, seekStep: 12), .command(.sentences(delta: 12)))
+    }
+
     func testPlayAndWords() {
         XCTAssertEqual(act(" ", KeyCode.space), .command(.togglePlay))
         XCTAssertEqual(act("", KeyCode.left, option: true), .command(.words(delta: -1)))

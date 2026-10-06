@@ -17,7 +17,7 @@ final class PanelController {
 
     private(set) var mode: PanelMode = .hidden
     /// Réglages de lecture du moteur (interlignage, règle), relus à chaque
-    /// ouverture : un changement dans les réglages s'applique au suivant.
+    /// ouverture et à chaque réglage écrit.
     var reading = ReadingDisplay()
     var sidebarVisible = true
     var bookmarksVisible = false
@@ -44,7 +44,7 @@ final class PanelController {
 
     func show() {
         // Lu hors du fil principal : s'applique dès qu'il revient.
-        Task { reading = ReadingDisplay(await model.loadSettings()) }
+        reloadReading()
         if mode == .hidden {
             window.setFrame(PanelGeometry.panelFrame(contentHeight: contentHeight, screen: screenFrame),
                             display: false)
@@ -59,6 +59,17 @@ final class PanelController {
         model.refresh()
         announcer.reseed(with: model.snapshot)
         installKeyMonitor()
+    }
+
+    /// Relit ce que le panneau affiche des réglages, hors du fil principal :
+    /// un changement dans la fenêtre des réglages s'y voit aussitôt.
+    func reloadReading() {
+        Task { reading = ReadingDisplay(await model.loadSettings()) }
+    }
+
+    /// L'action d'une touche, avec le pas d'avance rapide des réglages.
+    func action(for press: KeyPress) -> ReaderAction? {
+        KeyMap.action(for: press, seekStep: Int32(reading.seekStep))
     }
 
     func expand() {
@@ -151,6 +162,8 @@ final class PanelController {
         case .showHelp: helpVisible.toggle()
         case .openSettings:
             SettingsOpener.shared.open()
+        case .openVoiceSettings:
+            SettingsOpener.shared.open(tab: .voice)
         }
     }
 
@@ -198,7 +211,7 @@ final class PanelController {
                !event.modifierFlags.contains(.option) {
                 return event
             }
-            guard let action = KeyMap.action(for: KeyPress(event)) else { return event }
+            guard let action = self.action(for: KeyPress(event)) else { return event }
             self.perform(action)
             return nil
         }

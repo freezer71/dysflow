@@ -139,6 +139,17 @@ final class PanelControllerTests: XCTestCase {
         XCTAssertEqual(c.model.message, "Autre chose")
     }
 
+    /// Le pas de l'avance rapide est celui des réglages, pas un 5 en dur.
+    func testShiftArrowUsesTheSeekStepOfTheSettings() {
+        let c = shownPanel("Un. Deux.")
+        let key = KeyPress(characters: "", keyCode: KeyCode.right, shift: true)
+        XCTAssertEqual(c.action(for: key), .command(.sentences(delta: 5)), "valeur par défaut")
+        c.reading.seekStep = 12
+        XCTAssertEqual(c.action(for: key), .command(.sentences(delta: 12)))
+        XCTAssertEqual(c.action(for: KeyPress(characters: "", keyCode: KeyCode.left, shift: true)),
+                       .command(.sentences(delta: -12)))
+    }
+
     /// Chaque « / » redemande le focus du champ, même déjà ouvert.
     func testEachSearchKeyAsksForTheField() {
         let c = shownPanel("Un. Deux.")
@@ -195,6 +206,13 @@ final class PanelStatusTests: XCTestCase {
         s.status = status
         s.voice = voice
         return s
+    }
+
+    func testAReloadingVoiceSaysSo() {
+        XCTAssertEqual(PanelStatus.line(message: nil, snapshot: snapshot(voice: .loading)),
+                       "Voix en chargement…")
+        XCTAssertEqual(PanelStatus.line(message: nil, snapshot: snapshot(status: "Signet ajouté", voice: .loading)),
+                       "Signet ajouté", "le lecteur parle d'abord")
     }
 
     func testAppMessageWins() {

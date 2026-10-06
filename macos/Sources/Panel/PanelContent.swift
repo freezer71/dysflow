@@ -73,6 +73,9 @@ struct PanelContent: View {
         // zone sûre repousse le contenu de ~30 pt et rogne le texte.
         .ignoresSafeArea()
         .onChange(of: controller.model.snapshot) { _, s in controller.announce(s) }
+        // Un réglage écrit (interlignage, règle, pas d'avance) s'applique
+        // au panneau ouvert, sans attendre sa prochaine ouverture.
+        .onChange(of: controller.model.settingsRevision) { _, _ in controller.reloadReading() }
         .onReceive(NSWorkspace.shared.notificationCenter.publisher(
             for: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification)) { _ in
             increaseContrast = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
@@ -105,6 +108,7 @@ struct HelpOverlay: View {
         ("/ · N P", "Chercher · résultat suivant / précédent"),
         ("t · B · b", "Sommaire · signets · poser un signet"),
         ("⏎", "Agrandir"), ("⌘C", "Copier la phrase"), ("⌘,", "Réglages"),
+        ("v", "Réglages de la voix"),
         ("Échap", "Revenir · masquer"),
     ]
 
@@ -131,10 +135,12 @@ struct HelpOverlay: View {
 /// installer une.
 enum PanelStatus {
     static let fallbackHint = "Voix du système — installer une voix : ⌘,"
+    static let loadingLine = "Voix en chargement…"
 
     static func line(message: String?, snapshot: Snapshot) -> String? {
         if let message { return message }
         if !snapshot.status.isEmpty { return snapshot.status }
+        if case .loading = snapshot.voice { return loadingLine }
         if case .fallback = snapshot.voice { return fallbackHint }
         return nil
     }

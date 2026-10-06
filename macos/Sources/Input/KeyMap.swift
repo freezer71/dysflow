@@ -39,7 +39,7 @@ struct KeyPress: Equatable {
 enum ReaderAction: Equatable {
     case command(ReaderCommand)
     case expand, collapseOrHide, copySentence, openSearch
-    case toggleSidebar, toggleBookmarks, showHelp, openSettings
+    case toggleSidebar, toggleBookmarks, showHelp, openSettings, openVoiceSettings
 }
 
 /// Les touches du terminal, plus les gestes propres à la fenêtre.
@@ -101,6 +101,7 @@ enum KeyMap {
         case "t": return .toggleSidebar
         case "/": return .openSearch
         case "?", "h": return .showHelp
+        case "v": return .openVoiceSettings
         default: return nil
         }
     }
