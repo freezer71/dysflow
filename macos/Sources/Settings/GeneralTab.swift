@@ -8,7 +8,10 @@ struct GeneralTab: View {
     @State private var login = false
     @State private var bookmarks: [StoredBookmarkView] = []
     @State private var cacheReport: String?
-    @State private var dataError: String?
+    @State private var dataError: String? {
+        didSet { if let dataError { GeneralTab.announce(dataError) } }
+    }
+    @State private var pendingRemoval: StoredBookmarkView?
 
     var body: some View {
         Form {
@@ -33,6 +36,7 @@ struct GeneralTab: View {
                     Button("Vider le cache des documents") { clearCache() }
                     if let cacheReport { Text(cacheReport) }
                 }
+                Text("Les documents se reconstruisent à la prochaine ouverture")
                 Button("Ouvrir le dossier de configuration") { openConfigFolder() }
                     .disabled(model.configDirectory == nil)
                 if let dataError { Text(dataError).foregroundStyle(.red) }
@@ -41,6 +45,7 @@ struct GeneralTab: View {
                 if bookmarks.isEmpty { Text("Aucun signet") }
                 ForEach(BookmarkGroups.group(bookmarks), id: \.document) { group in
                     Text(group.label).fontWeight(.semibold)
+                    .accessibilityAddTraits(.isHeader)
                     ForEach(group.items, id: \.self) { b in
                         HStack {
                             VStack(alignment: .leading) {
@@ -48,8 +53,8 @@ struct GeneralTab: View {
                                 Text("\(b.sectionTitle) · \(b.when)")
                             }
                             Spacer()
-                            Button("Supprimer") { remove(b) }
-                                .accessibilityLabel("Supprimer le signet « \(b.snippet) »")
+                            Button("Supprimer") { pendingRemoval = b }
+                                .accessibilityLabel("Supprimer le signet « \(b.snippet) » de \(b.label)")
                         }
                         .accessibilityElement(children: .contain)
                     }
@@ -59,7 +64,23 @@ struct GeneralTab: View {
         }
         .formStyle(.grouped)
         .accessibilityIdentifier("onglet-general")
-        .task { bookmarks = await model.loadAllBookmarks() }
+        .task { await reload() }
+        .onAppear { cacheReport = nil; Task { await reload() } }
+        .onChange(of: model.snapshot.bookmarked) { _, _ in Task { await reload() } }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            Task { await reload() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
+            Task { await reload() }
+        }
+        .alert(pendingRemoval.map(BookmarkRemoval.question(for:)) ?? "",
+               isPresented: Binding(get: { pendingRemoval != nil },
+                                    set: { if !$0 { pendingRemoval = nil } }),
+               presenting: pendingRemoval) { b in
+            Button("Annuler", role: .cancel) {}
+                .keyboardShortcut(.defaultAction)
+            Button("Supprimer", role: .destructive) { remove(b) }
+        }
     }
 
     private var keepVoice: Binding<KeepVoiceChoice> {
@@ -67,12 +88,24 @@ struct GeneralTab: View {
                 set: { store.set(\.keepVoiceMinutes, $0.minutes) })
     }
 
+    private func reload() async { bookmarks = await model.loadAllBookmarks() }
+
+    /// Dit à VoiceOver ce qui vient d'apparaître à l'écran.
+    static func announce(_ text: String) {
+        guard NSWorkspace.shared.isVoiceOverEnabled, let window = NSApp.keyWindow else { return }
+        NSAccessibility.post(element: window, notification: .announcementRequested,
+                             userInfo: [.announcement: text, .priority: NSAccessibilityPriorityLevel.high.rawValue])
+    }
+
     private func clearCache() {
         Task {
             do {
-                cacheReport = CacheReport.text(freed: try await model.clearDocumentCache())
+                let text = CacheReport.text(freed: try await model.clearDocumentCache())
+                cacheReport = text
+                GeneralTab.announce(text)
                 dataError = nil
             } catch {
+                cacheReport = nil
                 dataError = SettingsStore.message(of: error)
             }
         }
@@ -86,7 +119,7 @@ struct GeneralTab: View {
             } catch {
                 dataError = SettingsStore.message(of: error)
             }
-            bookmarks = await model.loadAllBookmarks()
+            await reload()
         }
     }
 
@@ -94,8 +127,15 @@ struct GeneralTab: View {
         guard let dir = model.configDirectory else { return }
         let url = URL(fileURLWithPath: dir, isDirectory: true)
         // Pas encore de config.toml : le dossier s'ouvre quand même.
-        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
-        NSWorkspace.shared.open(url)
+        do {
+            try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        } catch {
+            dataError = "Le dossier de configuration est introuvable : \(error.localizedDescription)"
+            return
+        }
+        if NSWorkspace.shared.open(url) { dataError = nil } else {
+            dataError = "Le dossier de configuration ne s'ouvre pas"
+        }
     }
 }
 
@@ -127,5 +167,13 @@ enum CacheReport {
     static func text(freed bytes: UInt64) -> String {
         guard bytes > 0 else { return "Le cache était déjà vide" }
         return "\(ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)) libérés"
+    }
+}
+
+enum BookmarkRemoval {
+    /// La question posée avant de supprimer un signet.
+    static func question(for b: StoredBookmarkView) -> String {
+        let snippet = b.snippet.count > 60 ? String(b.snippet.prefix(60)) + "…" : b.snippet
+        return "Supprimer le signet « \(snippet) » de \(b.label) ?"
     }
 }

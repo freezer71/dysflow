@@ -23,4 +23,10 @@ final class KeepVoiceChoiceTests: XCTestCase {
         XCTAssertEqual(KeepVoiceChoice.options(stored: 10), KeepVoiceChoice.allCases)
         XCTAssertEqual(KeepVoiceChoice.options(stored: -1), KeepVoiceChoice.allCases)
     }
+
+    /// « 1 minute » au singulier.
+    func testOneMinuteIsSingular() {
+        XCTAssertEqual(KeepVoiceChoice.minutes(1).label, "1 minute")
+        XCTAssertEqual(KeepVoiceChoice.minutes(2).label, "2 minutes")
+    }
 }

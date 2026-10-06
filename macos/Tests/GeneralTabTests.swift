@@ -30,4 +30,15 @@ final class GeneralTabTests: XCTestCase {
         XCTAssertEqual(CacheReport.text(freed: 0), "Le cache était déjà vide")
         XCTAssertTrue(CacheReport.text(freed: 12_000_000).hasSuffix("libérés"))
     }
+
+    func testTheRemovalQuestionNamesTheBookmarkAndItsDocument() {
+        let b = bookmark("/a/cours.md", "cours.md", 3)
+        XCTAssertEqual(BookmarkRemoval.question(for: b), "Supprimer le signet « Phrase 3. » de cours.md ?")
+    }
+
+    func testALongSnippetIsShortenedInTheQuestion() {
+        let b = StoredBookmarkView(document: "d", label: "d", sentence: 1, sectionTitle: "T",
+                                   snippet: String(repeating: "a", count: 200), when: "")
+        XCTAssertLessThan(BookmarkRemoval.question(for: b).count, 120)
+    }
 }

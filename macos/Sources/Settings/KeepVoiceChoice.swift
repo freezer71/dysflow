@@ -27,7 +27,7 @@ enum KeepVoiceChoice: Hashable {
     var label: String {
         switch self {
         case .end: "Relâchée dès l'arrêt"
-        case .minutes(let m): "\(m) minutes"
+        case .minutes(let m): m == 1 ? "1 minute" : "\(m) minutes"
         case .always: "Toujours chargée"
         }
     }

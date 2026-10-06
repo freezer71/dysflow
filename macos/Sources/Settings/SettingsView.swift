@@ -1,11 +1,5 @@
 import SwiftUI
 
-/// Le message d'une erreur du moteur, sans l'habillage de l'enum.
-private func message(of error: Error) -> String {
-    if case SillonError.Failed(let message) = error { return message }
-    return error.localizedDescription
-}
-
 struct VoiceSettings: View {
     let model: ReaderModel
     @State private var voices: [VoiceModel] = []
@@ -77,7 +71,7 @@ struct VoiceSettings: View {
     }
 
     private func act(_ f: () async throws -> Void) async {
-        do { try await f(); error = nil } catch { self.error = message(of: error) }
+        do { try await f(); error = nil } catch { self.error = SettingsStore.message(of: error) }
         voices = await model.loadVoices()
     }
 
