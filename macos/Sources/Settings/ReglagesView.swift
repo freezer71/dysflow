@@ -16,8 +16,8 @@ struct ReglagesView: View {
             VoiceTab(model: model, store: store).settingsTab(.voice)
             ReadingTab(store: store).settingsTab(.reading)
             VoiceSettings(model: model).settingsTab(.models)
-            ShortcutSettings().settingsTab(.shortcuts)
-            GeneralSettings().settingsTab(.general)
+            ShortcutsTab().settingsTab(.shortcuts)
+            GeneralTab(model: model, store: store).settingsTab(.general)
         }
         .navigationTitle("Réglages")
         .frame(width: 600, height: 540)

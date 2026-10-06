@@ -7,13 +7,12 @@ enum KeepVoiceChoice: Hashable {
     static let steps: [Int64] = [2, 5, 10, 30]
     static var allCases: [KeepVoiceChoice] { [.end] + steps.map { .minutes($0) } + [.always] }
 
+    /// Une durée hors liste (écrite à la main) reste telle quelle.
     init(minutes: Int64) {
         switch minutes {
         case ..<0: self = .always
         case 0: self = .end
-        default:
-            let nearest = Self.steps.min { abs($0 - minutes) < abs($1 - minutes) } ?? 10
-            self = .minutes(nearest)
+        default: self = .minutes(minutes)
         }
     }
 
@@ -33,11 +32,11 @@ enum KeepVoiceChoice: Hashable {
         }
     }
 
-    /// Faut-il écrire ce choix ? Non tant que la valeur stockée n'est pas
-    /// chargée, ni si le choix n'est que l'affichage de cette valeur (7 min
-    /// s'affiche « 5 minutes » sans être réécrit).
-    static func needsSave(choice: KeepVoiceChoice, stored: Int64?) -> Bool {
-        guard let stored else { return false }
-        return choice != KeepVoiceChoice(minutes: stored)
+    /// Les choix du menu, plus la durée en place si elle n'en fait pas
+    /// partie, rangée à sa place.
+    static func options(stored: Int64) -> [KeepVoiceChoice] {
+        let current = KeepVoiceChoice(minutes: stored)
+        guard !allCases.contains(current) else { return allCases }
+        return [.end] + (steps + [stored]).sorted().map { .minutes($0) } + [.always]
     }
 }

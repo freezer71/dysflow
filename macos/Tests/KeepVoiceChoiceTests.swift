@@ -14,21 +14,13 @@ final class KeepVoiceChoiceTests: XCTestCase {
         XCTAssertEqual(KeepVoiceChoice(minutes: 10).label, "10 minutes")
     }
 
-    func testUnlistedValueSnapsToNearest() {
-        XCTAssertEqual(KeepVoiceChoice(minutes: 7), .minutes(5))
-        XCTAssertEqual(KeepVoiceChoice(minutes: 300), .minutes(30))
-    }
-}
-
-final class KeepVoiceSaveTests: XCTestCase {
-    func testNothingSavedBeforeLoad() {
-        XCTAssertFalse(KeepVoiceChoice.needsSave(choice: .minutes(10), stored: nil))
-    }
-
-    func testUnlistedStoredValueIsNotRewritten() {
-        // 7 s'affiche « 5 minutes » : l'affichage seul n'écrit rien.
-        XCTAssertFalse(KeepVoiceChoice.needsSave(choice: .minutes(5), stored: 7))
-        XCTAssertTrue(KeepVoiceChoice.needsSave(choice: .minutes(10), stored: 7))
-        XCTAssertTrue(KeepVoiceChoice.needsSave(choice: .always, stored: 10))
+    /// Une durée écrite à la main s'affiche telle quelle, à sa place.
+    func testAnUnlistedValueIsKeptAsIs() {
+        XCTAssertEqual(KeepVoiceChoice(minutes: 7), .minutes(7))
+        XCTAssertEqual(KeepVoiceChoice(minutes: 7).label, "7 minutes")
+        XCTAssertEqual(KeepVoiceChoice.options(stored: 7),
+                       [.end, .minutes(2), .minutes(5), .minutes(7), .minutes(10), .minutes(30), .always])
+        XCTAssertEqual(KeepVoiceChoice.options(stored: 10), KeepVoiceChoice.allCases)
+        XCTAssertEqual(KeepVoiceChoice.options(stored: -1), KeepVoiceChoice.allCases)
     }
 }

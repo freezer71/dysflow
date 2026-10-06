@@ -1,4 +1,3 @@
-import KeyboardShortcuts
 import SwiftUI
 
 /// Le message d'une erreur du moteur, sans l'habillage de l'enum.
@@ -7,22 +6,9 @@ private func message(of error: Error) -> String {
     return error.localizedDescription
 }
 
-struct ShortcutSettings: View {
-    var body: some View {
-        Form {
-            KeyboardShortcuts.Recorder("Lire la sélection :", name: .readSelection)
-            KeyboardShortcuts.Recorder("Afficher sillon :", name: .showPanel)
-        }
-        .formStyle(.grouped)
-    }
-}
-
 struct VoiceSettings: View {
     let model: ReaderModel
     @State private var voices: [VoiceModel] = []
-    @State private var keep: KeepVoiceChoice = .minutes(10)
-    /// La valeur stockée par le moteur, nil tant qu'elle n'est pas chargée.
-    @State private var storedKeep: Int64?
     @State private var error: String?
 
     /// Vrai tant qu'un téléchargement est en cours (pas un échec resté là).
@@ -52,31 +38,11 @@ struct VoiceSettings: View {
                     .accessibilityElement(children: .contain)
                 }
             }
-            LabeledContent("Garder la voix chargée") {
-                PopUpPicker(label: "Garder la voix chargée", identifier: "garder-voix",
-                            options: KeepVoiceChoice.allCases.map { ($0.label, $0) },
-                            selection: $keep)
-                    .fixedSize()
-            }
             if let error { Text(error).foregroundStyle(.red) }
         }
         .formStyle(.grouped)
         .task {
             voices = await model.loadVoices()
-            let stored = await model.loadSettings().keepVoiceMinutes
-            keep = KeepVoiceChoice(minutes: stored)
-            storedKeep = stored
-        }
-        .onChange(of: keep) { _, new in
-            guard KeepVoiceChoice.needsSave(choice: new, stored: storedKeep) else { return }
-            Task {
-                await act {
-                    var p = SettingsPatch.empty
-                    p.keepVoiceMinutes = new.minutes
-                    _ = try await model.updateSettings(p)
-                }
-                if error == nil { storedKeep = new.minutes }
-            }
         }
         // À l'ouverture : l'état courant (un téléchargement peut avoir avancé).
         .onAppear { model.refresh(); refresh() }
@@ -117,22 +83,5 @@ struct VoiceSettings: View {
 
     private func refresh() {
         Task { voices = await model.loadVoices() }
-    }
-}
-
-struct GeneralSettings: View {
-    @State private var login = false
-
-    var body: some View {
-        Form {
-            Toggle("Ouvrir sillon à la connexion", isOn: $login)
-                .onAppear { login = LoginItem.isEnabled }
-                .onChange(of: login) { _, on in
-                    // L'inscription peut être refusée : l'interrupteur dit l'état réel.
-                    if LoginItem.isEnabled != on, !LoginItem.set(on) { login = LoginItem.isEnabled }
-                }
-                .accessibilityLabel("Ouvrir sillon à la connexion")
-        }
-        .formStyle(.grouped)
     }
 }
