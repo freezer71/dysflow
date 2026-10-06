@@ -168,7 +168,6 @@ pub enum Field {
 }
 
 const EMOTIONS: &[&str] = &["", "neutre", "calme", "chaleureux", "sérieux", "enjoué", "posé"];
-const LANGUAGES: &[&str] = &["fr", "en", "de", "es", "it", "pt", "nl"];
 const CODE_POLICIES: &[&str] = &["announce", "skip", "read"];
 const ENGINES: &[&str] = &["auto", "audio_cpp", "system"];
 const COMPUTES: &[&str] = &["cpu", "metal", "cuda", "vulkan", "auto"];
@@ -455,7 +454,9 @@ impl Field {
             }
             Field::Volume => Effect::Volume(0.05 * step),
             Field::Language => {
-                cycle_string(&mut config.voice.language, LANGUAGES, delta);
+                // Les langues du modèle, plus seulement sept langues fixes.
+                let languages = models::languages_for_family(&config.engine.family);
+                cycle_string(&mut config.voice.language, &languages, delta);
                 Effect::Resynthesize
             }
             Field::Emotion => {
@@ -886,6 +887,22 @@ pub enum Effect {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn languages_cycle_through_those_of_the_model() {
+        let mut config = Config::default();
+        config.engine.family = "supertonic".into();
+        config.voice.language = "fr".into();
+        for _ in 0..31 {
+            Field::Language.adjust(&mut config, 1);
+        }
+        assert_eq!(config.voice.language, "fr", "trente et une langues, un tour complet");
+        config.engine.family = "magpie_tts".into();
+        for _ in 0..11 {
+            Field::Language.adjust(&mut config, 1);
+        }
+        assert_eq!(config.voice.language, "fr", "onze langues chez MagpieTTS");
+    }
 
     #[test]
     fn every_section_but_models_exposes_fields() {

@@ -224,6 +224,7 @@ impl SettingsEffect {
     }
 }
 
+/// Un paquet du catalogue, tel que l'onglet Modèles le décrit.
 #[derive(Debug, Clone, PartialEq)]
 pub struct VoiceModel {
     pub id: String,
@@ -232,6 +233,52 @@ pub struct VoiceModel {
     pub installed: bool,
     pub active: bool,
     pub recommended: bool,
+    pub summary: String,
+    pub family: String,
+    pub precision: String,
+    pub languages_label: String,
+    pub languages: Vec<String>,
+    /// Le rythme mesuré : fluide, ou haché.
+    pub pace: String,
+}
+
+/// Une voix intégrée du modèle actif.
+#[derive(Debug, Clone, PartialEq)]
+pub struct VoiceChoice {
+    pub id: String,
+    pub label: String,
+}
+
+/// Ce que le modèle actif sait faire : ses voix, ses langues, les réglages
+/// qu'il lit. `honoured` vide : famille inconnue, rien n'est affirmé.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct ModelCapabilities {
+    pub family: String,
+    pub voices: Vec<VoiceChoice>,
+    pub languages: Vec<String>,
+    pub honoured: Vec<String>,
+    /// Le modèle ne parle qu'en clonant un WAV. Connu une fois la voix
+    /// chargée seulement : faux avant.
+    pub requires_reference: bool,
+}
+
+/// Décrit un paquet ; `active_path` est le chemin du modèle en place.
+pub fn voice_model(p: &models::ModelPackage, active_path: &str) -> VoiceModel {
+    VoiceModel {
+        id: p.id.to_string(),
+        name: p.display_name.to_string(),
+        bytes: p.bytes,
+        installed: models::is_installed(p),
+        active: !active_path.is_empty()
+            && models::install_path(p).is_some_and(|path| path.to_string_lossy() == active_path),
+        recommended: p.recommended,
+        summary: p.description.to_string(),
+        family: p.family.to_string(),
+        precision: p.precision.to_string(),
+        languages_label: p.languages_label.to_string(),
+        languages: p.languages.iter().map(|l| l.to_string()).collect(),
+        pace: p.pace.to_string(),
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -343,19 +390,22 @@ impl Reader {
     }
 
     pub fn voices(&self) -> Vec<VoiceModel> {
-        let active = &self.current_config().engine.model_path;
-        models::available()
-            .into_iter()
-            .map(|p| VoiceModel {
-                id: p.id.to_string(),
-                name: p.display_name.to_string(),
-                bytes: p.bytes,
-                installed: models::is_installed(p),
-                active: models::install_path(p)
-                    .is_some_and(|path| path.to_string_lossy() == active.as_str()),
-                recommended: p.recommended,
-            })
-            .collect()
+        let active = self.current_config().engine.model_path.clone();
+        models::available().into_iter().map(|p| voice_model(p, &active)).collect()
+    }
+
+    pub fn capabilities(&self) -> ModelCapabilities {
+        let family = self.current_config().engine.family.clone();
+        ModelCapabilities {
+            voices: models::voices_for_family(&family)
+                .iter()
+                .map(|v| VoiceChoice { id: v.id.to_string(), label: v.label.to_string() })
+                .collect(),
+            languages: models::languages_for_family(&family).into_iter().map(String::from).collect(),
+            honoured: models::honoured_options(&family).iter().map(|o| o.to_string()).collect(),
+            requires_reference: self.engine.as_ref().is_some_and(|e| e.requires_reference()),
+            family,
+        }
     }
 
     pub fn install_voice(&mut self, id: &str) -> Result<()> {
@@ -469,6 +519,64 @@ fn sentence_at_prose_rank(doc: &Document, rank: usize) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn reader_on(family: &str) -> Reader {
+        let mut config = Config::default();
+        config.reading.autoplay = false;
+        config.engine.family = family.into();
+        Reader::new(
+            config,
+            Box::new(|_| Arc::new(SilentEngine) as Arc<dyn TtsEngine>),
+            Box::new(Player::silent),
+            Instant::now(),
+        )
+    }
+
+    #[test]
+    fn capabilities_follow_the_active_family() {
+        let supertonic = reader_on("supertonic").capabilities();
+        assert_eq!(supertonic.family, "supertonic");
+        assert_eq!(supertonic.voices.len(), 10);
+        assert_eq!(supertonic.voices[0], VoiceChoice { id: "M1".into(), label: "M1 · masculine 1".into() });
+        assert_eq!(supertonic.languages.len(), 31);
+        assert!(supertonic.honoured.contains(&"speaking_rate".to_string()));
+        assert!(!supertonic.honoured.contains(&"temperature".to_string()));
+        assert!(!supertonic.requires_reference);
+
+        // MagpieTTS : température, top-k et guidage apparaissent, la vitesse disparaît.
+        let magpie = reader_on("magpie_tts").capabilities();
+        assert_eq!(magpie.voices.len(), 5);
+        assert_eq!(magpie.languages.len(), 11);
+        for key in ["temperature", "top_k", "guidance_scale"] {
+            assert!(magpie.honoured.contains(&key.to_string()), "{key}");
+        }
+        assert!(!magpie.honoured.contains(&"speaking_rate".to_string()));
+
+        // Famille inconnue : rien n'est affirmé.
+        let unknown = reader_on("").capabilities();
+        assert!(unknown.voices.is_empty());
+        assert!(unknown.honoured.is_empty());
+        assert_eq!(unknown.languages.len(), 7);
+    }
+
+    #[test]
+    fn every_catalog_entry_describes_itself() {
+        for package in crate::models::CATALOG {
+            let v = voice_model(package, "");
+            assert_eq!(v.id, package.id);
+            assert_eq!(v.summary, package.description);
+            assert_eq!(v.family, package.family);
+            assert_eq!(v.precision, package.precision);
+            assert_eq!(v.languages_label, package.languages_label);
+            assert_eq!(v.languages.len(), package.languages.len());
+            assert_eq!(v.pace, package.pace);
+            assert!(!v.active, "aucun chemin actif");
+        }
+        let first = &crate::models::CATALOG[0];
+        if let Some(path) = crate::models::install_path(first) {
+            assert!(voice_model(first, &path.to_string_lossy()).active);
+        }
+    }
     use crate::audio::Player;
     use crate::tts::silent::SilentEngine;
     use crate::tts::TtsEngine;

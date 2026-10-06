@@ -617,9 +617,35 @@ pub fn honours(family: &str, option: &str) -> bool {
     honoured.is_empty() || honoured.contains(&option)
 }
 
+/// Langues proposées quand la famille n'est pas au catalogue : les sept que
+/// le terminal proposait.
+pub const FALLBACK_LANGUAGES: &[&str] = &["fr", "en", "de", "es", "it", "pt", "nl"];
+
+/// Langues qu'une famille sait parler : celles de son paquet au catalogue.
+///
+/// Toutes les variantes d'une famille partagent la même liste ; le catalogue
+/// entier est consulté, pas seulement ce que ce binaire sait charger, pour
+/// que l'écran dise juste même compilé sans audio.cpp.
+pub fn languages_for_family(family: &str) -> Vec<&'static str> {
+    CATALOG
+        .iter()
+        .find(|p| p.family == family)
+        .map(|p| p.languages.to_vec())
+        .unwrap_or_else(|| FALLBACK_LANGUAGES.to_vec())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn languages_follow_the_family() {
+        assert_eq!(languages_for_family("supertonic").len(), 31);
+        assert_eq!(languages_for_family("magpie_tts").len(), 11);
+        assert!(languages_for_family("magpie_tts").contains(&"zh"));
+        // Famille inconnue : les sept que le terminal proposait.
+        assert_eq!(languages_for_family(""), FALLBACK_LANGUAGES.to_vec());
+    }
 
     /// Retrouve une entrée par son identifiant, plutôt que par sa position :
     /// l'ordre du catalogue suit la recommandation et change avec elle.
