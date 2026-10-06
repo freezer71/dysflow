@@ -10,7 +10,9 @@ struct ModelsTab: View {
     init(model: ReaderModel, settings: SettingsStore) {
         self.model = model
         _store = State(initialValue: ModelsStore(backend: model,
-                                                 onActiveModelChanged: { await settings.reload() }))
+                                                 onActiveModelChanged: { await settings.reload() },
+                                                 isDownloading: { ReaderModel.isDownloading(model.snapshot.download) },
+                                                 announce: { GeneralTab.announce($0) }))
     }
 
     private var download: DownloadView? { model.snapshot.download }
@@ -35,17 +37,13 @@ struct ModelsTab: View {
         .formStyle(.grouped)
         .accessibilityIdentifier("onglet-modeles")
         .task { await store.reload() }
-        // Un refus du moteur se lit à l'écran et se dit à VoiceOver.
-        .onChange(of: store.error) { _, error in
-            if let error { GeneralTab.announce(error) }
-        }
         // Un téléchargement qui finit, échoue ou s'annule change le catalogue.
         .onChange(of: ReaderModel.isDownloading(download)) { _, running in
             if !running { Task { await store.downloadSettled() } }
         }
         .alert(deletionTitle, isPresented: deletionShown, presenting: store.pendingDeletion) { m in
             // Annuler est le bouton par défaut : Retour et Échap n'effacent rien.
-            Button("Annuler", role: .cancel) { store.pendingDeletion = nil }
+            Button("Annuler", role: .cancel) { store.cancelDeletion() }
                 .keyboardShortcut(.defaultAction)
             Button("Supprimer", role: .destructive) { Task { await store.delete(m) } }
         } message: { m in
@@ -109,6 +107,6 @@ struct ModelsTab: View {
 
     private var deletionShown: Binding<Bool> {
         Binding(get: { store.pendingDeletion != nil },
-                set: { if !$0 { store.pendingDeletion = nil } })
+                set: { if !$0, store.pendingDeletion != nil { store.cancelDeletion() } })
     }
 }

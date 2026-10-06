@@ -39,12 +39,29 @@ final class ModelsStore {
     /// l'active) : les réglages relisent voix, langues et filtres.
     @ObservationIgnored private let onActiveModelChanged: () async -> Void
 
-    init(backend: ModelsBackend, onActiveModelChanged: @escaping () async -> Void = {}) {
+    /// Un téléchargement tourne-t-il encore ? Sert à ne pas laisser
+    /// « Annulation… » collé quand aucune fin de transfert ne suivra.
+    @ObservationIgnored private let isDownloading: () -> Bool
+    /// Dit un refus à VoiceOver, chaque fois, même s'il est identique au précédent.
+    @ObservationIgnored private let announce: (String) -> Void
+
+    init(backend: ModelsBackend,
+         onActiveModelChanged: @escaping () async -> Void = {},
+         isDownloading: @escaping () -> Bool = { false },
+         announce: @escaping (String) -> Void = { _ in }) {
         self.backend = backend
         self.onActiveModelChanged = onActiveModelChanged
+        self.isDownloading = isDownloading
+        self.announce = announce
+    }
+
+    private func fail(_ text: String) {
+        error = text
+        announce(text)
     }
 
     func reload() async {
+        if cancelling, !isDownloading() { cancelling = false }
         catalogue = await backend.loadVoices()
         freeSpace = await backend.freeSpace()
     }
@@ -60,13 +77,19 @@ final class ModelsStore {
 
     func askDeletion(_ model: VoiceModel) {
         switch Self.deletionRequest(for: model) {
-        case .refuse(let reason): error = reason
-        case .confirm: pendingDeletion = model
+        case .refuse(let reason): fail(reason)
+        case .confirm: error = nil; pendingDeletion = model
         }
     }
 
     /// Supprime après confirmation. Le modèle est passé par l'alerte : sa
     /// fermeture remet `pendingDeletion` à nil avant que la tâche ne parte.
+    /// L'alerte est refusée : rien n'a changé, un refus ancien ne reste pas.
+    func cancelDeletion() {
+        pendingDeletion = nil
+        error = nil
+    }
+
     func delete(_ model: VoiceModel) async {
         pendingDeletion = nil
         await run { try await self.backend.removeModelAsync(model.id) }
@@ -81,7 +104,9 @@ final class ModelsStore {
 
     func cancelDownload() async {
         cancelling = true
-        await run { try await self.backend.cancelDownloadAsync() }
+        let ok = await run { try await self.backend.cancelDownloadAsync() }
+        // Échec, ou transfert déjà fini : aucune fin de transfert ne suivra.
+        if !ok || !isDownloading() { cancelling = false }
     }
 
     /// Un téléchargement terminé, échoué ou annulé : on relit le catalogue.
@@ -93,13 +118,17 @@ final class ModelsStore {
         if catalogue.first(where: \.active)?.id != before { await onActiveModelChanged() }
     }
 
-    private func run(_ action: () async throws -> Void) async {
+    @discardableResult
+    private func run(_ action: () async throws -> Void) async -> Bool {
+        error = nil
+        var ok = true
         do {
             try await action()
-            error = nil
         } catch {
-            self.error = SettingsStore.message(of: error)
+            ok = false
+            fail(SettingsStore.message(of: error))
         }
         await reload()
+        return ok
     }
 }

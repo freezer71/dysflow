@@ -86,7 +86,7 @@ final class ModelsStoreTests: XCTestCase {
         XCTAssertFalse(store.cancelling)
     }
 
-    func testARefusedUseIsShown() async {
+    func testARefusedDeletionIsShown() async {
         let backend = FakeModelsBackend()
         backend.catalogue = [.sample(id: "a")]
         backend.failRemoval = "mode d'essai : rien ne s'écrit"
@@ -94,5 +94,58 @@ final class ModelsStoreTests: XCTestCase {
         await store.reload()
         await store.delete(backend.catalogue[0])
         XCTAssertEqual(store.error, "mode d'essai : rien ne s'écrit")
+    }
+
+    func testARefusedUseAndARefusedInstallAreShown() async {
+        let backend = FakeModelsBackend()
+        backend.catalogue = [.sample(id: "a"), .sample(id: "b", installed: false)]
+        backend.failUse = "un téléchargement est en cours"
+        backend.failInstall = "mode d'essai : rien ne se télécharge"
+        let store = ModelsStore(backend: backend)
+        await store.reload()
+        await store.use("a")
+        XCTAssertEqual(store.error, "un téléchargement est en cours")
+        await store.install("b")
+        XCTAssertEqual(store.error, "mode d'essai : rien ne se télécharge")
+    }
+
+    func testARepeatedRefusalIsAnnouncedEveryTime() {
+        var said: [String] = []
+        let store = ModelsStore(backend: FakeModelsBackend(), announce: { said.append($0) })
+        let active = VoiceModel.sample(id: "a", name: "Supertonic", active: true)
+        store.askDeletion(active)
+        store.askDeletion(active)
+        XCTAssertEqual(said.count, 2)
+    }
+
+    func testAFailedCancelDoesNotLeaveCancellingOn() async {
+        let backend = FakeModelsBackend()
+        backend.failCancel = "rien à annuler"
+        let store = ModelsStore(backend: backend, isDownloading: { true })
+        await store.cancelDownload()
+        XCTAssertFalse(store.cancelling)
+        XCTAssertEqual(store.error, "rien à annuler")
+    }
+
+    func testCancellingAfterTheDownloadEndedDoesNotStick() async {
+        let store = ModelsStore(backend: FakeModelsBackend(), isDownloading: { false })
+        await store.cancelDownload()
+        XCTAssertFalse(store.cancelling)
+    }
+
+    func testCancellingStaysWhileTheTransferStillRuns() async {
+        let store = ModelsStore(backend: FakeModelsBackend(), isDownloading: { true })
+        await store.cancelDownload()
+        XCTAssertTrue(store.cancelling, "le transfert voit l'annulation à son prochain bloc")
+    }
+
+    func testCancellingTheAlertClearsAStaleRefusal() {
+        let store = ModelsStore(backend: FakeModelsBackend())
+        store.askDeletion(.sample(id: "a", active: true))
+        XCTAssertNotNil(store.error)
+        store.askDeletion(.sample(id: "b"))
+        XCTAssertNil(store.error)
+        store.cancelDeletion()
+        XCTAssertNil(store.pendingDeletion)
     }
 }
