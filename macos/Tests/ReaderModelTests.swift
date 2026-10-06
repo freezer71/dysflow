@@ -86,9 +86,12 @@ final class ReaderModelTests: XCTestCase {
 @MainActor
 final class ReaderModelTickingTests: XCTestCase {
     private var clock = Date()
+    /// Les images sont données à la main : un écran en veille n'en envoie pas.
+    private let frames = ManualFrames()
 
     private func hiddenModel() -> ReaderModel {
-        let m = ReaderModel(reader: SillonReader.silent(), now: { [unowned self] in self.clock })
+        let m = ReaderModel(reader: SillonReader.silent(), now: { [unowned self] in self.clock },
+                            frames: frames)
         m.open(text: "Un. Deux.", source: "test")
         XCTAssertTrue(waitUntil { m.refresh(); return m.snapshot.revision == 1 })
         // La période de grâce passée, le modèle masqué au repos s'arrête.
@@ -121,10 +124,10 @@ final class ReaderModelTickingTests: XCTestCase {
         let m = hiddenModel()
         m.isDisplayed = true
         m.send(.togglePlay)
-        XCTAssertTrue(waitUntil { m.snapshot.playing })
+        XCTAssertTrue(waitUntil { self.frames.tick(); return m.snapshot.playing })
         XCTAssertTrue(m.isTicking)
         m.send(.togglePlay)
-        XCTAssertTrue(waitUntil { !m.snapshot.playing })
+        XCTAssertTrue(waitUntil { self.frames.tick(); return !m.snapshot.playing })
         clock += ReaderModel.gracePeriod + 0.1
         m.refresh()
         XCTAssertFalse(m.isTicking)
@@ -150,11 +153,11 @@ final class ReaderModelTickingTests: XCTestCase {
     func testHiddenPlayIsSeenWithoutManualRefresh() {
         let m = hiddenModel()
         m.send(.togglePlay)
-        // Aucun refresh manuel : seul le suivi à l'image peut voir `playing`.
-        XCTAssertTrue(waitUntil { m.snapshot.playing })
+        // Aucun refresh manuel : seule une image peut voir `playing`.
+        XCTAssertTrue(waitUntil { self.frames.tick(); return m.snapshot.playing })
         XCTAssertTrue(m.isTicking)
         m.send(.togglePlay)
-        XCTAssertTrue(waitUntil { !m.snapshot.playing })
+        XCTAssertTrue(waitUntil { self.frames.tick(); return !m.snapshot.playing })
         // Encore dans la période de grâce : le suivi continue.
         XCTAssertTrue(m.isTicking)
         clock += ReaderModel.gracePeriod + 0.1

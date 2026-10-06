@@ -9,7 +9,7 @@ import Observation
 @Observable
 final class ReaderModel {
     @ObservationIgnored private let reader: SillonReader
-    @ObservationIgnored private var ticker: DisplayTicker?
+    @ObservationIgnored private let frames: FrameSource
     @ObservationIgnored private let now: () -> Date
     /// Après une commande, l'effet n'arrive que quelques ms plus tard : le suivi
     /// ne peut pas s'arrêter avant cette échéance.
@@ -29,12 +29,15 @@ final class ReaderModel {
     /// Le fil d'Ariane de la section lue, recalculé quand elle change.
     private(set) var breadcrumb = ""
 
-    init(reader: SillonReader, now: @escaping () -> Date = Date.init) {
+    init(reader: SillonReader, now: @escaping () -> Date = Date.init,
+         frames: FrameSource? = nil) {
         self.reader = reader
         self.now = now
+        self.frames = frames ?? DisplayLinkFrames()
         snapshot = Self.published(reader.snapshot())
         document = reader.document()
         outline()
+        self.frames.onFrame = { [weak self] in self?.refresh() }
     }
 
     private func outline() {
@@ -52,7 +55,7 @@ final class ReaderModel {
     }
 
     /// Le suivi à la cadence de l'écran tourne-t-il ?
-    var isTicking: Bool { ticker?.isRunning ?? false }
+    var isTicking: Bool { frames.isRunning }
 
     /// Le rythme auquel l'état est relu.
     enum Cadence: Equatable {
@@ -94,14 +97,11 @@ final class ReaderModel {
 
     /// Le suivi à la cadence de l'écran.
     func start() {
-        if ticker == nil {
-            ticker = DisplayTicker { [weak self] in self?.refresh() }
-        }
-        ticker?.start()
+        frames.start()
     }
 
     func stop() {
-        ticker?.stop()
+        frames.stop()
     }
 
     private func startGlance() {

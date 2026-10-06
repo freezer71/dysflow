@@ -7,10 +7,14 @@ import XCTest
 final class ReadingTextViewTests: XCTestCase {
     private var window: NSWindow!
     private var view: ReadingTextView!
+    /// Les images du trait, données à la main : un écran en veille n'en envoie pas.
+    private var frames: ManualFrames!
 
     override func setUp() async throws {
         let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 500, height: 300))
         view = ReadingTextView()
+        frames = ManualFrames()
+        view.frames = frames
         view.frame = NSRect(origin: .zero, size: scroll.contentSize)
         scroll.documentView = view
         window = NSWindow(contentRect: scroll.frame, styleMask: [.borderless],
@@ -27,6 +31,7 @@ final class ReadingTextViewTests: XCTestCase {
         window.orderOut(nil)
         window = nil
         view = nil
+        frames = nil
     }
 
     /// L'attribut de rendu posé à `location`, ou nil.
@@ -99,15 +104,13 @@ final class ReadingTextViewTests: XCTestCase {
         XCTAssertTrue(view.isAnimatingLine)
         let word = try! XCTUnwrap(view.wordRect)
         let un = try! XCTUnwrap(view.rectForTesting(NSRange(location: 0, length: 2)))
-        XCTAssertTrue(waitUntil(1) {
-            abs((view.cursorLine?.maxX ?? 0) - (word.minX + word.width * 0.25)) < 0.5
-        })
+        frames.tick()
+        XCTAssertEqual(view.cursorLine!.maxX, word.minX + word.width * 0.25, accuracy: 0.5)
         XCTAssertEqual(view.cursorLine!.minX, un.minX, accuracy: 0.5)
 
         progress = 0.75
-        XCTAssertTrue(waitUntil(1) {
-            abs((view.cursorLine?.maxX ?? 0) - (word.minX + word.width * 0.75)) < 0.5
-        })
+        frames.tick()
+        XCTAssertEqual(view.cursorLine!.maxX, word.minX + word.width * 0.75, accuracy: 0.5)
 
         view.playing = false
         XCTAssertNil(view.cursorLine)
@@ -217,6 +220,9 @@ final class ReadingTextViewTests: XCTestCase {
     /// On relit en faisant défiler : la vue ne ramène plus la ligne lue,
     /// jusqu'à la prochaine commande de lecture.
     func testUserScrollStopsFollowingUntilResumed() {
+        // Sans animation : le défilement se pose tout de suite, sans dépendre
+        // de l'écran (une animation n'avance pas quand il est en veille).
+        view.reduceMotion = { true }
         view.setDocument(longText(400))
         let clip = view.enclosingScrollView!.contentView
         view.show(word: range(of: "mot1 "), sentence: nil, pastUpTo: 0, follow: true)

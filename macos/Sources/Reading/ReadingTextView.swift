@@ -31,7 +31,11 @@ final class ReadingTextView: NSTextView {
     private var lineStartX: CGFloat = 0
     /// La part du mot dite, qui ne recule pas dans un même mot.
     private var progress: CGFloat = 0
-    private var link: CADisplayLink?
+    /// Les images qui font avancer le trait ; les tests la remplacent par une
+    /// source manuelle.
+    var frames: FrameSource = DisplayLinkFrames() {
+        didSet { oldValue.stop(); wireFrames() }
+    }
     private var dimmedUpTo = 0
     private var colored: NSRange?
     private var spoken: NSRange?
@@ -53,6 +57,7 @@ final class ReadingTextView: NSTextView {
 
     convenience init() {
         self.init(usingTextLayoutManager: true)
+        wireFrames()
         isEditable = false
         isSelectable = false
         drawsBackground = false
@@ -224,7 +229,7 @@ final class ReadingTextView: NSTextView {
     // MARK: - Le trait sous la ligne
 
     /// Vrai quand le trait suit la voix à chaque image.
-    var isAnimatingLine: Bool { link != nil }
+    var isAnimatingLine: Bool { frames.isRunning }
 
     /// Montre, déplace ou retire le trait, et ne fait tourner le lien
     /// d'affichage que si la lecture avance et que le mouvement est permis.
@@ -257,14 +262,17 @@ final class ReadingTextView: NSTextView {
         cursorLine = line
     }
 
-    private func startLink() {
-        guard link == nil else { return }
-        let link = displayLink(target: self, selector: #selector(step))
-        link.add(to: .main, forMode: .common)
-        self.link = link
+    private func wireFrames() {
+        // L'écran de la fenêtre, à défaut l'écran principal.
+        (frames as? DisplayLinkFrames)?.screen = { [weak self] in self?.window?.screen ?? NSScreen.main }
+        frames.onFrame = { [weak self] in self?.step() }
     }
 
-    @objc private func step(_ link: CADisplayLink) {
+    private func startLink() {
+        frames.start()
+    }
+
+    private func step() {
         guard playing, let wordRect else { stopLink(); return }
         readProgress()
         setCursorLine(CursorLine.rect(word: wordRect, lineStartX: lineStartX,
@@ -272,8 +280,7 @@ final class ReadingTextView: NSTextView {
     }
 
     private func stopLink() {
-        link?.invalidate()
-        link = nil
+        frames.stop()
     }
 
     /// Hors fenêtre, le lien s'arrête (il retient la vue) ; de retour, il

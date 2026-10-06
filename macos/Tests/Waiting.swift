@@ -1,4 +1,5 @@
 import Foundation
+@testable import Sillon
 
 /// Fait tourner la boucle principale jusqu'à ce que `condition` soit vraie.
 @MainActor
@@ -22,4 +23,15 @@ func eventuallyTrue(_ timeout: Duration = .seconds(5), _ condition: () -> Bool) 
         try? await Task.sleep(for: .milliseconds(10))
     }
     return true
+}
+
+/// Une source d'images qu'on déclenche à la main : `tick()` rend une image si
+/// la source tourne, comme le ferait l'écran.
+@MainActor
+final class ManualFrames: FrameSource {
+    var onFrame: (() -> Void)?
+    private(set) var isRunning = false
+    func start() { isRunning = true }
+    func stop() { isRunning = false }
+    func tick() { if isRunning { onFrame?() } }
 }
