@@ -15,17 +15,36 @@ const FORMER: &str = "rs-reader";
 
 /// Configuration : `config.toml`.
 pub fn config_dir() -> Option<PathBuf> {
+    #[cfg(test)]
+    return Some(test_root("config"));
+    #[cfg(not(test))]
     dirs::config_dir().map(|base| adopt(&base))
 }
 
 /// Données : modèles, signets, positions, journal.
 pub fn data_dir() -> Option<PathBuf> {
+    #[cfg(test)]
+    return Some(test_root("data"));
+    #[cfg(not(test))]
     dirs::data_local_dir().map(|base| adopt(&base))
 }
 
 /// Cache : documents extraits, données de langue.
 pub fn cache_dir() -> Option<PathBuf> {
+    #[cfg(test)]
+    return Some(test_root("cache"));
+    #[cfg(not(test))]
     dirs::cache_dir().map(|base| adopt(&base))
+}
+
+/// Sous `cargo test`, jamais les répertoires de l'utilisateur : un dossier
+/// temporaire propre au processus, créé au premier usage. Aucun test du
+/// moteur ne peut ainsi lire ni écrire ses signets, positions ou modèles.
+#[cfg(test)]
+fn test_root(kind: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!("sillon-tests-{}", std::process::id())).join(kind);
+    let _ = std::fs::create_dir_all(&dir);
+    dir
 }
 
 /// Le répertoire du lecteur sous `base`, en reprenant celui de l'ancien nom
@@ -70,6 +89,14 @@ fn adopt(base: &Path) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn user_directories_are_temporary_in_test_builds() {
+        let temp = std::env::temp_dir();
+        for dir in [data_dir(), config_dir(), cache_dir()] {
+            assert!(dir.unwrap().starts_with(&temp), "un test ne touche pas aux fichiers de l'utilisateur");
+        }
+    }
 
     fn scratch() -> PathBuf {
         let dir = std::env::temp_dir().join(format!(
