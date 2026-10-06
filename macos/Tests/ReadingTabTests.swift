@@ -14,4 +14,10 @@ final class ReadingTabTests: XCTestCase {
         XCTAssertEqual(options.map(\.value), ["announce", "skip", "read", "lire"])
         XCTAssertEqual(options.last?.title, "lire (écrit à la main)")
     }
+
+    func testSeekStepIsPluralOnlyAboveOne() {
+        XCTAssertEqual(ReadingTab.seekText(1), "1 phrase")
+        XCTAssertEqual(ReadingTab.seekText(2), "2 phrases")
+        XCTAssertEqual(ReadingTab.seekText(50), "50 phrases")
+    }
 }

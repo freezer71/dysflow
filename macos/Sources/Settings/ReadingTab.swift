@@ -32,10 +32,10 @@ struct ReadingTab: View {
                         .fixedSize()
                 }
                 Toggle("Lire dès l'ouverture", isOn: store.binding(\.autoplay))
-                Stepper("Pas de l'avance rapide : \(store.values.seekStep) phrases",
+                Stepper("Pas de l'avance rapide : \(Self.seekText(Int(store.values.seekStep)))",
                         value: count(\.seekStep), in: 1...50)
                     .accessibilityLabel("Pas de l'avance rapide")
-                    .accessibilityValue("\(store.values.seekStep) phrases")
+                    .accessibilityValue(Self.seekText(Int(store.values.seekStep)))
             }
             if let error = store.error { Text(error).foregroundStyle(.red) }
         }
@@ -48,6 +48,9 @@ struct ReadingTab: View {
         Binding(get: { Int(store.values[keyPath: key]) },
                 set: { store.set(key, UInt32(max(0, $0))) })
     }
+
+    /// « 1 phrase », « 2 phrases » : le pluriel dès 2.
+    static func seekText(_ n: Int) -> String { n == 1 ? "1 phrase" : "\(n) phrases" }
 
     static func codeOptions(current: String) -> [(title: String, value: String)] {
         Choices.including([("Annoncer", "announce"), ("Sauter", "skip"), ("Lire", "read")],
