@@ -12,6 +12,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// raccourcis globaux (ils s'inscriraient pour l'app de développement).
     let isUnitTesting = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
     private(set) var reader: SillonReader!
+    /// Le lecteur est muet et hors disque (tests d'interface, tests unitaires).
+    private(set) var readerIsSilent = false
+
+    /// Sous XCTest (tests unitaires) comme sous les tests d'interface, le
+    /// lecteur est muet et n'écrit rien : jamais ~/.config/sillon ni
+    /// ~/Library/Application Support/sillon.
+    nonisolated static func usesSilentReader(arguments: [String], environment: [String: String]) -> Bool {
+        arguments.contains("--ui-testing") || environment["XCTestConfigurationFilePath"] != nil
+    }
     private(set) var model: ReaderModel!
     private(set) var panel: PanelController!
     /// Le magasin de la fenêtre des réglages tant qu'elle existe.
@@ -31,7 +40,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         ReadingFont.registerBundled()
         Self.shared = self
-        reader = isUITesting ? SillonReader.silent() : SillonReader()
+        readerIsSilent = Self.usesSilentReader(arguments: ProcessInfo.processInfo.arguments,
+                                               environment: ProcessInfo.processInfo.environment)
+        reader = readerIsSilent ? SillonReader.silent() : SillonReader()
         // Mode mesure : seul le lecteur et les mesures tournent. Retour avant le
         // modèle, le panneau, les raccourcis, l'ouverture à la connexion et
         // l'accueil ; sans l'argument, rien ne change.
