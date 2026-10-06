@@ -114,7 +114,8 @@ Ce qui s'ouvre au raccourci : un `NSPanel` non activant, comme Spotlight.
 - Il prend le clavier tant qu'il est affiché.
 - Sa hauteur suit le texte jusqu'à une limite ; au-delà, le texte défile tout
   seul avec la lecture.
-- Contenu : le texte, le mot surligné, la ligne soulignée ; une barre (lecture,
+- Contenu : le texte, le mot lu et le trait sous sa ligne (voir
+  « Fluidité ») ; une barre (lecture,
   progression, temps, vitesse) ; trois aides (`⏎` agrandir, `esc` masquer,
   `?` raccourcis).
 
@@ -243,8 +244,9 @@ déchargement ne sert à rien tant qu'elle n'est pas corrigée. Comparer aussi
 | Fond du panneau | crème `#fbf8f1` | brun très sombre `#1e1b17` |
 | Texte | `#2a2722` | crème atténué `#e8e1d4` |
 | Texte déjà lu | `#9a948a` | `#8a8276` |
-| Mot surligné | fond `#cfe3ff`, texte `#1b2a44` | fond `#2c4a75`, texte `#e6efff` |
-| Ligne lue | soulignée `#7aa7e8` | soulignée `#7aa7e8` |
+| Mot lu | encre `#1b2a44`, sans fond | encre `#e6efff`, sans fond |
+| Ligne lue | trait de 2 pt `#7aa7e8` jusqu'au point de la voix | idem |
+| Règle de lecture | bande `#cfe3ff` à 25 % | bande `#2c4a75` à 25 % |
 | Texte des contrôles | `#575249` | `#9a9286` |
 | Police de lecture | **Literata** (embarquée, OFL) | idem |
 
@@ -259,6 +261,11 @@ des contrôles passe de `#6e685e` (5,2:1) à `#575249` (7,3:1) ; à 13 pt, les
 traits fins du temps (« –:–– / ~–:–– ») paraissaient plus pâles que leur
 couleur et l'audit les refusait. Le temps est aussi en graisse moyenne, ce
 qui suffit en nuit (`#9a9286`, 5,6:1, inchangé).)*
+
+*(Révisé le 2026-10-06, curseur « encre calme » : le mot lu n'a plus de
+fond, seulement une encre plus sombre ; la phrase n'est plus soulignée, un
+trait sous la ligne la remplace. En contraste élevé, le mot lu est blanc et
+le trait jaune `#ffe600`. Voir « Fluidité ».)*
 
 - Polices de lecture proposées : Literata (défaut), Atkinson Hyperlegible,
   OpenDyslexic. Elles sont embarquées dans l'app.
@@ -284,8 +291,26 @@ qui suffit en nuit (`#9a9286`, 5,6:1, inchangé).)*
 
 ## Fluidité
 
-- Le surlignage **glisse** d'un mot au suivant en moins de 80 ms. Il est
-  immédiat si « réduire les animations » est actif.
+- **Curseur « encre calme »** : le mot lu prend une encre plus sombre (la
+  couleur seule, jamais la graisse, qui referait la ligne) ; le déjà-lu
+  s'atténue mot par mot ; un trait fin de 2 pt court sous la ligne lue, de
+  son début jusqu'au point où en est la voix dans le mot (début du mot +
+  largeur × part dite), **en continu** à la cadence de l'écran, et repart à
+  chaque nouvelle ligne. Il n'existe que pendant la lecture : en pause, le
+  trait disparaît et son lien d'affichage s'arrête. La bande de la règle de
+  lecture reste sous la ligne quand la règle est active.
+- Si « réduire les animations » est actif, le trait avance **mot par mot**
+  (jusqu'à la fin du mot lu), sans mouvement continu.
+- Un bloc annoncé (code, tableau) garde sa bande sur tout le bloc, le
+  déjà-lu atténué avant lui, et pas de trait.
+
+*(Révisé le 2026-10-06 : remplace le surlignage en pastille qui glissait en
+80 ms d'un mot au suivant et le soulignement de la phrase, trouvés saccadés
+et grossiers à l'usage. Choisi sur démonstration (option C, « encre
+calme »). La part du mot dite vient de Rust (`word_progress` dans
+l'instantané, même répartition par poids que le mot lu) ; elle ne republie
+pas l'instantané SwiftUI : la vue de lecture la relit elle-même, image par
+image, pendant la lecture.)*
 - **La ligne lue reste à hauteur fixe** : le texte défile, pas le regard.
 - Rendu par TextKit 2, à la fréquence de l'écran.
 
