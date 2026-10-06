@@ -95,27 +95,23 @@ final class CommitterTests: XCTestCase {
     }
 }
 
-/// L'onglet Lecture n'écrit que le réglage touché : basculer la règle ne
-/// remet pas la vitesse changée entre-temps au clavier.
+/// L'ancien onglet Lecture n'écrit que le réglage touché.
 final class ReadingValuesPatchTests: XCTestCase {
     func testOnlyTheChangedFieldIsWritten() {
-        var current = SettingsView(speed: 1.5, lineSpacing: 2, readingRuler: true, keepVoiceMinutes: 10)
         var old = ReadingValues(); old.speed = 1.0; old.lineSpacing = 2; old.ruler = true
         var new = old; new.ruler = false
-        ReadingValues.write(new, over: old, into: &current)
-        XCTAssertEqual(current.speed, 1.5, "la vitesse prise au clavier reste")
-        XCTAssertFalse(current.readingRuler)
-        XCTAssertEqual(current.lineSpacing, 2)
+        var expected = SettingsPatch.empty
+        expected.readingRuler = false
+        XCTAssertEqual(ReadingValues.patch(new, over: old), expected)
     }
 
     func testEachChangedFieldIsWritten() {
-        var current = SettingsView(speed: 1.5, lineSpacing: 2, readingRuler: true, keepVoiceMinutes: 10)
         let old = ReadingValues()
         var new = old; new.speed = 2.0; new.lineSpacing = 3
-        ReadingValues.write(new, over: old, into: &current)
-        XCTAssertEqual(current.speed, 2.0)
-        XCTAssertEqual(current.lineSpacing, 3)
-        XCTAssertTrue(current.readingRuler)
-        XCTAssertEqual(current.keepVoiceMinutes, 10)
+        let p = ReadingValues.patch(new, over: old)
+        XCTAssertEqual(p.speed, 2.0)
+        XCTAssertEqual(p.lineSpacing, 3)
+        XCTAssertNil(p.readingRuler)
+        XCTAssertNil(p.keepVoiceMinutes)
     }
 }

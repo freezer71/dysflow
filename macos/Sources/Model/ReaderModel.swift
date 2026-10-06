@@ -204,14 +204,22 @@ final class ReaderModel {
         let reader = reader
         return await Task.detached { reader.settings() }.value
     }
-    /// Relit les réglages, applique `change`, les écrit : hors du fil principal.
-    func changeSettings(_ change: @escaping @Sendable (inout SettingsView) -> Void) async throws {
+    /// Change à chaque réglage écrit : le panneau relit son affichage.
+    private(set) var settingsRevision = 0
+
+    /// Applique un patch et l'écrit, hors du fil principal ; rend les
+    /// valeurs telles qu'appliquées (bornes comprises).
+    func updateSettings(_ patch: SettingsPatch) async throws -> SettingsView {
         let reader = reader
-        try await Task.detached {
-            var s = reader.settings()
-            change(&s)
-            try reader.updateSettings(settings: s)
-        }.value
+        let applied = try await Task.detached { try reader.updateSettings(patch: patch) }.value
+        settingsRevision &+= 1
+        wake()
+        return applied
+    }
+    /// Voix, langues et réglages honorés par le modèle actif.
+    func loadCapabilities() async -> ModelCapabilities {
+        let reader = reader
+        return await Task.detached { reader.capabilities() }.value
     }
     /// Les voix du catalogue, lues hors du fil principal.
     func loadVoices() async -> [VoiceModel] {
@@ -223,10 +231,52 @@ final class ReaderModel {
         try await Task.detached { try reader.installVoice(id: id) }.value
         wake()
     }
+    /// Change de modèle : la voix se recharge, le suivi montre le chargement.
     func useVoiceAsync(_ id: String) async throws {
         let reader = reader
         try await Task.detached { try reader.useVoice(id: id) }.value
+        wake()
     }
+    func cancelDownloadAsync() async throws {
+        let reader = reader
+        try await Task.detached { try reader.cancelDownload() }.value
+        wake()
+    }
+    func removeModelAsync(_ id: String) async throws {
+        let reader = reader
+        try await Task.detached { try reader.removeModel(id: id) }.value
+    }
+    func freeSpace() async -> UInt64? {
+        let reader = reader
+        return await Task.detached { reader.freeSpace() }.value
+    }
+    /// « Écouter » : la phrase d'exemple avec les réglages en cours.
+    func previewVoice() async throws {
+        let reader = reader
+        try await Task.detached { try reader.previewVoice() }.value
+        wake()
+    }
+    func stopPreview() async {
+        let reader = reader
+        await Task.detached { reader.stopPreview() }.value
+        wake()
+    }
+    /// Vide le cache des documents ; rend les octets libérés.
+    func clearDocumentCache() async throws -> UInt64 {
+        let reader = reader
+        return try await Task.detached { try reader.clearDocumentCache() }.value
+    }
+    /// Tous les signets, tous documents confondus.
+    func loadAllBookmarks() async -> [StoredBookmarkView] {
+        let reader = reader
+        return await Task.detached { reader.allBookmarks() }.value
+    }
+    func removeBookmarkAsync(document: String, sentence: UInt32) async throws {
+        let reader = reader
+        try await Task.detached { try reader.removeBookmark(document: document, sentence: sentence) }.value
+    }
+    /// Le dossier de `config.toml` (lecture directe, sans le fil du lecteur).
+    var configDirectory: String? { reader.configDir() }
 
     /// La phrase en cours telle qu'elle est écrite.
     var currentSentenceText: String {

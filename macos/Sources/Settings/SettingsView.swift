@@ -45,7 +45,7 @@ private struct ReadingSettings: View {
             Slider(value: $size, in: 14...40, step: 1) { Text("Taille : \(Int(size)) pt") }
                 .accessibilityLabel("Taille du texte")
                 .accessibilityValue("\(Int(size)) points")
-            Stepper("Interlignage : \(settings.lineSpacing)", value: $settings.lineSpacing, in: 0...4)
+            Stepper("Interlignage : \(settings.lineSpacing)", value: $settings.lineSpacing, in: 0...3)
                 .accessibilityLabel("Interlignage")
                 .accessibilityValue("\(settings.lineSpacing)")
             Toggle("Règle de lecture", isOn: $settings.ruler)
@@ -68,7 +68,7 @@ private struct ReadingSettings: View {
             // Seul le réglage touché s'écrit, par-dessus les réglages relus
             // juste avant : la vitesse changée au clavier entre-temps reste.
             let c = Committer<ReadingValues>(saved: values, writeChange: { [model] new, old in
-                try await model.changeSettings { ReadingValues.write(new, over: old, into: &$0) }
+                _ = try await model.updateSettings(ReadingValues.patch(new, over: old))
             }, onResult: { error = $0.map(message(of:)) })
             committer = c
             settings = values
@@ -93,11 +93,13 @@ struct ReadingValues: Equatable {
         speed = Double(s.speed)
     }
 
-    /// Reporte sur `s` les seuls champs que `new` change par rapport à `old`.
-    static func write(_ new: ReadingValues, over old: ReadingValues, into s: inout SettingsView) {
-        if new.lineSpacing != old.lineSpacing { s.lineSpacing = UInt32(new.lineSpacing) }
-        if new.ruler != old.ruler { s.readingRuler = new.ruler }
-        if new.speed != old.speed { s.speed = Float(new.speed) }
+    /// Le patch des seuls champs que `new` change par rapport à `old`.
+    static func patch(_ new: ReadingValues, over old: ReadingValues) -> SettingsPatch {
+        var p = SettingsPatch.empty
+        if new.lineSpacing != old.lineSpacing { p.lineSpacing = UInt32(new.lineSpacing) }
+        if new.ruler != old.ruler { p.readingRuler = new.ruler }
+        if new.speed != old.speed { p.speed = Float(new.speed) }
+        return p
     }
 }
 
@@ -164,7 +166,11 @@ private struct VoiceSettings: View {
         .onChange(of: keep) { _, new in
             guard KeepVoiceChoice.needsSave(choice: new, stored: storedKeep) else { return }
             Task {
-                await act { try await model.changeSettings { $0.keepVoiceMinutes = new.minutes } }
+                await act {
+                    var p = SettingsPatch.empty
+                    p.keepVoiceMinutes = new.minutes
+                    _ = try await model.updateSettings(p)
+                }
                 if error == nil { storedKeep = new.minutes }
             }
         }

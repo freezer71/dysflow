@@ -18,7 +18,7 @@ final class PanelController {
     private(set) var mode: PanelMode = .hidden
     /// Réglages de lecture du moteur (interlignage, règle), relus à chaque
     /// ouverture : un changement dans les réglages s'applique au suivant.
-    var reading = SettingsView(speed: 1, lineSpacing: 1, readingRuler: true, keepVoiceMinutes: 10)
+    var reading = ReadingDisplay()
     var sidebarVisible = true
     var bookmarksVisible = false
     var searchActive = false
@@ -44,7 +44,7 @@ final class PanelController {
 
     func show() {
         // Lu hors du fil principal : s'applique dès qu'il revient.
-        Task { reading = await model.loadSettings() }
+        Task { reading = ReadingDisplay(await model.loadSettings()) }
         if mode == .hidden {
             window.setFrame(PanelGeometry.panelFrame(contentHeight: contentHeight, screen: screenFrame),
                             display: false)

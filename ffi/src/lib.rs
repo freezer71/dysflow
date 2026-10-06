@@ -11,7 +11,7 @@ use sillon::audio::Player;
 use sillon::config::Config;
 use sillon::reader::command::Command;
 use sillon::reader::handle::{ReaderHandle, Request};
-use sillon::reader::{settings, view, Reader};
+use sillon::reader::{data, preview, settings, view, Reader};
 use sillon::tts::{self, silent::SilentEngine, TtsEngine};
 
 uniffi::setup_scaffolding!();
@@ -97,6 +97,13 @@ pub struct DownloadView {
 }
 
 #[derive(uniffi::Record)]
+pub struct PreviewView {
+    pub pending: bool,
+    pub playing: bool,
+    pub error: Option<String>,
+}
+
+#[derive(uniffi::Record)]
 pub struct Snapshot {
     pub revision: u64,
     pub has_document: bool,
@@ -120,6 +127,7 @@ pub struct Snapshot {
     pub bookmarked: bool,
     pub skipped: u32,
     pub download: Option<DownloadView>,
+    pub preview: PreviewView,
 }
 
 #[derive(uniffi::Record)]
@@ -184,11 +192,112 @@ pub struct BookmarkView {
 }
 
 #[derive(uniffi::Record, Clone)]
+pub struct ExtraOption {
+    pub key: String,
+    pub value: String,
+}
+
+#[derive(uniffi::Record, Clone)]
 pub struct SettingsView {
+    pub voice: String,
+    pub language: String,
     pub speed: f32,
+    pub pitch: f32,
+    pub energy: f32,
+    pub emotion: String,
+    pub instruction: String,
+    pub volume: f32,
+    pub engine: String,
+    pub model_path: String,
+    pub family: String,
+    pub compute: String,
+    pub threads: u32,
+    pub sessions: u32,
+    pub prefetch: u32,
+    pub temperature: Option<f32>,
+    pub top_p: Option<f32>,
+    pub top_k: Option<u32>,
+    pub guidance_scale: Option<f32>,
+    pub repetition_penalty: Option<f32>,
+    pub inference_steps: Option<u32>,
+    pub seed: Option<u64>,
+    pub code_blocks: String,
+    pub autoplay: bool,
+    pub seek_step: u32,
+    pub line_width: u32,
     pub line_spacing: u32,
     pub reading_ruler: bool,
     pub keep_voice_minutes: i64,
+    pub extra: Vec<ExtraOption>,
+}
+
+/// Un réglage d'échantillonnage : la valeur du modèle, ou une valeur posée.
+#[derive(uniffi::Enum, Clone)]
+pub enum SamplingFloat {
+    Model,
+    Value { value: f32 },
+}
+
+#[derive(uniffi::Enum, Clone)]
+pub enum SamplingInt {
+    Model,
+    Value { value: u32 },
+}
+
+/// La graine : un tirage au hasard, ou une valeur fixe.
+#[derive(uniffi::Enum, Clone)]
+pub enum SamplingSeed {
+    Random,
+    Value { value: u64 },
+}
+
+/// Une modification : `None` pour un réglage non touché.
+#[derive(uniffi::Record, Clone, Default)]
+pub struct SettingsPatch {
+    pub voice: Option<String>,
+    pub language: Option<String>,
+    pub speed: Option<f32>,
+    pub pitch: Option<f32>,
+    pub energy: Option<f32>,
+    pub emotion: Option<String>,
+    pub instruction: Option<String>,
+    pub volume: Option<f32>,
+    pub engine: Option<String>,
+    pub compute: Option<String>,
+    pub threads: Option<u32>,
+    pub sessions: Option<u32>,
+    pub prefetch: Option<u32>,
+    pub temperature: Option<SamplingFloat>,
+    pub top_p: Option<SamplingFloat>,
+    pub top_k: Option<SamplingInt>,
+    pub guidance_scale: Option<SamplingFloat>,
+    pub repetition_penalty: Option<SamplingFloat>,
+    pub inference_steps: Option<SamplingInt>,
+    pub seed: Option<SamplingSeed>,
+    pub code_blocks: Option<String>,
+    pub autoplay: Option<bool>,
+    pub seek_step: Option<u32>,
+    pub line_width: Option<u32>,
+    pub line_spacing: Option<u32>,
+    pub reading_ruler: Option<bool>,
+    pub keep_voice_minutes: Option<i64>,
+    pub extra_set: Vec<ExtraOption>,
+    pub extra_remove: Vec<String>,
+}
+
+#[derive(uniffi::Record)]
+pub struct VoiceChoice {
+    pub id: String,
+    pub label: String,
+}
+
+#[derive(uniffi::Record)]
+pub struct ModelCapabilities {
+    pub family: String,
+    pub voices: Vec<VoiceChoice>,
+    pub languages: Vec<String>,
+    pub honoured: Vec<String>,
+    pub requires_reference: bool,
 }
 
 #[derive(uniffi::Record)]
@@ -199,6 +308,22 @@ pub struct VoiceModel {
     pub installed: bool,
     pub active: bool,
     pub recommended: bool,
+    pub summary: String,
+    pub family: String,
+    pub precision: String,
+    pub languages_label: String,
+    pub languages: Vec<String>,
+    pub pace: String,
+}
+
+#[derive(uniffi::Record)]
+pub struct StoredBookmarkView {
+    pub document: String,
+    pub label: String,
+    pub sentence: u32,
+    pub section_title: String,
+    pub snippet: String,
+    pub when: String,
 }
 
 #[derive(uniffi::Object)]
@@ -314,28 +439,54 @@ impl SillonReader {
     pub fn settings(&self) -> SettingsView {
         self.handle
             .ask(|reader| settings_of(reader.settings()))
-            .unwrap_or(SettingsView { speed: 1.0, line_spacing: 1, reading_ruler: true, keep_voice_minutes: 10 })
+            .unwrap_or_else(|| settings_of(settings::SettingsView::of(&Config::default())))
     }
 
-    /// Applique sans écrire sur disque.
-    pub fn apply_settings(&self, settings: SettingsView) {
-        let patch = patch_of(settings);
-        let _ = self.handle.ask(move |reader| {
-            reader.apply_patch(&patch, Instant::now());
-        });
+    /// Applique sans écrire sur disque ; rend les valeurs appliquées.
+    pub fn apply_patch(&self, patch: SettingsPatch) -> SettingsView {
+        let patch = patch_from(patch);
+        self.handle
+            .ask(move |reader| settings_of(reader.apply_patch(&patch, Instant::now())))
+            .unwrap_or_else(|| self.settings())
     }
 
-    pub fn update_settings(&self, settings: SettingsView) -> Result<(), SillonError> {
-        let patch = patch_of(settings);
+    /// Applique et écrit `config.toml` ; rend les valeurs appliquées.
+    pub fn update_settings(&self, patch: SettingsPatch) -> Result<SettingsView, SillonError> {
+        let patch = patch_from(patch);
         self.handle
             .ask(move |reader| {
                 reader
                     .update_settings(&patch, Instant::now())
-                    .map(|_| ())
+                    .map(settings_of)
                     .map_err(|e| e.to_string())
             })
             .ok_or_else(|| failed("lecteur indisponible"))?
             .map_err(failed)
+    }
+
+    pub fn capabilities(&self) -> ModelCapabilities {
+        self.handle
+            .ask(|reader| {
+                let c = reader.capabilities();
+                ModelCapabilities {
+                    family: c.family,
+                    voices: c
+                        .voices
+                        .into_iter()
+                        .map(|v| VoiceChoice { id: v.id, label: v.label })
+                        .collect(),
+                    languages: c.languages,
+                    honoured: c.honoured,
+                    requires_reference: c.requires_reference,
+                }
+            })
+            .unwrap_or(ModelCapabilities {
+                family: String::new(),
+                voices: Vec::new(),
+                languages: Vec::new(),
+                honoured: Vec::new(),
+                requires_reference: false,
+            })
     }
 
     pub fn voices(&self) -> Vec<VoiceModel> {
@@ -351,6 +502,12 @@ impl SillonReader {
                         installed: v.installed,
                         active: v.active,
                         recommended: v.recommended,
+                        summary: v.summary,
+                        family: v.family,
+                        precision: v.precision,
+                        languages_label: v.languages_label,
+                        languages: v.languages,
+                        pace: v.pace,
                     })
                     .collect()
             })
@@ -370,6 +527,67 @@ impl SillonReader {
             .ok_or_else(|| failed("lecteur indisponible"))?
             .map_err(failed)
     }
+
+    /// La phrase d'exemple avec les réglages en cours ; la raison d'un refus.
+    pub fn preview_voice(&self) -> Result<(), SillonError> {
+        self.handle
+            .ask(|reader| reader.preview_voice(Instant::now()))
+            .ok_or_else(|| failed("lecteur indisponible"))?
+            .map_err(failed)
+    }
+
+    pub fn stop_preview(&self) {
+        let _ = self.handle.ask(|reader| reader.stop_preview());
+    }
+
+    pub fn cancel_download(&self) -> Result<(), SillonError> {
+        self.handle
+            .ask(|reader| reader.cancel_download().map_err(|e| e.to_string()))
+            .ok_or_else(|| failed("lecteur indisponible"))?
+            .map_err(failed)
+    }
+
+    pub fn remove_model(&self, id: String) -> Result<(), SillonError> {
+        self.handle
+            .ask(move |reader| reader.remove_model(&id).map_err(|e| e.to_string()))
+            .ok_or_else(|| failed("lecteur indisponible"))?
+            .map_err(failed)
+    }
+
+    /// Espace libre du volume des modèles. Ne passe pas par le fil du lecteur.
+    pub fn free_space(&self) -> Option<u64> {
+        sillon::models::free_space()
+    }
+
+    /// Le dossier de `config.toml`. Ne passe pas par le fil du lecteur.
+    pub fn config_dir(&self) -> Option<String> {
+        sillon::paths::config_dir().map(|d| d.to_string_lossy().into_owned())
+    }
+
+    /// Vide le cache des documents ; rend les octets libérés.
+    pub fn clear_document_cache(&self) -> Result<u64, SillonError> {
+        self.handle
+            .ask(|reader| reader.clear_document_cache().map_err(|e| e.to_string()))
+            .ok_or_else(|| failed("lecteur indisponible"))?
+            .map_err(failed)
+    }
+
+    pub fn all_bookmarks(&self) -> Vec<StoredBookmarkView> {
+        self.handle
+            .ask(|reader| reader.all_bookmarks().into_iter().map(stored_bookmark_of).collect())
+            .unwrap_or_default()
+    }
+
+    pub fn remove_bookmark(&self, document: String, sentence: u32) -> Result<(), SillonError> {
+        self.handle
+            .ask(move |reader| {
+                reader
+                    .remove_bookmark(&document, sentence as usize)
+                    .map_err(|e| e.to_string())
+            })
+            .ok_or_else(|| failed("lecteur indisponible"))?
+            .map_err(failed)
+    }
 }
 
 fn crossbeam_channel_bounded() -> (
@@ -379,23 +597,115 @@ fn crossbeam_channel_bounded() -> (
     sillon::reader::handle::reply_channel()
 }
 
+/// Les défauts du moteur (`Config::default`), sans passer par le fil du
+/// lecteur : ce qu'un onglet montre avant son premier chargement.
+#[uniffi::export]
+pub fn default_settings() -> SettingsView {
+    settings_of(settings::SettingsView::of(&Config::default()))
+}
+
 fn settings_of(s: settings::SettingsView) -> SettingsView {
     SettingsView {
+        voice: s.voice,
+        language: s.language,
         speed: s.speed,
+        pitch: s.pitch,
+        energy: s.energy,
+        emotion: s.emotion,
+        instruction: s.instruction,
+        volume: s.volume,
+        engine: s.engine,
+        model_path: s.model_path,
+        family: s.family,
+        compute: s.compute,
+        threads: s.threads,
+        sessions: s.sessions,
+        prefetch: s.prefetch,
+        temperature: s.temperature,
+        top_p: s.top_p,
+        top_k: s.top_k,
+        guidance_scale: s.guidance_scale,
+        repetition_penalty: s.repetition_penalty,
+        inference_steps: s.inference_steps,
+        seed: s.seed,
+        code_blocks: s.code_blocks,
+        autoplay: s.autoplay,
+        seek_step: s.seek_step,
+        line_width: s.line_width,
         line_spacing: s.line_spacing,
         reading_ruler: s.reading_ruler,
         keep_voice_minutes: s.keep_voice_minutes,
+        extra: s
+            .extra
+            .into_iter()
+            .map(|(key, value)| ExtraOption { key, value })
+            .collect(),
     }
 }
 
-/// Les quatre réglages que l'app montre encore, en patch.
-fn patch_of(s: SettingsView) -> settings::SettingsPatch {
+fn float(v: Option<SamplingFloat>) -> Option<Option<f32>> {
+    v.map(|s| match s {
+        SamplingFloat::Model => None,
+        SamplingFloat::Value { value } => Some(value),
+    })
+}
+
+fn int(v: Option<SamplingInt>) -> Option<Option<u32>> {
+    v.map(|s| match s {
+        SamplingInt::Model => None,
+        SamplingInt::Value { value } => Some(value),
+    })
+}
+
+fn patch_from(p: SettingsPatch) -> settings::SettingsPatch {
     settings::SettingsPatch {
-        speed: Some(s.speed),
-        line_spacing: Some(s.line_spacing),
-        reading_ruler: Some(s.reading_ruler),
-        keep_voice_minutes: Some(s.keep_voice_minutes),
-        ..Default::default()
+        voice: p.voice,
+        language: p.language,
+        speed: p.speed,
+        pitch: p.pitch,
+        energy: p.energy,
+        emotion: p.emotion,
+        instruction: p.instruction,
+        volume: p.volume,
+        engine: p.engine,
+        compute: p.compute,
+        threads: p.threads,
+        sessions: p.sessions,
+        prefetch: p.prefetch,
+        temperature: float(p.temperature),
+        top_p: float(p.top_p),
+        top_k: int(p.top_k),
+        guidance_scale: float(p.guidance_scale),
+        repetition_penalty: float(p.repetition_penalty),
+        inference_steps: int(p.inference_steps),
+        seed: p.seed.map(|s| match s {
+            SamplingSeed::Random => None,
+            SamplingSeed::Value { value } => Some(value),
+        }),
+        code_blocks: p.code_blocks,
+        autoplay: p.autoplay,
+        seek_step: p.seek_step,
+        line_width: p.line_width,
+        line_spacing: p.line_spacing,
+        reading_ruler: p.reading_ruler,
+        keep_voice_minutes: p.keep_voice_minutes,
+        extra_set: p.extra_set.into_iter().map(|o| (o.key, o.value)).collect(),
+        extra_remove: p.extra_remove,
+    }
+}
+
+fn preview_of(p: preview::PreviewView) -> PreviewView {
+    PreviewView { pending: p.pending, playing: p.playing, error: p.error }
+}
+
+fn stored_bookmark_of(b: data::StoredBookmark) -> StoredBookmarkView {
+    StoredBookmarkView {
+        document: b.document,
+        label: b.label,
+        sentence: b.sentence as u32,
+        section_title: b.section_title,
+        snippet: b.snippet,
+        when: b.when,
     }
 }
 
@@ -436,6 +746,7 @@ fn snapshot_of(s: view::Snapshot) -> Snapshot {
             total: d.total,
             failed: d.failed,
         }),
+        preview: preview_of(s.preview),
     }
 }
 
@@ -529,11 +840,57 @@ mod tests {
     }
 
     #[test]
-    fn settings_round_trip_without_touching_disk() {
+    fn settings_round_trip_through_a_patch_without_touching_disk() {
         let reader = SillonReader::silent();
-        let mut s = reader.settings();
-        s.keep_voice_minutes = 5;
-        reader.apply_settings(s.clone());
+        let mut patch = SettingsPatch::default();
+        patch.keep_voice_minutes = Some(5);
+        patch.line_spacing = Some(9);
+        patch.temperature = Some(SamplingFloat::Value { value: 0.7 });
+        patch.extra_set = vec![ExtraOption { key: "cfg_scale".into(), value: "3".into() }];
+        let applied = reader.apply_patch(patch);
+        assert_eq!(applied.keep_voice_minutes, 5);
+        assert_eq!(applied.line_spacing, 3, "ramené dans les bornes");
+        assert_eq!(applied.temperature, Some(0.7));
+        assert_eq!(applied.extra.len(), 1);
+        let mut back = SettingsPatch::default();
+        back.temperature = Some(SamplingFloat::Model);
+        back.extra_remove = vec!["cfg_scale".into()];
+        let applied = reader.apply_patch(back);
+        assert_eq!(applied.temperature, None);
+        assert!(applied.extra.is_empty());
         assert_eq!(reader.settings().keep_voice_minutes, 5);
+    }
+
+    #[test]
+    fn the_silent_reader_writes_and_erases_nothing() {
+        let reader = SillonReader::silent();
+        let mut patch = SettingsPatch::default();
+        patch.seek_step = Some(7);
+        assert_eq!(reader.update_settings(patch).expect("rien à écrire").seek_step, 7);
+        let err = reader.clear_document_cache().unwrap_err().to_string();
+        assert!(err.contains("mode d'essai"), "{err}");
+        assert!(reader.remove_bookmark("x".into(), 0).is_err());
+    }
+
+    #[test]
+    fn capabilities_and_preview_answer_without_a_model() {
+        let reader = SillonReader::silent();
+        let caps = reader.capabilities();
+        assert!(caps.voices.is_empty());
+        assert_eq!(caps.languages.len(), 7);
+        let err = reader.preview_voice().unwrap_err().to_string();
+        assert!(err.contains("sortie audio"), "{err}");
+        reader.stop_preview();
+        assert!(!reader.snapshot().preview.pending);
+    }
+
+    #[test]
+    fn the_defaults_come_from_the_engine_configuration() {
+        let d = default_settings();
+        let c = Config::default();
+        assert_eq!(d.threads, c.engine.threads as u32);
+        assert_eq!(d.speed, settings::SettingsView::of(&c).speed);
+        assert_eq!(d.line_spacing, settings::SettingsView::of(&c).line_spacing);
+        assert!(d.temperature.is_none() && d.extra.is_empty());
     }
 }
