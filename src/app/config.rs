@@ -512,7 +512,7 @@ impl Field {
             }
             Field::SeekStep => {
                 config.reading.seek_step =
-                    config.reading.seek_step.saturating_add_signed(delta).clamp(1, 100);
+                    config.reading.seek_step.saturating_add_signed(delta).clamp(1, 50);
                 Effect::None
             }
             // Le plein écran, noté zéro, prolonge la course vers le haut : il
@@ -531,7 +531,7 @@ impl Field {
             }
             Field::LineSpacing => {
                 config.reading.line_spacing =
-                    config.reading.line_spacing.saturating_add_signed(delta).min(2);
+                    config.reading.line_spacing.saturating_add_signed(delta).min(3);
                 Effect::None
             }
             Field::ReadingRuler => {
@@ -1171,18 +1171,29 @@ mod tests {
     }
 
     #[test]
-    fn line_spacing_stays_between_none_and_two() {
+    fn line_spacing_stays_between_none_and_three() {
+        // Les bornes de `Config::normalised`, partout : trois au plus.
         let mut config = Config::default();
         assert_eq!(config.reading.line_spacing, 1);
         for _ in 0..5 {
             Field::LineSpacing.adjust(&mut config, 1);
         }
-        assert_eq!(config.reading.line_spacing, 2);
+        assert_eq!(config.reading.line_spacing, 3);
         for _ in 0..5 {
             Field::LineSpacing.adjust(&mut config, -1);
         }
         assert_eq!(config.reading.line_spacing, 0);
         assert_eq!(Field::LineSpacing.value(&config, 1.0), "aucun");
+    }
+
+    #[test]
+    fn the_seek_step_stops_at_fifty() {
+        let mut config = Config::default();
+        config.reading.seek_step = 48;
+        for _ in 0..5 {
+            Field::SeekStep.adjust(&mut config, 1);
+        }
+        assert_eq!(config.reading.seek_step, 50);
     }
 
     #[test]

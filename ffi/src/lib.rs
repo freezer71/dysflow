@@ -234,12 +234,15 @@ impl SillonReader {
                 let mut config = Config::default();
                 config.reading.autoplay = false;
                 config.app.keep_voice_minutes = -1;
-                Reader::new(
+                let mut reader = Reader::new(
                     config,
                     Box::new(|_| Arc::new(SilentEngine) as Arc<dyn TtsEngine>),
                     Box::new(Player::silent),
                     Instant::now(),
-                )
+                );
+                // L'app de test ne touche pas au disque de l'utilisateur.
+                reader.set_persistent(false);
+                reader
             }),
         })
     }
@@ -316,14 +319,21 @@ impl SillonReader {
 
     /// Applique sans écrire sur disque.
     pub fn apply_settings(&self, settings: SettingsView) {
-        let s = settings_from(settings);
-        let _ = self.handle.ask(move |reader| reader.apply_settings(s));
+        let patch = patch_of(settings);
+        let _ = self.handle.ask(move |reader| {
+            reader.apply_patch(&patch, Instant::now());
+        });
     }
 
     pub fn update_settings(&self, settings: SettingsView) -> Result<(), SillonError> {
-        let s = settings_from(settings);
+        let patch = patch_of(settings);
         self.handle
-            .ask(move |reader| reader.update_settings(s).map_err(|e| e.to_string()))
+            .ask(move |reader| {
+                reader
+                    .update_settings(&patch, Instant::now())
+                    .map(|_| ())
+                    .map_err(|e| e.to_string())
+            })
             .ok_or_else(|| failed("lecteur indisponible"))?
             .map_err(failed)
     }
@@ -356,7 +366,7 @@ impl SillonReader {
 
     pub fn use_voice(&self, id: String) -> Result<(), SillonError> {
         self.handle
-            .ask(move |reader| reader.use_voice(&id).map_err(|e| e.to_string()))
+            .ask(move |reader| reader.use_voice(&id, Instant::now()).map_err(|e| e.to_string()))
             .ok_or_else(|| failed("lecteur indisponible"))?
             .map_err(failed)
     }
@@ -378,12 +388,14 @@ fn settings_of(s: settings::SettingsView) -> SettingsView {
     }
 }
 
-fn settings_from(s: SettingsView) -> settings::SettingsView {
-    settings::SettingsView {
-        speed: s.speed,
-        line_spacing: s.line_spacing,
-        reading_ruler: s.reading_ruler,
-        keep_voice_minutes: s.keep_voice_minutes,
+/// Les quatre réglages que l'app montre encore, en patch.
+fn patch_of(s: SettingsView) -> settings::SettingsPatch {
+    settings::SettingsPatch {
+        speed: Some(s.speed),
+        line_spacing: Some(s.line_spacing),
+        reading_ruler: Some(s.reading_ruler),
+        keep_voice_minutes: Some(s.keep_voice_minutes),
+        ..Default::default()
     }
 }
 

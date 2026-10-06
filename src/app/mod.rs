@@ -652,6 +652,12 @@ impl App {
         self.notify(if muted { "Son coupé" } else { "Son rétabli" });
     }
 
+    /// Transpose la cadence mesurée à un débit posé ailleurs (réglages de
+    /// l'app) : les temps affichés suivent sans attendre une nouvelle mesure.
+    pub fn rescale_pace(&mut self, from: f32, to: f32) {
+        self.pace.rescale(from, to);
+    }
+
     fn apply_tts_params(&mut self) {
         let params: TtsParams = self.config.tts_params();
         self.synth.set_params(params);

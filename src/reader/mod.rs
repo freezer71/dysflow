@@ -48,6 +48,9 @@ pub struct Reader {
     /// Le document au repos, reconstruit une fois à la mise au repos : la
     /// vue le relit à chaque instantané sans le ré-analyser.
     resting_doc: Option<crate::doc::Document>,
+    /// Faux pour le lecteur muet de l'app de test : rien n'est écrit ni
+    /// effacé sur le disque de l'utilisateur.
+    persist: bool,
 }
 
 impl Reader {
@@ -64,6 +67,7 @@ impl Reader {
             last_activity: now,
             download: None,
             resting_doc: None,
+            persist: true,
         }
     }
 
@@ -73,6 +77,12 @@ impl Reader {
 
     pub fn config(&self) -> &Config {
         &self.config
+    }
+
+    /// Hors disque : les réglages s'appliquent sans s'écrire, et rien ne
+    /// s'efface (modèles, cache, signets).
+    pub fn set_persistent(&mut self, on: bool) {
+        self.persist = on;
     }
 
     /// Change à chaque nouveau document — pas à chaque réveil de la voix.

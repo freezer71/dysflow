@@ -222,6 +222,17 @@ impl Config {
         self.engine.threads = self.engine.threads.clamp(1, 64);
         self.engine.sessions = self.engine.sessions.min(16);
         self.engine.prefetch = self.engine.prefetch.clamp(2, 64);
+        // L'échantillonnage suit les bornes de l'écran ; un nombre sans
+        // valeur rend la main au modèle plutôt que d'atteindre le moteur.
+        let bounded = |value: Option<f32>, low: f32, high: f32| {
+            value.filter(|v| v.is_finite()).map(|v| v.clamp(low, high))
+        };
+        self.sampling.temperature = bounded(self.sampling.temperature, 0.0, 2.0);
+        self.sampling.top_p = bounded(self.sampling.top_p, 0.0, 1.0);
+        self.sampling.guidance_scale = bounded(self.sampling.guidance_scale, 0.0, 20.0);
+        self.sampling.repetition_penalty = bounded(self.sampling.repetition_penalty, 0.5, 2.0);
+        self.sampling.top_k = self.sampling.top_k.map(|v| v.clamp(1, 200));
+        self.sampling.inference_steps = self.sampling.inference_steps.map(|v| v.clamp(1, 200));
         self.reading.seek_step = self.reading.seek_step.clamp(1, 50);
         // Zéro reste « plein écran » ; une largeur posée se lit de 40 à 120.
         if self.reading.line_width != 0 {
@@ -519,5 +530,23 @@ mod tests {
         let voice = config.tts_params().voice;
         assert!(!voice.starts_with('~'), "{voice}");
         assert!(voice.ends_with("voix.wav"), "{voice}");
+    }
+
+    #[test]
+    fn sampling_values_are_brought_back_within_the_screen_bounds() {
+        let mut config = Config::default();
+        config.sampling.temperature = Some(f32::NAN);
+        config.sampling.top_p = Some(4.0);
+        config.sampling.top_k = Some(900);
+        config.sampling.guidance_scale = Some(-3.0);
+        config.sampling.repetition_penalty = Some(9.0);
+        config.sampling.inference_steps = Some(0);
+        let c = config.normalised();
+        assert_eq!(c.sampling.temperature, None, "NaN rend la main au modèle");
+        assert_eq!(c.sampling.top_p, Some(1.0));
+        assert_eq!(c.sampling.top_k, Some(200));
+        assert_eq!(c.sampling.guidance_scale, Some(0.0));
+        assert_eq!(c.sampling.repetition_penalty, Some(2.0));
+        assert_eq!(c.sampling.inference_steps, Some(1));
     }
 }

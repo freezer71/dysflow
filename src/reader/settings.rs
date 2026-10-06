@@ -1,18 +1,227 @@
 //! Réglages et voix, tels que l'interface les montre et les change.
+//!
+//! L'interface lit tous les réglages d'un coup (`SettingsView`) et ne
+//! renvoie que ceux qu'elle touche (`SettingsPatch`) : rien n'écrase une
+//! valeur changée ailleurs — au clavier, au terminal — entre la lecture et
+//! l'écriture. Chaque modification déclenche l'effet le plus fort de ce qui
+//! a réellement changé, comme l'écran du terminal (`app::config::Effect`).
 
 use anyhow::{anyhow, Result};
+use std::collections::BTreeMap;
 use std::time::Instant;
 
+use crate::app::config::Effect;
+use crate::config::Config;
+use crate::doc::{BlockKind, Document};
 use crate::models::{self, Download, Progress};
 
 use super::Reader;
 
+/// Tous les réglages du moteur, rangés comme dans `config.toml`.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct SettingsView {
+    // [voice]
+    pub voice: String,
+    pub language: String,
     pub speed: f32,
+    pub pitch: f32,
+    pub energy: f32,
+    pub emotion: String,
+    pub instruction: String,
+    pub volume: f32,
+    // [engine]
+    pub engine: String,
+    pub model_path: String,
+    pub family: String,
+    pub compute: String,
+    pub threads: u32,
+    pub sessions: u32,
+    pub prefetch: u32,
+    // [sampling] — `None` : la valeur du modèle ; pour la graine, un tirage.
+    pub temperature: Option<f32>,
+    pub top_p: Option<f32>,
+    pub top_k: Option<u32>,
+    pub guidance_scale: Option<f32>,
+    pub repetition_penalty: Option<f32>,
+    pub inference_steps: Option<u32>,
+    pub seed: Option<u64>,
+    // [reading]
+    pub code_blocks: String,
+    pub autoplay: bool,
+    pub seek_step: u32,
+    pub line_width: u32,
     pub line_spacing: u32,
     pub reading_ruler: bool,
+    // [app]
     pub keep_voice_minutes: i64,
+    // [extra]
+    pub extra: BTreeMap<String, String>,
+}
+
+impl SettingsView {
+    pub fn of(c: &Config) -> Self {
+        Self {
+            voice: c.voice.voice.clone(),
+            language: c.voice.language.clone(),
+            speed: c.voice.speed,
+            pitch: c.voice.pitch,
+            energy: c.voice.energy,
+            emotion: c.voice.emotion.clone(),
+            instruction: c.voice.instruction.clone(),
+            volume: c.voice.volume,
+            engine: c.engine.engine.clone(),
+            model_path: c.engine.model_path.clone(),
+            family: c.engine.family.clone(),
+            compute: c.engine.compute.clone(),
+            threads: c.engine.threads,
+            sessions: c.engine.sessions,
+            prefetch: c.engine.prefetch,
+            temperature: c.sampling.temperature,
+            top_p: c.sampling.top_p,
+            top_k: c.sampling.top_k,
+            guidance_scale: c.sampling.guidance_scale,
+            repetition_penalty: c.sampling.repetition_penalty,
+            inference_steps: c.sampling.inference_steps,
+            seed: c.sampling.seed,
+            code_blocks: c.reading.code_blocks.clone(),
+            autoplay: c.reading.autoplay,
+            seek_step: c.reading.seek_step,
+            line_width: c.reading.line_width,
+            line_spacing: c.reading.line_spacing,
+            reading_ruler: c.reading.reading_ruler,
+            keep_voice_minutes: c.app.keep_voice_minutes,
+            extra: c.extra.clone(),
+        }
+    }
+}
+
+/// Une modification : un champ par réglage, `None` quand il n'est pas touché.
+///
+/// L'échantillonnage a deux niveaux : `Some(None)` rend la main au modèle
+/// (à un tirage au hasard pour la graine). Le chemin et la famille du modèle
+/// n'y sont pas : ils changent avec `use_voice`.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct SettingsPatch {
+    pub voice: Option<String>,
+    pub language: Option<String>,
+    pub speed: Option<f32>,
+    pub pitch: Option<f32>,
+    pub energy: Option<f32>,
+    pub emotion: Option<String>,
+    pub instruction: Option<String>,
+    pub volume: Option<f32>,
+    pub engine: Option<String>,
+    pub compute: Option<String>,
+    pub threads: Option<u32>,
+    pub sessions: Option<u32>,
+    pub prefetch: Option<u32>,
+    pub temperature: Option<Option<f32>>,
+    pub top_p: Option<Option<f32>>,
+    pub top_k: Option<Option<u32>>,
+    pub guidance_scale: Option<Option<f32>>,
+    pub repetition_penalty: Option<Option<f32>>,
+    pub inference_steps: Option<Option<u32>>,
+    pub seed: Option<Option<u64>>,
+    pub code_blocks: Option<String>,
+    pub autoplay: Option<bool>,
+    pub seek_step: Option<u32>,
+    pub line_width: Option<u32>,
+    pub line_spacing: Option<u32>,
+    pub reading_ruler: Option<bool>,
+    pub keep_voice_minutes: Option<i64>,
+    /// Options libres posées ou remplacées.
+    pub extra_set: Vec<(String, String)>,
+    /// Options libres retirées.
+    pub extra_remove: Vec<String>,
+}
+
+fn set<T: Clone>(slot: &mut T, value: &Option<T>) {
+    if let Some(v) = value {
+        *slot = v.clone();
+    }
+}
+
+impl SettingsPatch {
+    /// Reporte sur `c` les seuls champs présents.
+    pub fn write_into(&self, c: &mut Config) {
+        set(&mut c.voice.voice, &self.voice);
+        set(&mut c.voice.language, &self.language);
+        set(&mut c.voice.speed, &self.speed);
+        set(&mut c.voice.pitch, &self.pitch);
+        set(&mut c.voice.energy, &self.energy);
+        set(&mut c.voice.emotion, &self.emotion);
+        set(&mut c.voice.instruction, &self.instruction);
+        set(&mut c.voice.volume, &self.volume);
+        set(&mut c.engine.engine, &self.engine);
+        set(&mut c.engine.compute, &self.compute);
+        set(&mut c.engine.threads, &self.threads);
+        set(&mut c.engine.sessions, &self.sessions);
+        set(&mut c.engine.prefetch, &self.prefetch);
+        set(&mut c.sampling.temperature, &self.temperature);
+        set(&mut c.sampling.top_p, &self.top_p);
+        set(&mut c.sampling.top_k, &self.top_k);
+        set(&mut c.sampling.guidance_scale, &self.guidance_scale);
+        set(&mut c.sampling.repetition_penalty, &self.repetition_penalty);
+        set(&mut c.sampling.inference_steps, &self.inference_steps);
+        set(&mut c.sampling.seed, &self.seed);
+        set(&mut c.reading.code_blocks, &self.code_blocks);
+        set(&mut c.reading.autoplay, &self.autoplay);
+        set(&mut c.reading.seek_step, &self.seek_step);
+        set(&mut c.reading.line_width, &self.line_width);
+        set(&mut c.reading.line_spacing, &self.line_spacing);
+        set(&mut c.reading.reading_ruler, &self.reading_ruler);
+        set(&mut c.app.keep_voice_minutes, &self.keep_voice_minutes);
+        for (key, value) in &self.extra_set {
+            c.extra.insert(key.clone(), value.clone());
+        }
+        for key in &self.extra_remove {
+            c.extra.remove(key);
+        }
+    }
+}
+
+/// Ce qu'un changement de réglage demande, du plus léger au plus lourd.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum SettingsEffect {
+    /// Rien n'a changé.
+    Nothing,
+    /// Affichage, ou valeur lue au prochain usage (pas d'avance, délai…).
+    Display,
+    /// Volume de sortie : immédiat, sans resynthèse.
+    Volume,
+    /// Paramètres de synthèse : resynthèse depuis la phrase en cours.
+    Resynthesize,
+    /// Découpage du document : remise en forme, à la même phrase.
+    Reparse,
+    /// Moteur : rechargement de la voix, lecture reprise à la même phrase.
+    Reload,
+}
+
+impl SettingsEffect {
+    /// L'effet le plus fort de ce qui change de `before` à `after`.
+    ///
+    /// Mesuré sur la configuration, pas sur les champs présents : renvoyer
+    /// une valeur déjà en place ne relance rien.
+    pub fn between(before: &Config, after: &Config) -> Self {
+        if before.engine != after.engine {
+            return Self::Reload;
+        }
+        if before.reading.code_blocks != after.reading.code_blocks {
+            return Self::Reparse;
+        }
+        let mut voice = before.voice.clone();
+        voice.volume = after.voice.volume;
+        if voice != after.voice || before.sampling != after.sampling || before.extra != after.extra {
+            return Self::Resynthesize;
+        }
+        if before.voice.volume != after.voice.volume {
+            return Self::Volume;
+        }
+        if before.reading != after.reading || before.app != after.app {
+            return Self::Display;
+        }
+        Self::Nothing
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -35,34 +244,102 @@ pub struct DownloadView {
 
 impl Reader {
     pub fn settings(&self) -> SettingsView {
-        let c = self.current_config();
-        SettingsView {
-            speed: c.voice.speed,
-            line_spacing: c.reading.line_spacing,
-            reading_ruler: c.reading.reading_ruler,
-            keep_voice_minutes: c.app.keep_voice_minutes,
-        }
+        SettingsView::of(self.current_config())
     }
 
-    /// Applique sans écrire : le texte ouvert suit tout de suite.
-    pub fn apply_settings(&mut self, s: SettingsView) {
+    /// Applique un patch sans écrire : seuls les champs présents changent,
+    /// ramenés dans les bornes, puis l'effet le plus fort de ce qui a changé
+    /// est déclenché. Rend les réglages tels qu'appliqués.
+    pub fn apply_patch(&mut self, patch: &SettingsPatch, now: Instant) -> SettingsView {
         self.sync_config();
-        self.config.reading.line_spacing = s.line_spacing;
-        self.config.reading.reading_ruler = s.reading_ruler;
-        self.config.app.keep_voice_minutes = s.keep_voice_minutes;
+        let before = self.config.clone();
+        let mut next = before.clone();
+        patch.write_into(&mut next);
+        let next = next.normalised();
+        let effect = SettingsEffect::between(&before, &next);
         if let Some(app) = self.session.as_mut() {
-            app.config.reading.line_spacing = s.line_spacing;
-            app.config.reading.reading_ruler = s.reading_ruler;
-            app.config.app.keep_voice_minutes = s.keep_voice_minutes;
-            app.set_speed(s.speed);
+            let old_speed = app.config.voice.speed;
+            if (old_speed - next.voice.speed).abs() >= f32::EPSILON {
+                app.rescale_pace(old_speed, next.voice.speed);
+            }
+            app.config = next.clone();
+            if (app.player.volume() - next.voice.volume).abs() >= f32::EPSILON {
+                app.player.set_volume(next.voice.volume);
+            }
+            if effect == SettingsEffect::Resynthesize {
+                app.apply_effect(Effect::Resynthesize);
+            }
         }
-        self.config.voice.speed = s.speed;
+        self.config = next;
+        match effect {
+            SettingsEffect::Reload => self.reload_voice(now),
+            SettingsEffect::Reparse => self.reparse(now),
+            _ => {}
+        }
+        self.settings()
     }
 
-    pub fn update_settings(&mut self, s: SettingsView) -> Result<()> {
-        self.apply_settings(s);
-        self.config.save()?;
-        Ok(())
+    /// Applique, puis écrit `config.toml` (sauf lecteur hors disque). Une
+    /// écriture impossible laisse le réglage appliqué : l'erreur le dit.
+    pub fn update_settings(&mut self, patch: &SettingsPatch, now: Instant) -> Result<SettingsView> {
+        let applied = self.apply_patch(patch, now);
+        if self.persist {
+            self.config.save()?;
+        }
+        Ok(applied)
+    }
+
+    /// Recharge la voix avec la configuration courante. Un texte ouvert est
+    /// rouvert à sa phrase, et la lecture reprend seule si elle tournait ; au
+    /// repos, rien ne se charge avant le prochain réveil.
+    pub(super) fn reload_voice(&mut self, now: Instant) {
+        if self.session.is_some() {
+            let playing = self
+                .session
+                .as_ref()
+                .is_some_and(|app| app.player.is_playing() && !app.is_finished());
+            self.rest();
+            self.wake(now);
+            if playing {
+                if let Some(app) = self.session.as_mut() {
+                    app.player.play();
+                }
+            }
+            return;
+        }
+        let prepared = self.engine.is_some();
+        self.engine = None;
+        if prepared && !self.is_resting() {
+            self.ensure_engine();
+        }
+    }
+
+    /// Reconstruit le document avec la politique des blocs de code courante,
+    /// à la même phrase de texte : « sauter » retire des phrases, « lire » en
+    /// ajoute, le numéro seul ne suffit donc pas.
+    fn reparse(&mut self, now: Instant) {
+        if let Some(app) = self.session.as_ref() {
+            let playing = app.player.is_playing() && !app.is_finished();
+            let rank = prose_rank(app.doc(), app.current_sentence());
+            let Some(text) = self.text.clone() else { return };
+            self.open(text, now);
+            if let Some(app) = self.session.as_mut() {
+                app.player.pause();
+                let target = sentence_at_prose_rank(app.doc(), rank);
+                app.seek_to(target);
+                if playing {
+                    app.player.play();
+                }
+            }
+            self.revision += 1;
+            return;
+        }
+        let (Some(at), Some(text)) = (self.resting_at, self.text.as_ref()) else { return };
+        let rank = self.resting_doc.as_ref().map_or(0, |doc| prose_rank(doc, at));
+        let doc = crate::doc::builder::parse_document(&text.markdown, self.config.code_policy());
+        self.resting_at = Some(sentence_at_prose_rank(&doc, rank));
+        self.resting_doc = Some(doc);
+        self.revision += 1;
     }
 
     pub fn voices(&self) -> Vec<VoiceModel> {
@@ -90,18 +367,24 @@ impl Reader {
         Ok(())
     }
 
-    /// Change de voix : la suivante se chargera à la prochaine commande, au
-    /// même endroit du texte.
-    pub fn use_voice(&mut self, id: &str) -> Result<()> {
+    /// Change de modèle : la voix se recharge en place, au même endroit du
+    /// texte, et la lecture reprend si elle tournait.
+    pub fn use_voice(&mut self, id: &str, now: Instant) -> Result<()> {
         let package = package(id)?;
         let path = models::install_path(package)
             .filter(|_| models::is_installed(package))
             .ok_or_else(|| anyhow!("voix non installée : {id}"))?;
-        // Au repos d'abord : la mise au repos recopie la configuration du
-        // texte ouvert, qui écraserait la voix choisie.
-        self.rest();
+        self.sync_config();
         self.switch_voice_config(&path.to_string_lossy(), package.family);
-        self.config.save()?;
+        // Le texte ouvert recopie sa configuration à la mise au repos : il
+        // doit porter le nouveau modèle avant le rechargement.
+        if let Some(app) = self.session.as_mut() {
+            app.config = self.config.clone();
+        }
+        self.reload_voice(now);
+        if self.persist {
+            self.config.save()?;
+        }
         Ok(())
     }
 
@@ -125,7 +408,7 @@ impl Reader {
 
     /// Appelé à chaque tour : un téléchargement terminé disparaît, et devient
     /// la voix active s'il n'y en avait aucune.
-    pub(super) fn poll_download(&mut self, _now: Instant) {
+    pub(super) fn poll_download(&mut self, now: Instant) {
         let done = self
             .download
             .as_ref()
@@ -136,12 +419,12 @@ impl Reader {
         let id = self.download.take().map(|d| d.package.id.to_string());
         let none_active = !self.voices().iter().any(|v| v.active);
         if let (Some(id), true) = (id, none_active) {
-            let _ = self.use_voice(&id);
+            let _ = self.use_voice(&id, now);
         }
     }
 
     /// La configuration que le texte ouvert a pu modifier (vitesse…).
-    fn current_config(&self) -> &crate::config::Config {
+    fn current_config(&self) -> &Config {
         self.session.as_ref().map(|a| &a.config).unwrap_or(&self.config)
     }
 
@@ -159,15 +442,38 @@ fn package(id: &str) -> Result<&'static models::ModelPackage> {
         .ok_or_else(|| anyhow!("voix inconnue : {id}"))
 }
 
+fn in_code(doc: &Document, block: usize) -> bool {
+    doc.block(block).is_some_and(|b| matches!(b.kind, BlockKind::Code { .. }))
+}
+
+/// Rang d'une phrase parmi celles qui ne sont pas du code : il ne bouge pas
+/// quand la politique des blocs de code change.
+fn prose_rank(doc: &Document, sentence: usize) -> usize {
+    doc.sentences
+        .iter()
+        .take(sentence)
+        .filter(|s| !in_code(doc, s.block_id))
+        .count()
+}
+
+/// La phrase de texte de ce rang ; la dernière si le document est plus court.
+fn sentence_at_prose_rank(doc: &Document, rank: usize) -> usize {
+    doc.sentences
+        .iter()
+        .filter(|s| !in_code(doc, s.block_id))
+        .nth(rank)
+        .map(|s| s.id)
+        .unwrap_or_else(|| doc.sentences.len().saturating_sub(1))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::audio::Player;
-    use crate::config::Config;
     use crate::tts::silent::SilentEngine;
     use crate::tts::TtsEngine;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
-    use std::time::Instant;
 
     fn reader() -> Reader {
         let mut config = Config::default();
@@ -180,19 +486,299 @@ mod tests {
         )
     }
 
+    /// Un lecteur qui compte les voix chargées.
+    fn counting_reader() -> (Reader, Arc<AtomicUsize>) {
+        let loads = Arc::new(AtomicUsize::new(0));
+        let counter = Arc::clone(&loads);
+        let mut config = Config::default();
+        config.reading.autoplay = false;
+        let r = Reader::new(
+            config,
+            Box::new(move |_| {
+                counter.fetch_add(1, Ordering::SeqCst);
+                Arc::new(SilentEngine) as Arc<dyn TtsEngine>
+            }),
+            Box::new(Player::silent),
+            Instant::now(),
+        );
+        (r, loads)
+    }
+
+    /// Un nombre de fils sûrement différent du défaut (qui suit les cœurs).
+    fn other_threads() -> u32 {
+        if Config::default().engine.threads == 1 { 2 } else { 1 }
+    }
+
+    fn effect_of(change: impl FnOnce(&mut Config)) -> SettingsEffect {
+        let before = Config::default();
+        let mut after = before.clone();
+        change(&mut after);
+        SettingsEffect::between(&before, &after)
+    }
+
     #[test]
-    fn settings_reach_the_open_text() {
+    fn every_setting_round_trips_through_a_patch() {
+        let mut r = reader();
+        let patch = SettingsPatch {
+            voice: Some("F2".into()),
+            language: Some("en".into()),
+            speed: Some(1.4),
+            pitch: Some(0.2),
+            energy: Some(1.3),
+            emotion: Some("calme".into()),
+            instruction: Some("posé".into()),
+            volume: Some(0.6),
+            engine: Some("system".into()),
+            compute: Some("cpu".into()),
+            threads: Some(3),
+            sessions: Some(2),
+            prefetch: Some(9),
+            temperature: Some(Some(0.7)),
+            top_p: Some(Some(0.9)),
+            top_k: Some(Some(40)),
+            guidance_scale: Some(Some(3.5)),
+            repetition_penalty: Some(Some(1.2)),
+            inference_steps: Some(Some(12)),
+            seed: Some(Some(42)),
+            code_blocks: Some("skip".into()),
+            autoplay: Some(true),
+            seek_step: Some(7),
+            line_width: Some(80),
+            line_spacing: Some(2),
+            reading_ruler: Some(false),
+            keep_voice_minutes: Some(30),
+            extra_set: vec![("cfg_scale".into(), "3".into())],
+            extra_remove: vec![],
+        };
+        let expected = SettingsView {
+            voice: "F2".into(),
+            language: "en".into(),
+            speed: 1.4,
+            pitch: 0.2,
+            energy: 1.3,
+            emotion: "calme".into(),
+            instruction: "posé".into(),
+            volume: 0.6,
+            engine: "system".into(),
+            model_path: String::new(),
+            family: String::new(),
+            compute: "cpu".into(),
+            threads: 3,
+            sessions: 2,
+            prefetch: 9,
+            temperature: Some(0.7),
+            top_p: Some(0.9),
+            top_k: Some(40),
+            guidance_scale: Some(3.5),
+            repetition_penalty: Some(1.2),
+            inference_steps: Some(12),
+            seed: Some(42),
+            code_blocks: "skip".into(),
+            autoplay: true,
+            seek_step: 7,
+            line_width: 80,
+            line_spacing: 2,
+            reading_ruler: false,
+            keep_voice_minutes: 30,
+            extra: BTreeMap::from([("cfg_scale".to_string(), "3".to_string())]),
+        };
+        assert_eq!(r.apply_patch(&patch, Instant::now()), expected);
+        assert_eq!(r.settings(), expected);
+        // Retirer une option libre, rendre la main au modèle.
+        let back = SettingsPatch {
+            temperature: Some(None),
+            extra_remove: vec!["cfg_scale".into()],
+            ..Default::default()
+        };
+        let applied = r.apply_patch(&back, Instant::now());
+        assert_eq!(applied.temperature, None);
+        assert!(applied.extra.is_empty());
+    }
+
+    #[test]
+    fn a_patch_reaches_the_open_text() {
         let mut r = reader();
         r.open_text("Un.", "a", Instant::now());
-        let mut s = r.settings();
-        s.speed = 1.4;
-        s.reading_ruler = false;
-        s.keep_voice_minutes = 30;
-        r.apply_settings(s.clone());
-        assert_eq!(r.settings(), s);
+        let patch = SettingsPatch {
+            speed: Some(1.4),
+            reading_ruler: Some(false),
+            keep_voice_minutes: Some(30),
+            ..Default::default()
+        };
+        let applied = r.apply_patch(&patch, Instant::now());
+        assert_eq!(r.settings(), applied);
         let app = r.session().unwrap();
         assert_eq!(app.config.voice.speed, 1.4);
         assert!(!app.config.reading.reading_ruler);
+        assert_eq!(app.config.app.keep_voice_minutes, 30);
+    }
+
+    #[test]
+    fn each_setting_triggers_the_effect_of_its_kind() {
+        use SettingsEffect::*;
+        assert_eq!(effect_of(|_| {}), Nothing);
+        assert_eq!(effect_of(|c| c.reading.line_spacing = 2), Display);
+        assert_eq!(effect_of(|c| c.reading.reading_ruler = false), Display);
+        assert_eq!(effect_of(|c| c.reading.seek_step = 9), Display);
+        assert_eq!(effect_of(|c| c.reading.autoplay = false), Display);
+        assert_eq!(effect_of(|c| c.app.keep_voice_minutes = 2), Display);
+        assert_eq!(effect_of(|c| c.voice.volume = 0.5), Volume);
+        assert_eq!(effect_of(|c| c.voice.voice = "F1".into()), Resynthesize);
+        assert_eq!(effect_of(|c| c.voice.language = "en".into()), Resynthesize);
+        assert_eq!(effect_of(|c| c.voice.speed = 1.5), Resynthesize);
+        assert_eq!(effect_of(|c| c.sampling.temperature = Some(0.5)), Resynthesize);
+        assert_eq!(effect_of(|c| c.sampling.seed = Some(1)), Resynthesize);
+        assert_eq!(effect_of(|c| { c.extra.insert("k".into(), "v".into()); }), Resynthesize);
+        assert_eq!(effect_of(|c| c.reading.code_blocks = "skip".into()), Reparse);
+        assert_eq!(effect_of(|c| c.engine.engine = "system".into()), Reload);
+        assert_eq!(effect_of(|c| c.engine.compute = "cpu".into()), Reload);
+        assert_eq!(effect_of(|c| c.engine.threads = other_threads()), Reload);
+        assert_eq!(effect_of(|c| c.engine.sessions = 3), Reload);
+        assert_eq!(effect_of(|c| c.engine.prefetch = 9), Reload);
+        assert_eq!(effect_of(|c| c.engine.model_path = "/m.gguf".into()), Reload);
+        // Le plus fort l'emporte.
+        assert_eq!(effect_of(|c| { c.voice.volume = 0.5; c.reading.code_blocks = "read".into(); }), Reparse);
+        assert_eq!(effect_of(|c| { c.voice.voice = "F1".into(); c.engine.threads = other_threads(); }), Reload);
+    }
+
+    #[test]
+    fn hand_written_values_survive_other_changes() {
+        let mut config = Config::default();
+        config.reading.code_blocks = "lire".into();
+        config.voice.language = "ja".into();
+        config.engine.compute = "cuda".into();
+        config.app.keep_voice_minutes = 7;
+        let mut r = Reader::new(
+            config,
+            Box::new(|_| Arc::new(SilentEngine) as Arc<dyn TtsEngine>),
+            Box::new(Player::silent),
+            Instant::now(),
+        );
+        let before = r.settings();
+        r.apply_patch(&SettingsPatch::default(), Instant::now());
+        assert_eq!(r.settings(), before, "un patch vide ne touche à rien");
+        r.apply_patch(&SettingsPatch { line_spacing: Some(2), ..Default::default() }, Instant::now());
+        let after = r.settings();
+        assert_eq!(after.code_blocks, "lire");
+        assert_eq!(after.language, "ja");
+        assert_eq!(after.compute, "cuda");
+        assert_eq!(after.keep_voice_minutes, 7);
+        assert_eq!(after.line_spacing, 2);
+    }
+
+    #[test]
+    fn values_out_of_bounds_come_back_as_applied() {
+        let mut r = reader();
+        let applied = r.apply_patch(
+            &SettingsPatch {
+                line_spacing: Some(4),
+                seek_step: Some(80),
+                threads: Some(0),
+                speed: Some(9.0),
+                volume: Some(-1.0),
+                temperature: Some(Some(f32::NAN)),
+                top_k: Some(Some(900)),
+                ..Default::default()
+            },
+            Instant::now(),
+        );
+        assert_eq!(applied.line_spacing, 3);
+        assert_eq!(applied.seek_step, 50);
+        assert_eq!(applied.threads, 1);
+        assert_eq!(applied.speed, 3.0);
+        assert_eq!(applied.volume, 0.0);
+        assert_eq!(applied.temperature, None);
+        assert_eq!(applied.top_k, Some(200));
+    }
+
+    #[test]
+    fn the_volume_changes_without_resynthesis() {
+        let mut r = reader();
+        r.open_text("Un. Deux.", "a", Instant::now());
+        r.apply_patch(&SettingsPatch { volume: Some(0.5), ..Default::default() }, Instant::now());
+        let app = r.session().unwrap();
+        assert_eq!(app.player.volume(), 0.5);
+        assert_eq!(app.config.voice.volume, 0.5);
+    }
+
+    #[test]
+    fn an_engine_change_reloads_the_voice_and_resumes_at_the_same_sentence() {
+        let (mut r, loads) = counting_reader();
+        let t0 = Instant::now();
+        r.open_text("Un. Deux. Trois.", "a", t0);
+        r.with_session(t0, |app| {
+            app.seek_sentences(1);
+            app.toggle_play();
+        });
+        r.apply_patch(&SettingsPatch { threads: Some(other_threads()), ..Default::default() }, t0);
+        assert_eq!(loads.load(Ordering::SeqCst), 2, "une nouvelle voix");
+        let app = r.session().expect("texte rouvert");
+        assert_eq!(app.current_sentence(), 1);
+        assert!(app.player.is_playing(), "la lecture reprend seule");
+        assert_eq!(app.config.engine.threads, other_threads());
+    }
+
+    #[test]
+    fn an_engine_change_while_resting_waits_for_the_next_wake() {
+        let (mut r, loads) = counting_reader();
+        let t0 = Instant::now();
+        r.open_text("Un. Deux.", "a", t0);
+        r.rest();
+        r.apply_patch(&SettingsPatch { compute: Some("cpu".into()), ..Default::default() }, t0);
+        assert_eq!(loads.load(Ordering::SeqCst), 1, "rien ne se charge au repos");
+        assert!(r.is_resting());
+        assert_eq!(r.config().engine.compute, "cpu");
+    }
+
+    #[test]
+    fn a_prepared_voice_is_reloaded_at_once() {
+        let (mut r, loads) = counting_reader();
+        r.prepare_voice(Instant::now());
+        r.apply_patch(&SettingsPatch { prefetch: Some(8), ..Default::default() }, Instant::now());
+        assert_eq!(loads.load(Ordering::SeqCst), 2);
+        assert!(r.voice_loaded());
+    }
+
+    const WITH_CODE: &str = "Avant.\n\n```\nx = 1\ny = 2\n```\n\nAprès un. Après deux.\n";
+
+    #[test]
+    fn changing_code_blocks_keeps_the_sentence_being_read() {
+        let (mut r, _) = counting_reader();
+        let t0 = Instant::now();
+        r.open_text(WITH_CODE, "a", t0);
+        // Annoncé : Avant. · Bloc de code. · Après un. · Après deux.
+        r.with_session(t0, |app| app.seek_to(3));
+        let revision = r.revision();
+        r.apply_patch(&SettingsPatch { code_blocks: Some("skip".into()), ..Default::default() }, t0);
+        let app = r.session().unwrap();
+        let current = app.current_sentence();
+        assert_eq!(app.doc().sentences[current].written(), "Après deux.");
+        assert_eq!(current, 2, "l'annonce du code retirée : le numéro a bougé, pas la phrase");
+        assert_eq!(r.revision(), revision + 1, "le document est republié");
+    }
+
+    #[test]
+    fn changing_code_blocks_at_rest_keeps_the_resting_sentence() {
+        let (mut r, _) = counting_reader();
+        let t0 = Instant::now();
+        r.open_text(WITH_CODE, "a", t0);
+        r.with_session(t0, |app| app.seek_to(3));
+        r.rest();
+        r.apply_patch(&SettingsPatch { code_blocks: Some("skip".into()), ..Default::default() }, t0);
+        // Sauté : Avant. · Après un. · Après deux.
+        assert_eq!(crate::reader::view::snapshot(&r).sentence, 2);
+        assert_eq!(crate::reader::view::document(&r).sentence_count, 3);
+        assert!(r.is_resting());
+    }
+
+    #[test]
+    fn a_reader_off_disk_applies_without_writing() {
+        let mut r = reader();
+        r.set_persistent(false);
+        let applied = r
+            .update_settings(&SettingsPatch { keep_voice_minutes: Some(5), ..Default::default() }, Instant::now())
+            .expect("rien à écrire");
+        assert_eq!(applied.keep_voice_minutes, 5);
     }
 
     #[test]
@@ -208,7 +794,7 @@ mod tests {
     #[test]
     fn using_an_unknown_voice_is_an_error() {
         let mut r = reader();
-        assert!(r.use_voice("n-existe-pas").is_err());
+        assert!(r.use_voice("n-existe-pas", Instant::now()).is_err());
     }
 
     #[test]
