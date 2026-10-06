@@ -54,6 +54,8 @@ pub struct App {
     pub synth: Synthesizer,
     /// Aperçus de voix, synthétisés hors de l'ordonnanceur de lecture.
     previewer: Previewer,
+    /// Dernier échec d'aperçu, pour l'app (le terminal le lit dans `screen`).
+    pub preview_error: Option<String>,
     pub player: Player,
     pub bookmarks: BookmarkStore,
     /// Positions retenues d'une session à l'autre.
@@ -177,6 +179,7 @@ impl App {
             input_done: !has_stream,
             synth,
             previewer,
+            preview_error: None,
             player,
             bookmarks,
             positions: PositionStore::load(),
@@ -1188,16 +1191,6 @@ impl App {
         // La touche répond toujours quelque chose : laisser tourner l'aperçu
         // précédent ferait passer un refus pour une touche sans effet.
         self.stop_preview();
-        if self.reference_missing() {
-            self.screen.notice =
-                "ce modèle ne parle qu'en clonant : renseignez d'abord un WAV dans « Voix »"
-                    .to_string();
-            return;
-        }
-        if !self.player.is_available() {
-            self.screen.notice = "sortie audio indisponible : aucun aperçu possible".to_string();
-            return;
-        }
         // Dans la liste des modèles, l'aperçu porte sur celui qui est chargé ;
         // faire parler un modèle qu'on n'a pas choisi serait un mensonge.
         if self.screen.current_section() == Section::Models {
@@ -1218,16 +1211,35 @@ impl App {
             }
         }
 
-        // L'aperçu parle seul.
-        self.player.pause();
-
-        let text = preview::sample_text(&self.config.voice.language).to_string();
-        let params = self.config.tts_params();
-        let label = self.preview_label();
-        match self.previewer.request(text, params, label) {
+        match self.request_preview() {
             Ok(()) => self.screen.notice.clear(),
-            Err(err) => self.screen.notice = format!("aperçu impossible : {err}"),
+            Err(err) => self.screen.notice = err,
         }
+    }
+
+    /// L'aperçu tel que l'app le demande : les réglages en cours sur la
+    /// phrase d'exemple, la lecture mise en pause, le précédent coupé. Rend
+    /// la raison d'un refus.
+    pub fn request_preview(&mut self) -> Result<(), String> {
+        self.preview_error = None;
+        let label = self.preview_label();
+        preview::start(
+            &mut self.previewer,
+            &mut self.player,
+            self.synth.requires_reference(),
+            &self.config,
+            label,
+        )
+    }
+
+    /// Un aperçu se synthétise.
+    pub fn preview_pending(&self) -> bool {
+        self.previewer.pending_for().is_some()
+    }
+
+    /// Un aperçu sonne.
+    pub fn preview_playing(&self) -> bool {
+        self.player.preview_playing()
     }
 
     /// Décrit ce que l'aperçu fait entendre.
@@ -1273,7 +1285,11 @@ impl App {
         let Some(outcome) = self.previewer.poll() else { return };
         match outcome {
             Ok(audio) => self.player.play_preview(&audio),
-            Err(err) => self.screen.notice = format!("aperçu impossible : {err}"),
+            Err(err) => {
+                let message = format!("aperçu impossible : {err}");
+                self.preview_error = Some(message.clone());
+                self.screen.notice = message;
+            }
         }
     }
 

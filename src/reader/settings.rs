@@ -354,6 +354,8 @@ impl Reader {
             }
             return;
         }
+        // L'aperçu parlait avec l'ancienne voix.
+        self.drop_lone_preview();
         let prepared = self.engine.is_some();
         self.engine = None;
         if prepared && !self.is_resting() {

@@ -35,6 +35,8 @@ struct Activity {
     download_settled: bool,
     /// Une voix est chargée : son délai de garde court.
     engine: bool,
+    /// Un aperçu se prépare ou sonne : il faut le sonder.
+    previewing: bool,
 }
 
 impl Activity {
@@ -49,7 +51,14 @@ impl Activity {
             Some(_) => (true, false),
             None => (false, false),
         };
-        Self { reading, loading, downloading, download_settled, engine: reader.engine().is_some() }
+        Self {
+            reading,
+            loading,
+            downloading,
+            download_settled,
+            engine: reader.engine().is_some(),
+            previewing: reader.previewing(),
+        }
     }
 }
 
@@ -58,7 +67,7 @@ impl Activity {
 /// à surveiller ; `None` quand rien ne peut changer avant la prochaine
 /// requête — le fil dort alors jusqu'à elle.
 fn cadence(a: Activity) -> Option<Duration> {
-    if a.reading || a.loading || a.downloading {
+    if a.reading || a.loading || a.downloading || a.previewing {
         Some(TICK)
     } else if a.engine || a.download_settled {
         Some(TICK_IDLE)
@@ -219,6 +228,15 @@ mod tests {
     use crate::tts::silent::SilentEngine;
     use crate::tts::TtsEngine;
     use std::time::Duration;
+
+    #[test]
+    fn a_preview_keeps_the_reader_thread_awake() {
+        // Sans texte ni lecture, le fil dormirait : l'aperçu prêt ne serait
+        // jamais sondé, donc jamais joué.
+        let none = Activity::default();
+        assert_eq!(cadence(Activity { previewing: true, ..none }), Some(TICK));
+        assert_eq!(cadence(Activity { previewing: true, engine: true, ..none }), Some(TICK));
+    }
 
     fn silent_handle() -> ReaderHandle {
         ReaderHandle::spawn(|| {

@@ -17,6 +17,7 @@ use crate::tts::{Synthesizer, TtsEngine};
 
 pub mod command;
 pub mod handle;
+pub mod preview;
 pub mod settings;
 pub mod view;
 
@@ -51,6 +52,10 @@ pub struct Reader {
     /// Faux pour le lecteur muet de l'app de test : rien n'est écrit ni
     /// effacé sur le disque de l'utilisateur.
     persist: bool,
+    /// Aperçu de voix sans texte ouvert.
+    lone_preview: Option<preview::LonePreview>,
+    /// Dernier échec de cet aperçu.
+    preview_error: Option<String>,
 }
 
 impl Reader {
@@ -68,6 +73,8 @@ impl Reader {
             download: None,
             resting_doc: None,
             persist: true,
+            lone_preview: None,
+            preview_error: None,
         }
     }
 
@@ -190,9 +197,10 @@ impl Reader {
 
     pub fn tick(&mut self, now: Instant) {
         self.poll_download(now);
+        self.poll_lone_preview();
         let Some(app) = self.session.as_mut() else {
             // Voix préparée sans texte : le délai court quand même.
-            if self.engine.is_some() && self.idle_expired(now) {
+            if self.engine.is_some() && !self.previewing() && self.idle_expired(now) {
                 self.rest();
             }
             return;
@@ -202,7 +210,7 @@ impl Reader {
         // (0 min), il serait sinon écoulé à chaque tour, lecture comprise.
         if app.player.is_playing() && !app.is_finished() {
             self.last_activity = now;
-        } else if self.idle_expired(now) {
+        } else if !self.previewing() && self.idle_expired(now) {
             self.rest();
         }
     }
@@ -210,6 +218,7 @@ impl Reader {
     /// Relâche la voix, la synthèse et la sortie audio ; garde le texte et
     /// la phrase pour reprendre.
     pub fn rest(&mut self) {
+        self.drop_lone_preview();
         let Some(mut app) = self.session.take() else {
             self.engine = None;
             return;
@@ -250,6 +259,7 @@ impl Reader {
     }
 
     fn open(&mut self, text: Text, now: Instant) {
+        self.drop_lone_preview();
         self.last_activity = now;
         self.resting_at = None;
         self.resting_doc = None;
