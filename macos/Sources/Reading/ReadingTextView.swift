@@ -31,8 +31,8 @@ final class ReadingTextView: NSTextView {
     private var lineStartX: CGFloat = 0
     /// La part du mot dite, qui ne recule pas dans un même mot.
     private var progress: CGFloat = 0
-    /// Les images qui font avancer le trait ; les tests la remplacent par une
-    /// source manuelle.
+    /// Les images qui font avancer le trait : le lien de la vue (voir `init`),
+    /// ou une source manuelle dans les tests.
     var frames: FrameSource = DisplayLinkFrames() {
         didSet { oldValue.stop(); wireFrames() }
     }
@@ -57,7 +57,11 @@ final class ReadingTextView: NSTextView {
 
     convenience init() {
         self.init(usingTextLayoutManager: true)
-        wireFrames()
+        // Le lien de la vue suit sa fenêtre d'un écran à l'autre (cadence et
+        // écran changent avec elle), ce que ne fait pas l'écran principal.
+        frames = DisplayLinkFrames { [weak self] target, selector in
+            self?.displayLink(target: target, selector: selector)
+        }
         isEditable = false
         isSelectable = false
         drawsBackground = false
@@ -263,8 +267,6 @@ final class ReadingTextView: NSTextView {
     }
 
     private func wireFrames() {
-        // L'écran de la fenêtre, à défaut l'écran principal.
-        (frames as? DisplayLinkFrames)?.screen = { [weak self] in self?.window?.screen ?? NSScreen.main }
         frames.onFrame = { [weak self] in self?.step() }
     }
 
@@ -283,7 +285,7 @@ final class ReadingTextView: NSTextView {
         frames.stop()
     }
 
-    /// Hors fenêtre, le lien s'arrête (il retient la vue) ; de retour, il
+    /// Hors fenêtre, le lien s'arrête (le lien retient sa cible) ; de retour, il
     /// reprend si la lecture avance.
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()

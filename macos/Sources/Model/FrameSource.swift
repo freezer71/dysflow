@@ -13,8 +13,8 @@ protocol FrameSource: AnyObject {
     func stop()
 }
 
-/// La source de production : un `CADisplayLink` sur l'écran voulu (l'écran
-/// principal par défaut).
+/// La source de production : un `CADisplayLink` (celui de l'écran principal par
+/// défaut).
 @MainActor
 final class DisplayLinkFrames: NSObject, FrameSource {
     /// Relais faible : `CADisplayLink` retient sa cible, le relais évite
@@ -28,8 +28,16 @@ final class DisplayLinkFrames: NSObject, FrameSource {
 
     private var link: CADisplayLink?
     var onFrame: (() -> Void)?
-    /// L'écran dont on suit le rafraîchissement.
-    var screen: () -> NSScreen? = { NSScreen.main }
+    /// Fabrique le lien d'affichage ; nil si rien à suivre (pas d'écran).
+    /// Par défaut, l'écran principal ; une vue passe `NSView.displayLink`,
+    /// qui suit la fenêtre d'un écran à l'autre.
+    private let makeLink: (AnyObject, Selector) -> CADisplayLink?
+
+    init(makeLink: ((AnyObject, Selector) -> CADisplayLink?)? = nil) {
+        self.makeLink = makeLink ?? { target, selector in
+            MainActor.assumeIsolated { NSScreen.main?.displayLink(target: target, selector: selector) }
+        }
+    }
 
     deinit {
         link?.invalidate()
@@ -38,10 +46,10 @@ final class DisplayLinkFrames: NSObject, FrameSource {
     var isRunning: Bool { link != nil }
 
     func start() {
-        guard link == nil, let screen = screen() else { return }
+        guard link == nil else { return }
         let relay = Relay()
         relay.frames = self
-        let link = screen.displayLink(target: relay, selector: #selector(Relay.step))
+        guard let link = makeLink(relay, #selector(Relay.step)) else { return }
         link.add(to: .main, forMode: .common)
         self.link = link
     }

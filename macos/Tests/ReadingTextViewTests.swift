@@ -105,12 +105,13 @@ final class ReadingTextViewTests: XCTestCase {
         let word = try! XCTUnwrap(view.wordRect)
         let un = try! XCTUnwrap(view.rectForTesting(NSRange(location: 0, length: 2)))
         frames.tick()
-        XCTAssertEqual(view.cursorLine!.maxX, word.minX + word.width * 0.25, accuracy: 0.5)
-        XCTAssertEqual(view.cursorLine!.minX, un.minX, accuracy: 0.5)
+        let line = try! XCTUnwrap(view.cursorLine)
+        XCTAssertEqual(line.maxX, word.minX + word.width * 0.25, accuracy: 0.5)
+        XCTAssertEqual(line.minX, un.minX, accuracy: 0.5)
 
         progress = 0.75
         frames.tick()
-        XCTAssertEqual(view.cursorLine!.maxX, word.minX + word.width * 0.75, accuracy: 0.5)
+        XCTAssertEqual(try! XCTUnwrap(view.cursorLine).maxX, word.minX + word.width * 0.75, accuracy: 0.5)
 
         view.playing = false
         XCTAssertNil(view.cursorLine)
