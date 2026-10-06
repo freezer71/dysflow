@@ -24,6 +24,20 @@ enum PanelGeometry {
     }
 }
 
+/// Le niveau du panneau : au-dessus des autres fenêtres, sauf quand la
+/// fenêtre des réglages est ouverte, qu'il ne doit pas recouvrir.
+enum PanelLevel {
+    static let settingsWindowIdentifier = "Réglages"
+
+    static func level(settingsVisible: Bool) -> NSWindow.Level {
+        settingsVisible ? .normal : .floating
+    }
+
+    static func isSettingsWindow(_ window: NSWindow) -> Bool {
+        window.accessibilityIdentifier() == settingsWindowIdentifier
+    }
+}
+
 /// Une fenêtre qui prend le clavier sans activer l'app : l'application en
 /// cours reste au premier plan derrière.
 final class ReadingPanel: NSPanel {

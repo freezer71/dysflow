@@ -13,6 +13,11 @@ final class KeyMapTests: XCTestCase {
         XCTAssertNil(KeyMap.action(for: KeyPress(characters: "v", option: true)))
     }
 
+    func testVIsNotTakenWithCommandOrShift() {
+        XCTAssertNil(KeyMap.action(for: KeyPress(characters: "v", command: true)))
+        XCTAssertNil(KeyMap.action(for: KeyPress(characters: "V", shift: true)))
+    }
+
     func testTheSeekStepComesFromTheSettings() {
         let key = KeyPress(characters: "", keyCode: KeyCode.right, shift: true)
         XCTAssertEqual(KeyMap.action(for: key, seekStep: 12), .command(.sentences(delta: 12)))

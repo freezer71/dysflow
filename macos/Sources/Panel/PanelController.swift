@@ -36,6 +36,7 @@ final class PanelController {
         let guardian = PanelCloseGuard { [weak self] in self?.hide() }
         closeGuard = guardian
         window.delegate = guardian
+        observeSettingsWindow()
     }
 
     private var screenFrame: CGRect {
@@ -63,9 +64,48 @@ final class PanelController {
 
     /// Relit ce que le panneau affiche des réglages, hors du fil principal :
     /// un changement dans la fenêtre des réglages s'y voit aussitôt.
+    /// Des relectures qui se chevauchent : seule la dernière demandée compte.
     func reloadReading() {
-        Task { reading = ReadingDisplay(await model.loadSettings()) }
+        readingGeneration &+= 1
+        let generation = readingGeneration
+        Task {
+            let loaded = ReadingDisplay(await model.loadSettings())
+            guard generation == readingGeneration else { return }
+            reading = loaded
+        }
     }
+    @ObservationIgnored private var readingGeneration = 0
+
+    /// Fenêtre des réglages ouverte : le panneau reste affiché à côté, mais
+    /// ne la recouvre plus.
+    private(set) var settingsVisible = false
+
+    func settingsVisibilityChanged(_ visible: Bool) {
+        guard visible != settingsVisible else { return }
+        settingsVisible = visible
+        window.level = PanelLevel.level(settingsVisible: visible)
+    }
+
+    private func observeSettingsWindow() {
+        let center = NotificationCenter.default
+        settingsObservers = [
+            center.addObserver(forName: NSWindow.didBecomeKeyNotification, object: nil, queue: .main) { [weak self] note in
+                MainActor.assumeIsolated {
+                    guard let self, let w = note.object as? NSWindow, PanelLevel.isSettingsWindow(w) else { return }
+                    self.settingsVisibilityChanged(true)
+                    // Devant le panneau, sans passer au-dessus des autres apps.
+                    w.orderFront(nil)
+                }
+            },
+            center.addObserver(forName: NSWindow.willCloseNotification, object: nil, queue: .main) { [weak self] note in
+                MainActor.assumeIsolated {
+                    guard let self, let w = note.object as? NSWindow, PanelLevel.isSettingsWindow(w) else { return }
+                    self.settingsVisibilityChanged(false)
+                }
+            },
+        ]
+    }
+    @ObservationIgnored private var settingsObservers: [NSObjectProtocol] = []
 
     /// L'action d'une touche, avec le pas d'avance rapide des réglages.
     func action(for press: KeyPress) -> ReaderAction? {

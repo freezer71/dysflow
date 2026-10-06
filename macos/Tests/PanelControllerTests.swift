@@ -150,6 +150,27 @@ final class PanelControllerTests: XCTestCase {
                        .command(.sentences(delta: -12)))
     }
 
+    /// Les réglages ouverts, le panneau passe sous eux, puis flotte à nouveau.
+    func testThePanelStepsBackWhileTheSettingsAreOpen() {
+        let c = shownPanel("Un. Deux.")
+        XCTAssertEqual(c.window.level, .floating)
+        let settings = NSWindow()
+        settings.setAccessibilityIdentifier("Réglages")
+        let other = NSWindow()
+        NotificationCenter.default.post(name: NSWindow.didBecomeKeyNotification, object: other)
+        XCTAssertEqual(c.window.level, .floating, "une autre fenêtre n'y change rien")
+        NotificationCenter.default.post(name: NSWindow.didBecomeKeyNotification, object: settings)
+        XCTAssertEqual(c.window.level, .normal)
+        XCTAssertTrue(c.window.isVisible, "le panneau reste affiché")
+        NotificationCenter.default.post(name: NSWindow.willCloseNotification, object: settings)
+        XCTAssertEqual(c.window.level, .floating)
+    }
+
+    func testPanelLevelIsDecidedBySettingsVisibility() {
+        XCTAssertEqual(PanelLevel.level(settingsVisible: false), .floating)
+        XCTAssertEqual(PanelLevel.level(settingsVisible: true), .normal)
+    }
+
     /// Chaque « / » redemande le focus du champ, même déjà ouvert.
     func testEachSearchKeyAsksForTheField() {
         let c = shownPanel("Un. Deux.")

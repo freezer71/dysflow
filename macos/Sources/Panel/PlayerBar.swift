@@ -61,6 +61,9 @@ struct PlayerBar: View {
                 Image(systemName: "gearshape")
             }
             .buttonStyle(.plain)
+            // Cible élargie sans toucher à la hauteur de la barre.
+            .padding(.horizontal, 5)
+            .contentShape(Rectangle())
             .help("Réglages de la voix (v)")
             .accessibilityLabel("Réglages de la voix")
             .accessibilityIdentifier("reglages-voix")
