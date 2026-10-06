@@ -31,7 +31,7 @@ final class SettingsUITests: XCTestCase {
 
     /// Bit 2 de `AppleKeyboardUIMode` : « Navigation au clavier » active.
     private var fullKeyboardAccess: Bool {
-        let mode = UserDefaults(suiteName: UserDefaults.globalDomain)?.integer(forKey: "AppleKeyboardUIMode") ?? 0
+        let mode = UserDefaults.standard.persistentDomain(forName: UserDefaults.globalDomain)?["AppleKeyboardUIMode"] as? Int ?? 0
         return mode & 2 != 0
     }
 
