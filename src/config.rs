@@ -313,10 +313,16 @@ impl Config {
 
 /// Développe un `~` initial : un chemin littéral `~/...` n'existe pas.
 pub fn expand_tilde(path: &str) -> String {
+    expand_tilde_with(path, dirs::home_dir().as_deref())
+}
+
+/// `expand_tilde` avec un dossier personnel explicite (les tests n'ont pas à
+/// dépendre de celui de la machine).
+pub fn expand_tilde_with(path: &str, home: Option<&std::path::Path>) -> String {
     let Some(rest) = path.strip_prefix('~') else {
         return path.to_string();
     };
-    let Some(home) = dirs::home_dir() else {
+    let Some(home) = home else {
         return path.to_string();
     };
     let rest = rest.trim_start_matches(['/', '\\']);

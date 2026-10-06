@@ -45,10 +45,7 @@ impl Reader {
     /// Pourquoi ce modèle ne peut pas être supprimé maintenant, s'il ne le
     /// peut pas : il est actif, ou il se télécharge.
     pub fn removal_refusal(&self, package: &ModelPackage) -> Option<String> {
-        let active_path = &self.current_config().engine.model_path;
-        let active = !active_path.is_empty()
-            && models::install_path(package).is_some_and(|p| p.to_string_lossy() == active_path.as_str());
-        if active {
+        if models::is_active_package(&self.current_config().engine.model_path, package) {
             return Some(format!(
                 "{} est le modèle actif : choisissez-en un autre avant de le supprimer",
                 package.display_name
@@ -64,7 +61,12 @@ impl Reader {
     }
 
     pub fn remove_model(&mut self, id: &str) -> Result<()> {
-        let package = package(id)?;
+        self.remove_package(package(id)?)
+    }
+
+    /// Le cœur de `remove_model`, sur un paquet déjà résolu (le catalogue
+    /// disponible dépend des familles compilées).
+    fn remove_package(&mut self, package: &ModelPackage) -> Result<()> {
         if let Some(reason) = self.removal_refusal(package) {
             bail!(reason);
         }
@@ -127,11 +129,15 @@ impl Reader {
     /// l'utilisateur.
     fn remove_bookmark_at(&mut self, path: &std::path::Path, document: &str, sentence: usize) -> Result<()> {
         let mut store = BookmarkStore::load_from(path).0;
-        store.remove(document, sentence);
+        if store.remove(document, sentence) {
+            // Écrire d'abord : si le disque refuse, la session garde le signet
+            // et l'interface ne ment pas.
+            store.save_to(path)?;
+        }
         if let Some(app) = self.session.as_mut() {
             app.bookmarks.remove(document, sentence);
         }
-        store.save_to(path)
+        Ok(())
     }
 }
 
@@ -164,7 +170,7 @@ mod tests {
     fn the_active_model_cannot_be_removed() {
         let first = &models::CATALOG[0];
         let second = &models::CATALOG[1];
-        let Some(path) = models::install_path(first) else { return };
+        let path = models::install_path(first).expect("répertoire des modèles (isolé sous test)");
         let mut config = quiet();
         config.engine.model_path = path.to_string_lossy().into_owned();
         let r = reader_with(config);
@@ -251,5 +257,49 @@ mod tests {
         assert_eq!(document_label("sélection:00ab12"), "sélection");
         assert_eq!(document_label("image:ff"), "image");
         assert_eq!(document_label("presse-papiers"), "presse-papiers");
+    }
+
+    /// Installe un faux fichier de modèle dans le dossier isolé des tests.
+    fn install_fake(package: &ModelPackage) -> std::path::PathBuf {
+        let path = models::install_path(package).expect("dossier isolé");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, b"faux modele").unwrap();
+        path
+    }
+
+    #[test]
+    fn an_installed_model_is_really_deleted() {
+        let package = &models::CATALOG[2];
+        let path = install_fake(package);
+        let mut r = reader_with(quiet());
+        r.remove_package(package).unwrap();
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn the_active_model_survives_a_removal_attempt() {
+        let package = &models::CATALOG[1];
+        let path = install_fake(package);
+        let mut config = quiet();
+        config.engine.model_path = path.to_string_lossy().into_owned();
+        let mut r = reader_with(config);
+        assert!(r.remove_package(package).is_err());
+        assert!(path.exists());
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn removal_is_refused_while_the_model_downloads_then_cancel_works() {
+        let package = &models::CATALOG[0];
+        let mut r = reader_with(quiet());
+        r.download = Some(models::Download::fake(package, false));
+        let reason = r.removal_refusal(package).expect("refusé");
+        assert!(reason.contains("se télécharge"), "{reason}");
+        r.cancel_download().unwrap();
+        assert!(r.download.as_ref().unwrap().cancel_requested());
+        // Un téléchargement fini ne bloque plus rien et n'est plus annulable.
+        r.download = Some(models::Download::fake(package, true));
+        assert_eq!(r.removal_refusal(package), None);
+        assert!(r.cancel_download().is_err());
     }
 }

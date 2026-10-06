@@ -1146,9 +1146,7 @@ impl App {
             Ok(()) => {
                 self.screen.notice = format!("{} supprimé", package.display_name);
                 // Le modèle courant vient de disparaître : on repasse au repli.
-                if models::install_path(package)
-                    .is_some_and(|p| p.to_string_lossy() == self.config.engine.model_path)
-                {
+                if models::is_active_package(&self.config.engine.model_path, package) {
                     self.config.engine.model_path.clear();
                     self.config.engine.family.clear();
                     self.reload_engine();

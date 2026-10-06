@@ -174,6 +174,30 @@ pub fn install_path(package: &ModelPackage) -> Option<PathBuf> {
     models_dir().map(|d| d.join(package.family).join(package.file_name()))
 }
 
+/// Vrai si le `model_path` configuré désigne ce fichier installé.
+///
+/// Le moteur développe le `~` et suit les liens : une configuration écrite à
+/// la main (`~/…`, ou via un dossier lié) désigne le même fichier qu'un chemin
+/// absolu. Une simple égalité de textes laisserait supprimer le modèle en
+/// cours d'usage.
+pub fn is_active_path(configured: &str, installed: &Path) -> bool {
+    is_active_path_with(configured, installed, dirs::home_dir().as_deref())
+}
+
+fn is_active_path_with(configured: &str, installed: &Path, home: Option<&Path>) -> bool {
+    if configured.is_empty() {
+        return false;
+    }
+    let expanded = PathBuf::from(crate::config::expand_tilde_with(configured, home));
+    let canonical = |p: &Path| std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
+    canonical(&expanded) == canonical(installed)
+}
+
+/// Vrai si `configured` désigne le fichier installé de ce modèle.
+pub fn is_active_package(configured: &str, package: &ModelPackage) -> bool {
+    install_path(package).is_some_and(|p| is_active_path(configured, &p))
+}
+
 /// Taille sur disque si le modèle est installé.
 ///
 /// Un téléchargement interrompu laisse un `.part`, qui n'est jamais confondu
@@ -302,6 +326,24 @@ impl Download {
             received: self.received.load(Ordering::Relaxed),
             total: self.total.load(Ordering::Relaxed),
         }
+    }
+
+    /// Un téléchargement sans réseau ni fil, pour les tests.
+    #[cfg(test)]
+    pub(crate) fn fake(package: &'static ModelPackage, finished: bool) -> Self {
+        Self {
+            package,
+            received: Arc::new(AtomicU64::new(0)),
+            total: Arc::new(AtomicU64::new(package.bytes)),
+            outcome: Arc::new(Mutex::new(finished.then_some(Progress::Done))),
+            cancel: Arc::new(AtomicBool::new(false)),
+        }
+    }
+
+    /// Vrai si l'arrêt a été demandé.
+    #[cfg(test)]
+    pub(crate) fn cancel_requested(&self) -> bool {
+        self.cancel.load(Ordering::Relaxed)
     }
 
     pub fn cancel(&self) {
@@ -881,5 +923,29 @@ mod tests {
         assert_eq!(resume_from(&partial, 10), Resume::FromScratch);
         assert!(!partial.exists());
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn the_active_path_is_recognised_through_tilde_and_links() {
+        let root = std::env::temp_dir().join(format!("sillon-active-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let real = root.join("home/models");
+        std::fs::create_dir_all(&real).unwrap();
+        let model = real.join("m.gguf");
+        std::fs::write(&model, b"x").unwrap();
+        let home = root.join("home");
+
+        assert!(is_active_path_with("~/models/m.gguf", &model, Some(&home)), "forme ~");
+        assert!(!is_active_path_with("~/models/autre.gguf", &model, Some(&home)));
+        assert!(!is_active_path_with("", &model, Some(&home)));
+
+        #[cfg(unix)]
+        {
+            let link = root.join("lien");
+            std::os::unix::fs::symlink(&real, &link).unwrap();
+            let via_link = link.join("m.gguf");
+            assert!(is_active_path_with(&via_link.to_string_lossy(), &model, Some(&home)), "dossier lié");
+        }
+        std::fs::remove_dir_all(&root).ok();
     }
 }

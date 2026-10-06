@@ -87,8 +87,13 @@ fn clear_in(dir: &Path) -> std::io::Result<u64> {
     for entry in std::fs::read_dir(dir)? {
         let path = entry?.path();
         if path.extension().is_some_and(|e| e == "md") {
-            freed += std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
-            std::fs::remove_file(&path)?;
+            let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+            match std::fs::remove_file(&path) {
+                Ok(()) => freed += size,
+                // Disparu entre-temps : déjà libéré, ce n'est pas une erreur.
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => return Err(e),
+            }
         }
     }
     Ok(freed)

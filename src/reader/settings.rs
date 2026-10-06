@@ -434,7 +434,7 @@ impl Reader {
             .ok_or_else(|| anyhow!("voix non installée : {id}"))?;
         self.sync_config();
         // Déjà la voix active : rien à recharger.
-        if self.config.engine.model_path == path.to_string_lossy() && self.config.engine.family == package.family {
+        if models::is_active_path(&self.config.engine.model_path, &path) && self.config.engine.family == package.family {
             return Ok(());
         }
         self.switch_voice_config(&path.to_string_lossy(), package.family);
