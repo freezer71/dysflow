@@ -69,9 +69,22 @@ final class GatedSettingsBackend: SettingsBackend {
     func releaseLoad() { if !loadGates.isEmpty { loadGates.removeFirst().resume() } }
     func releaseWrite() { if !writeGates.isEmpty { writeGates.removeFirst().resume() } }
 
+    /// Libère tout ce qui attend et ouvre les portes : un test qui échoue
+    /// ne laisse jamais une tâche bloquée.
+    func releaseAll() {
+        gateLoads = false
+        gateWrites = false
+        let l = loadGates, w = writeGates
+        loadGates = []
+        writeGates = []
+        (l + w).forEach { $0.resume() }
+    }
+
     func loadSettings() async -> SettingsView {
+        // La valeur lue l'est à l'appel, pas à la libération de la porte.
+        let snapshot = stored
         if gateLoads { await withCheckedContinuation { loadGates.append($0) } }
-        return stored
+        return snapshot
     }
     func loadCapabilities() async -> ModelCapabilities { Capabilities.supertonic }
 

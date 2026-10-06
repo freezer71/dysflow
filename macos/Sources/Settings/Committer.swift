@@ -11,7 +11,7 @@ final class Committer<Value: Equatable> {
     private let onApplied: (_ sent: Value, _ applied: Value) -> Void
     private let onResult: (Error?) -> Void
     private var pending: Task<Void, Never>?
-    private var inFlight: (id: Int, value: Value, job: Task<Value, Error>)?
+    private var inFlight: (id: Int, value: Value, job: Task<Void, Never>)?
     private var jobCounter = 0
     /// Change à chaque `prime` : ce qui date d'avant ne compte plus.
     private var epoch = 0
@@ -72,31 +72,32 @@ final class Committer<Value: Equatable> {
             if wait > .zero {
                 do { try await Task.sleep(for: wait) } catch { return }
             }
-            // Une écriture en vol passe d'abord ; on relit tout après l'attente.
+            // Une écriture en vol passe d'abord. Elle met à jour `saved` et vide
+            // `inFlight` dans sa propre tâche : une fois attendue, tout est à jour.
             while let flying = inFlight {
-                _ = try? await flying.job.value
+                await flying.job.value
                 if Task.isCancelled || epoch != myEpoch { return }
-                // La tâche propriétaire nettoie `inFlight` à son tour : on lui laisse la main.
-                if inFlight?.id == flying.id { await Task.yield() }
             }
             if Task.isCancelled || epoch != myEpoch { return }
             guard let previous = self.saved, value != previous else { return }
             jobCounter += 1
             let id = jobCounter
-            let job = Task { try await write(value, previous) }
-            inFlight = (id: id, value: value, job: job)
-            do {
-                let applied = try await job.value
-                if epoch == myEpoch {
-                    self.saved = applied
-                    onApplied(value, applied)
-                    onResult(nil)
+            let job = Task { @MainActor in
+                do {
+                    let applied = try await write(value, previous)
+                    if epoch == myEpoch {
+                        self.saved = applied
+                        onApplied(value, applied)
+                        onResult(nil)
+                    }
+                } catch {
+                    if epoch == myEpoch { onResult(error) }
                 }
-            } catch {
-                if epoch == myEpoch { onResult(error) }
+                // Seulement si c'est encore la nôtre : une autre peut avoir pris la place.
+                if inFlight?.id == id { inFlight = nil }
             }
-            // Seulement si c'est encore la nôtre : une autre peut avoir pris la place.
-            if inFlight?.id == id { inFlight = nil }
+            inFlight = (id: id, value: value, job: job)
+            await job.value
         }
     }
 
@@ -112,6 +113,6 @@ final class Committer<Value: Equatable> {
             }
         }
         await pending?.value
-        _ = try? await inFlight?.job.value
+        await inFlight?.job.value
     }
 }

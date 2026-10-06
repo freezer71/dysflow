@@ -3,6 +3,14 @@ import XCTest
 
 @MainActor
 final class SettingsStoreTests: XCTestCase {
+    /// Un moteur à portes : libéré en fin de test quoi qu'il arrive, et test borné.
+    private func gated() -> GatedSettingsBackend {
+        executionTimeAllowance = 20
+        let backend = GatedSettingsBackend()
+        addTeardownBlock { @MainActor in backend.releaseAll() }
+        return backend
+    }
+
     private func loadedStore(_ backend: FakeSettingsBackend,
                              delay: Duration = .milliseconds(20)) async -> SettingsStore {
         let store = SettingsStore(backend: backend, delay: delay)
@@ -163,14 +171,14 @@ final class SettingsStoreTests: XCTestCase {
     /// Course : un changement fait pendant la relecture survit à l'écran, et
     /// seul ce champ part, par-dessus la config relue.
     func testChangeDuringReloadSurvivesAndWritesOnlyThatField() async throws {
-        let backend = GatedSettingsBackend()
+        let backend = gated()
         let store = SettingsStore(backend: backend, delay: .milliseconds(20))
         await store.load()
         backend.stored.voice = "Aria"        // changé ailleurs (nouveau modèle)
         backend.stored.language = "de"
         backend.gateLoads = true
         let reloading = Task { await store.reload() }
-        _ = await eventuallyTrue { backend.waitingLoads == 1 }
+        guard await eventuallyTrue(.seconds(5), { backend.waitingLoads == 1 }) else { return XCTFail("précondition jamais atteinte") }
         store.set(\.speed, 1.7)
         backend.releaseLoad()
         await reloading.value
@@ -187,16 +195,16 @@ final class SettingsStoreTests: XCTestCase {
 
     /// Deux relectures qui se chevauchent : seule la dernière s'applique.
     func testOnlyTheLatestOverlappingReloadApplies() async {
-        let backend = GatedSettingsBackend()
+        let backend = gated()
         let store = SettingsStore(backend: backend, delay: .milliseconds(20))
         await store.load()
         backend.gateLoads = true
         backend.stored.voice = "ancienne"
         let first = Task { await store.reload() }
-        _ = await eventuallyTrue { backend.waitingLoads == 1 }
+        guard await eventuallyTrue(.seconds(5), { backend.waitingLoads == 1 }) else { return XCTFail("précondition jamais atteinte") }
         backend.stored.voice = "récente"
         let second = Task { await store.reload() }
-        _ = await eventuallyTrue { backend.waitingLoads == 2 }
+        guard await eventuallyTrue(.seconds(5), { backend.waitingLoads == 2 }) else { return XCTFail("précondition jamais atteinte") }
         backend.releaseLoad()    // la première rend « ancienne » (lue avant)
         await first.value
         XCTAssertNotEqual(store.values.voice, "ancienne")
@@ -227,12 +235,12 @@ final class SettingsStoreTests: XCTestCase {
 
     /// Un `flush` pendant une écriture qui porte déjà la valeur n'en ajoute pas.
     func testFlushDuringTheSameWriteAddsNothing() async {
-        let backend = GatedSettingsBackend()
+        let backend = gated()
         backend.gateWrites = true
         let store = SettingsStore(backend: backend, delay: .zero)
         await store.load()
         store.set(\.speed, 2.2)
-        _ = await eventuallyTrue { backend.waitingWrites == 1 }
+        guard await eventuallyTrue(.seconds(5), { backend.waitingWrites == 1 }) else { return XCTFail("précondition jamais atteinte") }
         let flushing = Task { await store.flush() }
         try? await Task.sleep(for: .milliseconds(50))
         backend.releaseWrite()
@@ -242,12 +250,12 @@ final class SettingsStoreTests: XCTestCase {
 
     /// Trois changements pendant une écriture en vol : écritures en série, la dernière gagne.
     func testWritesAreSerialisedAndTheLastWins() async throws {
-        let backend = GatedSettingsBackend()
+        let backend = gated()
         backend.gateWrites = true
         let store = SettingsStore(backend: backend, delay: .milliseconds(5))
         await store.load()
         store.set(\.speed, 1.1)
-        _ = await eventuallyTrue { backend.waitingWrites == 1 }
+        guard await eventuallyTrue(.seconds(5), { backend.waitingWrites == 1 }) else { return XCTFail("précondition jamais atteinte") }
         store.set(\.speed, 1.2)
         try await Task.sleep(for: .milliseconds(30))
         store.set(\.speed, 1.3)
@@ -256,9 +264,9 @@ final class SettingsStoreTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(30))
         XCTAssertEqual(backend.patches.count, 1, "rien ne part tant que la première n'est pas finie")
         backend.releaseWrite()
-        _ = await eventuallyTrue { backend.waitingWrites == 1 }
+        guard await eventuallyTrue(.seconds(5), { backend.waitingWrites == 1 }) else { return XCTFail("précondition jamais atteinte") }
         backend.releaseWrite()
-        _ = await eventuallyTrue { backend.patches.count == 2 && backend.running == 0 }
+        guard await eventuallyTrue(.seconds(5), { backend.patches.count == 2 && backend.running == 0 }) else { return XCTFail("précondition jamais atteinte") }
         try await Task.sleep(for: .milliseconds(60))
         XCTAssertEqual(backend.patches.count, 2)
         XCTAssertEqual(backend.patches.last?.speed, 1.4)
