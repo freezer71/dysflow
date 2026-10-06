@@ -11,3 +11,15 @@ func waitUntil(_ timeout: TimeInterval = 5, _ condition: () -> Bool) -> Bool {
     }
     return true
 }
+
+/// Attend, en laissant tourner les tâches Swift, que `condition` soit vraie.
+@MainActor
+func eventuallyTrue(_ timeout: Duration = .seconds(5), _ condition: () -> Bool) async -> Bool {
+    let clock = ContinuousClock()
+    let deadline = clock.now.advanced(by: timeout)
+    while !condition() {
+        if clock.now > deadline { return false }
+        try? await Task.sleep(for: .milliseconds(10))
+    }
+    return true
+}

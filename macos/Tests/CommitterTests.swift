@@ -93,6 +93,32 @@ final class CommitterTests: XCTestCase {
         XCTAssertTrue(ok)
         XCTAssertEqual(pairs, [[0, 1], [1, 2]])
     }
+
+    /// La valeur que le moteur a réellement appliquée devient la référence,
+    /// et revient à l'appelant avec celle qui avait été envoyée.
+    func testTheAppliedValueBecomesTheSavedOne() async {
+        var reported: [(sent: Int, applied: Int)] = []
+        let c = Committer<Int>(delay: .zero, saved: 0,
+                               writeApplied: { new, _ in min(new, 3) },
+                               onApplied: { reported.append((sent: $0, applied: $1)) })
+        c.change(9)
+        let ok = await eventually { !reported.isEmpty }
+        XCTAssertTrue(ok)
+        XCTAssertEqual(reported.first?.sent, 9)
+        XCTAssertEqual(reported.first?.applied, 3)
+        XCTAssertEqual(c.saved, 3)
+    }
+
+    /// `flush` n'attend pas la pause : ce qui attend part tout de suite.
+    func testFlushWritesThePendingValueAtOnce() async {
+        var writes: [Int] = []
+        let c = Committer<Int>(delay: .seconds(30), saved: 0, write: { writes.append($0) })
+        c.change(4)
+        await c.flush()
+        XCTAssertEqual(writes, [4])
+        await c.flush()
+        XCTAssertEqual(writes, [4], "rien de plus à écrire")
+    }
 }
 
 /// L'ancien onglet Lecture n'écrit que le réglage touché.

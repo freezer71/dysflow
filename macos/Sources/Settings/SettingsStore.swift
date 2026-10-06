@@ -1,0 +1,116 @@
+import SwiftUI
+
+/// Ce que les onglets demandent au moteur. `ReaderModel` le fournit ; les
+/// tests le simulent sans toucher au disque.
+@MainActor
+protocol SettingsBackend: AnyObject {
+    func loadSettings() async -> SettingsView
+    func loadCapabilities() async -> ModelCapabilities
+    func updateSettings(_ patch: SettingsPatch) async throws -> SettingsView
+    func previewVoice() async throws
+    func stopPreview() async
+}
+
+extension ReaderModel: SettingsBackend {}
+
+/// Les réglages tels que les onglets les montrent et les changent.
+///
+/// Un seul magasin pour les six onglets. Un changement s'affiche tout de
+/// suite, part en patch (le seul champ touché) après une courte pause, et la
+/// valeur réellement appliquée — bornes comprises — revient à l'écran.
+@MainActor
+@Observable
+final class SettingsStore {
+    @ObservationIgnored private let backend: SettingsBackend
+    @ObservationIgnored private var committer: Committer<SettingsView>!
+    @ObservationIgnored private var dragging = false
+
+    private(set) var values = SettingsView.defaults
+    private(set) var capabilities = ModelCapabilities(family: "", voices: [], languages: [],
+                                                      honoured: [], requiresReference: false)
+    private(set) var loaded = false
+    /// Afficher aussi les réglages que le modèle actif ignore.
+    var showIgnored = false
+    /// La dernière écriture refusée ; le réglage reste affiché.
+    private(set) var error: String?
+    /// Le refus du dernier « Écouter ».
+    private(set) var previewNote: String?
+
+    init(backend: SettingsBackend, delay: Duration = .milliseconds(150)) {
+        self.backend = backend
+        committer = Committer(delay: delay, writeApplied: { [backend] new, old in
+            try await backend.updateSettings(SettingsDiff.patch(from: old, to: new))
+        }, onApplied: { [weak self] sent, applied in
+            // Une valeur changée depuis l'envoi reste : elle partira à son tour.
+            guard let self, self.values == sent else { return }
+            self.values = applied
+        }, onResult: { [weak self] error in
+            self?.error = error.map(SettingsStore.message(of:))
+        })
+    }
+
+    /// Réglages et capacités, lus hors du fil principal. Rien n'est écrit.
+    func load() async {
+        let loadedValues = await backend.loadSettings()
+        capabilities = await backend.loadCapabilities()
+        committer.prime(loadedValues)
+        values = loadedValues
+        loaded = true
+    }
+
+    func reloadCapabilities() async {
+        capabilities = await backend.loadCapabilities()
+    }
+
+    /// Relit réglages ET capacités : après « Utiliser », après un
+    /// téléchargement qui active un modèle, après tout changement de modèle
+    /// actif (la voix, la langue et les réglages honorés peuvent avoir changé).
+    /// Ce qui attend encore sa pause part d'abord, pour ne pas être perdu.
+    func reload() async {
+        await committer.flush()
+        let fresh = await backend.loadSettings()
+        capabilities = await backend.loadCapabilities()
+        committer.prime(fresh)
+        values = fresh
+        loaded = true
+    }
+
+    /// Change un réglage : l'écran suit tout de suite, l'écriture après la pause.
+    func set<T>(_ key: WritableKeyPath<SettingsView, T>, _ value: T) {
+        values[keyPath: key] = value
+        guard loaded, !dragging else { return }
+        committer.change(values)
+    }
+
+    func binding<T>(_ key: WritableKeyPath<SettingsView, T>) -> Binding<T> {
+        Binding(get: { self.values[keyPath: key] }, set: { self.set(key, $0) })
+    }
+
+    /// Pour TOUT curseur qui relance la synthèse (vitesse, hauteur, énergie,
+    /// échantillonnage) : `onEditingChanged` l'appelle avec `true` au début du
+    /// geste et `false` au relâchement. Rien ne part avant le relâchement, puis
+    /// une seule écriture tout de suite.
+    func dragChanged(_ editing: Bool) {
+        dragging = editing
+        if !editing, loaded { committer.change(values, immediate: true) }
+    }
+
+    func isIgnored(_ key: SettingKey) -> Bool { key.isIgnored(honoured: capabilities.honoured) }
+
+    func isShown(_ key: SettingKey) -> Bool { showIgnored || !isIgnored(key) }
+
+    /// La phrase d'exemple, avec ce qui vient d'être choisi.
+    func listen() async {
+        previewNote = nil
+        await committer.flush()
+        do { try await backend.previewVoice() } catch { previewNote = Self.message(of: error) }
+    }
+
+    func stopListening() async { await backend.stopPreview() }
+
+    /// Le message d'une erreur du moteur, sans l'habillage de l'enum.
+    static func message(of error: Error) -> String {
+        if case SillonError.Failed(let message) = error { return message }
+        return error.localizedDescription
+    }
+}
