@@ -73,4 +73,44 @@ final class AdvancedStoreSafetyTests: XCTestCase {
     func testSliderValuesAreRoundedToTwoDecimals() {
         XCTAssertEqual(SettingFormat.rounded(0.35000002), 0.35)
     }
+
+    func testAnOrdinaryEditDoesNotShortenTheEnginePause() async throws {
+        let backend = FakeSettingsBackend()
+        let store = SettingsStore(backend: backend, delay: .milliseconds(20), engineDelay: .milliseconds(400))
+        await store.load()
+        store.set(\.threads, 6, reloadsVoice: true)
+        try await Task.sleep(for: .milliseconds(100))
+        store.set(\.topK, 40)
+        try await Task.sleep(for: .milliseconds(200))
+        XCTAssertTrue(backend.patches.isEmpty, "pas de rechargement en pleine rafale")
+        let sent = await eventuallyTrue { backend.patches.count == 1 }
+        XCTAssertTrue(sent)
+        XCTAssertEqual(backend.patches.first?.threads, 6)
+        XCTAssertEqual(backend.patches.first?.topK, .value(value: 40))
+    }
+
+    func testFlushStillSendsAtOnceDuringTheEnginePause() async {
+        let backend = FakeSettingsBackend()
+        let store = SettingsStore(backend: backend, delay: .milliseconds(20), engineDelay: .seconds(30))
+        await store.load()
+        store.set(\.threads, 6, reloadsVoice: true)
+        await store.flush()
+        XCTAssertEqual(backend.patches.count, 1)
+    }
+
+    func testASlowDragIsNotCutShortWhileItMoves() async throws {
+        let backend = FakeSettingsBackend()
+        let store = SettingsStore(backend: backend, delay: .milliseconds(10), dragTimeout: .milliseconds(150))
+        await store.load()
+        store.dragChanged(true)
+        for n in 0..<12 {
+            store.set(\.speed, 1 + Float(n) * 0.05)
+            try await Task.sleep(for: .milliseconds(40))
+        }
+        XCTAssertTrue(store.isDragging, "le geste dure plus que le délai, mais bouge")
+        XCTAssertTrue(backend.patches.isEmpty)
+        store.dragChanged(false)
+        let sent = await eventuallyTrue { backend.patches.count == 1 }
+        XCTAssertTrue(sent)
+    }
 }

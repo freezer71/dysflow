@@ -117,6 +117,7 @@ final class SettingsStore {
     func set<T>(_ key: WritableKeyPath<SettingsView, T>, _ value: T, reloadsVoice: Bool = false) {
         values[keyPath: key] = value
         if reloading { queuedEdits.append { $0[keyPath: key] = value }; return }
+        if dragging { armWatchdog() }   // le geste vit encore
         guard loaded, !dragging else { return }
         committer.change(values, after: reloadsVoice ? engineDelay : nil)
     }
@@ -139,14 +140,20 @@ final class SettingsStore {
         dragWatchdog = nil
         dragging = editing
         if editing {
-            // Un « relâché » qui ne vient jamais ne doit pas figer toutes les écritures.
-            dragWatchdog = Task { [weak self, dragTimeout] in
-                try? await Task.sleep(for: dragTimeout)
-                guard !Task.isCancelled else { return }
-                self?.dragChanged(false)
-            }
+            armWatchdog()
         } else if loaded, !reloading {
             committer.change(values, immediate: true)
+        }
+    }
+
+    /// Un « relâché » qui ne vient jamais ne doit pas figer toutes les
+    /// écritures : sans aucun mouvement pendant `dragTimeout`, le geste prend fin.
+    private func armWatchdog() {
+        dragWatchdog?.cancel()
+        dragWatchdog = Task { [weak self, dragTimeout] in
+            try? await Task.sleep(for: dragTimeout)
+            guard !Task.isCancelled else { return }
+            self?.dragChanged(false)
         }
     }
 

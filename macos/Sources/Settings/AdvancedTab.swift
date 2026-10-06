@@ -35,7 +35,9 @@ struct AdvancedTab: View {
                 if store.values.engine == "system" {
                     Text("Sans effet avec la voix du système")
                 }
-                Text("Chaque changement ici recharge la voix ; la lecture reprend à la même phrase.")
+                if store.values.engine != "system" {
+                    Text("Chaque changement ici recharge la voix ; la lecture reprend à la même phrase.")
+                }
             }
             Section("Échantillonnage") {
                 if store.values.engine == "system" {

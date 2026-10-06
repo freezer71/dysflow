@@ -17,6 +17,9 @@ final class Committer<Value: Equatable> {
     private var epoch = 0
     /// La dernière valeur demandée, pour `flush`.
     private var latest: Value?
+    /// La pause la plus longue demandée depuis la dernière écriture : une
+    /// modification ordinaire ne raccourcit pas celle d'un réglage lourd.
+    private var pendingWait: Duration = .zero
     /// Ce que le moteur a déjà : une valeur identique n'est pas renvoyée.
     private(set) var saved: Value?
 
@@ -56,6 +59,7 @@ final class Committer<Value: Equatable> {
         epoch += 1
         pending?.cancel()
         pending = nil
+        pendingWait = .zero
         saved = value
         latest = value
     }
@@ -66,13 +70,15 @@ final class Committer<Value: Equatable> {
         guard let saved else { return }   // pas encore chargé
         latest = value
         pending?.cancel()
-        if value == saved && inFlight == nil { pending = nil; return }
-        let wait = immediate ? .zero : (pause ?? delay)
+        if value == saved && inFlight == nil { pending = nil; pendingWait = .zero; return }
+        pendingWait = immediate ? .zero : max(pendingWait, pause ?? delay)
+        let wait = pendingWait
         let myEpoch = epoch
         pending = Task {
             if wait > .zero {
                 do { try await Task.sleep(for: wait) } catch { return }
             }
+            pendingWait = .zero
             // Une écriture en vol passe d'abord. Elle met à jour `saved` et vide
             // `inFlight` dans sa propre tâche : une fois attendue, tout est à jour.
             while let flying = inFlight {
