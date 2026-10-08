@@ -531,12 +531,31 @@ impl App {
             self.notify("Aucun mot de ce côté");
             return;
         };
+        self.seek_to_word(target, word);
+    }
+
+    /// Déplace la lecture au mot `word` de la phrase `sentence`.
+    ///
+    /// Absolu : l'interface vise un mot qu'elle voit, sans dépendre du mot
+    /// que la voix a atteint pendant ce temps. Les indices trop grands
+    /// s'arrêtent au dernier ; une phrase sans mots se rejoint en entier.
+    pub fn seek_to_word(&mut self, sentence: usize, word: usize) {
+        let total = self.builder.sentence_count();
+        if total == 0 {
+            return;
+        }
+        let target = sentence.min(total - 1);
+        let words = self.doc().sentence(target).map_or(0, |s| s.words.len());
+        self.seek_to(target);
+        if words == 0 {
+            return;
+        }
+        let word = word.min(words - 1);
         let ratio = self
             .doc()
             .sentence(target)
             .and_then(|s| s.word_start(word))
             .unwrap_or(0.0);
-        self.seek_to(target);
         self.start_at = Some(StartAt { sentence: target, word, ratio, consumed: false });
     }
 
@@ -1908,6 +1927,47 @@ pub(crate) mod tests {
         assert_eq!(app.reading_word(), Some(2));
         // Un second saut part du mot visé, pas du début de la phrase.
         app.seek_words(3);
+        assert_eq!(app.current_sentence(), 1);
+        assert_eq!(app.reading_word(), Some(1));
+    }
+
+    #[test]
+    fn seeking_to_a_word_goes_straight_there() {
+        let mut app = app_reading("Un deux trois quatre. Cinq six.");
+        app.seek_to_word(1, 1);
+        assert_eq!(app.current_sentence(), 1);
+        assert_eq!(app.reading_word(), Some(1));
+        // Absolu : le mot lu avant le saut ne compte pas.
+        app.seek_to_word(0, 2);
+        assert_eq!(app.current_sentence(), 0);
+        assert_eq!(app.reading_word(), Some(2));
+    }
+
+    #[test]
+    fn seeking_to_a_word_clamps_out_of_range_indices() {
+        let mut app = app_reading("Un deux trois quatre. Cinq six.");
+        app.seek_to_word(0, 99);
+        assert_eq!(app.current_sentence(), 0);
+        assert_eq!(app.reading_word(), Some(3));
+        app.seek_to_word(99, 0);
+        assert_eq!(app.current_sentence(), 1);
+        assert_eq!(app.reading_word(), Some(0));
+    }
+
+    #[test]
+    fn seeking_to_a_word_starts_at_its_ratio() {
+        let mut app = app_reading("Un deux trois quatre. Cinq six.");
+        app.seek_to_word(0, 2);
+        let expected = app.doc().sentence(0).and_then(|s| s.word_start(2)).unwrap();
+        let start = app.start_at.as_ref().unwrap();
+        assert_eq!((start.sentence, start.word), (0, 2));
+        assert_eq!(start.ratio, expected);
+    }
+
+    #[test]
+    fn seek_to_word_command_reaches_the_app() {
+        let mut app = app_reading("Un deux trois quatre. Cinq six.");
+        crate::reader::command::Command::SeekToWord { sentence: 1, word: 1 }.apply(&mut app);
         assert_eq!(app.current_sentence(), 1);
         assert_eq!(app.reading_word(), Some(1));
     }

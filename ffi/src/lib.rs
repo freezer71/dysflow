@@ -35,6 +35,7 @@ pub enum ReaderCommand {
     Blocks { delta: i32 },
     Sections { delta: i32 },
     SeekTo { sentence: u32 },
+    SeekToWord { sentence: u32, word: u32 },
     RestartSentence,
     Start,
     End,
@@ -58,6 +59,9 @@ impl From<ReaderCommand> for Command {
             ReaderCommand::Blocks { delta } => Command::Blocks(delta as isize),
             ReaderCommand::Sections { delta } => Command::Sections(delta as isize),
             ReaderCommand::SeekTo { sentence } => Command::SeekTo(sentence as usize),
+            ReaderCommand::SeekToWord { sentence, word } => {
+                Command::SeekToWord { sentence: sentence as usize, word: word as usize }
+            }
             ReaderCommand::RestartSentence => Command::RestartSentence,
             ReaderCommand::Start => Command::Start,
             ReaderCommand::End => Command::End,
@@ -830,6 +834,12 @@ mod tests {
             std::thread::sleep(Duration::from_millis(5));
         }
         assert!(matches!(reader.snapshot().voice, VoiceState::Ready));
+    }
+
+    #[test]
+    fn seek_to_word_crosses_the_bridge_as_an_absolute_word() {
+        let command: Command = ReaderCommand::SeekToWord { sentence: 2, word: 5 }.into();
+        assert_eq!(command, Command::SeekToWord { sentence: 2, word: 5 });
     }
 
     #[test]
