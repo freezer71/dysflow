@@ -51,6 +51,7 @@ final class PanelController {
         window.delegate = guardian
         observeSettingsWindow()
         observeMoves()
+        post = { [weak self] text in self?.postToVoiceOver(text) }
     }
 
     /// Les préférences du processus, lues une fois : sous les tests, chaque
@@ -119,10 +120,10 @@ final class PanelController {
             updateIdentifier()
         }
         if takeKey { window.makeKeyAndOrderFront(nil) } else { window.orderFrontRegardless() }
-        // Le modèle ne suit l'état en pause (coup d'œil lent, 4 Hz) qu'au
-        // moyen et au grand mode. La barre du mode petit suit la cadence
-        // « lit sans être affiché » : en pause, elle ne coûte rien.
-        model.isDisplayed = target != .small
+        // La cadence de relecture suit ce qui est montré : le texte (à
+        // chaque image en lecture), ou la barre (4 Hz en lecture, rien en
+        // pause).
+        model.presence = target == .small ? .bar : .full
         // L'annonceur ne voit rien en arrière-plan : on repart de l'état
         // courant pour ne rien annoncer de ce qui s'est passé entre-temps.
         model.refresh()
@@ -130,13 +131,13 @@ final class PanelController {
         installKeyMonitor()
     }
 
-    /// L'arrière-plan : la fenêtre se retire, la lecture continue. Le suivi à
-    /// chaque image ne tourne plus que si la voix lit (cadence du modèle).
+    /// L'arrière-plan : la fenêtre se retire, la lecture continue. Le modèle
+    /// ne relit plus l'état qu'une fois par seconde, et seulement s'il lit.
     private func hideWindow() {
         guard mode != .background else { return }
         mode = .background
         if window.isVisible { window.orderOut(nil) }
-        model.isDisplayed = false
+        model.presence = .hidden
         removeKeyMonitor()
     }
 
@@ -186,8 +187,10 @@ final class PanelController {
     }
 
     /// La barre déplacée par l'utilisateur : sa place est retenue.
+    /// Un redimensionnement différé de la vue hôte (le haut fixe, l'origine
+    /// bouge) n'est pas un déplacement : seule la barre à sa taille compte.
     func windowMoved() {
-        guard mode == .small, !placing else { return }
+        guard mode == .small, !placing, window.frame.size == SmallPlacement.size else { return }
         store.smallOrigin = window.frame.origin
     }
 
@@ -257,18 +260,19 @@ final class PanelController {
     /// un mot. Sans effet quand VoiceOver est éteint.
     func announce(_ s: Snapshot) {
         guard let text = announcementText(for: s) else { return }
-        lastAnnouncement = text
-        announcementCount &+= 1
+        post(text)
+    }
+
+    /// Où part une annonce : VoiceOver, s'il est allumé (posé dans `init`).
+    /// Remplaçable, pour qu'un test compte ce que le vrai chemin dit.
+    @ObservationIgnored var post: (String) -> Void = { _ in }
+
+    private func postToVoiceOver(_ text: String) {
         guard NSWorkspace.shared.isVoiceOverEnabled else { return }
         NSAccessibility.post(element: window, notification: .announcementRequested,
                              userInfo: [.announcement: text,
                                         .priority: NSAccessibilityPriorityLevel.medium.rawValue])
     }
-
-    /// Ce que `announce` a dit en dernier (ou aurait dit, VoiceOver éteint)
-    /// et combien de fois : un état de lecture, jamais un mot.
-    @ObservationIgnored private(set) var lastAnnouncement: String?
-    @ObservationIgnored private(set) var announcementCount = 0
 
     func contentHeightChanged(_ height: CGFloat) {
         guard height != contentHeight else { return }

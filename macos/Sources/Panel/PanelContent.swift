@@ -65,7 +65,13 @@ struct PanelContent: View {
             ExpandedReader(controller: controller, style: style)
                 .padding(.horizontal, PanelGeometry.horizontalPadding)
                 .padding(.vertical, 18)
-        case .medium, .background:
+        case .background:
+            // Fenêtre retirée : rien à tenir à jour. Une vue de lecture gardée
+            // là serait remise à jour à chaque instantané publié (mesuré :
+            // 30 fois en 10 s de lecture), et la vue hôte agrandirait la
+            // fenêtre cachée à la taille du moyen.
+            Color.clear
+        case .medium:
             VStack(alignment: .leading, spacing: 14) {
                 ReadingView(model: model, style: style, lines: controller.lines) { height in
                     controller.contentHeightChanged(height)

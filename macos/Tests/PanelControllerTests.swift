@@ -21,8 +21,9 @@ final class PanelControllerTests: XCTestCase {
         return defaults
     }
 
-    private func shownPanel(_ text: String, defaults: UserDefaults? = nil) -> PanelController {
-        let model = ReaderModel(reader: SillonReader.silent())
+    private func shownPanel(_ text: String, defaults: UserDefaults? = nil,
+                            frames: FrameSource? = nil) -> PanelController {
+        let model = ReaderModel(reader: SillonReader.silent(), frames: frames)
         model.open(text: text, source: "test")
         XCTAssertTrue(waitUntil { model.refresh(); return model.snapshot.revision == 1 })
         let c = PanelController(model: model, store: DisplayModeStore(defaults: defaults ?? freshDefaults()))
@@ -48,16 +49,16 @@ final class PanelControllerTests: XCTestCase {
 
     /// L'annonceur a deux lecteurs : la vue (`onChange` de l'instantané,
     /// pendant que la boucle tourne) et ce test. Un état n'est dit qu'une
-    /// fois : on compte ce que le vrai chemin (`announce`) a dit, quel que
+    /// fois : on compte ce que le vrai chemin (`announce`) poste, quel que
     /// soit celui qui a vu le changement le premier.
     func testNoAnnouncementWhenHiddenNorOnShowAfterHide() {
         let c = shownPanel("Un. Deux.")
-        let before = c.announcementCount
+        var posted: [String] = []
+        c.post = { posted.append($0) }
         c.perform(.command(.togglePlay))
         XCTAssertTrue(waitUntil { c.model.refresh(); return c.model.snapshot.playing })
         c.announce(c.model.snapshot)  // sans effet si la vue l'a déjà dit
-        XCTAssertEqual(c.lastAnnouncement, "Lecture")
-        XCTAssertEqual(c.announcementCount, before + 1, "« Lecture » dit une fois")
+        XCTAssertEqual(posted, ["Lecture"], "« Lecture » dit une fois")
         c.collapseOrHide()  // arrière-plan : la lecture continue
         XCTAssertNil(c.announcementText(for: c.model.snapshot), "rien en arrière-plan")
         c.model.send(.pause)
@@ -66,12 +67,11 @@ final class PanelControllerTests: XCTestCase {
         c.show()
         settle(c)
         XCTAssertNil(c.announcementText(for: c.model.snapshot), "rien à la réouverture")
-        XCTAssertEqual(c.announcementCount, before + 1, "rien dit en arrière-plan ni à la réouverture")
+        XCTAssertEqual(posted, ["Lecture"], "rien dit en arrière-plan ni à la réouverture")
         c.perform(.command(.togglePlay))
         XCTAssertTrue(waitUntil { c.model.refresh(); return c.model.snapshot.playing })
         c.announce(c.model.snapshot)
-        XCTAssertEqual(c.lastAnnouncement, "Lecture")
-        XCTAssertEqual(c.announcementCount, before + 2)
+        XCTAssertEqual(posted, ["Lecture", "Lecture"])
     }
 
     private func textView(_ c: PanelController) -> ReadingTextView? {
@@ -148,11 +148,11 @@ final class PanelControllerTests: XCTestCase {
     /// ⌘W : l'arrière-plan, sans pause (la spec : la lecture continue).
     func testClosingTheWindowGoesToTheBackgroundWithoutPausing() {
         let c = shownPanel("Un. Deux.")
-        XCTAssertTrue(c.model.isDisplayed)
+        XCTAssertEqual(c.model.presence, .full)
         let commands = c.model.commandCount
         c.window.performClose(nil)
         XCTAssertEqual(c.mode, .background)
-        XCTAssertFalse(c.model.isDisplayed)
+        XCTAssertEqual(c.model.presence, .hidden)
         XCTAssertFalse(c.window.isVisible)
         XCTAssertEqual(c.model.commandCount, commands, "aucune pause envoyée")
         XCTAssertEqual(c.store.state.current, .background)
@@ -162,7 +162,7 @@ final class PanelControllerTests: XCTestCase {
         let c = shownPanel("Un. Deux.")
         c.window.close()
         XCTAssertEqual(c.mode, .background)
-        XCTAssertFalse(c.model.isDisplayed)
+        XCTAssertEqual(c.model.presence, .hidden)
         // Réafficher fonctionne encore.
         c.show()
         XCTAssertEqual(c.mode, .medium)
@@ -228,6 +228,8 @@ final class PanelControllerTests: XCTestCase {
         XCTAssertFalse(c.window.styleMask.contains(.resizable), "la barre a une taille fixe")
         XCTAssertEqual(c.window.standardWindowButton(.closeButton)?.isHidden, true)
         XCTAssertEqual(c.window.standardWindowButton(.zoomButton)?.isHidden, true)
+        XCTAssertEqual(c.window.standardWindowButton(.miniaturizeButton)?.isHidden, true)
+        XCTAssertTrue(c.window.titlebarAppearsTransparent)
         c.perform(.display(.large))
         settle(c)
         XCTAssertEqual(c.mode, .large)
@@ -240,7 +242,10 @@ final class PanelControllerTests: XCTestCase {
         XCTAssertEqual(c.window.frame.height, medium.height, accuracy: 1)
         XCTAssertEqual(c.window.contentView?.accessibilityIdentifier(), "panneau-lecture")
         XCTAssertTrue(c.window.styleMask.contains(.resizable))
+        XCTAssertEqual(c.window.standardWindowButton(.closeButton)?.isHidden, true)
         XCTAssertEqual(c.window.standardWindowButton(.zoomButton)?.isHidden, true)
+        XCTAssertEqual(c.window.standardWindowButton(.miniaturizeButton)?.isHidden, true)
+        XCTAssertTrue(c.window.titlebarAppearsTransparent)
     }
 
     func testEscapeGoesFromLargeToMediumThenToTheBackgroundWithoutPausing() {
@@ -404,32 +409,62 @@ final class PanelControllerTests: XCTestCase {
         XCTAssertEqual(c.model.cadence, .glance, "moyen, en pause : le coup d'œil lent")
         c.perform(.display(.small))
         settle(c)
-        XCTAssertFalse(c.model.isDisplayed)
+        XCTAssertEqual(c.model.presence, .bar)
         XCTAssertTrue(waitUntil { c.model.cadence == .none }, "cadence : \(c.model.cadence)")
         XCTAssertFalse(c.model.isTicking)
         c.perform(.command(.togglePlay))
         XCTAssertTrue(waitUntil { c.model.refresh(); return c.model.snapshot.playing })
-        XCTAssertEqual(c.model.cadence, .screen, "en lecture, la barre suit la voix")
+        XCTAssertEqual(c.model.cadence, .glance, "en lecture, la barre relit l'état à 4 Hz")
         c.model.send(.pause)
         XCTAssertTrue(waitUntil { c.model.cadence == .none }, "cadence : \(c.model.cadence)")
         XCTAssertFalse(c.model.isTicking)
     }
 
-    /// L'arrière-plan garde la vue de lecture dans la fenêtre retirée : le
-    /// modèle ne s'y croit plus affiché (ni coup d'œil lent ni lien en
-    /// pause), et la fenêtre de la vue ne se voit plus — son trait s'arrête
-    /// alors (ReadingTextViewTests : le lecteur muet ne donne pas de mot lu).
+    /// En lecture, la cadence suit le mode : à chaque image au moyen, 4 Hz
+    /// pour la barre, une fois par seconde en arrière-plan — sans lien
+    /// d'affichage hors du moyen et du grand.
+    func testThePlayingCadenceFollowsTheMode() {
+        let frames = ManualFrames()
+        let words = (1...200).map { "mot\($0)" }
+        let c = shownPanel(words.joined(separator: " ") + ".", frames: frames)
+        c.perform(.command(.togglePlay))
+        XCTAssertTrue(waitUntil { c.model.refresh(); return c.model.snapshot.playing })
+        XCTAssertEqual(c.model.cadence, .screen)
+        XCTAssertTrue(frames.isRunning)
+        c.perform(.display(.small))
+        settle(c)
+        XCTAssertEqual(c.model.cadence, .glance)
+        XCTAssertFalse(frames.isRunning)
+        c.collapseOrHide()
+        XCTAssertEqual(c.model.cadence, .second)
+        XCTAssertFalse(frames.isRunning)
+        // La grâce passée, toujours la seconde (la minuterie seule relit :
+        // ReaderModelTests.testHiddenPlayIsSeenWithoutManualRefresh).
+        RunLoop.main.run(until: Date().addingTimeInterval(ReaderModel.gracePeriod + 0.6))
+        XCTAssertTrue(c.model.snapshot.playing)
+        XCTAssertEqual(c.model.cadence, .second)
+        XCTAssertFalse(frames.isRunning)
+        c.model.send(.pause)
+    }
+
+    /// L'arrière-plan ne garde aucune vue de lecture dans la fenêtre
+    /// retirée : rien n'y est remis à jour pendant l'écoute, aucun trait ne
+    /// tourne, et le modèle ne s'y croit plus affiché (rien en pause).
     func testTheBackgroundKeepsNothingDisplayed() throws {
         let c = shownPanel("Un. Deux.")
         let text = try XCTUnwrap(textView(c))
         XCTAssertEqual(c.model.cadence, .glance)
         c.collapseOrHide()
-        XCTAssertFalse(c.model.isDisplayed)
-        XCTAssertNotNil(text.window, "la vue reste dans sa fenêtre retirée")
-        XCTAssertFalse(text.window?.isVisible ?? true)
+        XCTAssertEqual(c.model.presence, .hidden)
+        XCTAssertFalse(c.window.isVisible)
+        XCTAssertTrue(waitUntil { self.textView(c) == nil }, "une vue de lecture reste en arrière-plan")
+        XCTAssertNil(text.window)
+        XCTAssertFalse(text.isAnimatingLine)
         XCTAssertTrue(waitUntil { c.model.cadence == .none }, "cadence : \(c.model.cadence)")
         XCTAssertFalse(c.model.isTicking)
-        XCTAssertFalse(text.isAnimatingLine)
+        // Réaffiché, le texte revient.
+        c.show()
+        XCTAssertTrue(waitUntil { self.textView(c) != nil })
     }
 
     /// Chaque « / » redemande le focus du champ, même déjà ouvert.

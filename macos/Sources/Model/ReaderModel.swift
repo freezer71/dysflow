@@ -46,10 +46,15 @@ final class ReaderModel {
         breadcrumb = SectionMarkers.breadcrumb(document, section: snapshot.section)
     }
 
-    /// Vrai quand le panneau est affiché.
-    var isDisplayed = false {
+    /// Ce que la fenêtre montre de l'état : rien (arrière-plan), la barre
+    /// du mode petit, ou le texte (moyen, grand).
+    enum Presence: Equatable { case hidden, bar, full }
+
+    /// Posé par le panneau à chaque mode : il règle la cadence de relecture.
+    var presence: Presence = .hidden {
         didSet {
-            if isDisplayed { refresh() }
+            guard presence != oldValue else { return }
+            if presence != .hidden { refresh() }
             updateTicking()
         }
     }
@@ -59,40 +64,58 @@ final class ReaderModel {
 
     /// Le rythme auquel l'état est relu.
     enum Cadence: Equatable {
-        /// Rien : panneau masqué, rien en cours.
+        /// Rien : en pause, sans texte affiché.
         case none
-        /// Un coup d'œil lent : panneau affiché en pause, pour qu'un message
-        /// s'efface ou que l'état de la voix change à l'écran.
+        /// Une fois par seconde : la lecture avance en arrière-plan ; seuls
+        /// la phrase et le temps à la seconde comptent (« À l'écoute »).
+        case second
+        /// Un coup d'œil, 4 fois par seconde : texte affiché en pause (un
+        /// message s'efface, la voix change d'état), ou barre du mode petit
+        /// pendant la lecture (temps à la seconde, avancement au millième).
         case glance
-        /// À chaque image : la lecture avance, une commande vient de partir,
-        /// la voix se charge ou un téléchargement progresse.
+        /// À chaque image : le texte est affiché et la lecture avance, une
+        /// commande vient de partir, la voix se charge ou un téléchargement
+        /// progresse.
         case screen
     }
     @ObservationIgnored private(set) var cadence: Cadence = .none
-    @ObservationIgnored private var glanceTimer: Timer?
+    @ObservationIgnored private var pollTimer: Timer?
     static let glanceInterval: TimeInterval = 0.25
+    static let secondInterval: TimeInterval = 1
 
     /// Un téléchargement est en cours (un échec resté là ne compte pas).
     static func isDownloading(_ d: DownloadView?) -> Bool { d.map { $0.failed == nil } ?? false }
 
-    /// La décision de suivi, sans état : testable. Masqué, une commande (la
-    /// grâce) ou une lecture se voient quand même ; affiché en pause, un coup
-    /// d'œil lent suffit — le panneau flotte, il peut rester visible des heures.
-    static func cadence(displayed: Bool, playing: Bool, grace: Bool, loading: Bool,
+    /// La décision de suivi, sans état : testable. Quelque chose avance
+    /// (lecture, commande récente, voix qui se charge, téléchargement) : à
+    /// chaque image si le texte est affiché, au coup d'œil pour la barre,
+    /// à la seconde en arrière-plan. En pause, seul le texte affiché garde un
+    /// coup d'œil — le panneau flotte, il peut rester visible des heures.
+    static func cadence(presence: Presence, playing: Bool, grace: Bool, loading: Bool,
                         download: DownloadView?) -> Cadence {
-        if playing || grace || loading || isDownloading(download) { return .screen }
-        return displayed ? .glance : .none
+        if playing || grace || loading || isDownloading(download) {
+            switch presence {
+            case .full: return .screen
+            case .bar: return .glance
+            case .hidden: return .second
+            }
+        }
+        return presence == .full ? .glance : .none
     }
 
     private func updateTicking() {
         let loading: Bool
         if case .loading = snapshot.voice { loading = true } else { loading = false }
-        let next = Self.cadence(displayed: isDisplayed, playing: snapshot.playing,
+        let next = Self.cadence(presence: presence, playing: snapshot.playing,
                                 grace: now() < keepAliveUntil, loading: loading,
                                 download: snapshot.download)
         cadence = next
         if next == .screen { start() } else { stop() }
-        if next == .glance { startGlance() } else { stopGlance() }
+        switch next {
+        case .glance: startPolling(every: Self.glanceInterval)
+        case .second: startPolling(every: Self.secondInterval)
+        case .none, .screen: stopPolling()
+        }
     }
 
     /// Le suivi à la cadence de l'écran.
@@ -104,18 +127,22 @@ final class ReaderModel {
         frames.stop()
     }
 
-    private func startGlance() {
-        guard glanceTimer == nil else { return }
-        let timer = Timer(timeInterval: Self.glanceInterval, repeats: true) { [weak self] _ in
+    /// Une seule minuterie de relecture, remplacée si le rythme change.
+    private func startPolling(every interval: TimeInterval) {
+        if let pollTimer, pollTimer.timeInterval == interval { return }
+        stopPolling()
+        let timer = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.refresh() }
         }
+        // Le système peut regrouper les réveils : une marge d'un cinquième.
+        timer.tolerance = interval * 0.2
         RunLoop.main.add(timer, forMode: .common)
-        glanceTimer = timer
+        pollTimer = timer
     }
 
-    private func stopGlance() {
-        glanceTimer?.invalidate()
-        glanceTimer = nil
+    private func stopPolling() {
+        pollTimer?.invalidate()
+        pollTimer = nil
     }
 
     /// L'instantané tel que l'écran le montre : temps à la seconde,
@@ -141,7 +168,8 @@ final class ReaderModel {
     /// Relance le suivi et relit tout de suite l'état.
     private func wake() {
         keepAliveUntil = now().addingTimeInterval(Self.gracePeriod)
-        start()
+        // La cadence (écran, coup d'œil ou seconde) se décide selon la
+        // présence de la fenêtre.
         refresh()
     }
 

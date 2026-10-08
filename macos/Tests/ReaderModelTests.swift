@@ -111,10 +111,10 @@ final class ReaderModelTickingTests: XCTestCase {
     /// d'état). Masqué : plus rien.
     func testDisplayedButIdleOnlyGlancesThenStopsWhenHidden() {
         let m = hiddenModel()
-        m.isDisplayed = true
+        m.presence = .full
         XCTAssertFalse(m.isTicking)
         XCTAssertEqual(m.cadence, .glance)
-        m.isDisplayed = false
+        m.presence = .hidden
         m.refresh()
         XCTAssertFalse(m.isTicking)
         XCTAssertEqual(m.cadence, .none)
@@ -122,7 +122,7 @@ final class ReaderModelTickingTests: XCTestCase {
 
     func testDisplayedPlayTicksAtScreenRate() {
         let m = hiddenModel()
-        m.isDisplayed = true
+        m.presence = .full
         m.send(.togglePlay)
         XCTAssertTrue(waitUntil { self.frames.tick(); return m.snapshot.playing })
         XCTAssertTrue(m.isTicking)
@@ -134,34 +134,49 @@ final class ReaderModelTickingTests: XCTestCase {
         XCTAssertEqual(m.cadence, .glance)
     }
 
+    /// Toutes les combinaisons : quelque chose avance (lecture, grâce, voix
+    /// qui se charge, téléchargement) ou non, pour chaque présence.
     func testCadenceDecision() {
-        func cadence(displayed: Bool = false, playing: Bool = false, grace: Bool = false,
-                     loading: Bool = false) -> ReaderModel.Cadence {
-            ReaderModel.cadence(displayed: displayed, playing: playing, grace: grace,
-                                loading: loading, download: nil)
+        let running = DownloadView(id: "v", received: 1, total: 10, failed: nil)
+        let failed = DownloadView(id: "v", received: 1, total: 10, failed: "réseau")
+        let active: [ReaderModel.Cadence] = [.second, .glance, .screen]
+        let idle: [ReaderModel.Cadence] = [.none, .none, .glance]
+        let presences: [ReaderModel.Presence] = [.hidden, .bar, .full]
+        for (i, presence) in presences.enumerated() {
+            for playing in [false, true] {
+                for grace in [false, true] {
+                    for loading in [false, true] {
+                        for download in [nil, running, failed] {
+                            let moving = playing || grace || loading || download == running
+                            XCTAssertEqual(
+                                ReaderModel.cadence(presence: presence, playing: playing, grace: grace,
+                                                    loading: loading, download: download),
+                                moving ? active[i] : idle[i],
+                                "\(presence) lecture=\(playing) grâce=\(grace) chargement=\(loading) \(String(describing: download))")
+                        }
+                    }
+                }
+            }
         }
-        XCTAssertEqual(cadence(displayed: true), .glance)
-        XCTAssertEqual(cadence(), .none)
-        XCTAssertEqual(cadence(displayed: true, playing: true), .screen)
-        XCTAssertEqual(cadence(displayed: true, grace: true), .screen)
-        XCTAssertEqual(cadence(displayed: true, loading: true), .screen)
-        // Masqué, une commande ou une lecture se voit quand même.
-        XCTAssertEqual(cadence(playing: true), .screen)
-        XCTAssertEqual(cadence(grace: true), .screen)
     }
 
+    /// En arrière-plan, la lecture se voit sans refresh manuel, à la
+    /// seconde, sans lien d'affichage.
     func testHiddenPlayIsSeenWithoutManualRefresh() {
         let m = hiddenModel()
         m.send(.togglePlay)
-        // Aucun refresh manuel : seule une image peut voir `playing`.
-        XCTAssertTrue(waitUntil { self.frames.tick(); return m.snapshot.playing })
-        XCTAssertTrue(m.isTicking)
+        XCTAssertEqual(m.cadence, .second)
+        XCTAssertFalse(m.isTicking)
+        // Aucun refresh manuel : seule la minuterie peut voir `playing`.
+        XCTAssertTrue(waitUntil(3) { m.snapshot.playing })
+        XCTAssertFalse(m.isTicking)
         m.send(.togglePlay)
-        XCTAssertTrue(waitUntil { self.frames.tick(); return !m.snapshot.playing })
-        // Encore dans la période de grâce : le suivi continue.
-        XCTAssertTrue(m.isTicking)
+        XCTAssertTrue(waitUntil(3) { !m.snapshot.playing })
+        // Encore dans la période de grâce : la relecture continue.
+        XCTAssertEqual(m.cadence, .second)
         clock += ReaderModel.gracePeriod + 0.1
         m.refresh()
+        XCTAssertEqual(m.cadence, .none)
         XCTAssertFalse(m.isTicking)
     }
 
@@ -169,11 +184,11 @@ final class ReaderModelTickingTests: XCTestCase {
         let running = DownloadView(id: "v", received: 1, total: 10, failed: nil)
         let failed = DownloadView(id: "v", received: 1, total: 10, failed: "réseau")
         func cadence(_ d: DownloadView?) -> ReaderModel.Cadence {
-            ReaderModel.cadence(displayed: false, playing: false, grace: false, loading: false, download: d)
+            ReaderModel.cadence(presence: .full, playing: false, grace: false, loading: false, download: d)
         }
         XCTAssertEqual(cadence(running), .screen)
-        XCTAssertEqual(cadence(failed), .none)
-        XCTAssertEqual(cadence(nil), .none)
+        XCTAssertEqual(cadence(failed), .glance)
+        XCTAssertEqual(cadence(nil), .glance)
     }
 
     func testHiddenModelWithoutDownloadDoesNotTick() {
