@@ -62,7 +62,7 @@ final class DisplayModeStore {
 /// La barre du mode petit : taille fixe, place retenue, toujours sur un
 /// écran visible.
 enum SmallPlacement {
-    static let size = CGSize(width: 320, height: 76)
+    static let size = CGSize(width: 340, height: 88)
 
     /// La place retenue si un écran en montre au moins un bout (ramenée
     /// entière sur l'écran qui en montre le plus) ; sinon — écran débranché,

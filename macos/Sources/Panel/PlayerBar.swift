@@ -121,21 +121,62 @@ struct PlayButton: View {
         let button = Button {
             model.send(.togglePlay)
         } label: {
-            if prominent {
-                Image(systemName: playing ? "pause.fill" : "play.fill")
-                    .font(.system(size: 13))
-                    .foregroundStyle(.white)
-                    .frame(width: 28, height: 28)
-                    .background(Circle().fill(Color.accentColor))
-            } else {
-                Image(systemName: playing ? "pause.fill" : "play.fill")
-            }
+            Image(systemName: playing ? "pause.fill" : "play.fill")
+                .font(.system(size: prominent ? BarButtonMetrics.discGlyph : BarButtonMetrics.glyph))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(BarButtonStyle(disc: prominent))
+        .help("Lecture / pause (Espace)")
         .accessibilityIdentifier("lecture")
         .accessibilityLabel(playing ? "Pause" : "Lecture")
         // Le mode petit garde le focus aux touches de la barre.
         if prominent { button.focusable(false) } else { button }
+    }
+}
+
+enum BarButtonMetrics {
+    /// La cible de chaque bouton de barre : au moins 32 × 32 pt.
+    static let target: CGFloat = 32
+    static let glyph: CGFloat = 16
+    /// Le disque de lecture du mode petit.
+    static let disc: CGFloat = 36
+    static let discGlyph: CGFloat = 18
+}
+
+/// Le style de tous les boutons de barre : une cible confortable, un fond
+/// arrondi léger au survol, plus marqué à l'appui. Le disque de lecture
+/// (couleur d'accent) s'assombrit au survol et à l'appui.
+struct BarButtonStyle: ButtonStyle {
+    var disc = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        BarButtonBody(configuration: configuration, disc: disc)
+    }
+}
+
+private struct BarButtonBody: View {
+    let configuration: ButtonStyleConfiguration
+    let disc: Bool
+    @State private var hovering = false
+    @Environment(\.isEnabled) private var enabled
+
+    var body: some View {
+        let pressed = configuration.isPressed
+        let size = disc ? BarButtonMetrics.disc : BarButtonMetrics.target
+        configuration.label
+            .foregroundStyle(disc ? AnyShapeStyle(Color(nsColor: .alternateSelectedControlTextColor)) : AnyShapeStyle(.foreground))
+            .frame(minWidth: size, minHeight: size)
+            .background {
+                if disc {
+                    Circle().fill(Color.accentColor)
+                        .brightness(pressed ? -0.2 : (hovering ? -0.1 : 0))
+                } else {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color.primary.opacity(pressed ? 0.2 : (hovering ? 0.1 : 0)))
+                }
+            }
+            .contentShape(Rectangle())
+            .opacity(enabled ? 1 : 0.4)
+            .onHover { hovering = $0 }
     }
 }
 
@@ -157,11 +198,9 @@ struct VoiceSettingsButton: View {
             SettingsOpener.shared.open(tab: .voice)
         } label: {
             Image(systemName: "gearshape")
+                .font(.system(size: BarButtonMetrics.glyph))
         }
-        .buttonStyle(.plain)
-        // Cible élargie sans toucher à la hauteur de la barre.
-        .padding(.horizontal, 5)
-        .contentShape(Rectangle())
+        .buttonStyle(BarButtonStyle())
         .help("Réglages de la voix (v)")
         .accessibilityLabel("Réglages de la voix")
         .accessibilityIdentifier("reglages-voix")

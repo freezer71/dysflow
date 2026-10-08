@@ -13,16 +13,49 @@ struct MiniPlayerView: View {
     let perform: (ReaderAction) -> Void
 
     var body: some View {
-        let s = model.snapshot
+        MiniPlayerBar(model: model, snapshot: model.snapshot, message: model.message,
+                      theme: theme, perform: perform)
+    }
+}
+
+/// Ce que montre la rangée du haut.
+enum MiniTop: Equatable {
+    case message(String), times, empty
+
+    static func choose(message: String?, hasDocument: Bool) -> MiniTop {
+        if let message { return .message(message) }
+        return hasDocument ? .times : .empty
+    }
+}
+
+/// La barre, pour un instantané donné (les tests lui donnent les pires
+/// valeurs).
+struct MiniPlayerBar: View {
+    let model: ReaderModel
+    let snapshot: Snapshot
+    let message: String?
+    let theme: Theme
+    let perform: (ReaderAction) -> Void
+
+    var body: some View {
+        let s = snapshot
         VStack(spacing: 6) {
-            if s.hasDocument {
+            switch MiniTop.choose(message: message, hasDocument: s.hasDocument) {
+            case .message(let message):
+                // Un message passager prend la place des temps, sans changer
+                // la hauteur de la barre.
+                Text(message)
+                    .lineLimit(1)
+                    .frame(height: 16)
+                    .accessibilityIdentifier("message-mini")
+            case .times:
                 MiniTimeRow(progress: s.progress, elapsed: PlayerBar.time(s.elapsed),
                             remaining: PlaybackTime.shortRemaining(elapsed: s.elapsed, total: s.total),
                             spokenRemaining: PlaybackTime.spokenRemaining(elapsed: s.elapsed, total: s.total),
                             value: PlaybackTime.timelineValue(elapsed: s.elapsed, total: s.total,
                                                               progress: s.progress),
                             theme: theme)
-            } else {
+            case .empty:
                 Text(PlaybackTime.emptyText(shortcut: KeyboardShortcuts.getShortcut(for: .readSelection)))
                     .lineLimit(1)
                     .accessibilityIdentifier("rien-a-lire")
@@ -58,11 +91,16 @@ struct MiniTimeRow: View {
     let value: String
     let theme: Theme
 
+    static let elapsedLabel = "Temps écoulé"
+    /// Ce que VoiceOver lit : le temps lui-même.
+    static func elapsedValue(_ elapsed: String) -> String { elapsed }
+
     var body: some View {
         HStack(spacing: 8) {
             Text(elapsed)
                 .monospacedDigit().fixedSize()
-                .accessibilityLabel("Temps écoulé")
+                .accessibilityLabel(Self.elapsedLabel)
+                .accessibilityValue(Self.elapsedValue(elapsed))
             Timeline(progress: Double(progress), markers: [], theme: theme)
                 .frame(minWidth: 30)
                 .frame(height: 9)
@@ -103,7 +141,7 @@ struct MiniControlsRow: View {
             VoiceSettingsButton()
                 .frame(width: MiniBarMetrics.side, alignment: .trailing)
         }
-        .frame(height: 32)
+        .frame(height: BarButtonMetrics.disc + 4)
     }
 }
 
@@ -147,13 +185,11 @@ struct MiniTransportButton: View {
     var body: some View {
         Button(action: fire) {
             Image(systemName: item.symbol)
-                .font(.system(size: 15))
-                .frame(minWidth: 24, minHeight: 28)
+                .font(.system(size: BarButtonMetrics.glyph))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(BarButtonStyle())
         // Les touches de la barre restent à la fenêtre après un clic.
         .focusable(false)
-        .contentShape(Rectangle())
         .help(item.help)
         .accessibilityLabel(item.label)
         .accessibilityIdentifier(item.identifier)

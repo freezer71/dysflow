@@ -3,7 +3,7 @@ import AppKit
 /// Tailles du panneau, calculées sans fenêtre pour être éprouvées.
 enum PanelGeometry {
     /// Barre de lecture, aides et marges autour du texte.
-    static let chrome: CGFloat = 100
+    static let chrome: CGFloat = 116
     static let minimumHeight: CGFloat = 150
     static let maximumWidth: CGFloat = 760
     /// La marge de chaque côté du contenu, moyen et grand modes.

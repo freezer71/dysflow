@@ -15,7 +15,7 @@ actuels restent pour les moments où il suit le texte.
 
 | Mode | Touche | Contenu |
 |---|---|---|
-| Petit | ⌘1 | Mini-lecteur flottant de 320 × 76 pt sur deux rangées : timeline entre temps écoulé et restant ; vitesse, ligne/mot précédents, lecture/pause, mot/ligne suivants, ⚙ |
+| Petit | ⌘1 | Mini-lecteur flottant de 340 × 88 pt sur deux rangées : timeline entre temps écoulé et restant ; vitesse, ligne/mot précédents, lecture/pause, mot/ligne suivants, ⚙ |
 | Moyen | ⌘2 | Le panneau actuel avec le texte suivi |
 | Grand | ⌘3 | Le lecteur agrandi actuel (⏎ y mène toujours) |
 | Arrière-plan | Échap | Aucune fenêtre ; la lecture continue |
@@ -43,7 +43,7 @@ actuels restent pour les moments où il suit le texte.
 1,1×   ⇡  ‹  (▶)  ›  ⇣          ⚙
 ```
 
-À la façon d'un mini-lecteur de musique, 320 × 76 pt.
+À la façon d'un mini-lecteur de musique, 340 × 88 pt.
 
 - Rangée 1 : temps écoulé, timeline (même source que la barre du panneau),
   temps restant estimé ; chiffres à chasse fixe, couleur secondaire.
@@ -55,6 +55,12 @@ actuels restent pour les moments où il suit le texte.
 - Sans document ouvert : « Rien à lire » et ⌃⌥Espace à la place de la
   timeline ; les boutons de transport sont désactivés (pas cachés), l'écrou
   reste actif.
+- Boutons de barre (aussi aux modes moyen et grand) : cible d'au moins
+  32 × 32 pt, pictogrammes de 16 pt, disque de lecture de 36 pt (pictogramme
+  de 18 pt) ; fond arrondi léger au survol, plus marqué à l'appui (un seul
+  style partagé) ; infobulle « nom (touche) ».
+- Un message passager (« Aucune ligne de ce côté ») remplace les temps de la
+  rangée du haut.
 - 13 pt, libellés VoiceOver comme la barre du panneau ; la timeline annonce
   sa valeur (« 0:56 sur 2:56 »).
 - Coût au repos nul : pas de lien d'affichage, mise à jour au rythme du
