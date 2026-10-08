@@ -66,7 +66,8 @@ final class SettingsUITests: XCTestCase {
         )).count
     }
 
-    /// Chaque onglet s'ouvre, montre son contenu et passe l'audit.
+    /// Chaque onglet s'ouvre, montre son contenu et passe l'audit, en haut
+    /// puis en bas (un onglet long dépasse la fenêtre).
     func testEveryTabShowsItsContentAndPassesTheAudit() throws {
         let app = launch(["--show-settings"])
         let window = app.windows["Réglages"]
@@ -74,8 +75,33 @@ final class SettingsUITests: XCTestCase {
         for (title, marker) in tabs {
             window.toolbars.buttons[title].click()
             waitForContent(of: title, marker: marker, in: window)
-            try app.performAccessibilityAuditOutsideTouchBar()
+            try app.performAccessibilityAuditOutsideTouchBar(visibleIn: window)
+            let form = window.scrollViews.firstMatch
+            if form.exists {
+                form.scroll(byDeltaX: 0, deltaY: -5000)
+                try app.performAccessibilityAuditOutsideTouchBar(visibleIn: window)
+                form.scroll(byDeltaX: 0, deltaY: 5000)
+            }
         }
+    }
+
+    /// L'onglet Voix donne le focus à la liste des voix : flèches pour
+    /// choisir, Espace pour écouter, sans rien taper dans un champ.
+    func testTheVoiceTabFocusesTheVoiceList() throws {
+        let app = launch(["--show-settings"])
+        let window = app.windows["Réglages"]
+        XCTAssertTrue(window.waitForExistence(timeout: 5))
+        window.toolbars.buttons["Voix"].click()
+        let list = window.descendants(matching: .any)["liste-voix"]
+        guard list.waitForExistence(timeout: 3) else {
+            throw XCTSkip("Pas de liste de voix : le lecteur muet des tests n'a aucune voix. À vérifier à la main avec un modèle installé.")
+        }
+        let focused = app.descendants(matching: .any)
+            .element(matching: NSPredicate(format: "hasKeyboardFocus == true"))
+        XCTAssertTrue(focused.waitForExistence(timeout: 3))
+        XCTAssertNotEqual(focused.elementType, .textField, "le focus est dans un champ de texte : \(focused.label)")
+        XCTAssertTrue(list.frame.contains(focused.frame) || focused.identifier == "liste-voix",
+                      "le focus n'est pas sur la liste des voix : \(focused.debugDescription.prefix(200))")
     }
 
     /// Chaque onglet se parcourt au clavier.
