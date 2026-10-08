@@ -28,7 +28,7 @@ struct PanelContent: View {
             if controller.mode == .expanded {
                 ExpandedReader(controller: controller, style: style)
             } else {
-                ReadingView(model: model, style: style) { height in
+                ReadingView(model: model, style: style, lines: controller.lines) { height in
                     controller.contentHeightChanged(height)
                 }
                 // Sans document, l'invitation occupe la zone du texte, au
@@ -102,7 +102,8 @@ struct HelpOverlay: View {
     static let rows: [(String, String)] = [
         ("Espace", "Lecture / pause"), ("⌥← ⌥→", "Mot précédent / suivant"),
         ("← →", "Phrase précédente / suivante"), ("⇧← ⇧→", "Recul / avance rapide"),
-        ("↑ ↓", "Paragraphe précédent / suivant"), ("n p", "Titre suivant / précédent"),
+        ("↑ ↓", "Ligne précédente / suivante"), ("⇧↑ ⇧↓", "Bloc précédent / suivant"),
+        ("n p", "Titre suivant / précédent"),
         ("+ −", "Vitesse"), ("1…4 · & é \" '", "Vitesses 0,75× 1× 1,5× 2×"),
         ("⌥↑ ⌥↓", "Volume"), ("r", "Reprendre la phrase"),
         ("/ · N P", "Chercher · résultat suivant / précédent"),

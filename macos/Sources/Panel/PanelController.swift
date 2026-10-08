@@ -14,6 +14,8 @@ final class PanelController {
     @ObservationIgnored private var resizePending = false
     @ObservationIgnored private var closeGuard: PanelCloseGuard?
     @ObservationIgnored private var announcer = Announcer()
+    /// ↑ ↓ : la vue de lecture affichée dit où commence la ligne voisine.
+    @ObservationIgnored let lines = LineNavigator()
 
     private(set) var mode: PanelMode = .hidden
     /// Réglages de lecture du moteur (interlignage, règle), relus à chaque
@@ -180,6 +182,7 @@ final class PanelController {
     func perform(_ action: ReaderAction) {
         switch action {
         case .command(let command): model.send(command)
+        case .line(let delta): moveLine(delta)
         case .expand: expand()
         case .collapseOrHide:
             if helpVisible { helpVisible = false }
@@ -205,6 +208,18 @@ final class PanelController {
         case .openVoiceSettings:
             SettingsOpener.shared.open(tab: .voice)
         }
+    }
+
+    /// La voix reprend au premier mot de la ligne affichée voisine ; rien
+    /// au-delà de la première ou de la dernière.
+    private func moveLine(_ delta: Int) {
+        let s = model.snapshot
+        guard s.hasDocument else { return }
+        guard let target = lines.target(word: s.word, sentence: s.sentence, delta: delta) else {
+            flash("Aucune ligne de ce côté")
+            return
+        }
+        model.send(.seekToWord(sentence: target.sentence, word: target.word))
     }
 
     /// Un message qui s'efface seul, sauf si un autre l'a remplacé.

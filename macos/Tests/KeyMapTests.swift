@@ -33,8 +33,11 @@ final class KeyMapTests: XCTestCase {
         XCTAssertEqual(act("", KeyCode.left), .command(.sentences(delta: -1)))
         XCTAssertEqual(act("", KeyCode.right), .command(.sentences(delta: 1)))
         XCTAssertEqual(act("", KeyCode.right, shift: true), .command(.sentences(delta: 5)))
-        XCTAssertEqual(act("", KeyCode.up), .command(.blocks(delta: -1)))
-        XCTAssertEqual(act("", KeyCode.down), .command(.blocks(delta: 1)))
+        // ↑ ↓ : une ligne affichée ; ⇧↑ ⇧↓ : un bloc.
+        XCTAssertEqual(act("", KeyCode.up), .line(delta: -1))
+        XCTAssertEqual(act("", KeyCode.down), .line(delta: 1))
+        XCTAssertEqual(act("", KeyCode.up, shift: true), .command(.blocks(delta: -1)))
+        XCTAssertEqual(act("", KeyCode.down, shift: true), .command(.blocks(delta: 1)))
         XCTAssertEqual(act("n"), .command(.sections(delta: 1)))
         XCTAssertEqual(act("p"), .command(.sections(delta: -1)))
     }
@@ -76,9 +79,10 @@ final class KeyMapTests: XCTestCase {
         // ⌥↑ et ⌥↓ pour le volume (indépendant du clavier)
         XCTAssertEqual(act("", KeyCode.up, option: true), .command(.changeVolume(delta: 0.05)))
         XCTAssertEqual(act("", KeyCode.down, option: true), .command(.changeVolume(delta: -0.05)))
-        // Les flèches sans Option sont toujours des blocs
-        XCTAssertEqual(act("", KeyCode.up), .command(.blocks(delta: -1)))
-        XCTAssertEqual(act("", KeyCode.down), .command(.blocks(delta: 1)))
+        // Les flèches sans Option restent des lignes, Option l'emporte sur Maj
+        XCTAssertEqual(act("", KeyCode.up), .line(delta: -1))
+        XCTAssertEqual(act("", KeyCode.down), .line(delta: 1))
+        XCTAssertEqual(act("", KeyCode.up, option: true, shift: true), .command(.changeVolume(delta: 0.05)))
         // [ et ] restent disponibles pour QWERTY
         XCTAssertEqual(act("["), .command(.changeVolume(delta: -0.05)))
         XCTAssertEqual(act("]"), .command(.changeVolume(delta: 0.05)))

@@ -38,6 +38,9 @@ struct KeyPress: Equatable {
 
 enum ReaderAction: Equatable {
     case command(ReaderCommand)
+    /// Une ligne affichée plus haut ou plus bas : seule la vue sait où elle
+    /// commence.
+    case line(delta: Int)
     case expand, collapseOrHide, copySentence, openSearch
     case toggleSidebar, toggleBookmarks, showHelp, openSettings, openVoiceSettings
 }
@@ -65,14 +68,12 @@ enum KeyMap {
             if key.option { return .command(.words(delta: sign)) }
             if key.shift { return .command(.sentences(delta: sign * seekStep)) }
             return .command(.sentences(delta: sign))
-        case KeyCode.up:
-            // ⌥↑ pour volume, sinon bloc
-            if key.option { return .command(.changeVolume(delta: 0.05)) }
-            return .command(.blocks(delta: -1))
-        case KeyCode.down:
-            // ⌥↓ pour volume, sinon bloc
-            if key.option { return .command(.changeVolume(delta: -0.05)) }
-            return .command(.blocks(delta: 1))
+        case KeyCode.up, KeyCode.down:
+            // ⌥ volume, ⇧ bloc, sinon ligne affichée
+            let sign: Int32 = key.keyCode == KeyCode.up ? -1 : 1
+            if key.option { return .command(.changeVolume(delta: -0.05 * Float(sign))) }
+            if key.shift { return .command(.blocks(delta: sign)) }
+            return .line(delta: Int(sign))
         default: break
         }
 

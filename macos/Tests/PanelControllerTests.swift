@@ -68,6 +68,28 @@ final class PanelControllerTests: XCTestCase {
         (NSScreen.main ?? NSScreen.screens[0]).visibleFrame.height * 0.45
     }
 
+    /// ↓ vise le premier mot de la ligne affichée suivante, d'un saut absolu.
+    func testDownSeeksToTheFirstWordOfTheNextDisplayedLine() throws {
+        let words = (1...60).map { "mot\($0)" }
+        let c = shownPanel(words.joined(separator: " ") + ".")
+        let text = try XCTUnwrap(textView(c))
+        let string = text.string as NSString
+        // Le cadre de chaque mot affiché, dans l'ordre du texte.
+        var ranges: [NSRange] = []
+        string.enumerateSubstrings(in: NSRange(location: 0, length: string.length),
+                                   options: .byWords) { _, range, _, _ in ranges.append(range) }
+        let top = { (r: NSRange) in text.rectForTesting(r)!.minY }
+        let next = try XCTUnwrap(ranges.firstIndex { top($0) > top(ranges[0]) + 1 },
+                                 "le texte doit tenir sur plusieurs lignes")
+        let docWords = c.model.document.blocks.flatMap(\.sentences).flatMap(\.words)
+        let expected = docWords[next].index
+
+        c.perform(.line(delta: 1))
+        XCTAssertTrue(waitUntil { c.model.refresh(); return c.model.snapshot.word == expected },
+                      "mot visé : \(expected), lu : \(String(describing: c.model.snapshot.word))")
+        XCTAssertEqual(c.model.snapshot.sentence, 0)
+    }
+
     func testShortTextGivesAPanelThatFitsTheText() throws {
         let c = shownPanel("Une seule phrase, assez courte.")
         let text = try XCTUnwrap(textView(c))

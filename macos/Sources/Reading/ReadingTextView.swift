@@ -335,6 +335,43 @@ final class ReadingTextView: NSTextView {
         })
     }
 
+    // MARK: - Lignes affichées
+
+    /// La ligne affichée voisine de celle qui contient `location` — au-dessus
+    /// si `direction` est négatif, au-dessous sinon —, la première que
+    /// `accept` retient : les lignes sans mot (code, ligne vide) se sautent.
+    /// Les retours à la ligne comptent, d'un paragraphe à l'autre. Calculée à
+    /// la touche, jamais à chaque image.
+    func adjacentLine(from location: Int, direction: Int,
+                      where accept: (NSRange) -> Bool) -> NSRange? {
+        guard let tlm = textLayoutManager, let here = textRange(NSRange(location: location, length: 0)),
+              let fragment = tlm.textLayoutFragment(for: here.location) else { return nil }
+        let current = lineRanges(of: fragment).first { NSLocationInRange(location, $0) }?.location ?? location
+        let down = direction > 0
+        let start = down ? fragment.rangeInElement.location : fragment.rangeInElement.endLocation
+        var found: NSRange?
+        tlm.enumerateTextLayoutFragments(from: start, options: down ? [.ensuresLayout]
+                                                                    : [.reverse, .ensuresLayout]) { f in
+            let lines = lineRanges(of: f)
+            for line in down ? lines : lines.reversed() {
+                let beyond = down ? line.location > current : line.location < current
+                if beyond, accept(line) { found = line; return false }
+            }
+            return true
+        }
+        return found
+    }
+
+    /// Les lignes d'un fragment, en plages du texte entier.
+    private func lineRanges(of fragment: NSTextLayoutFragment) -> [NSRange] {
+        guard let tcm = textLayoutManager?.textContentManager else { return [] }
+        let element = fragment.textElement?.elementRange?.location ?? fragment.rangeInElement.location
+        let base = tcm.offset(from: tcm.documentRange.location, to: element)
+        return fragment.textLineFragments.map {
+            NSRange(location: base + $0.characterRange.location, length: $0.characterRange.length)
+        }
+    }
+
     // MARK: - Géométrie
 
     private func textRange(_ range: NSRange) -> NSTextRange? {

@@ -5,6 +5,8 @@ import SwiftUI
 struct ReadingView: NSViewRepresentable {
     let model: ReaderModel
     let style: ReadingStyle
+    /// Reçoit la vue et sa mise en page, pour ↑ ↓ ligne par ligne.
+    var lines: LineNavigator?
     var onContentHeight: (CGFloat) -> Void = { _ in }
 
     final class Coordinator {
@@ -41,6 +43,7 @@ struct ReadingView: NSViewRepresentable {
             let layout = DocumentLayout.build(model.document, style: style)
             text.setDocument(layout.text)
             c.layout = layout
+            lines?.attach(text, layout: layout)
             c.revision = snapshot.revision
             c.style = style
         }

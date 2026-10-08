@@ -8,6 +8,15 @@ struct ReadingStyle: Equatable {
     var theme: Theme
 }
 
+/// Un mot affiché : sa plage dans le texte, sa phrase, son rang dans la
+/// phrase (ce que vise un saut absolu) et son indice global.
+struct WordPlace: Equatable {
+    let range: NSRange
+    let sentence: UInt32
+    let word: UInt32
+    let index: UInt32
+}
+
 /// Le document mis en texte, avec la plage de chaque mot et de chaque phrase.
 ///
 /// Les mots sont séparés d'une espace, les blocs d'un retour à la ligne ; un
@@ -18,11 +27,14 @@ struct DocumentLayout {
     let text: NSAttributedString
     let wordRanges: [UInt32: NSRange]
     let sentenceRanges: [UInt32: NSRange]
+    /// Les mots suivis, dans l'ordre du texte.
+    let words: [WordPlace]
 
     static func build(_ doc: DocView, style: ReadingStyle) -> DocumentLayout {
         let out = NSMutableAttributedString()
         var words: [UInt32: NSRange] = [:]
         var sentences: [UInt32: NSRange] = [:]
+        var places: [WordPlace] = []
         let mono = NSFont.monospacedSystemFont(ofSize: style.size * 0.85, weight: .regular)
 
         for (i, block) in doc.blocks.enumerated() {
@@ -66,14 +78,17 @@ struct DocumentLayout {
                     if word.struck {
                         wordAttrs[.strikethroughStyle] = NSUnderlineStyle.single.rawValue
                     }
-                    words[word.index] = NSRange(location: out.length,
-                                                length: (word.text as NSString).length)
+                    let range = NSRange(location: out.length, length: (word.text as NSString).length)
+                    words[word.index] = range
+                    places.append(WordPlace(range: range, sentence: sentence.id,
+                                            word: UInt32(w), index: word.index))
                     out.append(NSAttributedString(string: word.text, attributes: wordAttrs))
                 }
                 sentences[sentence.id] = NSRange(location: start, length: out.length - start)
             }
         }
-        return DocumentLayout(text: out, wordRanges: words, sentenceRanges: sentences)
+        return DocumentLayout(text: out, wordRanges: words, sentenceRanges: sentences,
+                              words: places)
     }
 
     /// Comme au terminal : seuls le code et les tableaux se montrent tels

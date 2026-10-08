@@ -53,7 +53,7 @@ struct ExpandedReader: View {
                     if !active { query = "" }
                 }
 
-                ReadingView(model: model, style: style)
+                ReadingView(model: model, style: style, lines: controller.lines)
                 PlayerBar(model: model, theme: style.theme,
                           markers: model.sectionPositions)
             }
