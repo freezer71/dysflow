@@ -1,13 +1,13 @@
 import AppKit
 
-enum PanelMode: Equatable { case hidden, panel, expanded }
-
 /// Tailles du panneau, calculées sans fenêtre pour être éprouvées.
 enum PanelGeometry {
     /// Barre de lecture, aides et marges autour du texte.
     static let chrome: CGFloat = 100
     static let minimumHeight: CGFloat = 150
     static let maximumWidth: CGFloat = 760
+    /// La marge de chaque côté du contenu, moyen et grand modes.
+    static let horizontalPadding: CGFloat = 22
 
     static func panelFrame(contentHeight: CGFloat, screen: CGRect) -> CGRect {
         let width = min(maximumWidth, screen.width * 0.6)

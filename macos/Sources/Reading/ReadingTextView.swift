@@ -42,6 +42,13 @@ final class ReadingTextView: NSTextView {
     private var lastLineY: CGFloat?
     private var followPolicy = FollowPolicy()
     private var liveScrollObserver: NSObjectProtocol?
+    /// La fenêtre entièrement cachée par d'autres (ou l'écran verrouillé) :
+    /// su par la notification d'occultation, qui arrive en différé.
+    private var occluded = false
+    private var occlusionObserver: NSObjectProtocol?
+    /// La fenêtre retirée ou remise (l'arrière-plan la garde, la vue
+    /// dedans) : su tout de suite, en observant `isVisible`.
+    private var visibilityObservation: NSKeyValueObservation?
 
     /// Le dernier appel à `show`, pour l'ignorer s'il se répète (60 à 120 fois
     /// par seconde pendant la lecture) et pour tout replacer si la largeur
@@ -81,6 +88,7 @@ final class ReadingTextView: NSTextView {
 
     deinit {
         if let liveScrollObserver { NotificationCenter.default.removeObserver(liveScrollObserver) }
+        if let occlusionObserver { NotificationCenter.default.removeObserver(occlusionObserver) }
     }
 
     func setDocument(_ text: NSAttributedString) {
@@ -239,7 +247,7 @@ final class ReadingTextView: NSTextView {
     /// d'affichage que si la lecture avance et que le mouvement est permis.
     private func updateCursorLine() {
         let motion = !reduceMotion()
-        if playing, wordRect != nil, motion, window != nil {
+        if playing, wordRect != nil, motion, windowShows {
             startLink()
         } else {
             stopLink()
@@ -275,7 +283,7 @@ final class ReadingTextView: NSTextView {
     }
 
     private func step() {
-        guard playing, let wordRect else { stopLink(); return }
+        guard playing, let wordRect, windowShows else { stopLink(); return }
         readProgress()
         setCursorLine(CursorLine.rect(word: wordRect, lineStartX: lineStartX,
                                       progress: progress, reduceMotion: false))
@@ -285,10 +293,35 @@ final class ReadingTextView: NSTextView {
         frames.stop()
     }
 
+    /// La fenêtre se voit : ni retirée (l'arrière-plan la garde, la vue
+    /// dedans), ni cachée tout entière. Sinon le trait ne tourne pas.
+    private var windowShows: Bool {
+        guard let window else { return false }
+        return window.isVisible && !occluded
+    }
+
     /// Hors fenêtre, le lien s'arrête (le lien retient sa cible) ; de retour, il
-    /// reprend si la lecture avance.
+    /// reprend si la lecture avance. La fenêtre retirée ou cachée, de même.
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        if let occlusionObserver { NotificationCenter.default.removeObserver(occlusionObserver) }
+        occlusionObserver = nil
+        visibilityObservation = nil
+        occluded = false
+        if let window {
+            visibilityObservation = window.observe(\.isVisible) { [weak self] _, _ in
+                MainActor.assumeIsolated { self?.updateCursorLine() }
+            }
+            occlusionObserver = NotificationCenter.default.addObserver(
+                forName: NSWindow.didChangeOcclusionStateNotification, object: window, queue: .main
+            ) { [weak self] note in
+                MainActor.assumeIsolated {
+                    guard let self, let w = note.object as? NSWindow else { return }
+                    self.occluded = !w.occlusionState.contains(.visible)
+                    self.updateCursorLine()
+                }
+            }
+        }
         updateCursorLine()
     }
 

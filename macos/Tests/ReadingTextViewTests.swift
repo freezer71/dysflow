@@ -118,6 +118,22 @@ final class ReadingTextViewTests: XCTestCase {
         XCTAssertFalse(view.isAnimatingLine)
     }
 
+    /// Fenêtre retirée (l'arrière-plan garde la vue dans sa fenêtre) : le
+    /// trait s'arrête aussitôt ; la fenêtre remise, il reprend.
+    func testTheLineStopsWhileTheWindowIsOrderedOut() {
+        view.reduceMotion = { false }
+        view.liveProgress = { 0.5 }
+        view.show(word: NSRange(location: 3, length: 4), sentence: NSRange(location: 0, length: 14),
+                  pastUpTo: 3, follow: false)
+        view.playing = true
+        XCTAssertTrue(view.isAnimatingLine)
+        window.orderOut(nil)
+        XCTAssertNotNil(view.window)
+        XCTAssertFalse(view.isAnimatingLine, "lien d'affichage fenêtre retirée")
+        window.orderFront(nil)
+        XCTAssertTrue(view.isAnimatingLine, "le trait reprend")
+    }
+
     /// Au premier mot d'une ligne, le trait repart de zéro : il ne traîne
     /// pas de la ligne d'avant.
     func testTheLineRestartsOnEachLine() {

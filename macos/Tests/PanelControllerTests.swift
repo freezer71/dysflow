@@ -13,11 +13,19 @@ final class PanelControllerTests: XCTestCase {
         super.tearDown()
     }
 
-    private func shownPanel(_ text: String) -> PanelController {
+    /// Des préférences à part, vidées : jamais celles de l'utilisateur.
+    private func freshDefaults() -> UserDefaults {
+        let name = "sillon.tests.affichage.panneau"
+        let defaults = UserDefaults(suiteName: name)!
+        defaults.removePersistentDomain(forName: name)
+        return defaults
+    }
+
+    private func shownPanel(_ text: String, defaults: UserDefaults? = nil) -> PanelController {
         let model = ReaderModel(reader: SillonReader.silent())
         model.open(text: text, source: "test")
         XCTAssertTrue(waitUntil { model.refresh(); return model.snapshot.revision == 1 })
-        let c = PanelController(model: model)
+        let c = PanelController(model: model, store: DisplayModeStore(defaults: defaults ?? freshDefaults()))
         controller = c
         c.show()
         settle(c)
@@ -38,21 +46,32 @@ final class PanelControllerTests: XCTestCase {
         }, "le cadre du panneau ne se stabilise pas")
     }
 
+    /// L'annonceur a deux lecteurs : la vue (`onChange` de l'instantané,
+    /// pendant que la boucle tourne) et ce test. Un état n'est dit qu'une
+    /// fois : on compte ce que le vrai chemin (`announce`) a dit, quel que
+    /// soit celui qui a vu le changement le premier.
     func testNoAnnouncementWhenHiddenNorOnShowAfterHide() {
         let c = shownPanel("Un. Deux.")
-        _ = c.announcementText(for: c.model.snapshot)
+        let before = c.announcementCount
         c.perform(.command(.togglePlay))
         XCTAssertTrue(waitUntil { c.model.refresh(); return c.model.snapshot.playing })
-        XCTAssertEqual(c.announcementText(for: c.model.snapshot), "Lecture")
-        c.collapseOrHide()  // masque : pause
-        XCTAssertNil(c.announcementText(for: c.model.snapshot), "rien panneau masqué")
+        c.announce(c.model.snapshot)  // sans effet si la vue l'a déjà dit
+        XCTAssertEqual(c.lastAnnouncement, "Lecture")
+        XCTAssertEqual(c.announcementCount, before + 1, "« Lecture » dit une fois")
+        c.collapseOrHide()  // arrière-plan : la lecture continue
+        XCTAssertNil(c.announcementText(for: c.model.snapshot), "rien en arrière-plan")
+        c.model.send(.pause)
         XCTAssertTrue(waitUntil { c.model.refresh(); return !c.model.snapshot.playing })
+        XCTAssertNil(c.announcementText(for: c.model.snapshot), "rien en arrière-plan")
         c.show()
         settle(c)
         XCTAssertNil(c.announcementText(for: c.model.snapshot), "rien à la réouverture")
+        XCTAssertEqual(c.announcementCount, before + 1, "rien dit en arrière-plan ni à la réouverture")
         c.perform(.command(.togglePlay))
         XCTAssertTrue(waitUntil { c.model.refresh(); return c.model.snapshot.playing })
-        XCTAssertEqual(c.announcementText(for: c.model.snapshot), "Lecture")
+        c.announce(c.model.snapshot)
+        XCTAssertEqual(c.lastAnnouncement, "Lecture")
+        XCTAssertEqual(c.announcementCount, before + 2)
     }
 
     private func textView(_ c: PanelController) -> ReadingTextView? {
@@ -118,33 +137,35 @@ final class PanelControllerTests: XCTestCase {
         let before = c.window.frame
         c.expand()
         settle(c)
-        XCTAssertEqual(c.mode, .expanded)
+        XCTAssertEqual(c.mode, .large)
         c.collapseOrHide()
         settle(c)
-        XCTAssertEqual(c.mode, .panel)
+        XCTAssertEqual(c.mode, .medium)
         XCTAssertEqual(c.window.frame.height, before.height, accuracy: 1)
         XCTAssertEqual(c.window.frame.width, before.width, accuracy: 1)
     }
 
-    func testClosingTheWindowGoesThroughTheHidePath() {
+    /// ⌘W : l'arrière-plan, sans pause (la spec : la lecture continue).
+    func testClosingTheWindowGoesToTheBackgroundWithoutPausing() {
         let c = shownPanel("Un. Deux.")
         XCTAssertTrue(c.model.isDisplayed)
         let commands = c.model.commandCount
         c.window.performClose(nil)
-        XCTAssertEqual(c.mode, .hidden)
+        XCTAssertEqual(c.mode, .background)
         XCTAssertFalse(c.model.isDisplayed)
         XCTAssertFalse(c.window.isVisible)
-        XCTAssertEqual(c.model.commandCount, commands + 1, "la lecture doit être mise en pause")
+        XCTAssertEqual(c.model.commandCount, commands, "aucune pause envoyée")
+        XCTAssertEqual(c.store.state.current, .background)
     }
 
     func testCloseDirectlyAlsoHides() {
         let c = shownPanel("Un. Deux.")
         c.window.close()
-        XCTAssertEqual(c.mode, .hidden)
+        XCTAssertEqual(c.mode, .background)
         XCTAssertFalse(c.model.isDisplayed)
         // Réafficher fonctionne encore.
         c.show()
-        XCTAssertEqual(c.mode, .panel)
+        XCTAssertEqual(c.mode, .medium)
         XCTAssertTrue(c.window.isVisible)
     }
 
@@ -191,6 +212,224 @@ final class PanelControllerTests: XCTestCase {
     func testPanelLevelIsDecidedBySettingsVisibility() {
         XCTAssertEqual(PanelLevel.level(settingsVisible: false), .floating)
         XCTAssertEqual(PanelLevel.level(settingsVisible: true), .normal)
+    }
+
+    private var screen: CGRect { (NSScreen.main ?? NSScreen.screens[0]).visibleFrame }
+
+    func testCommandDigitsGiveEachModeItsSize() {
+        let c = shownPanel("Une seule phrase, assez courte.")
+        let medium = c.window.frame
+        c.perform(.display(.small))
+        settle(c)
+        XCTAssertEqual(c.mode, .small)
+        XCTAssertEqual(c.window.frame.width, SmallPlacement.size.width, accuracy: 1)
+        XCTAssertEqual(c.window.frame.height, SmallPlacement.size.height, accuracy: 1)
+        XCTAssertEqual(c.window.contentView?.accessibilityIdentifier(), "lecteur-reduit")
+        XCTAssertFalse(c.window.styleMask.contains(.resizable), "la barre a une taille fixe")
+        XCTAssertEqual(c.window.standardWindowButton(.closeButton)?.isHidden, true)
+        XCTAssertEqual(c.window.standardWindowButton(.zoomButton)?.isHidden, true)
+        c.perform(.display(.large))
+        settle(c)
+        XCTAssertEqual(c.mode, .large)
+        XCTAssertEqual(c.window.frame, PanelGeometry.expandedFrame(screen: screen))
+        XCTAssertEqual(c.window.contentView?.accessibilityIdentifier(), "lecteur-agrandi")
+        c.perform(.display(.medium))
+        settle(c)
+        XCTAssertEqual(c.mode, .medium)
+        XCTAssertEqual(c.window.frame.width, medium.width, accuracy: 1)
+        XCTAssertEqual(c.window.frame.height, medium.height, accuracy: 1)
+        XCTAssertEqual(c.window.contentView?.accessibilityIdentifier(), "panneau-lecture")
+        XCTAssertTrue(c.window.styleMask.contains(.resizable))
+        XCTAssertEqual(c.window.standardWindowButton(.zoomButton)?.isHidden, true)
+    }
+
+    func testEscapeGoesFromLargeToMediumThenToTheBackgroundWithoutPausing() {
+        let c = shownPanel("Un. Deux.")
+        c.perform(.display(.large))
+        settle(c)
+        c.perform(.command(.togglePlay))
+        let commands = c.model.commandCount
+        c.perform(.collapseOrHide)
+        XCTAssertEqual(c.mode, .medium)
+        settle(c)
+        c.perform(.collapseOrHide)
+        XCTAssertEqual(c.mode, .background)
+        XCTAssertFalse(c.window.isVisible)
+        XCTAssertEqual(c.model.commandCount, commands, "la lecture continue en arrière-plan")
+    }
+
+    func testEscapeFromTheSmallBarGoesToTheBackground() {
+        let c = shownPanel("Un. Deux.")
+        c.perform(.display(.small))
+        settle(c)
+        c.perform(.collapseOrHide)
+        XCTAssertEqual(c.mode, .background)
+        XCTAssertFalse(c.window.isVisible)
+    }
+
+    /// ⌃⌥S : le dernier mode visible ; ⏎ depuis la barre : le grand mode.
+    func testShowBringsBackTheLastVisibleMode() {
+        let c = shownPanel("Un. Deux.")
+        c.perform(.display(.small))
+        settle(c)
+        c.collapseOrHide()
+        c.show()
+        settle(c)
+        XCTAssertEqual(c.mode, .small)
+        XCTAssertTrue(c.window.isVisible)
+        c.perform(.expand)
+        settle(c)
+        XCTAssertEqual(c.mode, .large)
+    }
+
+    /// ⌃⌥Espace garde le mode ; depuis l'arrière-plan, il ouvre le moyen.
+    func testReadingASelectionKeepsTheModeOrOpensTheMediumOne() {
+        let c = shownPanel("Un. Deux.")
+        c.perform(.display(.small))
+        settle(c)
+        c.apply(.readSelection)
+        XCTAssertEqual(c.mode, .small)
+        c.collapseOrHide()
+        XCTAssertEqual(c.mode, .background)
+        c.apply(.readSelection)
+        XCTAssertEqual(c.mode, .medium)
+        XCTAssertTrue(c.window.isVisible)
+    }
+
+    func testTheSmallBarKeepsItsPlaceFromOneTimeToTheNext() {
+        let defaults = freshDefaults()
+        let c = shownPanel("Un. Deux.", defaults: defaults)
+        c.perform(.display(.small))
+        settle(c)
+        // Placée par le code (animation comprise) : rien n'est retenu.
+        XCTAssertNil(c.store.smallOrigin)
+        let main = NSScreen.screens[0].visibleFrame
+        let spot = CGPoint(x: main.minX + 40, y: main.minY + 40)
+        c.window.setFrameOrigin(spot)
+        XCTAssertTrue(waitUntil { c.store.smallOrigin == spot }, "le déplacement n'est pas retenu")
+        c.collapseOrHide()
+        c.show()
+        settle(c)
+        XCTAssertEqual(c.window.frame.minX, spot.x, accuracy: 1)
+        XCTAssertEqual(c.window.frame.minY, spot.y, accuracy: 1)
+        // Relance : un nouveau contrôleur, mêmes préférences.
+        c.collapseOrHide()
+        let again = PanelController(model: c.model, store: DisplayModeStore(defaults: defaults))
+        controller = again
+        again.show()
+        settle(again)
+        XCTAssertEqual(again.mode, .small)
+        XCTAssertEqual(again.window.frame.minX, spot.x, accuracy: 1)
+        XCTAssertEqual(again.window.frame.minY, spot.y, accuracy: 1)
+    }
+
+    func testASmallBarLeftOnAnUnpluggedScreenComesBackToTheMainScreen() {
+        let defaults = freshDefaults()
+        DisplayModeStore(defaults: defaults).smallOrigin = CGPoint(x: -50_000, y: -50_000)
+        let c = shownPanel("Un.", defaults: defaults)
+        c.perform(.display(.small))
+        settle(c)
+        XCTAssertTrue(NSScreen.screens[0].visibleFrame.contains(c.window.frame),
+                      "barre hors écran : \(c.window.frame)")
+    }
+
+    /// Relance : le mode visible retenu reparaît ; l'arrière-plan, rien.
+    func testTheModeComesBackAfterARelaunchButNotTheBackground() {
+        let defaults = freshDefaults()
+        let c = shownPanel("Un.", defaults: defaults)
+        c.perform(.display(.large))
+        settle(c)
+        let relaunched = PanelController(model: c.model, store: DisplayModeStore(defaults: defaults))
+        relaunched.restore()
+        settle(relaunched)
+        XCTAssertEqual(relaunched.mode, .large)
+        XCTAssertTrue(relaunched.window.isVisible)
+        relaunched.collapseOrHide()
+        relaunched.collapseOrHide()
+        let third = PanelController(model: c.model, store: DisplayModeStore(defaults: defaults))
+        third.restore()
+        XCTAssertEqual(third.mode, .background)
+        XCTAssertFalse(third.window.isVisible)
+        third.show()
+        XCTAssertEqual(third.mode, .medium, "Échap du grand mode avait retenu le moyen")
+        third.collapseOrHide()
+    }
+
+    /// Les réglages ouverts, aucun mode ne remet le panneau au-dessus.
+    func testModesKeepThePanelUnderTheOpenSettings() {
+        let c = shownPanel("Un. Deux.")
+        let settings = NSWindow()
+        settings.setAccessibilityIdentifier("Réglages")
+        NotificationCenter.default.post(name: NSWindow.didBecomeKeyNotification, object: settings)
+        for mode in [DisplayMode.small, .large, .medium] {
+            c.perform(.display(mode))
+            settle(c)
+            XCTAssertEqual(c.window.level, .normal, "\(mode)")
+        }
+        c.collapseOrHide()
+        c.show()
+        XCTAssertEqual(c.window.level, .normal, "réaffiché")
+        NotificationCenter.default.post(name: NSWindow.willCloseNotification, object: settings)
+        XCTAssertEqual(c.window.level, .floating)
+    }
+
+    /// ↑ ↓ dans la barre : la ligne suit le texte même invisible, aux
+    /// lignes du mode moyen.
+    func testLinesFollowTheTextEvenInTheSmallBar() throws {
+        let words = (1...60).map { "mot\($0)" }
+        let c = shownPanel(words.joined(separator: " ") + ".")
+        let text = try XCTUnwrap(textView(c))
+        let string = text.string as NSString
+        var ranges: [NSRange] = []
+        string.enumerateSubstrings(in: NSRange(location: 0, length: string.length),
+                                   options: .byWords) { _, range, _, _ in ranges.append(range) }
+        let top = { (r: NSRange) in text.rectForTesting(r)!.minY }
+        let next = try XCTUnwrap(ranges.firstIndex { top($0) > top(ranges[0]) + 1 },
+                                 "le texte doit tenir sur plusieurs lignes")
+        let expected = c.model.document.blocks.flatMap(\.sentences).flatMap(\.words)[next].index
+
+        c.perform(.display(.small))
+        settle(c)
+        XCTAssertTrue(waitUntil { self.textView(c).map { $0 !== text } ?? false },
+                      "la copie cachée de la vue de lecture manque")
+        c.perform(.line(delta: 1))
+        XCTAssertTrue(waitUntil { c.model.refresh(); return c.model.snapshot.word == expected },
+                      "mot visé : \(expected), lu : \(String(describing: c.model.snapshot.word))")
+    }
+
+    /// La barre en pause ne coûte rien : ni coup d'œil lent, ni lien
+    /// d'affichage. Elle suit la cadence « lit sans être affiché ».
+    func testAPausedSmallBarCostsNothing() {
+        let c = shownPanel("Un. Deux.")
+        XCTAssertEqual(c.model.cadence, .glance, "moyen, en pause : le coup d'œil lent")
+        c.perform(.display(.small))
+        settle(c)
+        XCTAssertFalse(c.model.isDisplayed)
+        XCTAssertTrue(waitUntil { c.model.cadence == .none }, "cadence : \(c.model.cadence)")
+        XCTAssertFalse(c.model.isTicking)
+        c.perform(.command(.togglePlay))
+        XCTAssertTrue(waitUntil { c.model.refresh(); return c.model.snapshot.playing })
+        XCTAssertEqual(c.model.cadence, .screen, "en lecture, la barre suit la voix")
+        c.model.send(.pause)
+        XCTAssertTrue(waitUntil { c.model.cadence == .none }, "cadence : \(c.model.cadence)")
+        XCTAssertFalse(c.model.isTicking)
+    }
+
+    /// L'arrière-plan garde la vue de lecture dans la fenêtre retirée : le
+    /// modèle ne s'y croit plus affiché (ni coup d'œil lent ni lien en
+    /// pause), et la fenêtre de la vue ne se voit plus — son trait s'arrête
+    /// alors (ReadingTextViewTests : le lecteur muet ne donne pas de mot lu).
+    func testTheBackgroundKeepsNothingDisplayed() throws {
+        let c = shownPanel("Un. Deux.")
+        let text = try XCTUnwrap(textView(c))
+        XCTAssertEqual(c.model.cadence, .glance)
+        c.collapseOrHide()
+        XCTAssertFalse(c.model.isDisplayed)
+        XCTAssertNotNil(text.window, "la vue reste dans sa fenêtre retirée")
+        XCTAssertFalse(text.window?.isVisible ?? true)
+        XCTAssertTrue(waitUntil { c.model.cadence == .none }, "cadence : \(c.model.cadence)")
+        XCTAssertFalse(c.model.isTicking)
+        XCTAssertFalse(text.isAnimatingLine)
     }
 
     /// Chaque « / » redemande le focus du champ, même déjà ouvert.

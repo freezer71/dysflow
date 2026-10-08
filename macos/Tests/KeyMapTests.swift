@@ -8,6 +8,19 @@ final class KeyMapTests: XCTestCase {
                                     shift: shift, command: command, control: control))
     }
 
+    func testCommandDigitsChooseTheDisplayMode() {
+        XCTAssertEqual(act("1", command: true), .display(.small))
+        XCTAssertEqual(act("2", command: true), .display(.medium))
+        XCTAssertEqual(act("3", command: true), .display(.large))
+        // AZERTY : les mêmes touches, sans Maj.
+        XCTAssertEqual(act("&", command: true), .display(.small))
+        XCTAssertEqual(act("é", command: true), .display(.medium))
+        XCTAssertEqual(act("\"", command: true), .display(.large))
+        XCTAssertNil(act("4", command: true))
+        // Sans ⌘, les chiffres restent des vitesses.
+        XCTAssertEqual(act("1"), .command(.setSpeed(speed: 0.75)))
+    }
+
     func testVOpensTheVoiceSettings() {
         XCTAssertEqual(KeyMap.action(for: KeyPress(characters: "v")), .openVoiceSettings)
         XCTAssertNil(KeyMap.action(for: KeyPress(characters: "v", option: true)))

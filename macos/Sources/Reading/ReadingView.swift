@@ -7,6 +7,9 @@ struct ReadingView: NSViewRepresentable {
     let style: ReadingStyle
     /// Reçoit la vue et sa mise en page, pour ↑ ↓ ligne par ligne.
     var lines: LineNavigator?
+    /// Copie invisible (mode petit) : elle ne sert qu'à ↑ ↓. Ni trait animé,
+    /// ni VoiceOver (une vue cachée sort de l'arbre d'accessibilité).
+    var shadow = false
     var onContentHeight: (CGFloat) -> Void = { _ in }
 
     final class Coordinator {
@@ -27,6 +30,7 @@ struct ReadingView: NSViewRepresentable {
         text.onContentHeight = onContentHeight
         scroll.documentView = text
         scroll.setAccessibilityIdentifier("texte-lu")
+        scroll.isHidden = shadow
         return scroll
     }
 
@@ -38,7 +42,7 @@ struct ReadingView: NSViewRepresentable {
         text.onContentHeight = onContentHeight
         text.theme = style.theme
         text.ruler = style.ruler
-        text.playing = snapshot.playing
+        text.playing = snapshot.playing && !shadow
         if c.revision != snapshot.revision || c.style != style {
             let layout = DocumentLayout.build(model.document, style: style)
             text.setDocument(layout.text)

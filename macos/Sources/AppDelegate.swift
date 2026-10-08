@@ -56,9 +56,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model = ReaderModel(reader: reader)
         model.refresh()
         panel = PanelController(model: model)
+        // Le mode laissé à la dernière fermeture (sous les tests : suite
+        // vidée, donc l'arrière-plan).
+        panel.restore()
         if isUITesting {
             model.open(text: Self.sample, source: "exemple")
-            if ProcessInfo.processInfo.arguments.contains("--show-panel") { panel.show() }
+            if ProcessInfo.processInfo.arguments.contains("--show-panel") { panel.apply(.choose(.medium)) }
             if ProcessInfo.processInfo.arguments.contains("--show-settings") {
                 // L'icône de la barre des menus donne l'action dès qu'elle paraît.
                 SettingsOpener.shared.open()
@@ -88,7 +91,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 readClipboard: { ClipboardSnapshot(pasteboard: pasteboard).read() },
                 openImage: { try await model.openImage($0) },
                 say: { model.message = $0 },
-                show: { panel.show() }
+                // Le mode en cours ; depuis l'arrière-plan, le moyen.
+                show: { panel.apply(.readSelection) }
             ).run()
         }
     }

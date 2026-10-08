@@ -23,11 +23,50 @@ struct PanelContent: View {
     }
 
     var body: some View {
-        let model = controller.model
-        VStack(alignment: .leading, spacing: 14) {
-            if controller.mode == .expanded {
-                ExpandedReader(controller: controller, style: style)
-            } else {
+        content(controller.model)
+            .background(
+                RoundedRectangle(cornerRadius: 14)
+                    .fill(Color(nsColor: theme.background))
+                    .overlay(RoundedRectangle(cornerRadius: 14)
+                        .stroke(Color(nsColor: theme.border), lineWidth: 1))
+            )
+            .overlay { if controller.helpVisible { HelpOverlay(theme: theme) } }
+            // La barre de titre est transparente et invisible : sans cela, sa
+            // zone sûre repousse le contenu de ~30 pt et rogne le texte.
+            .ignoresSafeArea()
+            .onChange(of: controller.model.snapshot) { _, s in controller.announce(s) }
+            // Un réglage écrit (interlignage, règle, pas d'avance) s'applique
+            // au panneau ouvert, sans attendre sa prochaine ouverture.
+            .onChange(of: controller.model.settingsRevision) { _, _ in controller.reloadReading() }
+            .onReceive(NSWorkspace.shared.notificationCenter.publisher(
+                for: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification)) { _ in
+                increaseContrast = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
+            }
+    }
+
+    @ViewBuilder
+    private func content(_ model: ReaderModel) -> some View {
+        switch controller.mode {
+        case .small:
+            MiniPlayerView(model: model, theme: theme)
+                // La vue hôte agrandit la fenêtre jusqu'au minimum du contenu,
+                // plus la zone sûre de la barre de titre (32 pt) : 16 + 32
+                // ferait 48, le haut fixe. La fenêtre fixe la taille
+                // (SmallPlacement.size) ; le contenu, centré, n'impose rien.
+                .frame(minHeight: 0, maxHeight: .infinity)
+                // ↑ ↓ suivent le texte même invisible : une copie cachée de
+                // la vue de lecture, à la largeur du mode moyen. Un fond ne
+                // compte pas dans la taille de la barre.
+                .background(alignment: .topLeading) {
+                    ReadingView(model: model, style: style, lines: controller.lines, shadow: true)
+                        .frame(width: controller.shadowTextWidth, height: 40)
+                }
+        case .large:
+            ExpandedReader(controller: controller, style: style)
+                .padding(.horizontal, PanelGeometry.horizontalPadding)
+                .padding(.vertical, 18)
+        case .medium, .background:
+            VStack(alignment: .leading, spacing: 14) {
                 ReadingView(model: model, style: style, lines: controller.lines) { height in
                     controller.contentHeightChanged(height)
                 }
@@ -59,26 +98,8 @@ struct PanelContent: View {
                     }
                 }
             }
-        }
-        .padding(.horizontal, 22)
-        .padding(.vertical, 18)
-        .background(
-            RoundedRectangle(cornerRadius: 14)
-                .fill(Color(nsColor: theme.background))
-                .overlay(RoundedRectangle(cornerRadius: 14)
-                    .stroke(Color(nsColor: theme.border), lineWidth: 1))
-        )
-        .overlay { if controller.helpVisible { HelpOverlay(theme: theme) } }
-        // La barre de titre est transparente et invisible : sans cela, sa
-        // zone sûre repousse le contenu de ~30 pt et rogne le texte.
-        .ignoresSafeArea()
-        .onChange(of: controller.model.snapshot) { _, s in controller.announce(s) }
-        // Un réglage écrit (interlignage, règle, pas d'avance) s'applique
-        // au panneau ouvert, sans attendre sa prochaine ouverture.
-        .onChange(of: controller.model.settingsRevision) { _, _ in controller.reloadReading() }
-        .onReceive(NSWorkspace.shared.notificationCenter.publisher(
-            for: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification)) { _ in
-            increaseContrast = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
+            .padding(.horizontal, PanelGeometry.horizontalPadding)
+            .padding(.vertical, 18)
         }
     }
 

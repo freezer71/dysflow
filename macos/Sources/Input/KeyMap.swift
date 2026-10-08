@@ -42,6 +42,8 @@ enum ReaderAction: Equatable {
     /// commence.
     case line(delta: Int)
     case expand, collapseOrHide, copySentence, openSearch
+    /// ⌘1, ⌘2, ⌘3 : petit, moyen, grand.
+    case display(DisplayMode)
     case toggleSidebar, toggleBookmarks, showHelp, openSettings, openVoiceSettings
 }
 
@@ -52,6 +54,10 @@ enum KeyMap {
             switch key.characters {
             case "c": return .copySentence
             case ",": return .openSettings
+            // QWERTY et AZERTY non décalé : les mêmes touches physiques.
+            case "1", "&": return .display(.small)
+            case "2", "é": return .display(.medium)
+            case "3", "\"": return .display(.large)
             default: return nil
             }
         }
