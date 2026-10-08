@@ -75,7 +75,7 @@ final class SmallPlacementTests: XCTestCase {
 
     func testABarHalfOffTheEdgeIsPulledBackOnScreen() {
         let frame = SmallPlacement.frame(savedOrigin: CGPoint(x: 1400, y: 100), screens: [main], main: main)
-        XCTAssertEqual(frame.origin, CGPoint(x: 1440 - 360, y: 100))
+        XCTAssertEqual(frame.origin, CGPoint(x: 1440 - 320, y: 100))
         XCTAssertTrue(main.contains(frame))
         // Deux écrans : celui qui en montre le plus la reçoit.
         let shared = SmallPlacement.frame(savedOrigin: CGPoint(x: 1400, y: 100), screens: [main, side], main: main)

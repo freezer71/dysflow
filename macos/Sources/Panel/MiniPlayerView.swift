@@ -1,49 +1,161 @@
 import KeyboardShortcuts
 import SwiftUI
 
-/// La barre du mode petit : lecture, ligne de temps, temps restant,
-/// vitesse, écrou. Contrôles à 13 pt, libellés comme la barre du panneau.
-/// Elle lit l'instantané du modèle, à son rythme : rien ne tourne en pause.
+/// La barre du mode petit, à la façon d'un mini-lecteur de musique, sur
+/// deux rangées : la timeline entre le temps écoulé et le temps restant ;
+/// puis la vitesse, le transport centré, l'écrou. Contrôles à 13 pt au
+/// moins. Elle lit l'instantané du modèle, à son rythme : rien ne tourne
+/// en pause.
 struct MiniPlayerView: View {
     let model: ReaderModel
     let theme: Theme
+    /// Le chemin des touches : un bouton envoie la même action que sa touche.
+    let perform: (ReaderAction) -> Void
 
     var body: some View {
         let s = model.snapshot
-        HStack(spacing: 10) {
+        VStack(spacing: 6) {
             if s.hasDocument {
-                PlayButton(model: model)
-                Timeline(progress: Double(s.progress), markers: [], theme: theme)
-                    .frame(minWidth: 30)
-                    .frame(height: 9)
-                    .accessibilityRepresentation {
-                        ProgressView(value: Timeline.clamped(Double(s.progress)))
-                            .accessibilityLabel("Progression")
-                            .accessibilityValue(PlaybackTime.timelineValue(elapsed: s.elapsed, total: s.total,
-                                                                           progress: s.progress))
-                    }
-                Text(PlaybackTime.shortRemaining(elapsed: s.elapsed, total: s.total))
-                    .monospacedDigit()
-                    .fontWeight(.medium)
-                    .fixedSize()
-                    .accessibilityLabel("Temps restant")
-                    .accessibilityValue(PlaybackTime.spokenRemaining(elapsed: s.elapsed, total: s.total))
-                SpeedLabel(speed: s.speed)
-                    .fixedSize()
+                MiniTimeRow(progress: s.progress, elapsed: PlayerBar.time(s.elapsed),
+                            remaining: PlaybackTime.shortRemaining(elapsed: s.elapsed, total: s.total),
+                            spokenRemaining: PlaybackTime.spokenRemaining(elapsed: s.elapsed, total: s.total),
+                            value: PlaybackTime.timelineValue(elapsed: s.elapsed, total: s.total,
+                                                              progress: s.progress),
+                            theme: theme)
             } else {
                 Text(PlaybackTime.emptyText(shortcut: KeyboardShortcuts.getShortcut(for: .readSelection)))
                     .lineLimit(1)
                     .accessibilityIdentifier("rien-a-lire")
-                Spacer(minLength: 0)
+                    .frame(height: 16)
             }
-            VoiceSettingsButton()
+            // Désactivés sans document, pas cachés : la barre garde sa forme.
+            MiniControlsRow(model: model, speed: s.speed, transportEnabled: MiniTransport.enabled(snapshot: s),
+                            send: perform)
         }
         .font(.system(size: 13))
         .foregroundStyle(Color(nsColor: theme.chrome))
-        .padding(.horizontal, 14)
+        .padding(.horizontal, MiniBarMetrics.margin)
         // Souple : la fenêtre fixe la taille (SmallPlacement.size).
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("barre-mini")
+    }
+}
+
+enum MiniBarMetrics {
+    static let margin: CGFloat = 14
+    /// La largeur réservée à la vitesse et à l'écrou, de chaque côté : le
+    /// transport reste centré quelle que soit la vitesse.
+    static let side: CGFloat = 56
+}
+
+/// Rangée 1 : temps écoulé, timeline, temps restant.
+struct MiniTimeRow: View {
+    let progress: Float
+    let elapsed: String
+    let remaining: String
+    let spokenRemaining: String
+    let value: String
+    let theme: Theme
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text(elapsed)
+                .monospacedDigit().fixedSize()
+                .accessibilityLabel("Temps écoulé")
+            Timeline(progress: Double(progress), markers: [], theme: theme)
+                .frame(minWidth: 30)
+                .frame(height: 9)
+                .accessibilityRepresentation {
+                    ProgressView(value: Timeline.clamped(Double(progress)))
+                        .accessibilityLabel("Progression")
+                        .accessibilityValue(value)
+                }
+            Text(remaining)
+                .monospacedDigit().fixedSize()
+                .accessibilityLabel("Temps restant")
+                .accessibilityValue(spokenRemaining)
+        }
+        .frame(height: 16)
+    }
+}
+
+/// Rangée 2 : vitesse à gauche, transport au centre, écrou à droite.
+struct MiniControlsRow: View {
+    let model: ReaderModel
+    let speed: Float
+    var transportEnabled = true
+    let send: (ReaderAction) -> Void
+
+    var body: some View {
+        HStack(spacing: 0) {
+            SpeedLabel(speed: speed)
+                .fixedSize()
+                .frame(width: MiniBarMetrics.side, alignment: .leading)
+            Spacer(minLength: 0)
+            HStack(spacing: 4) {
+                ForEach(MiniTransport.before) { MiniTransportButton(item: $0, send: send) }
+                PlayButton(model: model, prominent: true)
+                ForEach(MiniTransport.after) { MiniTransportButton(item: $0, send: send) }
+            }
+            .disabled(!transportEnabled)
+            Spacer(minLength: 0)
+            VoiceSettingsButton()
+                .frame(width: MiniBarMetrics.side, alignment: .trailing)
+        }
+        .frame(height: 32)
+    }
+}
+
+/// Un bouton de transport de la barre : ligne ou mot, avant ou après.
+struct MiniTransportItem: Identifiable {
+    let identifier: String
+    let label: String
+    let help: String
+    let symbol: String
+    let action: ReaderAction
+    var id: String { identifier }
+}
+
+enum MiniTransport {
+    /// À gauche de lecture/pause : ligne précédente, mot précédent.
+    static let before = [
+        MiniTransportItem(identifier: "ligne-precedente", label: "Ligne précédente",
+                          help: "Ligne précédente (↑)", symbol: "chevron.up", action: .line(delta: -1)),
+        MiniTransportItem(identifier: "mot-precedent", label: "Mot précédent",
+                          help: "Mot précédent (⌥←)", symbol: "chevron.left",
+                          action: .command(.words(delta: -1))),
+    ]
+    /// À droite : mot suivant, ligne suivante.
+    static let after = [
+        MiniTransportItem(identifier: "mot-suivant", label: "Mot suivant",
+                          help: "Mot suivant (⌥→)", symbol: "chevron.right",
+                          action: .command(.words(delta: 1))),
+        MiniTransportItem(identifier: "ligne-suivante", label: "Ligne suivante",
+                          help: "Ligne suivante (↓)", symbol: "chevron.down", action: .line(delta: 1)),
+    ]
+
+    static func enabled(snapshot: Snapshot) -> Bool { snapshot.hasDocument }
+}
+
+struct MiniTransportButton: View {
+    let item: MiniTransportItem
+    let send: (ReaderAction) -> Void
+
+    func fire() { send(item.action) }
+
+    var body: some View {
+        Button(action: fire) {
+            Image(systemName: item.symbol)
+                .font(.system(size: 15))
+                .frame(minWidth: 24, minHeight: 28)
+        }
+        .buttonStyle(.plain)
+        // Les touches de la barre restent à la fenêtre après un clic.
+        .focusable(false)
+        .contentShape(Rectangle())
+        .help(item.help)
+        .accessibilityLabel(item.label)
+        .accessibilityIdentifier(item.identifier)
     }
 }

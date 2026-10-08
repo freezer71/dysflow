@@ -48,7 +48,7 @@ struct PanelContent: View {
     private func content(_ model: ReaderModel) -> some View {
         switch controller.mode {
         case .small:
-            MiniPlayerView(model: model, theme: theme)
+            MiniPlayerView(model: model, theme: theme, perform: controller.perform)
                 // La vue hôte agrandit la fenêtre jusqu'au minimum du contenu,
                 // plus la zone sûre de la barre de titre (32 pt) : 16 + 32
                 // ferait 48, le haut fixe. La fenêtre fixe la taille

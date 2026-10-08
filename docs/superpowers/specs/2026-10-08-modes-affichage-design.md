@@ -15,7 +15,7 @@ actuels restent pour les moments où il suit le texte.
 
 | Mode | Touche | Contenu |
 |---|---|---|
-| Petit | ⌘1 | Barre flottante d'environ 360 × 44 pt : lecture/pause, timeline, temps restant, vitesse, ⚙ |
+| Petit | ⌘1 | Mini-lecteur flottant de 320 × 76 pt sur deux rangées : timeline entre temps écoulé et restant ; vitesse, ligne/mot précédents, lecture/pause, mot/ligne suivants, ⚙ |
 | Moyen | ⌘2 | Le panneau actuel avec le texte suivi |
 | Grand | ⌘3 | Le lecteur agrandi actuel (⏎ y mène toujours) |
 | Arrière-plan | Échap | Aucune fenêtre ; la lecture continue |
@@ -38,13 +38,25 @@ actuels restent pour les moments où il suit le texte.
 
 ### Mode petit
 
-`▶ ━━━━━━━━━━━──────── -2:00  1,1× ⚙`
+```
+0:56 ━━━━━━━━━━━──────── -2:00
+1,1×   ⇡  ‹  (▶)  ›  ⇣          ⚙
+```
 
-- Bouton lecture/pause, timeline (même source que la barre du panneau),
-  temps restant estimé, vitesse, écrou des réglages (onglet Voix).
+À la façon d'un mini-lecteur de musique, 320 × 76 pt.
+
+- Rangée 1 : temps écoulé, timeline (même source que la barre du panneau),
+  temps restant estimé ; chiffres à chasse fixe, couleur secondaire.
+- Rangée 2 : vitesse à gauche, transport centré, écrou des réglages
+  (onglet Voix) à droite. Transport : ligne précédente (↑), mot précédent
+  (⌥←), lecture/pause (disque plein de la couleur d'accent, seule touche de
+  couleur de la barre), mot suivant (⌥→), ligne suivante (↓). Chaque bouton
+  envoie l'action de sa touche ; ils ne prennent pas le focus clavier.
+- Sans document ouvert : « Rien à lire » et ⌃⌥Espace à la place de la
+  timeline ; les boutons de transport sont désactivés (pas cachés), l'écrou
+  reste actif.
 - 13 pt, libellés VoiceOver comme la barre du panneau ; la timeline annonce
   sa valeur (« 0:56 sur 2:56 »).
-- Sans document ouvert : la barre affiche « Rien à lire » et ⌃⌥Espace.
 - Coût au repos nul : pas de lien d'affichage, mise à jour au rythme du
   modèle actuel (seulement pendant la lecture et la courte grâce).
 

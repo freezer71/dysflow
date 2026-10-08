@@ -113,17 +113,29 @@ struct Timeline: View {
 /// Lecture / pause, dans la barre du panneau comme dans la barre réduite.
 struct PlayButton: View {
     let model: ReaderModel
+    /// Le mode petit : un disque plein, l'ancre visuelle de la barre.
+    var prominent = false
 
     var body: some View {
         let playing = model.snapshot.playing
-        Button {
+        let button = Button {
             model.send(.togglePlay)
         } label: {
-            Image(systemName: playing ? "pause.fill" : "play.fill")
+            if prominent {
+                Image(systemName: playing ? "pause.fill" : "play.fill")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.white)
+                    .frame(width: 28, height: 28)
+                    .background(Circle().fill(Color.accentColor))
+            } else {
+                Image(systemName: playing ? "pause.fill" : "play.fill")
+            }
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier("lecture")
         .accessibilityLabel(playing ? "Pause" : "Lecture")
+        // Le mode petit garde le focus aux touches de la barre.
+        if prominent { button.focusable(false) } else { button }
     }
 }
 
