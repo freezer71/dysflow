@@ -153,12 +153,18 @@ enum PanelInvitation {
     static func text(for shortcut: KeyboardShortcuts.Shortcut?) -> String {
         let start = "Sélectionnez ou copiez du texte, puis "
         guard let shortcut else { return start + "choisissez un raccourci : ⌘," }
+        return start + keys(shortcut)
+    }
+
+    /// Le raccourci tel qu'il s'écrit (« ⌃⌥Espace »). La bibliothèque nomme
+    /// la barre d'espace dans la langue de l'app, qui peut retomber sur
+    /// l'anglais.
+    @MainActor
+    static func keys(_ shortcut: KeyboardShortcuts.Shortcut) -> String {
         var keys = shortcut.description
-        // La bibliothèque nomme la barre d'espace dans la langue de l'app,
-        // qui peut retomber sur l'anglais.
         if shortcut.key == .space, keys.hasSuffix("Space") {
             keys = String(keys.dropLast("Space".count)) + "Espace"
         }
-        return start + keys
+        return keys
     }
 }

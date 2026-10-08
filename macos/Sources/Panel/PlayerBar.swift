@@ -9,14 +9,7 @@ struct PlayerBar: View {
     var body: some View {
         let s = model.snapshot
         HStack(spacing: 12) {
-            Button {
-                model.send(.togglePlay)
-            } label: {
-                Image(systemName: s.playing ? "pause.fill" : "play.fill")
-            }
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("lecture")
-            .accessibilityLabel(s.playing ? "Pause" : "Lecture")
+            PlayButton(model: model)
 
             Timeline(progress: Double(s.progress), markers: markers, theme: theme)
                 .frame(height: 9)
@@ -33,9 +26,7 @@ struct PlayerBar: View {
                 // Graisse moyenne : les traits fins de « –:–– » restent
                 // assez contrastés à 13 pt.
                 .fontWeight(.medium)
-            Text(Self.speedText(s.speed))
-                .accessibilityLabel("Vitesse")
-                .accessibilityValue(Self.speedSpoken(s.speed))
+            SpeedLabel(speed: s.speed)
             if let volume = Self.volumeText(volume: s.volume, muted: s.muted) {
                 Label(volume, systemImage: s.muted ? "speaker.slash.fill" : "speaker.wave.1.fill")
                     .labelStyle(.titleAndIcon)
@@ -55,18 +46,7 @@ struct PlayerBar: View {
                     .accessibilityIdentifier("phrases-sautees")
             }
             // L'écrou : les réglages de la voix, pour en essayer une autre.
-            Button {
-                SettingsOpener.shared.open(tab: .voice)
-            } label: {
-                Image(systemName: "gearshape")
-            }
-            .buttonStyle(.plain)
-            // Cible élargie sans toucher à la hauteur de la barre.
-            .padding(.horizontal, 5)
-            .contentShape(Rectangle())
-            .help("Réglages de la voix (v)")
-            .accessibilityLabel("Réglages de la voix")
-            .accessibilityIdentifier("reglages-voix")
+            VoiceSettingsButton()
         }
         .font(.system(size: 13))
         .foregroundStyle(Color(nsColor: theme.chrome))
@@ -127,5 +107,51 @@ struct Timeline: View {
             }
             .frame(maxHeight: .infinity)
         }
+    }
+}
+
+/// Lecture / pause, dans la barre du panneau comme dans la barre réduite.
+struct PlayButton: View {
+    let model: ReaderModel
+
+    var body: some View {
+        let playing = model.snapshot.playing
+        Button {
+            model.send(.togglePlay)
+        } label: {
+            Image(systemName: playing ? "pause.fill" : "play.fill")
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("lecture")
+        .accessibilityLabel(playing ? "Pause" : "Lecture")
+    }
+}
+
+/// La vitesse, lue « 1,5 fois » par VoiceOver.
+struct SpeedLabel: View {
+    let speed: Float
+
+    var body: some View {
+        Text(PlayerBar.speedText(speed))
+            .accessibilityLabel("Vitesse")
+            .accessibilityValue(PlayerBar.speedSpoken(speed))
+    }
+}
+
+/// L'écrou : les réglages de la voix (onglet Voix).
+struct VoiceSettingsButton: View {
+    var body: some View {
+        Button {
+            SettingsOpener.shared.open(tab: .voice)
+        } label: {
+            Image(systemName: "gearshape")
+        }
+        .buttonStyle(.plain)
+        // Cible élargie sans toucher à la hauteur de la barre.
+        .padding(.horizontal, 5)
+        .contentShape(Rectangle())
+        .help("Réglages de la voix (v)")
+        .accessibilityLabel("Réglages de la voix")
+        .accessibilityIdentifier("reglages-voix")
     }
 }
