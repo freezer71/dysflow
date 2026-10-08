@@ -14,6 +14,7 @@ struct MiniPlayerView: View {
             if s.hasDocument {
                 PlayButton(model: model)
                 Timeline(progress: Double(s.progress), markers: [], theme: theme)
+                    .frame(minWidth: 30)
                     .frame(height: 9)
                     .accessibilityRepresentation {
                         ProgressView(value: Timeline.clamped(Double(s.progress)))
@@ -24,9 +25,11 @@ struct MiniPlayerView: View {
                 Text(PlaybackTime.shortRemaining(elapsed: s.elapsed, total: s.total))
                     .monospacedDigit()
                     .fontWeight(.medium)
+                    .fixedSize()
                     .accessibilityLabel("Temps restant")
                     .accessibilityValue(PlaybackTime.spokenRemaining(elapsed: s.elapsed, total: s.total))
                 SpeedLabel(speed: s.speed)
+                    .fixedSize()
             } else {
                 Text(PlaybackTime.emptyText(shortcut: KeyboardShortcuts.getShortcut(for: .readSelection)))
                     .lineLimit(1)

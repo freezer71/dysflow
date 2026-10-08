@@ -77,7 +77,7 @@ struct PlayerBar: View {
 
     static func time(_ seconds: Double?) -> String {
         guard let seconds, seconds.isFinite else { return "–:––" }
-        let t = Int(seconds.rounded())
+        let t = Int(max(0, seconds).rounded())
         return String(format: "%d:%02d", t / 60, t % 60)
     }
 }

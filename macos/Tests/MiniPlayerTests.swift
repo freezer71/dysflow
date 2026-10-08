@@ -37,19 +37,32 @@ final class PlaybackTimeTests: XCTestCase {
 
 @MainActor
 final class MiniPlayerViewTests: XCTestCase {
-    /// La barre tient dans ses 44 pt, avec ou sans document.
-    func testTheBarFitsInItsHeight() {
+    /// Les éléments fixes de la barre, aux pires valeurs (« -99:59 »,
+    /// « 10,0× »), laissent à la timeline au moins 30 pt, et la barre
+    /// tient dans ses 44 pt.
+    func testTheFixedElementsLeaveRoomForTheTimeline() {
         let model = ReaderModel(reader: SillonReader.silent())
-        let empty = NSHostingView(rootView: MiniPlayerView(model: model, theme: .paper))
-        empty.frame = CGRect(origin: .zero, size: SmallPlacement.size)
-        empty.layoutSubtreeIfNeeded()
-        XCTAssertLessThanOrEqual(empty.fittingSize.height, SmallPlacement.size.height)
+        let fixed = HStack(spacing: 10) {
+            PlayButton(model: model)
+            Text(PlaybackTime.shortRemaining(elapsed: 0, total: 99 * 60 + 59))
+                .monospacedDigit().fontWeight(.medium).fixedSize()
+            SpeedLabel(speed: 10).fixedSize()
+            VoiceSettingsButton()
+        }
+        .font(.system(size: 13))
+        let host = NSHostingView(rootView: fixed)
+        let ideal = host.fittingSize
+        // Marge de 14 pt de chaque côté, et un espacement de plus pour la timeline.
+        let room = SmallPlacement.size.width - 2 * 14 - 10 - ideal.width
+        XCTAssertGreaterThanOrEqual(room, 30, "reste \(room) pt pour la timeline")
+        XCTAssertLessThanOrEqual(ideal.height, SmallPlacement.size.height)
+    }
 
-        model.open(text: "Un. Deux.", source: "test")
-        XCTAssertTrue(waitUntil { model.refresh(); return model.snapshot.hasDocument })
-        let full = NSHostingView(rootView: MiniPlayerView(model: model, theme: .paper))
-        full.frame = CGRect(origin: .zero, size: SmallPlacement.size)
-        full.layoutSubtreeIfNeeded()
-        XCTAssertLessThanOrEqual(full.fittingSize.height, SmallPlacement.size.height)
+    func testTheEmptyBarFitsItsHeight() {
+        let model = ReaderModel(reader: SillonReader.silent())
+        let host = NSHostingView(rootView: MiniPlayerView(model: model, theme: .paper))
+        host.frame = CGRect(origin: .zero, size: SmallPlacement.size)
+        host.layoutSubtreeIfNeeded()
+        XCTAssertLessThanOrEqual(host.fittingSize.height, SmallPlacement.size.height)
     }
 }
