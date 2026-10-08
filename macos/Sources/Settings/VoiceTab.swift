@@ -9,6 +9,10 @@ struct VoiceTab: View {
     @Bindable var store: SettingsStore
     @State private var installed: [VoiceModel] = []
     @State private var modelError = ErrorNote()
+    /// Le focus va à la liste des voix : flèches pour choisir, Espace pour
+    /// écouter. Sinon il tombe sur le premier champ de texte, et Espace y
+    /// tape un espace.
+    @FocusState private var voiceListFocused: Bool
 
     var body: some View {
         Form {
@@ -86,6 +90,8 @@ struct VoiceTab: View {
             .frame(height: 150)
             .accessibilityLabel("Voix du modèle")
             .accessibilityIdentifier("liste-voix")
+            .focused($voiceListFocused)
+            .onAppear { DispatchQueue.main.async { voiceListFocused = true } }
             // Espace fait entendre la voix choisie, comme « Écouter ». À
             // l'appui seulement : Espace tenu ne relance pas la synthèse.
             .onKeyPress(.space, phases: .down) { _ in
