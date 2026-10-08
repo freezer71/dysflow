@@ -1,5 +1,6 @@
 import AppKit
 import KeyboardShortcuts
+import MediaPlayer
 
 /// Point d'entrée AppKit : le lecteur vit aussi longtemps que l'app.
 @MainActor
@@ -23,6 +24,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
     private(set) var model: ReaderModel!
     private(set) var panel: PanelController!
+    /// Lecture, pause, phrases et timeline venues d'ailleurs que du panneau.
+    private(set) var transport: Transport!
+    /// « À l'écoute » et les touches média ; jamais avec le lecteur muet des
+    /// tests (il prendrait les touches média de l'utilisateur).
+    private(set) var nowPlaying: NowPlaying?
     /// Le magasin de la fenêtre des réglages tant qu'elle existe.
     weak var settingsStore: SettingsStore?
 
@@ -56,6 +62,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model = ReaderModel(reader: reader)
         model.refresh()
         panel = PanelController(model: model)
+        transport = Transport(model: model)
+        if !readerIsSilent { installNowPlaying() }
         // Le mode laissé à la dernière fermeture (sous les tests : suite
         // vidée, donc l'arrière-plan).
         panel.restore()
@@ -95,6 +103,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 show: { panel.apply(.readSelection) }
             ).run()
         }
+    }
+
+    private func installNowPlaying() {
+        let model = model!
+        let nowPlaying = NowPlaying(
+            center: MPNowPlayingInfoCenter.default(),
+            remote: SystemRemoteCommands(),
+            transport: transport,
+            restDelay: { NowPlaying.restDelay(keepVoiceMinutes: await model.loadSettings().keepVoiceMinutes) },
+            refresh: { model.refresh() })
+        model.onChange = { snapshot, document in nowPlaying.update(snapshot, document: document) }
+        self.nowPlaying = nowPlaying
     }
 
     private func installShortcuts() {
