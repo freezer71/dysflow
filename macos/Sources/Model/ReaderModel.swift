@@ -28,6 +28,10 @@ final class ReaderModel {
     private(set) var sectionPositions: [Double] = []
     /// Le fil d'Ariane de la section lue, recalculé quand elle change.
     private(set) var breadcrumb = ""
+    /// Prévenu quand l'instantané publié change (à la seconde, au millième
+    /// d'avancement, à l'état) — jamais à chaque image : « À l'écoute » suit
+    /// l'état sans minuterie à lui.
+    @ObservationIgnored var onChange: (@MainActor (Snapshot, DocView) -> Void)?
 
     init(reader: SillonReader, now: @escaping () -> Date = Date.init,
          frames: FrameSource? = nil) {
@@ -175,10 +179,11 @@ final class ReaderModel {
 
     func refresh() {
         let next = Self.published(reader.snapshot())
+        let changed = next != snapshot
         let newDocument = next.revision != snapshot.revision
         let newSection = next.section != snapshot.section
         // Ne publier qu'un changement réel : SwiftUI ne redessine pas pour rien.
-        if next != snapshot {
+        if changed {
             snapshot = next
         }
         if newDocument {
@@ -186,6 +191,7 @@ final class ReaderModel {
         } else if newSection {
             breadcrumb = SectionMarkers.breadcrumb(document, section: snapshot.section)
         }
+        if changed { onChange?(snapshot, document) }
         updateTicking()
     }
 
@@ -218,7 +224,11 @@ final class ReaderModel {
         reader.prepareVoice()
         wake()
     }
-    func restVoice() { reader.restVoice() }
+    /// Le repos se voit tout de suite (grâce), même fenêtre masquée.
+    func restVoice() {
+        reader.restVoice()
+        wake()
+    }
 
     // Ces appels passent par le fil du lecteur et bloquent jusqu'à 5 s :
     // pas de long travail sur le fil principal.

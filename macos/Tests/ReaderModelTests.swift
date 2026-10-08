@@ -81,6 +81,25 @@ final class ReaderModelTests: XCTestCase {
         m.open(text: "Deux.", source: "b")
         XCTAssertNil(m.message)
     }
+
+    /// Le crochet ne sonne qu'à un instantané publié qui change, pas à
+    /// chaque relecture identique.
+    func testOnChangeFollowsPublishedChangesOnly() {
+        let m = model("Un. Deux. Trois.")
+        var sentences: [UInt32] = []
+        m.onChange = { s, _ in sentences.append(s.sentence) }
+        // Une fois l'état posé (voix prête), deux relectures identiques ne
+        // préviennent personne.
+        XCTAssertTrue(waitUntil {
+            m.refresh()
+            let before = sentences.count
+            m.refresh()
+            return sentences.count == before
+        })
+        m.send(.sentences(delta: 1))
+        XCTAssertTrue(waitUntil { m.refresh(); return m.snapshot.sentence == 1 })
+        XCTAssertEqual(sentences.last, 1)
+    }
 }
 
 @MainActor
@@ -197,5 +216,21 @@ final class ReaderModelTickingTests: XCTestCase {
         XCTAssertFalse(m.isTicking)
         m.refresh()
         XCTAssertFalse(m.isTicking)
+    }
+
+    /// « Mettre la voix au repos » : l'état est relu (grâce), même panneau
+    /// masqué — « À l'écoute » et le menu le voient.
+    func testRestingTheVoiceIsSeenWithoutWaitingForTheScreen() {
+        let m = hiddenModel()
+        XCTAssertFalse(m.isTicking)
+        m.restVoice()
+        // Fenêtre masquée : la grâce relance la relecture à la seconde, pas
+        // le lien d'affichage.
+        XCTAssertEqual(m.cadence, .second, "la grâce relance le suivi")
+        XCTAssertTrue(waitUntil { () -> Bool in
+            self.frames.tick()
+            if case .resting = m.snapshot.voice { return true }
+            return false
+        })
     }
 }
