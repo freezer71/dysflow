@@ -12,12 +12,29 @@ fn main() {
     println!("cargo:rerun-if-env-changed=SILLON_AUDIOCPP_DIR");
     println!("cargo:rerun-if-env-changed=SILLON_TTS_FAMILIES");
 
+    build_sonic();
+
     #[cfg(feature = "audio-cpp")]
     build_audio_cpp();
 
     // Le catalogue de modèles ne propose que des familles chargeables.
     #[cfg(not(feature = "audio-cpp"))]
     println!("cargo:rustc-env=SILLON_COMPILED_FAMILIES=");
+}
+
+/// Sonic : la vitesse de lecture, appliquée au son sans changer la hauteur.
+///
+/// Deux fichiers C sans dépendance, compilés à chaque build — quelques
+/// dixièmes de seconde, et la vitesse marche avec toutes les voix.
+fn build_sonic() {
+    println!("cargo:rerun-if-changed=third_party/sonic/sonic.c");
+    println!("cargo:rerun-if-changed=third_party/sonic/sonic.h");
+    cc::Build::new()
+        .file("third_party/sonic/sonic.c")
+        .include("third_party/sonic")
+        .opt_level(2)
+        .warnings(false)
+        .compile("sonic");
 }
 
 #[cfg(feature = "audio-cpp")]

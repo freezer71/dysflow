@@ -41,13 +41,14 @@ libc = "0.2"
 
 [build-dependencies]
 cmake = { version = "0.1", optional = true }
-cc = { version = "1.1", optional = true }
+# Sonic (accélération de la parole) se compile toujours : deux fichiers C.
+cc = "1.1"
 
 [features]
 # Par défaut le binaire se construit en secondes et se replie sur le TTS système.
 default = ["clipboard"]
 # Compile et lie audio.cpp dans le binaire (nécessite CMake + le submodule vendor/audio.cpp).
-audio-cpp = ["dep:cmake", "dep:cc"]
+audio-cpp = ["dep:cmake"]
 # Donne accès au presse-papiers : coller du texte ne demande rien de plus.
 clipboard = ["dep:arboard"]
 # Compile Tesseract dans le binaire pour lire images et scans, presse-papiers
