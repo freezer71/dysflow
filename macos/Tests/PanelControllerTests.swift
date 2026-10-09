@@ -467,6 +467,19 @@ final class PanelControllerTests: XCTestCase {
         XCTAssertTrue(waitUntil { self.textView(c) != nil })
     }
 
+    /// En arrière-plan la recherche est annulée : le grand mode ne revient
+    /// pas avec un champ vide et un compteur « n / m » périmé.
+    func testGoingToTheBackgroundCancelsAnActiveSearch() {
+        let c = shownPanel("Un. Deux.")
+        c.perform(.openSearch)
+        XCTAssertTrue(c.searchActive)
+        c.collapseOrHide()
+        c.collapseOrHide()
+        XCTAssertEqual(c.mode, .background)
+        XCTAssertFalse(c.searchActive)
+        XCTAssertNil(c.model.snapshot.search)
+    }
+
     /// Chaque « / » redemande le focus du champ, même déjà ouvert.
     func testEachSearchKeyAsksForTheField() {
         let c = shownPanel("Un. Deux.")

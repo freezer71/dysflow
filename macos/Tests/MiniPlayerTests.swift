@@ -67,6 +67,12 @@ final class MiniPlayerViewTests: XCTestCase {
     }
 
     /// Chaque bouton de barre offre une cible d'au moins 32 × 32 pt.
+    func testHoverBackgroundOnlyOnAnEnabledButton() {
+        XCTAssertTrue(BarButtonMetrics.showsHover(hovering: true, enabled: true))
+        XCTAssertFalse(BarButtonMetrics.showsHover(hovering: true, enabled: false))
+        XCTAssertFalse(BarButtonMetrics.showsHover(hovering: false, enabled: true))
+    }
+
     func testEveryBarButtonHasAComfortableTarget() {
         XCTAssertGreaterThanOrEqual(BarButtonMetrics.target, 32)
         XCTAssertGreaterThanOrEqual(BarButtonMetrics.disc, 36)

@@ -9,7 +9,7 @@ enum DisplayMode: String, Equatable, CaseIterable {
 
 /// Ce qui fait changer de mode.
 enum DisplayEvent: Equatable {
-    /// ⌘1, ⌘2, ⌘3, ⏎, le sous-menu « Afficher ».
+    /// ⌘1, ⌘2, ⌘3, ⏎, le sous-menu « Taille ».
     case choose(DisplayMode)
     /// Échap : du grand au moyen, sinon l'arrière-plan.
     case escape

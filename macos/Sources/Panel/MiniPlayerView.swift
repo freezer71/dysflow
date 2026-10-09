@@ -101,6 +101,7 @@ struct MiniTimeRow: View {
                 .monospacedDigit().fixedSize()
                 .accessibilityLabel(Self.elapsedLabel)
                 .accessibilityValue(Self.elapsedValue(elapsed))
+                .accessibilityIdentifier("temps-ecoule")
             Timeline(progress: Double(progress), markers: [], theme: theme)
                 .frame(minWidth: 30)
                 .frame(height: 9)
@@ -113,6 +114,7 @@ struct MiniTimeRow: View {
                 .monospacedDigit().fixedSize()
                 .accessibilityLabel("Temps restant")
                 .accessibilityValue(spokenRemaining)
+                .accessibilityIdentifier("temps-restant")
         }
         .frame(height: 16)
     }

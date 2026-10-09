@@ -41,7 +41,7 @@ final class DisplayModeUITests: XCTestCase {
             XCTAssertTrue(app.buttons[id].exists, "\(id) absent de la barre")
         }
         // Un document est ouvert : la rangée des temps est là.
-        XCTAssertTrue(app.staticTexts["Temps écoulé"].exists || app.descendants(matching: .any)["Temps écoulé"].exists)
+        XCTAssertTrue(app.staticTexts["temps-ecoule"].exists || app.descendants(matching: .any)["temps-ecoule"].exists)
         // Les touches de lecture restent actives dans la barre.
         app.typeKey(" ", modifierFlags: [])
         XCTAssertTrue(app.buttons["lecture"].waitForLabel("Pause"))

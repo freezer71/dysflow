@@ -86,4 +86,34 @@ final class SmallPlacementTests: XCTestCase {
         XCTAssertEqual(SmallPlacement.frame(savedOrigin: CGPoint(x: 5, y: 5), screens: [], main: main),
                        SmallPlacement.defaultFrame(on: main))
     }
+
+    func testASecondScreenWithANegativeOriginKeepsItsPlace() {
+        let left = CGRect(x: -1920, y: -100, width: 1920, height: 1080)
+        let origin = CGPoint(x: -1000, y: 300)
+        let frame = SmallPlacement.frame(savedOrigin: origin, screens: [main, left], main: main)
+        XCTAssertEqual(frame, CGRect(origin: origin, size: SmallPlacement.size))
+        // À cheval sur x = 0 : l'écran qui en montre le plus la reçoit, entière.
+        let straddling = CGPoint(x: -SmallPlacement.size.width * 0.75, y: 300)
+        let pulled = SmallPlacement.frame(savedOrigin: straddling, screens: [main, left], main: main)
+        XCTAssertEqual(pulled.origin, CGPoint(x: -SmallPlacement.size.width, y: 300))
+        XCTAssertTrue(left.contains(pulled))
+        let other = CGPoint(x: -SmallPlacement.size.width * 0.25, y: 300)
+        let onMain = SmallPlacement.frame(savedOrigin: other, screens: [main, left], main: main)
+        XCTAssertEqual(onMain.origin, CGPoint(x: 0, y: 300))
+        XCTAssertTrue(main.contains(onMain))
+    }
+
+    func testABarNearTheTopEdgeStaysBelowTheMenuBar() {
+        // visibleFrame : la barre des menus (24 pt) est déjà retranchée.
+        let visible = CGRect(x: 0, y: 0, width: 1440, height: 851)
+        let frame = SmallPlacement.frame(savedOrigin: CGPoint(x: 200, y: 851 - 10), screens: [visible], main: visible)
+        XCTAssertEqual(frame.maxY, visible.maxY)
+        XCTAssertTrue(visible.contains(frame))
+        XCTAssertEqual(frame.size, SmallPlacement.size)
+    }
+
+    func testAPlaceFarOutsideEveryScreenReturnsToTheDefaultFrame() {
+        let frame = SmallPlacement.frame(savedOrigin: CGPoint(x: 9000, y: -7000), screens: [main, side], main: main)
+        XCTAssertEqual(frame, SmallPlacement.defaultFrame(on: main))
+    }
 }

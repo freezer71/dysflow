@@ -135,6 +135,9 @@ final class PanelController {
     /// ne relit plus l'état qu'une fois par seconde, et seulement s'il lit.
     private func hideWindow() {
         guard mode != .background else { return }
+        // Une recherche en cours ne survit pas : sinon le grand mode reviendrait
+        // avec un champ vide et un compteur « n / m » périmé.
+        if searchActive { searchActive = false; model.send(.searchCancel) }
         mode = .background
         if window.isVisible { window.orderOut(nil) }
         model.presence = .hidden

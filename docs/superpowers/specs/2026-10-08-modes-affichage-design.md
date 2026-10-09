@@ -34,6 +34,7 @@ actuels restent pour les moments où il suit le texte.
   l'arrière-plan, il ouvre le mode moyen pour montrer ce qui est lu.
 - **Échap** dans le grand mode garde son sens actuel en deux temps : il
   réduit d'abord au mode moyen, puis passe en arrière-plan.
+- Échap et ⌘W ne mettent pas en pause : la lecture continue en arrière-plan.
 - L'aide (`?`) et le menu de la barre des menus listent ⌘1, ⌘2, ⌘3.
 
 ### Mode petit
@@ -77,7 +78,7 @@ actuels restent pour les moments où il suit le texte.
   - glisser la timeline : saut à la phrase la plus proche de la position
     visée.
 - **Menu de la barre des menus** (le `MenuBarExtra` existant) : lecture/pause,
-  phrase précédente / suivante, temps restant, sous-menu « Afficher » (petit,
+  phrase précédente / suivante, temps restant, sous-menu « Taille » (petit,
   moyen, grand), en plus de ce qu'il contient déjà.
 - **Raccourcis globaux**, en plus de ⌃⌥Espace et ⌃⌥S, modifiables dans
   l'onglet Raccourcis :

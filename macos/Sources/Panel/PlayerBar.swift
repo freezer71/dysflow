@@ -140,6 +140,9 @@ enum BarButtonMetrics {
     /// Le disque de lecture du mode petit.
     static let disc: CGFloat = 36
     static let discGlyph: CGFloat = 18
+
+    /// Le fond de survol : jamais sur un bouton désactivé.
+    static func showsHover(hovering: Bool, enabled: Bool) -> Bool { hovering && enabled }
 }
 
 /// Le style de tous les boutons de barre : une cible confortable, un fond
@@ -162,16 +165,17 @@ private struct BarButtonBody: View {
     var body: some View {
         let pressed = configuration.isPressed
         let size = disc ? BarButtonMetrics.disc : BarButtonMetrics.target
+        let hover = BarButtonMetrics.showsHover(hovering: hovering, enabled: enabled)
         configuration.label
             .foregroundStyle(disc ? AnyShapeStyle(Color(nsColor: .alternateSelectedControlTextColor)) : AnyShapeStyle(.foreground))
             .frame(minWidth: size, minHeight: size)
             .background {
                 if disc {
                     Circle().fill(Color.accentColor)
-                        .brightness(pressed ? -0.2 : (hovering ? -0.1 : 0))
+                        .brightness(pressed ? -0.2 : (hover ? -0.1 : 0))
                 } else {
                     RoundedRectangle(cornerRadius: 8)
-                        .fill(Color.primary.opacity(pressed ? 0.2 : (hovering ? 0.1 : 0)))
+                        .fill(Color.primary.opacity(pressed ? 0.2 : (hover ? 0.1 : 0)))
                 }
             }
             .contentShape(Rectangle())
