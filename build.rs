@@ -29,8 +29,10 @@ fn main() {
 fn build_sonic() {
     println!("cargo:rerun-if-changed=third_party/sonic/sonic.c");
     println!("cargo:rerun-if-changed=third_party/sonic/sonic.h");
+    println!("cargo:rerun-if-changed=native/sonic_build.c");
+    // sonic.c passe par native/sonic_build.c, qui compte ses allocations.
     cc::Build::new()
-        .file("third_party/sonic/sonic.c")
+        .file("native/sonic_build.c")
         .include("third_party/sonic")
         .opt_level(2)
         .warnings(false)

@@ -88,3 +88,7 @@ required-features = ["audio-cpp"]
 [[example]]
 name = "voice_cycles"
 required-features = ["audio-cpp"]
+
+[[example]]
+name = "speed_headroom"
+required-features = ["audio-cpp"]

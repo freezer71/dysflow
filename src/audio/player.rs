@@ -44,32 +44,34 @@ struct Active {
     speed: f32,
 }
 
+/// L'horloge est passée en paramètre (`now`) : les essais la posent, au lieu
+/// de dormir et d'espérer que la machine suive.
 impl Active {
-    fn elapsed(&self) -> Duration {
+    fn elapsed_at(&self, now: Instant) -> Duration {
         match self.resumed_at {
-            Some(t) => self.accumulated + t.elapsed().mul_f32(self.speed),
+            Some(t) => self.accumulated + now.saturating_duration_since(t).mul_f32(self.speed),
             None => self.accumulated,
         }
     }
 
-    fn pause(&mut self) {
+    fn pause_at(&mut self, now: Instant) {
         if let Some(t) = self.resumed_at.take() {
-            self.accumulated += t.elapsed().mul_f32(self.speed);
+            self.accumulated += now.saturating_duration_since(t).mul_f32(self.speed);
         }
     }
 
     /// Change de vitesse sans perdre ce qui a déjà été entendu.
-    fn set_speed(&mut self, speed: f32) {
+    fn set_speed_at(&mut self, speed: f32, now: Instant) {
         if let Some(t) = self.resumed_at {
-            self.accumulated += t.elapsed().mul_f32(self.speed);
-            self.resumed_at = Some(Instant::now());
+            self.accumulated += now.saturating_duration_since(t).mul_f32(self.speed);
+            self.resumed_at = Some(now);
         }
         self.speed = speed;
     }
 
-    fn resume(&mut self) {
+    fn resume_at(&mut self, now: Instant) {
         if self.resumed_at.is_none() {
-            self.resumed_at = Some(Instant::now());
+            self.resumed_at = Some(now);
         }
     }
 }
@@ -101,7 +103,19 @@ pub struct Player {
     muted: bool,
     /// Vitesse lue par chaque phrase en file, à chaque bloc de 5 ms.
     speed: SpeedControl,
+    /// Fréquence de la carte son : les phrases y sont converties avant le
+    /// mélangeur de rodio, qui sinon perd des échantillons. `None` sans
+    /// sortie connue : la fréquence de la synthèse est gardée.
+    output_rate: Option<u32>,
     error: Option<String>,
+}
+
+/// Fréquence que rodio choisira pour la sortie par défaut : celle de la
+/// configuration par défaut du périphérique (`OutputStream::try_default`).
+fn default_output_rate() -> Option<u32> {
+    use rodio::cpal::traits::{DeviceTrait, HostTrait};
+    let device = rodio::cpal::default_host().default_output_device()?;
+    Some(device.default_output_config().ok()?.sample_rate().0)
 }
 
 impl Default for Player {
@@ -124,6 +138,9 @@ impl Player {
         if let Some(sink) = &sink {
             sink.pause();
         }
+        let output_rate = stream.as_ref().and_then(|_| default_output_rate());
+        // Le fil qui libère les phrases finies naît ici, pas dans le fil audio.
+        super::tempo::prepare();
         Self {
             _stream: stream,
             handle,
@@ -135,6 +152,7 @@ impl Player {
             volume: 1.0,
             muted: false,
             speed: SpeedControl::default(),
+            output_rate,
             error,
         }
     }
@@ -156,6 +174,7 @@ impl Player {
             volume: 1.0,
             muted: false,
             speed: SpeedControl::default(),
+            output_rate: None,
             error: Some("sortie audio désactivée".to_string()),
         }
     }
@@ -179,12 +198,13 @@ impl Player {
     /// Lecteur relié à une file sans carte son, que l'essai vide lui-même au
     /// rythme qu'il veut — comme le ferait la sortie audio.
     #[cfg(test)]
-    pub fn idle() -> (Self, rodio::queue::SourcesQueueOutput<f32>) {
+    pub fn idle(output_rate: u32) -> (Self, rodio::queue::SourcesQueueOutput<f32>) {
         let (sink, output) = Sink::new_idle();
         sink.pause();
         let mut player = Self::silent();
         player.error = None;
         player.sink = Some(sink);
+        player.output_rate = Some(output_rate);
         (player, output)
     }
 
@@ -225,6 +245,7 @@ impl Player {
             Arc::clone(&audio.samples),
             audio.channels,
             audio.sample_rate,
+            self.output_rate.unwrap_or(audio.sample_rate),
             audio.sample_index(offset),
             audio.sample_index(speech),
             self.speed.clone(),
@@ -280,7 +301,7 @@ impl Player {
     pub fn position(&self) -> Option<PlaybackPosition> {
         self.active.as_ref().map(|a| PlaybackPosition {
             sentence_id: a.sentence_id,
-            elapsed: a.elapsed().min(a.total),
+            elapsed: a.elapsed_at(Instant::now()).min(a.total),
             speech: a.speech,
         })
     }
@@ -295,7 +316,7 @@ impl Player {
             sink.play();
         }
         if let Some(active) = self.active.as_mut() {
-            active.resume();
+            active.resume_at(Instant::now());
         }
     }
 
@@ -305,7 +326,7 @@ impl Player {
             sink.pause();
         }
         if let Some(active) = self.active.as_mut() {
-            active.pause();
+            active.pause_at(Instant::now());
         }
     }
 
@@ -360,6 +381,7 @@ impl Player {
                     Arc::clone(&audio.samples),
                     audio.channels,
                     audio.sample_rate,
+                    self.output_rate.unwrap_or(audio.sample_rate),
                     0,
                     audio.samples.len(),
                     self.speed.clone(),
@@ -397,7 +419,7 @@ impl Player {
         self.speed.set(speed);
         let applied = self.speed.get();
         if let Some(active) = self.active.as_mut() {
-            active.set_speed(applied);
+            active.set_speed_at(applied, Instant::now());
         }
     }
 
@@ -440,66 +462,63 @@ impl Player {
 mod tests {
     use super::*;
 
-    fn active(speech_ms: u64) -> Active {
+    const MS: fn(u64) -> Duration = Duration::from_millis;
+
+    /// Une phrase qui sonne depuis `t0`, à 1×.
+    fn active(speech_ms: u64, t0: Instant) -> Active {
         Active {
             sentence_id: 0,
-            total: Duration::from_millis(speech_ms),
-            speech: Duration::from_millis(speech_ms),
+            total: MS(speech_ms),
+            speech: MS(speech_ms),
             accumulated: Duration::ZERO,
-            resumed_at: Some(Instant::now()),
+            resumed_at: Some(t0),
             speed: 1.0,
         }
     }
 
     #[test]
     fn timer_freezes_while_paused() {
-        let mut a = active(1000);
-        std::thread::sleep(Duration::from_millis(30));
-        a.pause();
-        let frozen = a.elapsed();
-        std::thread::sleep(Duration::from_millis(40));
-        assert_eq!(a.elapsed(), frozen, "le chronomètre a avancé en pause");
+        let t0 = Instant::now();
+        let mut a = active(1000, t0);
+        a.pause_at(t0 + MS(30));
+        assert_eq!(a.elapsed_at(t0 + MS(30)), MS(30));
+        assert_eq!(a.elapsed_at(t0 + MS(70)), MS(30), "le chronomètre a avancé en pause");
     }
 
     #[test]
     fn timer_resumes_where_it_stopped() {
-        let mut a = active(1000);
-        std::thread::sleep(Duration::from_millis(30));
-        a.pause();
-        let paused_at = a.elapsed();
-        a.resume();
-        std::thread::sleep(Duration::from_millis(30));
-        assert!(a.elapsed() > paused_at);
-        // La reprise ne repart pas de zéro.
-        assert!(a.elapsed() >= paused_at);
+        let t0 = Instant::now();
+        let mut a = active(1000, t0);
+        a.pause_at(t0 + MS(30));
+        a.resume_at(t0 + MS(100));
+        // La reprise ne repart pas de zéro, et ne compte pas la pause.
+        assert_eq!(a.elapsed_at(t0 + MS(130)), MS(60));
     }
 
     #[test]
     fn the_timer_counts_synthesis_time_at_the_playback_speed() {
         // À 2×, une seconde d'horloge fait entendre deux secondes de parole
         // synthétisée : le surlignage doit avancer d'autant.
-        let mut a = active(10_000);
+        let t0 = Instant::now();
+        let mut a = active(10_000, t0);
         a.speed = 2.0;
-        a.accumulated = Duration::ZERO;
-        a.resumed_at = Some(Instant::now());
-        std::thread::sleep(Duration::from_millis(100));
-        a.pause();
-        let ms = a.elapsed().as_millis();
-        assert!((195..260).contains(&ms), "{ms} ms");
+        assert_eq!(a.elapsed_at(t0 + MS(100)), MS(200));
+        a.pause_at(t0 + MS(100));
+        assert_eq!(a.elapsed_at(t0 + MS(500)), MS(200));
     }
 
     #[test]
     fn a_speed_change_keeps_what_was_already_heard() {
-        let mut a = active(10_000);
-        std::thread::sleep(Duration::from_millis(60));
-        a.set_speed(3.0);
-        let heard = a.elapsed();
-        assert!(heard >= Duration::from_millis(60), "{heard:?}");
-        std::thread::sleep(Duration::from_millis(60));
-        a.pause();
-        // 60 ms à 1×, puis 60 ms à 3× : environ 240 ms de parole.
-        let ms = a.elapsed().as_millis();
-        assert!((235..320).contains(&ms), "{ms} ms");
+        let t0 = Instant::now();
+        let mut a = active(10_000, t0);
+        a.set_speed_at(3.0, t0 + MS(60));
+        assert_eq!(a.elapsed_at(t0 + MS(60)), MS(60));
+        // 60 ms à 1×, puis 60 ms à 3× : 240 ms de parole.
+        assert_eq!(a.elapsed_at(t0 + MS(120)), MS(240));
+        // En pause, un changement de vitesse ne fait rien avancer.
+        a.pause_at(t0 + MS(120));
+        a.set_speed_at(0.5, t0 + MS(200));
+        assert_eq!(a.elapsed_at(t0 + MS(300)), MS(240));
     }
 
     /// Du lecteur jusqu'au son : la file est vidée comme le ferait la carte
@@ -507,7 +526,8 @@ mod tests {
     #[test]
     fn a_speed_change_reaches_the_output_without_flushing_the_queue() {
         use crate::audio::sonic::tests::{speech_like, RATE};
-        let (mut player, mut output) = Player::idle();
+        // Sortie à 24 kHz comme la synthèse : on compare au son d'origine.
+        let (mut player, mut output) = Player::idle(RATE);
         let speech = speech_like(3.0);
         let audio = Arc::new(PcmBuffer::new(speech.clone(), RATE, 1));
         player.enqueue(0, &audio, audio.duration);

@@ -22,7 +22,22 @@ extern "C" {
     fn sonicFlushStream(stream: sonicStream) -> c_int;
     fn sonicSamplesAvailable(stream: sonicStream) -> c_int;
     fn sonicSetSpeed(stream: sonicStream, speed: c_float);
+    fn sonicSetQuality(stream: sonicStream, quality: c_int);
+    fn sillon_sonic_heap_calls_on_this_thread() -> u64;
 }
+
+/// Appels de Sonic au tas (calloc, realloc, free) faits par le fil courant.
+///
+/// Sert à vérifier que le fil audio n'alloue rien une fois la phrase prête.
+pub fn heap_calls_on_this_thread() -> u64 {
+    unsafe { sillon_sonic_heap_calls_on_this_thread() }
+}
+
+/// Marge avant Sonic, qui stocke en 16 bits et déborderait au-delà de ±1 :
+/// le son y entre à moitié et en ressort doublé. Les crêtes d'un modèle
+/// jusqu'à ±2 passent intactes, et l'écrêtage n'a lieu qu'à la sortie, après
+/// le volume. Coût : un bit de résolution, bruit de fond vers −84 dB.
+const HEADROOM: f32 = 0.5;
 
 /// Vitesses que Sonic accepte ici. Les réglages du lecteur (0,5–3×) y tiennent
 /// largement ; au-delà, la parole devient inintelligible bien avant Sonic.
@@ -34,8 +49,8 @@ pub struct Sonic {
     raw: NonNull<c_void>,
     channels: usize,
     speed: f32,
-    /// Copie bornée de l'entrée : Sonic stocke en 16 bits et multiplie par
-    /// 32767 sans borner — un échantillon à 1,2 y deviendrait négatif.
+    /// Copie de l'entrée mise à l'échelle et bornée : Sonic stocke en 16 bits
+    /// et multiplie par 32767 sans borner — au-delà, le signe s'inverserait.
     scratch: Vec<f32>,
 }
 
@@ -51,6 +66,18 @@ impl Sonic {
         let raw = unsafe { sonicCreateStream(sample_rate.max(1) as c_int, channels as c_int) };
         let raw = NonNull::new(raw).expect("Sonic : mémoire insuffisante pour ouvrir un flux");
         Self { raw, channels: channels as usize, speed: 1.0, scratch: Vec::new() }
+    }
+
+    /// Réserve la copie d'entrée pour des écritures de `samples` échantillons,
+    /// afin qu'elles n'allouent plus rien ensuite.
+    pub fn reserve(&mut self, samples: usize) {
+        self.scratch.reserve(samples.saturating_sub(self.scratch.len()));
+    }
+
+    /// 0 (défaut) : hauteur cherchée sur un signal sous-échantillonné ; 1 :
+    /// à pleine résolution, plus précis, plus coûteux.
+    pub fn set_quality(&mut self, quality: i32) {
+        unsafe { sonicSetQuality(self.raw.as_ptr(), quality as c_int) };
     }
 
     pub fn speed(&self) -> f32 {
@@ -76,7 +103,7 @@ impl Sonic {
         }
         self.scratch.clear();
         self.scratch
-            .extend(samples[..frames * self.channels].iter().map(|s| s.clamp(-1.0, 1.0)));
+            .extend(samples[..frames * self.channels].iter().map(|s| (s * HEADROOM).clamp(-1.0, 1.0)));
         let ok = unsafe {
             sonicWriteFloatToStream(self.raw.as_ptr(), self.scratch.as_ptr(), frames as c_int)
         };
@@ -97,6 +124,9 @@ impl Sonic {
         }
         .max(0) as usize;
         out.truncate(start + read * self.channels);
+        for s in &mut out[start..] {
+            *s /= HEADROOM;
+        }
         read * self.channels
     }
 
@@ -175,7 +205,7 @@ pub(crate) mod tests {
         let out = stretch(&input, RATE, 1, 1.0);
         assert_eq!(out.len(), input.len(), "1× ne doit ni ajouter ni retirer");
         let worst = input.iter().zip(&out).map(|(a, b)| (a - b).abs()).fold(0.0, f32::max);
-        // Seule perte : le passage par 16 bits.
+        // Seule perte : le passage par 16 bits (15 utiles, marge comprise).
         assert!(worst < 1e-3, "écart maximal {worst}");
     }
 
@@ -209,15 +239,24 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn a_sample_above_full_scale_saturates_instead_of_wrapping() {
-        // Sans borne, 1,2 × 32767 déborde un `short` et ressort négatif.
+    fn a_peak_above_full_scale_passes_intact() {
+        // Sans marge, 1,2 × 32767 déborde un `short` et ressort négatif ; avec
+        // un simple écrêtage, la crête serait aplatie avant même le volume.
         let input = sine(220.0, 1.0, 1.2);
+        let out = stretch(&input, RATE, 1, 1.0);
+        let worst = input.iter().zip(&out).map(|(a, b)| (a - b).abs()).fold(0.0, f32::max);
+        assert!(worst < 1e-3, "écart maximal {worst}");
+    }
+
+    #[test]
+    fn beyond_twice_full_scale_it_saturates_instead_of_wrapping() {
+        let input = sine(220.0, 1.0, 3.0);
         let out = stretch(&input, RATE, 1, 1.0);
         for (a, b) in input.iter().zip(&out) {
             if a.abs() > 0.01 {
                 assert_eq!(a.signum(), b.signum(), "{a} ressorti à {b}");
             }
-            assert!(b.abs() <= 1.0);
+            assert!(b.abs() <= 2.0 + 1e-3);
         }
     }
 
