@@ -126,6 +126,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task { @MainActor in await self.read(capture: { await chain.capture() }) }
         }
         KeyboardShortcuts.onKeyUp(for: .showPanel) { [unowned self] in self.panel.show() }
+        // Sans document, rien ne part (Transport).
+        KeyboardShortcuts.onKeyUp(for: .playPause) { [unowned self] in _ = self.transport.perform(.toggle) }
+        KeyboardShortcuts.onKeyUp(for: .nextSentence) { [unowned self] in _ = self.transport.perform(.next) }
+        KeyboardShortcuts.onKeyUp(for: .previousSentence) { [unowned self] in _ = self.transport.perform(.previous) }
     }
 
     static let sample = """

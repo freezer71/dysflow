@@ -135,9 +135,10 @@ struct HelpOverlay: View {
         ("⌥↑ ⌥↓", "Volume"), ("r", "Reprendre la phrase"),
         ("/ · N P", "Chercher · résultat suivant / précédent"),
         ("t · B · b", "Sommaire · signets · poser un signet"),
-        ("⏎", "Agrandir"), ("⌘C", "Copier la phrase"), ("⌘,", "Réglages"),
+        ("⏎", "Agrandir"), ("⌘1 ⌘2 ⌘3", "Petit · moyen · grand"),
+        ("⌘C", "Copier la phrase"), ("⌘,", "Réglages"),
         ("v", "Réglages de la voix"),
-        ("Échap", "Revenir · masquer"),
+        ("Échap", "Revenir · arrière-plan"),
     ]
 
     var body: some View {

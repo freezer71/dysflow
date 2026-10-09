@@ -1,15 +1,43 @@
+import KeyboardShortcuts
 import SwiftUI
 
 struct MenuContent: View {
+    private var app: AppDelegate? { AppDelegate.shared }
     private var model: ReaderModel? { AppDelegate.shared?.model }
 
     var body: some View {
+        // Le temps restant vient de l'instantané du modèle : aucune minuterie
+        // ajoutée, il se met à jour à la cadence existante.
+        let s = model?.snapshot
+        let hasDocument = s?.hasDocument ?? false
         // Un clic dans le menu a déjà pris le focus à l'application : seule
         // la copie déjà faite est atteignable d'ici.
         Button("Lire le presse-papiers") {
             Task { @MainActor in await AppDelegate.shared?.read() }
         }
-        Button("Afficher sillon") { AppDelegate.shared?.panel.show() }
+        // Toujours là, même relancée en arrière-plan : de quoi revenir.
+        Button("Afficher sillon") { app?.panel.show() }
+        Menu("Afficher") {
+            Button("Petit") { app?.panel.apply(.choose(.small)) }
+                .keyboardShortcut("1", modifiers: .command)
+            Button("Moyen") { app?.panel.apply(.choose(.medium)) }
+                .keyboardShortcut("2", modifiers: .command)
+            Button("Grand") { app?.panel.apply(.choose(.large)) }
+                .keyboardShortcut("3", modifiers: .command)
+        }
+        Divider()
+        Button(s?.playing == true ? "Pause" : "Lecture") { _ = app?.transport.perform(.toggle) }
+            .globalKeyboardShortcut(.playPause)
+            .disabled(!hasDocument)
+        Button("Phrase précédente") { _ = app?.transport.perform(.previous) }
+            .globalKeyboardShortcut(.previousSentence)
+            .disabled(!hasDocument)
+        Button("Phrase suivante") { _ = app?.transport.perform(.next) }
+            .globalKeyboardShortcut(.nextSentence)
+            .disabled(!hasDocument)
+        if hasDocument, let line = PlaybackTime.menuLine(elapsed: s?.elapsed, total: s?.total) {
+            Text(line)
+        }
         Divider()
         Text(voiceLine)
         if Onboarding.needsReminder {
