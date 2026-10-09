@@ -4,8 +4,11 @@ import XCTest
 /// avec l'accord de l'utilisateur :
 /// `-only-testing:SillonUITests/DisplayModeUITests`.
 final class DisplayModeUITests: XCTestCase {
-    private func launch() -> XCUIApplication {
+    override func setUp() {
         continueAfterFailure = false
+    }
+
+    private func launch() -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--show-panel"]
         app.launch()
@@ -18,8 +21,16 @@ final class DisplayModeUITests: XCTestCase {
         app.typeKey("1", modifierFlags: .command)
         let small = app.groups["lecteur-reduit"]
         XCTAssertTrue(small.waitForExistence(timeout: 2), "⌘1 : pas de barre")
-        XCTAssertTrue(app.groups["barre-mini"].waitForExistence(timeout: 2), "⌘1 : barre vide")
+        XCTAssertTrue(app.descendants(matching: .any)["barre-mini"].waitForExistence(timeout: 2), "⌘1 : barre vide")
         XCTAssertTrue(app.buttons["lecture"].waitForExistence(timeout: 2))
+        // Le passage moyen → petit est animé : on attend la taille finale
+        // (SmallPlacement.size, 340 × 88, hors de portée de la cible de tests).
+        let settled = XCTNSPredicateExpectation(
+            predicate: NSPredicate { _, _ in
+                abs(small.frame.width - 340) <= 2 && abs(small.frame.height - 88) <= 2
+            }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [settled], timeout: 2), .completed,
+                       "⌘1 : la barre n'a pas atteint 340 × 88 (\(small.frame.size))")
         return small
     }
 
@@ -29,8 +40,8 @@ final class DisplayModeUITests: XCTestCase {
         for id in ["ligne-precedente", "mot-precedent", "mot-suivant", "ligne-suivante", "reglages-voix"] {
             XCTAssertTrue(app.buttons[id].exists, "\(id) absent de la barre")
         }
-        // Un document est ouvert : pas d'état vide.
-        XCTAssertFalse(app.staticTexts["rien-a-lire"].exists)
+        // Un document est ouvert : la rangée des temps est là.
+        XCTAssertTrue(app.staticTexts["Temps écoulé"].exists || app.descendants(matching: .any)["Temps écoulé"].exists)
         // Les touches de lecture restent actives dans la barre.
         app.typeKey(" ", modifierFlags: [])
         XCTAssertTrue(app.buttons["lecture"].waitForLabel("Pause"))
