@@ -115,11 +115,7 @@ final class ReaderModel {
                                 download: snapshot.download)
         cadence = next
         if next == .screen { start() } else { stop() }
-        switch next {
-        case .glance: startPolling(every: Self.glanceInterval)
-        case .second: startPolling(every: Self.secondInterval)
-        case .none, .screen: stopPolling()
-        }
+        if let interval = Self.pollInterval(for: next) { startPolling(every: interval) } else { stopPolling() }
     }
 
     /// Le suivi à la cadence de l'écran.
@@ -129,6 +125,17 @@ final class ReaderModel {
 
     func stop() {
         frames.stop()
+    }
+
+    /// L'intervalle de la minuterie de relecture pour une cadence. À la
+    /// cadence de l'écran, la seconde reste en filet : un écran en veille
+    /// n'envoie plus d'images, et l'état doit pourtant être relu.
+    static func pollInterval(for cadence: Cadence) -> TimeInterval? {
+        switch cadence {
+        case .none: return nil
+        case .glance: return glanceInterval
+        case .second, .screen: return secondInterval
+        }
     }
 
     /// Une seule minuterie de relecture, remplacée si le rythme change.
@@ -172,10 +179,28 @@ final class ReaderModel {
     /// Relance le suivi et relit tout de suite l'état.
     private func wake() {
         keepAliveUntil = now().addingTimeInterval(Self.gracePeriod)
+        scheduleGraceEnd()
         // La cadence (écran, coup d'œil ou seconde) se décide selon la
         // présence de la fenêtre.
         refresh()
     }
+
+    /// La fin de la grâce, à l'heure : sans image (écran en veille), rien
+    /// d'autre ne la verrait, et la cadence de l'écran resterait. Une seule
+    /// minuterie, sans répétition, remplacée à chaque commande.
+    private func scheduleGraceEnd() {
+        graceTimer?.invalidate()
+        let timer = Timer(timeInterval: Self.gracePeriod + 0.01, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.graceTimer = nil
+                self?.refresh()
+            }
+        }
+        timer.tolerance = 0.05
+        RunLoop.main.add(timer, forMode: .common)
+        graceTimer = timer
+    }
+    @ObservationIgnored private var graceTimer: Timer?
 
     func refresh() {
         let next = Self.published(reader.snapshot())

@@ -179,6 +179,29 @@ final class ReaderModelTickingTests: XCTestCase {
         }
     }
 
+    /// La relecture par minuterie : la seconde reste en filet quand l'écran
+    /// doit donner les images (écran en veille : aucune n'arrive).
+    func testPollIntervalForEachCadence() {
+        XCTAssertNil(ReaderModel.pollInterval(for: .none))
+        XCTAssertEqual(ReaderModel.pollInterval(for: .second), ReaderModel.secondInterval)
+        XCTAssertEqual(ReaderModel.pollInterval(for: .glance), ReaderModel.glanceInterval)
+        XCTAssertEqual(ReaderModel.pollInterval(for: .screen), ReaderModel.secondInterval)
+    }
+
+    /// Écran en veille : aucune image n'arrive. La fin de la grâce se voit
+    /// quand même, à l'heure — sinon le texte affiché resterait à la cadence
+    /// de l'écran, sans jamais relire l'état.
+    func testTheGraceEndsWithoutAnyFrame() {
+        let silentFrames = ManualFrames()  // jamais d'image
+        let m = ReaderModel(reader: SillonReader.silent(), frames: silentFrames)
+        m.open(text: "Un. Deux.", source: "test")
+        m.presence = .full
+        XCTAssertEqual(m.cadence, .screen, "la grâce d'une commande")
+        XCTAssertTrue(waitUntil(2) { m.cadence == .glance }, "cadence : \(m.cadence)")
+        XCTAssertEqual(m.snapshot.revision, 1, "le document est relu sans image ni refresh manuel")
+        XCTAssertFalse(silentFrames.isRunning)
+    }
+
     /// En arrière-plan, la lecture se voit sans refresh manuel, à la
     /// seconde, sans lien d'affichage.
     func testHiddenPlayIsSeenWithoutManualRefresh() {
