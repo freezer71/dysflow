@@ -29,6 +29,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// « À l'écoute » et les touches média ; jamais avec le lecteur muet des
     /// tests (il prendrait les touches média de l'utilisateur).
     private(set) var nowPlaying: NowPlaying?
+    private var menuObserver: NSObjectProtocol?
+
+    /// Le modèle ne suit rien en pause et en arrière-plan : à l'ouverture
+    /// d'un menu (celui de la barre des menus compris), l'état est relu une
+    /// fois. Aucune minuterie, rien entre deux ouvertures.
+    @discardableResult
+    static func refreshWhenAMenuOpens(center: NotificationCenter = .default,
+                                      refresh: @escaping @MainActor () -> Void) -> NSObjectProtocol {
+        center.addObserver(forName: NSMenu.didBeginTrackingNotification, object: nil, queue: .main) { _ in
+            MainActor.assumeIsolated { refresh() }
+        }
+    }
     /// Le magasin de la fenêtre des réglages tant qu'elle existe.
     weak var settingsStore: SettingsStore?
 
@@ -63,6 +75,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model.refresh()
         panel = PanelController(model: model)
         transport = Transport(model: model)
+        menuObserver = Self.refreshWhenAMenuOpens { [model] in model?.refresh() }
         if !readerIsSilent { installNowPlaying() }
         // Le mode laissé à la dernière fermeture (sous les tests : suite
         // vidée, donc l'arrière-plan).

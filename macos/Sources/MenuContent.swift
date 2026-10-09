@@ -17,7 +17,7 @@ struct MenuContent: View {
         }
         // Toujours là, même relancée en arrière-plan : de quoi revenir.
         Button("Afficher sillon") { app?.panel.show() }
-        Menu("Afficher") {
+        Menu("Taille") {
             Button("Petit") { app?.panel.apply(.choose(.small)) }
                 .keyboardShortcut("1", modifiers: .command)
             Button("Moyen") { app?.panel.apply(.choose(.medium)) }
