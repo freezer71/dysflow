@@ -44,6 +44,13 @@ final class ReaderModel {
         self.frames.onFrame = { [weak self] in self?.refresh() }
     }
 
+    /// La boucle principale retient les minuteries : elles partent avec le
+    /// modèle.
+    deinit {
+        pollTimer?.invalidate()
+        graceTimer?.invalidate()
+    }
+
     private func outline() {
         tableOfContents = SectionMarkers.tableOfContents(document)
         sectionPositions = SectionMarkers.positions(document)
@@ -84,6 +91,8 @@ final class ReaderModel {
     }
     @ObservationIgnored private(set) var cadence: Cadence = .none
     @ObservationIgnored private var pollTimer: Timer?
+    /// La fin de la grâce d'une commande (voir `scheduleGraceEnd`).
+    @ObservationIgnored private var graceTimer: Timer?
     static let glanceInterval: TimeInterval = 0.25
     static let secondInterval: TimeInterval = 1
 
@@ -200,7 +209,6 @@ final class ReaderModel {
         RunLoop.main.add(timer, forMode: .common)
         graceTimer = timer
     }
-    @ObservationIgnored private var graceTimer: Timer?
 
     func refresh() {
         let next = Self.published(reader.snapshot())

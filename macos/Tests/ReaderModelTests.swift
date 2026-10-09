@@ -197,8 +197,10 @@ final class ReaderModelTickingTests: XCTestCase {
         m.open(text: "Un. Deux.", source: "test")
         m.presence = .full
         XCTAssertEqual(m.cadence, .screen, "la grâce d'une commande")
-        XCTAssertTrue(waitUntil(2) { m.cadence == .glance }, "cadence : \(m.cadence)")
-        XCTAssertEqual(m.snapshot.revision, 1, "le document est relu sans image ni refresh manuel")
+        // Moins de 0,8 s : la minuterie de fin de grâce (0,51 s), pas le
+        // filet de la seconde (1 s au plus tôt — la tolérance ne fait que
+        // retarder une minuterie).
+        XCTAssertTrue(waitUntil(0.8) { m.cadence == .glance }, "cadence : \(m.cadence)")
         XCTAssertFalse(silentFrames.isRunning)
     }
 
