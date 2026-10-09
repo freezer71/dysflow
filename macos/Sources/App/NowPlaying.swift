@@ -68,6 +68,9 @@ final class NowPlaying {
 
     private struct Key: Equatable {
         var title: String
+        /// Voulue dans la clé : le moteur affine son estimation de la durée
+        /// au fil de la lecture (environ une fois par phrase), et chaque
+        /// affinage republie pour garder la timeline juste.
         var duration: Double?
         var speed: Double
         var playing: Bool
@@ -81,6 +84,9 @@ final class NowPlaying {
     /// (publié arrondi à la seconde, relu de 17 fois par seconde à une fois
     /// par seconde). Un recul de plus de 1,5 s ou une avance de plus de 5 s
     /// entre deux instantanés est un saut (phrase reprise, mot choisi).
+    /// Faux négatifs acceptés : une phrase reprise moins de 1,5 s après son
+    /// début, ou un saut en avant de moins de 5 s dans la même phrase, ne
+    /// republient pas ; l'écart reste petit et la phrase suivante recale.
     private static func jumped(from before: Double?, to now: Double?) -> Bool {
         guard let before, let now else { return false }
         let step = now - before
@@ -133,18 +139,34 @@ final class NowPlaying {
         remote.setEnabled(false)
     }
 
-    /// En pause, une seule relecture différée, au moment où le moteur met la
-    /// voix au repos : elle verra `.resting` et retirera l'affichage. Pas de
-    /// minuterie qui revient.
+    /// En pause, une seule relecture différée à la fois, au moment où le
+    /// moteur met la voix au repos : elle verra `.resting` et retirera
+    /// l'affichage. Si la voix est encore chargée (une commande en pause a
+    /// relancé le compte du moteur sans rien changer de publié, ou « Garder
+    /// la voix chargée » a été allongé), elle en prévoit une autre, avec le
+    /// délai relu : fenêtre masquée en pause, rien d'autre ne relirait
+    /// l'état. Cela converge : sans activité, le moteur finit par reposer
+    /// la voix. Rien n'est prévu pendant la lecture ni sans affichage.
     private func armRestCheck() {
         stopRestCheck()
         let generation = restGeneration
         Task { @MainActor [weak self] in
             guard let self, let delay = await self.restDelay(),
                   generation == self.restGeneration else { return }
-            let refresh = self.refresh
-            self.cancelRestCheck = self.schedule(delay) { refresh() }
+            self.cancelRestCheck = self.schedule(delay) { [weak self] in
+                self?.restCheckFired(generation: generation)
+            }
         }
+    }
+
+    private func restCheckFired(generation: Int) {
+        // Elle a eu lieu : plus rien à annuler.
+        cancelRestCheck = nil
+        refresh()
+        // Un changement publié pendant la relecture a déjà décidé (repos :
+        // retiré ; nouvelle pause : relecture prévue ; lecture : rien).
+        guard generation == restGeneration, let last, !last.playing else { return }
+        armRestCheck()
     }
 
     private func stopRestCheck() {

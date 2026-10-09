@@ -30,6 +30,8 @@ final class NowPlayingTests: XCTestCase {
     private var cancels = 0
     private var pending: (@MainActor () -> Void)?
     private var refreshes = 0
+    /// Ce que la relecture différée voit (par défaut : rien de changé).
+    private var onRefresh: (@MainActor () -> Void)?
 
     private func make(restDelay: TimeInterval? = 602) -> NowPlaying {
         let transport = Transport(snapshot: { [unowned self] in self.current },
@@ -42,7 +44,10 @@ final class NowPlayingTests: XCTestCase {
                               self.pending = work
                               return { self.cancels += 1 }
                           },
-                          refresh: { [unowned self] in self.refreshes += 1 })
+                          refresh: { [unowned self] in
+                              self.refreshes += 1
+                              self.onRefresh?()
+                          })
     }
 
     func testPublishesTitleDurationPositionStateAndSpeed() throws {
@@ -134,10 +139,11 @@ final class NowPlayingTests: XCTestCase {
         now.update(.sample(playing: false), document: doc)
         let armed = await eventuallyTrue { self.delays == [602] }
         XCTAssertTrue(armed)
-        pending?()
-        XCTAssertEqual(refreshes, 1, "une seule relecture")
         now.update(.sample(playing: true, sentence: 1), document: doc)
-        XCTAssertEqual(cancels, 1)
+        XCTAssertEqual(cancels, 1, "la relecture prévue est annulée")
+        try? await Task.sleep(for: .milliseconds(50))
+        XCTAssertEqual(delays, [602], "une seule relecture prévue")
+        XCTAssertEqual(refreshes, 0)
     }
 
     func testAVoiceKeptForeverSchedulesNothing() async {
@@ -195,22 +201,53 @@ final class NowPlayingTests: XCTestCase {
         XCTAssertEqual(center.nowPlayingInfo?[MPNowPlayingInfoPropertyElapsedPlaybackTime] as? Double, 30)
     }
 
-    /// La relecture différée ne revient pas : après elle, un état inchangé
-    /// ne reprogramme rien, et une reprise l'annule sans en créer d'autre.
-    func testTheDeferredRereadNeverRepeats() async {
+    /// La relecture qui trouve la voix encore chargée (une commande en
+    /// pause a relancé le compte du moteur, ou « Garder la voix chargée » a
+    /// été allongé) en prévoit une autre, une seule à la fois ; celle qui la
+    /// trouve au repos retire l'affichage et ne prévoit plus rien.
+    func testARereadThatFindsTheVoiceStillLoadedWaitsOnceMore() async {
         let now = make(restDelay: 602)
         now.update(.sample(playing: false), document: doc)
         let armed = await eventuallyTrue { self.delays == [602] }
         XCTAssertTrue(armed)
         pending?()
-        now.update(.sample(playing: false), document: doc)
+        let rearmed = await eventuallyTrue { self.delays == [602, 602] }
+        XCTAssertTrue(rearmed, "toujours en pause, voix chargée : une relecture de plus")
+        XCTAssertEqual(cancels, 0, "la première a déjà eu lieu : rien à annuler")
+        onRefresh = { now.update(.sample(voice: .resting), document: self.doc) }
+        pending?()
         try? await Task.sleep(for: .milliseconds(50))
-        XCTAssertEqual(delays, [602], "pas de seconde relecture")
-        XCTAssertEqual(refreshes, 1)
+        XCTAssertNil(center.nowPlayingInfo)
+        XCTAssertEqual(delays, [602, 602], "au repos : plus rien de prévu")
+        XCTAssertEqual(refreshes, 2)
+    }
+
+    /// La relecture prévue de nouveau est annulée par la reprise, sans
+    /// en créer d'autre.
+    func testResumingCancelsTheRearmedReread() async {
+        let now = make(restDelay: 602)
+        now.update(.sample(playing: false), document: doc)
+        _ = await eventuallyTrue { self.delays == [602] }
+        pending?()
+        _ = await eventuallyTrue { self.delays == [602, 602] }
         now.update(.sample(playing: true), document: doc)
         try? await Task.sleep(for: .milliseconds(50))
         XCTAssertEqual(cancels, 1)
-        XCTAssertEqual(delays, [602], "la lecture ne prévoit rien")
+        XCTAssertEqual(delays, [602, 602], "la lecture ne prévoit rien")
+    }
+
+    /// Relue entre-temps par un vrai changement d'état (nouvelle pause
+    /// publiée), la relecture n'en ajoute pas une seconde : celle du
+    /// changement suffit.
+    func testARereadThatSeesANewPauseDoesNotDoubleTheTimer() async {
+        let now = make(restDelay: 602)
+        now.update(.sample(playing: false), document: doc)
+        _ = await eventuallyTrue { self.delays == [602] }
+        onRefresh = { now.update(.sample(playing: false, sentence: 2), document: self.doc) }
+        pending?()
+        _ = await eventuallyTrue { self.delays.count == 2 }
+        try? await Task.sleep(for: .milliseconds(50))
+        XCTAssertEqual(delays, [602, 602], "une seule relecture prévue")
     }
 
     /// Reprendre avant que le délai soit lu (réglages encore en lecture)
