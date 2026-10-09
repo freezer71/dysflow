@@ -7,8 +7,9 @@
 //!
 //! * un saut ré-oriente immédiatement la synthèse, ce qui rend le seek possible ;
 //! * la mémoire reste bornée, là où une file non bornée gardait tout le PCM ;
-//! * un changement de vitesse invalide la fenêtre et la régénère, sans jamais
-//!   ré-échantillonner l'audio déjà produit.
+//! * l'audio est produit à 1× et sert à toutes les vitesses : la vitesse
+//!   s'applique à la lecture (`audio::tempo`), un changement ne touche pas
+//!   au cache.
 
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
@@ -173,8 +174,8 @@ impl Synthesizer {
 
     /// Change les paramètres de synthèse et invalide ce qui a été produit.
     ///
-    /// Appelé notamment lors d'un changement de vitesse : plutôt que de
-    /// transposer l'audio existant, on le régénère au bon débit.
+    /// Voix, langue, échantillonnage… La vitesse n'en fait pas partie : elle
+    /// s'applique au son, et ne vide jamais le cache.
     pub fn set_params(&self, params: TtsParams) {
         let mut state = self.shared.state.lock().unwrap();
         if state.params == params {
@@ -397,8 +398,7 @@ mod tests {
     use crate::tts::TtsSession;
     use std::sync::atomic::AtomicUsize;
 
-    /// Moteur déterministe : la durée encode le débit demandé, ce qui permet de
-    /// vérifier que la vitesse passe bien par la synthèse.
+    /// Moteur déterministe : la durée suit le nombre de mots.
     struct FakeEngine {
         calls: Arc<AtomicUsize>,
         concurrent: Arc<AtomicUsize>,
@@ -428,16 +428,16 @@ mod tests {
     }
 
     impl TtsSession for FakeSession {
-        fn synthesize(&mut self, text: &str, params: &TtsParams) -> Result<PcmBuffer> {
+        fn synthesize(&mut self, text: &str, _params: &TtsParams) -> Result<PcmBuffer> {
             let now = self.concurrent.fetch_add(1, Ordering::SeqCst) + 1;
             self.peak.fetch_max(now, Ordering::SeqCst);
             self.calls.fetch_add(1, Ordering::SeqCst);
             thread::sleep(Duration::from_millis(30));
             self.concurrent.fetch_sub(1, Ordering::SeqCst);
 
-            // 1000 échantillons par mot, divisés par le débit.
+            // 1000 échantillons par mot.
             let words = text.split_whitespace().count().max(1);
-            let count = (1000.0 * words as f32 / params.speaking_rate) as usize;
+            let count = 1000 * words;
             Ok(PcmBuffer::new(vec![0.1; count], 1000, 1))
         }
     }
@@ -705,23 +705,20 @@ mod tests {
     }
 
     #[test]
-    fn speed_change_regenerates_at_the_new_rate() {
-        let (engine, _, _) = engine();
+    fn a_change_of_voice_settings_regenerates_the_window() {
+        // Voix, langue, échantillonnage : le son change, le cache se refait.
+        // (La vitesse, elle, n'est pas un paramètre de synthèse.)
+        let (engine, calls, _) = engine();
         let synth = Synthesizer::new(engine, TtsParams::default(), 2, 4);
         synth.push("un deux trois quatre".to_string(), 0);
         assert!(wait_for(|| synth.get(0).is_some()));
-        let slow = synth.get(0).unwrap().audio.samples.len();
+        let before = calls.load(Ordering::SeqCst);
 
         let mut params = synth.params();
-        params.speaking_rate = 2.0;
+        params.voice = "F2".into();
         synth.set_params(params);
 
-        assert!(wait_for(|| synth
-            .get(0)
-            .is_some_and(|r| r.audio.samples.len() != slow)));
-        let fast = synth.get(0).unwrap().audio.samples.len();
-        // Deux fois plus rapide : deux fois moins d'échantillons.
-        assert!(fast < slow, "slow={slow} fast={fast}");
+        assert!(wait_for(|| calls.load(Ordering::SeqCst) > before && synth.get(0).is_some()));
     }
 
     #[test]

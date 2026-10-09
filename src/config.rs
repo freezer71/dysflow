@@ -86,7 +86,8 @@ pub struct VoiceConfig {
     /// Nom de voix, préréglage, ou chemin d'un WAV de référence.
     pub voice: String,
     pub language: String,
-    /// Débit par défaut. Appliqué à la synthèse, jamais par ré-échantillonnage.
+    /// Vitesse de lecture. Appliquée au son par Sonic, sans changer la hauteur ;
+    /// la synthèse, elle, se fait toujours à 1×.
     pub speed: f32,
     /// Décalage de hauteur, en demi-tons normalisés (-1.0 à 1.0).
     pub pitch: f32,
@@ -253,7 +254,6 @@ impl Config {
                 &self.voice.voice,
             )),
             language: self.voice.language.clone(),
-            speaking_rate: self.voice.speed.clamp(0.25, 4.0),
             pitch_shift: self.voice.pitch.clamp(-1.0, 1.0),
             energy: self.voice.energy.clamp(0.0, 2.0),
             emotion: self.voice.emotion.clone(),
@@ -405,9 +405,9 @@ mod tests {
         assert!(!magpie.contains_key("instruction"), "{magpie:?}");
         assert!(!magpie.contains_key("cfg_scale"), "{magpie:?}");
 
-        // Supertonic, lui, lit bien le débit.
+        // Le débit n'est plus une option du modèle : la vitesse s'applique au son.
         let supertonic = params.model_options("supertonic");
-        assert!(supertonic.contains_key("speaking_rate"));
+        assert!(!supertonic.contains_key("speaking_rate"));
     }
 
     #[test]
@@ -455,10 +455,20 @@ mod tests {
     }
 
     #[test]
-    fn speed_is_clamped_to_a_usable_range() {
-        let mut config = Config::default();
-        config.voice.speed = 99.0;
-        assert_eq!(config.tts_params().speaking_rate, 4.0);
+    fn the_reading_speed_never_reaches_the_model() {
+        // La vitesse s'applique au son, à la lecture : passée au modèle, elle
+        // compressait la durée prévue de la phrase et lui faisait avaler des
+        // mots. La synthèse reste à 1×, et le cache sert à toutes les vitesses.
+        let mut slow = Config::default();
+        slow.voice.speed = 1.0;
+        let mut fast = slow.clone();
+        fast.voice.speed = 2.5;
+        assert_eq!(fast.tts_params(), slow.tts_params(), "la vitesse ne change pas la requête");
+        for family in ["supertonic", "magpie_tts", "inconnue"] {
+            let options = fast.tts_params().model_options(family);
+            assert!(!options.contains_key("speaking_rate"), "{family} : {options:?}");
+            assert!(!options.contains_key("speed"), "{family} : {options:?}");
+        }
     }
 
     #[test]

@@ -187,8 +187,8 @@ pub enum SettingsEffect {
     Nothing,
     /// Affichage, ou valeur lue au prochain usage (pas d'avance, délai…).
     Display,
-    /// Volume de sortie : immédiat, sans resynthèse.
-    Volume,
+    /// Volume ou vitesse : appliqués au son, immédiatement, sans resynthèse.
+    Immediate,
     /// Paramètres de synthèse : resynthèse depuis la phrase en cours.
     Resynthesize,
     /// Découpage du document : remise en forme, à la même phrase.
@@ -211,11 +211,12 @@ impl SettingsEffect {
         }
         let mut voice = before.voice.clone();
         voice.volume = after.voice.volume;
+        voice.speed = after.voice.speed;
         if voice != after.voice || before.sampling != after.sampling || before.extra != after.extra {
             return Self::Resynthesize;
         }
-        if before.voice.volume != after.voice.volume {
-            return Self::Volume;
+        if before.voice.volume != after.voice.volume || before.voice.speed != after.voice.speed {
+            return Self::Immediate;
         }
         if before.reading != after.reading || before.app != after.app {
             return Self::Display;
@@ -305,13 +306,14 @@ impl Reader {
         let next = next.normalised();
         let effect = SettingsEffect::between(&before, &next);
         if let Some(app) = self.session.as_mut() {
-            let old_speed = app.config.voice.speed;
-            if (old_speed - next.voice.speed).abs() >= f32::EPSILON {
-                app.rescale_pace(old_speed, next.voice.speed);
-            }
             app.config = next.clone();
             if (app.player.volume() - next.voice.volume).abs() >= f32::EPSILON {
                 app.player.set_volume(next.voice.volume);
+            }
+            // La vitesse s'applique au son de la phrase en cours, sans
+            // toucher à l'audio synthétisé.
+            if app.player.speed() != next.voice.speed {
+                app.player.set_speed(next.voice.speed);
             }
             if effect == SettingsEffect::Resynthesize {
                 app.apply_effect(Effect::Resynthesize);
@@ -597,7 +599,8 @@ mod tests {
         assert!(!supertonic.honoured.contains(&"temperature".to_string()));
         assert!(!supertonic.requires_reference);
 
-        // MagpieTTS : température, top-k et guidage apparaissent, la vitesse disparaît.
+        // MagpieTTS : température, top-k et guidage apparaissent, le débit du modèle
+        // disparaît (la vitesse de lecture, appliquée au son, vaut partout).
         let magpie = reader_on("magpie_tts").capabilities();
         assert_eq!(magpie.voices.len(), 5);
         assert_eq!(magpie.languages.len(), 11);
@@ -789,10 +792,10 @@ mod tests {
         assert_eq!(effect_of(|c| c.reading.seek_step = 9), Display);
         assert_eq!(effect_of(|c| c.reading.autoplay = false), Display);
         assert_eq!(effect_of(|c| c.app.keep_voice_minutes = 2), Display);
-        assert_eq!(effect_of(|c| c.voice.volume = 0.5), Volume);
+        assert_eq!(effect_of(|c| c.voice.volume = 0.5), Immediate);
+        assert_eq!(effect_of(|c| c.voice.speed = 1.5), Immediate, "la vitesse s'applique au son");
         assert_eq!(effect_of(|c| c.voice.voice = "F1".into()), Resynthesize);
         assert_eq!(effect_of(|c| c.voice.language = "en".into()), Resynthesize);
-        assert_eq!(effect_of(|c| c.voice.speed = 1.5), Resynthesize);
         assert_eq!(effect_of(|c| c.sampling.temperature = Some(0.5)), Resynthesize);
         assert_eq!(effect_of(|c| c.sampling.seed = Some(1)), Resynthesize);
         assert_eq!(effect_of(|c| { c.extra.insert("k".into(), "v".into()); }), Resynthesize);
@@ -856,6 +859,24 @@ mod tests {
         assert_eq!(applied.volume, 0.0);
         assert_eq!(applied.temperature, None);
         assert_eq!(applied.top_k, Some(200));
+    }
+
+    #[test]
+    fn the_speed_changes_at_once_without_resynthesis() {
+        let mut r = reader();
+        let t0 = Instant::now();
+        r.open_text("Un. Deux.", "a", t0);
+        let ready = |r: &Reader| r.session().is_some_and(|a| a.synth.get(0).is_some() && a.synth.get(1).is_some());
+        let deadline = Instant::now() + std::time::Duration::from_secs(2);
+        while !ready(&r) {
+            assert!(Instant::now() < deadline, "synthèse jamais prête");
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        r.apply_patch(&SettingsPatch { speed: Some(2.2), ..Default::default() }, t0);
+        let app = r.session().unwrap();
+        assert_eq!(app.player.speed(), 2.2);
+        assert_eq!(app.config.voice.speed, 2.2);
+        assert!(app.synth.get(0).is_some() && app.synth.get(1).is_some(), "le cache est resté");
     }
 
     #[test]

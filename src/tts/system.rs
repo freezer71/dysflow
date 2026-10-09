@@ -107,8 +107,9 @@ impl TtsSession for SystemSession {
 }
 
 fn run_say(text: &str, params: &TtsParams, out: &Path) -> Result<()> {
-    // 175 mots/minute est le débit neutre de `say`.
-    let rate = (175.0 * params.speaking_rate).clamp(90.0, 720.0) as u32;
+    // 175 mots/minute est le débit neutre de `say`. Toujours ce débit : la
+    // vitesse s'applique au son à la lecture, comme pour les autres voix.
+    let rate = 175u32;
     let mut cmd = Command::new("say");
     cmd.arg("-r").arg(rate.to_string());
     if !params.voice.is_empty() {
@@ -130,7 +131,7 @@ fn run_say(text: &str, params: &TtsParams, out: &Path) -> Result<()> {
 }
 
 fn run_espeak(text: &str, params: &TtsParams, out: &Path) -> Result<()> {
-    let words_per_minute = (175.0 * params.speaking_rate).clamp(80.0, 450.0) as u32;
+    let words_per_minute = 175u32;
     // espeak attend une hauteur dans 0..99, 50 étant le neutre.
     let pitch = (50.0 + params.pitch_shift * 25.0).clamp(0.0, 99.0) as u32;
     let mut cmd = Command::new("espeak-ng");

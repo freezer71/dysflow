@@ -2,8 +2,9 @@
 //!
 //! Tout ce qui se règle est ici : les modèles installables, la voix, les
 //! paramètres d'échantillonnage du modèle, la lecture et le moteur. Les valeurs
-//! s'appliquent immédiatement — la synthèse en cours est régénérée — et `w` les
-//! écrit dans `config.toml` pour les sessions suivantes.
+//! s'appliquent immédiatement — vitesse et volume au son, sur-le-champ ; les
+//! autres réglages de voix en régénérant la synthèse — et `w` les écrit dans
+//! `config.toml` pour les sessions suivantes.
 
 use crate::config::Config;
 use crate::models;
@@ -242,8 +243,8 @@ impl Field {
     pub fn hint(&self) -> &'static str {
         match self {
             Field::Speed => {
-                "Appliquée à la synthèse : la voix accélère sans monter dans les aigus. \
-                 t pour l'entendre."
+                "Immédiate, sans resynthèse : appliquée au son, la voix accélère sans \
+                 monter dans les aigus. t pour l'entendre."
             }
             Field::Pitch => "Décalage de hauteur transmis au modèle, de -1 à +1.",
             Field::Energy => "Intensité de la diction.",
@@ -294,11 +295,11 @@ impl Field {
 
     /// Nom de l'option de synthèse correspondante, s'il y en a une.
     ///
-    /// Sert à signaler les réglages qu'une famille n'honore pas. Le volume n'en
-    /// a pas : il agit sur la sortie, jamais sur le modèle.
+    /// Sert à signaler les réglages qu'une famille n'honore pas. Volume et
+    /// vitesse n'en ont pas : ils agissent sur le son, jamais sur le modèle,
+    /// et valent donc pour toutes les voix.
     pub fn option_key(&self) -> Option<&'static str> {
         match self {
-            Field::Speed => Some("speaking_rate"),
             Field::Pitch => Some("pitch_shift"),
             Field::Energy => Some("energy"),
             Field::Language => Some("language"),
@@ -442,7 +443,7 @@ impl Field {
         match self {
             Field::Speed => {
                 config.voice.speed = (config.voice.speed + 0.05 * step).clamp(0.5, 3.0);
-                Effect::Resynthesize
+                Effect::Speed
             }
             Field::Pitch => {
                 config.voice.pitch = (config.voice.pitch + 0.05 * step).clamp(-1.0, 1.0);
@@ -882,6 +883,8 @@ pub enum Effect {
     Reparse,
     /// Ajuster le volume de sortie du delta indiqué.
     Volume(f32),
+    /// Appliquer la vitesse de la configuration au son, sur-le-champ.
+    Speed,
 }
 
 #[cfg(test)]
@@ -934,10 +937,10 @@ mod tests {
     }
 
     #[test]
-    fn speed_is_bounded_and_triggers_resynthesis() {
+    fn speed_is_bounded_and_applies_at_once() {
         let mut config = Config::default();
         for _ in 0..200 {
-            assert_eq!(Field::Speed.adjust(&mut config, 1), Effect::Resynthesize);
+            assert_eq!(Field::Speed.adjust(&mut config, 1), Effect::Speed);
         }
         assert_eq!(config.voice.speed, 3.0);
         for _ in 0..200 {

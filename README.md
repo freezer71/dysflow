@@ -326,8 +326,13 @@ système (`say` sur macOS, `espeak-ng` ailleurs). La barre d'état affiche alors
 | `?` | Aide |
 | `q` · `Échap` | Quitter — `Échap` referme d'abord un panneau ouvert |
 
-La vitesse agit **à la synthèse**, pas par ré-échantillonnage : la voix accélère
-sans monter dans les aigus. Changer de vitesse relance donc la phrase en cours.
+La vitesse agit **sur le son, à la lecture**, sans changer la hauteur : la voix
+accélère sans monter dans les aigus. La synthèse se fait toujours à 1×, et
+[Sonic](https://github.com/waywardgeek/sonic) étire le son pendant qu'il sonne.
+Changer de vitesse s'entend en quelques millisecondes, au milieu de la phrase,
+sans resynthèse ni coupure, et avec toutes les voix. Le modèle ne reçoit jamais
+la vitesse : la lui donner lui faisait avaler des mots à 2× et plus. Les pauses
+entre blocs raccourcissent moins vite que la parole (÷ √vitesse).
 
 
 ## Lire en écoutant
@@ -452,7 +457,6 @@ marqués `(ignoré par ce modèle)`. Le relevé vient du code de chaque famille 
 |---|---|---|
 | Voix | dix préréglages | cinq locuteurs nommés |
 | Langue · graine | honorées | honorées |
-| Vitesse | **honorée** | aucun contrôle |
 | Étapes d'inférence | honorée | — |
 | Température · top-k · guidage | ignorés | **honorés** |
 | Hauteur · énergie · intonation · style | ignorés | ignorés |
@@ -486,12 +490,13 @@ signal identique au bit près pour ses cinq locuteurs. La variante Supertonic
 « origine » n'y est pas non plus : sur le dépôt, c'est le même fichier que la
 Q8_0, à l'octet près.
 
-Le nom de l'option de débit diffère d'une famille à l'autre — `speaking_rate`
-chez Supertonic, `speed` ailleurs. Les deux clés sont émises quand la famille
-les accepte.
+Vitesse et volume ne figurent pas dans ce relevé : ils agissent sur le son et
+valent pour toutes les voix. Un débit propre au modèle reste possible à la main,
+par `[extra]` (`speaking_rate = "1.1"` chez Supertonic), et s'ajoute alors à la
+vitesse de lecture.
 
-Les valeurs prennent effet immédiatement : la synthèse déjà préparée est
-régénérée au besoin.
+Les valeurs prennent effet immédiatement : vitesse et volume sur-le-champ, les
+autres réglages de voix en régénérant la synthèse déjà préparée.
 
 Le fichier vit dans `~/.config/sillon/config.toml`, et peut aussi être écrit
 par `sillon --write-config`.

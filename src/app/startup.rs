@@ -34,7 +34,7 @@ impl Phase {
 /// Phase de démarrage, ou `None` quand il n'y a plus rien à annoncer.
 ///
 /// `already_playing` retient qu'un son a déjà été joué : sans lui, un
-/// changement de vitesse — qui vide le cache — ferait réapparaître l'écran de
+/// changement de voix — qui vide le cache — ferait réapparaître l'écran de
 /// démarrage en pleine lecture.
 pub fn phase(
     engine_name: &str,
@@ -56,7 +56,7 @@ pub fn phase(
 
 /// Referme le verrou dès qu'une phrase a été produite.
 ///
-/// Un changement de vitesse vide le cache en pleine lecture ; sans ce verrou,
+/// Un changement de voix vide le cache en pleine lecture ; sans ce verrou,
 /// l'écran de démarrage se rejouerait à chaque fois.
 pub fn latch(previous: bool, stats: SynthesisStats) -> bool {
     previous || stats.ready > 0
@@ -105,7 +105,7 @@ mod tests {
 
     #[test]
     fn stays_quiet_once_playback_has_started() {
-        // Un changement de vitesse vide le cache en pleine lecture : le
+        // Un changement de voix vide le cache en pleine lecture : le
         // démarrage ne doit pas se rejouer pour autant.
         assert_eq!(phase("Supertonic 3", stats(0, 12, 0), true), None);
     }
@@ -139,7 +139,7 @@ mod tests {
     fn the_latch_closes_on_the_first_ready_sentence_and_stays_closed() {
         assert!(!latch(false, stats(0, 12, 0)), "rien n'est encore prêt");
         assert!(latch(false, stats(1, 12, 0)), "une phrase est prête");
-        // Cache vidé par un changement de vitesse : le verrou tient.
+        // Cache vidé par un changement de voix : le verrou tient.
         assert!(latch(true, stats(0, 12, 0)));
     }
 

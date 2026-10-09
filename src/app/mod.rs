@@ -75,8 +75,8 @@ pub struct App {
     /// Un ensemble, non un compteur : repasser sur la même phrase ne fait pas
     /// deux phrases muettes, et l'annonce doit rester vraie.
     skipped: HashSet<usize>,
-    /// Cadence mesurée sur ce qui a été synthétisé, d'où sortent les temps
-    /// affichés. Elle suit le débit : le changer la transpose aussitôt.
+    /// Cadence mesurée sur ce qui a été synthétisé — à 1× —, d'où sortent les
+    /// temps affichés, divisés par la vitesse de lecture.
     pace: Pace,
     /// Saut au mot en attente de son audio : la phrase, le mot, et la part
     /// de la parole à passer. Tombe dès que la phrase entre en file.
@@ -103,7 +103,7 @@ pub struct App {
     /// Lancement du lecteur, origine du chrono de démarrage.
     started_at: Instant,
     /// Vrai dès la première phrase produite : le démarrage ne s'annonce qu'une
-    /// fois, même quand un changement de vitesse vide le cache ensuite.
+    /// fois, même quand un changement de voix vide le cache ensuite.
     synthesis_started: bool,
     /// Un choix fait à l'écran attend d'être écrit dans `config.toml`.
     config_dirty: bool,
@@ -160,6 +160,7 @@ impl App {
         synth.set_params(config.tts_params());
         let previewer = Previewer::new(synth.engine());
         player.set_volume(config.voice.volume);
+        player.set_speed(config.voice.speed);
 
         let (bookmarks, bookmark_notice) = BookmarkStore::load();
         let mut notices = notices;
@@ -325,6 +326,11 @@ impl App {
         self.poll_download();
         self.poll_preview();
         self.drain_input();
+        // La configuration fait foi : un réglage posé ailleurs (écran,
+        // réglages de l'app) atteint le son au tour suivant.
+        if self.player.speed() != self.config.voice.speed {
+            self.player.set_speed(self.config.voice.speed);
+        }
         self.advance_playback();
         self.fill_output();
         self.synth.set_cursor(self.current_sentence());
@@ -460,9 +466,11 @@ impl App {
             && self.player.queue_len() == 0
     }
 
-    /// Secondes de parole par mot, mesurées sur ce qui a déjà été synthétisé.
+    /// Secondes d'écoute par mot : la cadence mesurée à 1× sur ce qui a été
+    /// synthétisé, divisée par la vitesse de lecture.
     fn seconds_per_word(&self) -> Option<f64> {
-        self.pace.seconds_per_word()
+        let speed = self.player.speed().max(f32::EPSILON) as f64;
+        self.pace.seconds_per_word().map(|s| s / speed)
     }
 
     /// Durée totale estimée du document, en secondes.
@@ -640,7 +648,7 @@ impl App {
         self.notify("Phrase reprise");
     }
 
-    /// Change le débit, en régénérant l'audio au lieu de le transposer.
+    /// Change la vitesse de lecture, sur-le-champ.
     pub fn change_speed(&mut self, delta: f32) {
         let speed = (self.config.voice.speed + delta).clamp(0.5, 3.0);
         self.set_speed(speed);
@@ -651,15 +659,12 @@ impl App {
         if (speed - self.config.voice.speed).abs() < f32::EPSILON {
             return;
         }
-        // Les temps affichés reposent sur ce qui a été synthétisé à l'ancien
-        // débit : sans transposition, l'estimation resterait celle d'avant.
-        self.pace.rescale(self.config.voice.speed, speed);
+        // L'audio en cache est à 1× et le reste : la vitesse s'applique au
+        // son, dès le prochain bloc de 5 ms de la phrase en cours. Ni
+        // resynthèse, ni file vidée, ni coupure.
         self.config.voice.speed = speed;
-        self.apply_tts_params();
-        // L'audio déjà produit l'a été à l'ancien débit.
-        let current = self.current_sentence();
-        self.seek_to(current);
-        self.notify(&format!("Vitesse {speed:.2}× — resynthèse"));
+        self.player.set_speed(speed);
+        self.notify(&format!("Vitesse {speed:.2}×"));
     }
 
     pub fn change_volume(&mut self, delta: f32) {
@@ -672,12 +677,6 @@ impl App {
     pub fn toggle_mute(&mut self) {
         let muted = self.player.toggle_mute();
         self.notify(if muted { "Son coupé" } else { "Son rétabli" });
-    }
-
-    /// Transpose la cadence mesurée à un débit posé ailleurs (réglages de
-    /// l'app) : les temps affichés suivent sans attendre une nouvelle mesure.
-    pub fn rescale_pace(&mut self, from: f32, to: f32) {
-        self.pace.rescale(from, to);
     }
 
     fn apply_tts_params(&mut self) {
@@ -1321,6 +1320,10 @@ impl App {
         match effect {
             Effect::None => {}
             Effect::Volume(delta) => self.change_volume(delta),
+            Effect::Speed => {
+                let speed = self.config.voice.speed;
+                self.player.set_speed(speed);
+            }
             Effect::Resynthesize => {
                 self.apply_tts_params();
                 let current = self.current_sentence();
@@ -1571,6 +1574,98 @@ pub(crate) mod tests {
             std::thread::sleep(Duration::from_millis(5));
         }
         false
+    }
+
+    /// Compte les synthèses : un changement de vitesse ne doit en relancer
+    /// aucune.
+    struct CountingEngine(Arc<std::sync::atomic::AtomicUsize>);
+    struct CountingSession(Arc<std::sync::atomic::AtomicUsize>);
+
+    impl TtsEngine for CountingEngine {
+        fn name(&self) -> String {
+            "compteur".into()
+        }
+        fn open_session(&self) -> Result<Box<dyn TtsSession>> {
+            Ok(Box::new(CountingSession(Arc::clone(&self.0))))
+        }
+        fn max_sessions(&self) -> usize {
+            1
+        }
+    }
+
+    impl TtsSession for CountingSession {
+        fn synthesize(&mut self, _text: &str, _params: &TtsParams) -> Result<PcmBuffer> {
+            self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Ok(PcmBuffer::new(vec![0.0; 100], 1000, 1))
+        }
+    }
+
+    #[test]
+    fn a_speed_change_keeps_the_synthesized_audio_and_reaches_the_player() {
+        let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let mut builder = DocumentBuilder::new(CodePolicy::Announce);
+        for block in crate::input::split_blocks(DOC) {
+            builder.push_block(&block);
+        }
+        let mut config = Config::default();
+        config.reading.autoplay = false;
+        let mut app = App::new(
+            builder,
+            None,
+            Arc::new(CountingEngine(Arc::clone(&calls))),
+            config,
+            "test.md".to_string(),
+            Vec::new(),
+            crate::audio::Player::silent(),
+        );
+        assert!(wait_for(|| app.synth.stats().ready >= 3));
+        let before = calls.load(std::sync::atomic::Ordering::SeqCst);
+
+        app.set_speed(2.0);
+        app.change_speed(0.5);
+
+        assert_eq!(app.player.speed(), 2.5, "la vitesse va au lecteur");
+        std::thread::sleep(Duration::from_millis(80));
+        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), before, "aucune resynthèse");
+        for id in 0..3 {
+            assert!(app.synth.get(id).is_some(), "phrase {id} sortie du cache");
+        }
+        assert!(app.status().contains("2.50×"), "{}", app.status());
+        assert!(!app.status().contains("resynth"), "{}", app.status());
+    }
+
+    #[test]
+    fn the_player_starts_at_the_configured_speed() {
+        let mut builder = DocumentBuilder::new(CodePolicy::Announce);
+        for block in crate::input::split_blocks(DOC) {
+            builder.push_block(&block);
+        }
+        let mut config = Config::default();
+        config.voice.speed = 1.75;
+        let app = App::new(
+            builder,
+            None,
+            Arc::new(SilentEngine),
+            config,
+            "test.md".to_string(),
+            Vec::new(),
+            crate::audio::Player::silent(),
+        );
+        assert_eq!(app.player.speed(), 1.75);
+    }
+
+    #[test]
+    fn time_estimates_follow_the_speed_from_1x_measures() {
+        // La cadence se mesure sur l'audio à 1× ; le temps affiché est celui
+        // qu'on entendra, donc divisé par la vitesse.
+        let mut app = app_reading(DOC);
+        app.pace.record(4.0, 10);
+        let at_1x = app.estimated_total().unwrap();
+        app.set_speed(2.0);
+        let at_2x = app.estimated_total().unwrap();
+        assert!((at_2x - at_1x / 2.0).abs() < 1e-9, "{at_1x} → {at_2x}");
+        app.set_speed(1.0);
+        assert!((app.estimated_total().unwrap() - at_1x).abs() < 1e-9);
     }
 
     pub(crate) const DOC: &str = "# Titre\n\nPremière phrase.\n\nDeuxième phrase.\n\nTroisième phrase.\n";

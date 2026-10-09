@@ -12,8 +12,7 @@ use sillon::doc::builder::{parse_document, CodePolicy};
 use sillon::doc::BlockKind;
 use sillon::tts::{PcmBuffer, Synthesizer, TtsEngine, TtsParams, TtsSession};
 
-/// Moteur dont la durée produite est proportionnelle au texte, et inversement
-/// proportionnelle au débit demandé.
+/// Moteur dont la durée produite est proportionnelle au texte.
 struct StubEngine {
     concurrent: Arc<AtomicUsize>,
     peak: Arc<AtomicUsize>,
@@ -40,14 +39,14 @@ impl TtsEngine for StubEngine {
 }
 
 impl TtsSession for StubSession {
-    fn synthesize(&mut self, text: &str, params: &TtsParams) -> anyhow::Result<PcmBuffer> {
+    fn synthesize(&mut self, text: &str, _params: &TtsParams) -> anyhow::Result<PcmBuffer> {
         let now = self.concurrent.fetch_add(1, Ordering::SeqCst) + 1;
         self.peak.fetch_max(now, Ordering::SeqCst);
         thread::sleep(Duration::from_millis(20));
         self.concurrent.fetch_sub(1, Ordering::SeqCst);
 
         let chars = text.chars().count().max(1);
-        let samples = (chars as f32 * 100.0 / params.speaking_rate) as usize;
+        let samples = chars * 100;
         Ok(PcmBuffer::new(vec![0.05; samples], 16_000, 1))
     }
 }
@@ -217,25 +216,24 @@ fn navigation_targets_are_reachable_in_both_directions() {
 }
 
 #[test]
-fn speed_change_invalidates_previously_rendered_audio() {
+fn a_speed_change_keeps_previously_rendered_audio() {
+    // La vitesse s'applique au son à la lecture : l'audio synthétisé à 1×
+    // sert à toutes les vitesses, rien n'est jeté ni refait.
     let doc = parse_document("Une phrase de test suffisamment longue.", CodePolicy::Announce);
     let engine = Arc::new(StubEngine {
         concurrent: Arc::new(AtomicUsize::new(0)),
         peak: Arc::new(AtomicUsize::new(0)),
     });
-    let synth = Synthesizer::new(engine, TtsParams::default(), 2, 4);
+    let mut config = sillon::config::Config::default();
+    let synth = Synthesizer::new(engine, config.tts_params(), 2, 4);
     synth.push(doc.sentences[0].text.clone(), 0);
 
     assert!(wait_for(|| synth.get(0).is_some()));
-    let at_normal_speed = synth.get(0).unwrap().speech;
+    let before = synth.get(0).unwrap().audio;
 
-    let mut params = synth.params();
-    params.speaking_rate = 2.0;
-    synth.set_params(params);
+    config.voice.speed = 2.0;
+    synth.set_params(config.tts_params());
 
-    assert!(wait_for(|| synth
-        .get(0)
-        .is_some_and(|r| r.speech != at_normal_speed)));
-    // Deux fois plus vite : la parole dure moins longtemps, sans transposition.
-    assert!(synth.get(0).unwrap().speech < at_normal_speed);
+    let after = synth.get(0).expect("l'audio a été jeté");
+    assert!(Arc::ptr_eq(&before, &after.audio), "l'audio a été refait");
 }

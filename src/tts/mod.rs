@@ -25,11 +25,10 @@ use std::time::Duration;
 pub struct TtsParams {
     pub voice: String,
     pub language: String,
-    /// Débit, appliqué **à la synthèse**.
-    ///
-    /// Ré-échantillonner après coup transposerait la voix ; c'est le modèle qui
-    /// doit parler plus vite.
-    pub speaking_rate: f32,
+    // Pas de débit ici : la synthèse se fait toujours à 1×, et la vitesse
+    // s'applique au son pendant la lecture (`audio::tempo`, par Sonic, sans
+    // changer la hauteur). Donnée au modèle, elle comprimait la durée prévue
+    // de la phrase et lui faisait avaler mots et ponctuation.
     pub pitch_shift: f32,
     pub energy: f32,
     pub emotion: String,
@@ -54,7 +53,6 @@ impl Default for TtsParams {
         Self {
             voice: String::new(),
             language: "fr".to_string(),
-            speaking_rate: 1.0,
             pitch_shift: 0.0,
             energy: 1.0,
             emotion: String::new(),
@@ -93,15 +91,6 @@ impl TtsParams {
             }
             out.entry(key.to_string()).or_insert(value);
         };
-        // Le débit voyage par les options : Supertonic ne lit `speaking_rate`
-        // que là, jamais dans le conditionnement de style — la vitesse y
-        // restait donc sans effet. Les familles ne s'accordent pas sur le nom,
-        // d'où les deux clés ; le filtrage ci-dessus écarte celle que la
-        // famille visée n'accepte pas.
-        if self.speaking_rate > 0.0 {
-            set("speaking_rate", self.speaking_rate.to_string());
-            set("speed", self.speaking_rate.to_string());
-        }
         if let Some(v) = self.temperature {
             set("temperature", v.to_string());
         }
@@ -149,9 +138,14 @@ impl PcmBuffer {
     /// La coupe tombe sur une trame entière : couper entre deux canaux
     /// inverserait gauche et droite pour toute la suite.
     pub fn skip(&self, offset: Duration) -> PcmBuffer {
-        let frames = (offset.as_secs_f64() * self.sample_rate as f64) as usize;
-        let start = (frames * self.channels as usize).min(self.samples.len());
+        let start = self.sample_index(offset);
         PcmBuffer::new(self.samples[start..].to_vec(), self.sample_rate, self.channels)
+    }
+
+    /// Indice du premier échantillon de la trame qui tombe à `offset`.
+    pub fn sample_index(&self, offset: Duration) -> usize {
+        let frames = (offset.as_secs_f64() * self.sample_rate as f64) as usize;
+        (frames * self.channels as usize).min(self.samples.len())
     }
 
     pub fn new(samples: Vec<f32>, sample_rate: u32, channels: u16) -> Self {
@@ -328,26 +322,12 @@ mod tests {
     }
 
     #[test]
-    fn the_speaking_rate_travels_as_a_model_option() {
-        // Supertonic ne lit le débit que dans les options : l'omettre y rendait
-        // la vitesse inopérante, quelle que soit sa valeur.
-        let params = TtsParams {
-            speaking_rate: 1.5,
-            ..TtsParams::default()
-        };
-        assert_eq!(
-            params.model_options("supertonic").get("speaking_rate").map(String::as_str),
-            Some("1.5")
-        );
-    }
-
-    #[test]
-    fn an_explicit_option_wins_over_the_field() {
-        // `extra` est la porte de sortie : ce que l'utilisateur y écrit prime.
+    fn a_model_rate_written_by_hand_still_reaches_the_model() {
+        // `extra` est la porte de sortie : un débit propre au modèle, écrit à
+        // la main, part tel quel — il s'ajoute à la vitesse de lecture.
         let mut extra = BTreeMap::new();
         extra.insert("speaking_rate".to_string(), "0.8".to_string());
         let params = TtsParams {
-            speaking_rate: 1.5,
             extra,
             ..TtsParams::default()
         };

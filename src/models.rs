@@ -588,7 +588,8 @@ pub fn honoured_options(family: &str) -> &'static [&'static str] {
             "num_inference_steps",
         ],
         // Relevé sur les options de requête de MagpieTTS. Il n'expose aucun
-        // contrôle de débit : la vitesse y est inerte. Il valide par ailleurs
+        // contrôle de débit — la vitesse de lecture, appliquée au son, y vaut
+        // quand même. Il valide par ailleurs
         // sa requête et refuse toute clé absente de cette liste.
         "magpie_tts" => &[
             "voice",

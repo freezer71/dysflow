@@ -364,7 +364,8 @@ impl AudioCppSessionHandle {
             voice: voice.as_ptr(),
             language: language.as_ptr(),
             emotion: emotion.as_ptr(),
-            speaking_rate: params.speaking_rate,
+            // Toujours 1× : la vitesse s'applique au son, à la lecture.
+            speaking_rate: 1.0,
             pitch_shift: params.pitch_shift,
             energy: params.energy,
             option_keys: key_ptrs.as_ptr(),
