@@ -59,7 +59,10 @@ pub struct Reader {
     /// Dernier échec de cet aperçu.
     preview_error: Option<String>,
     /// Choix de langue faits à la main, par document.
-    choices: language::LanguageChoices,
+    /// Relus au premier besoin, et seulement si le lecteur écrit sur disque.
+    choices: Option<language::LanguageChoices>,
+    /// Où les choix s'écrivent (le dossier de données, sauf test).
+    choices_path: Option<std::path::PathBuf>,
     /// Langue du document gardé.
     language: Option<language::DocumentLanguage>,
 }
@@ -81,7 +84,8 @@ impl Reader {
             persist: true,
             lone_preview: None,
             preview_error: None,
-            choices: language::LanguageChoices::load(),
+            choices: None,
+            choices_path: language::LanguageChoices::path(),
             language: None,
         }
     }
@@ -100,7 +104,7 @@ impl Reader {
         self.persist = on;
         if !on {
             // Hors disque : ni lecture ni écriture des choix de langue.
-            self.choices = language::LanguageChoices::default();
+            self.choices = Some(language::LanguageChoices::default());
         }
     }
 
@@ -179,8 +183,8 @@ impl Reader {
         // Le choix de langue suit le fichier, comme sa position : il doit
         // être là avant l'ouverture, qui en dépend.
         if let Some(name) = path.file_name() {
-            if self.choices.adopt(&name.to_string_lossy(), &source) && self.persist {
-                let _ = self.choices.save();
+            if self.choices().adopt(&name.to_string_lossy(), &source) && self.persist {
+                let _ = self.save_choices();
             }
         }
         self.open(Text { markdown, source, identity: true }, now);

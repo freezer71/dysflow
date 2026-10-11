@@ -262,9 +262,16 @@ mod tests {
     /// Installe un faux fichier de modèle dans le dossier isolé des tests.
     fn install_fake(package: &ModelPackage) -> std::path::PathBuf {
         let path = models::install_path(package).expect("dossier isolé");
-        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-        std::fs::write(&path, b"faux modele").unwrap();
-        path
+        // Le dossier de la famille est partagé par les tests : une suppression
+        // (`models::remove` retire le dossier devenu vide) peut passer entre
+        // sa création et l'écriture. On recommence alors.
+        for _ in 0..50 {
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            if std::fs::write(&path, b"faux modele").is_ok() {
+                return path;
+            }
+        }
+        panic!("installation du faux modèle impossible : {}", path.display());
     }
 
     #[test]

@@ -105,10 +105,26 @@ impl DocumentLanguage {
 }
 
 impl Reader {
+    /// Les choix, relus du disque à la première demande (jamais pour un
+    /// lecteur hors disque).
+    pub(super) fn choices(&mut self) -> &mut LanguageChoices {
+        let persist = self.persist;
+        let path = self.choices_path.clone();
+        self.choices.get_or_insert_with(|| match (persist, path) {
+            (true, Some(path)) => LanguageChoices::load_from(&path),
+            _ => LanguageChoices::default(),
+        })
+    }
+
+    pub(super) fn save_choices(&mut self) -> Result<()> {
+        let Some(path) = self.choices_path.clone() else { bail!("répertoire de données introuvable") };
+        self.choices().save_to(&path)
+    }
+
     /// La langue d'un texte qu'on ouvre.
-    pub(super) fn language_of(&self, markdown: &str, source: &str) -> DocumentLanguage {
+    pub(super) fn language_of(&mut self, markdown: &str, source: &str) -> DocumentLanguage {
         let detection = language::detect_markdown(markdown);
-        let chosen = self.choices.get(source).map(str::to_string);
+        let chosen = self.choices().get(source).map(str::to_string);
         DocumentLanguage {
             detected: detection.map(|d| d.language.code().to_string()),
             effective: language::resolve(&self.config.voice.language, chosen.as_deref(), detection),
@@ -139,11 +155,18 @@ impl Reader {
         let Some(identity) = self.document_identity().map(str::to_string) else {
             bail!("aucun document ouvert");
         };
-        self.choices.set(&identity, language.map(|c| Lang::parse(c).map_or(c, |l| l.code())));
-        if self.persist {
-            self.choices.save()?;
-        }
+        let code = language.map(|c| Lang::parse(c).map_or(c, |l| l.code()));
+        self.choices().set(&identity, code);
+        // Le choix s'applique d'abord ; un disque qui refuse l'écriture ne
+        // le défait pas, il se signale.
         self.reparse(now);
+        if self.persist {
+            if let Err(e) = self.save_choices() {
+                if let Some(app) = self.session.as_mut() {
+                    app.notify(&format!("choix de langue non enregistré : {e}"));
+                }
+            }
+        }
         Ok(())
     }
 }
@@ -247,6 +270,83 @@ mod tests {
         store.save_to(&path).unwrap();
         assert_eq!(LanguageChoices::load_from(&path).get("/a.md"), Some("en"));
         std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn a_reparse_keeps_the_same_prose_sentence_when_code_shifts_the_numbering() {
+        let mut r = reader();
+        let text = "Les monades permettent d'enchaîner des calculs qui portent un contexte.\n\n\
+                    ```\nlet x = 1;\n```\n\n\
+                    Le rapport complet est disponible. Il garde ses chiffres, comme 37 pages.\n\n\
+                    La dernière phrase conclut le propos du jour.";
+        r.open_text(text, "sélection", Instant::now());
+        let last = r.session().unwrap().doc().sentences.len() - 1;
+        r.with_session(Instant::now(), |app| app.seek_to(last));
+        let before = r.session().unwrap().doc().sentences[last].text.clone();
+        r.set_document_language(Some("en"), Instant::now()).unwrap();
+        let app = r.session().unwrap();
+        assert_eq!(app.synth.params().language, "en");
+        // La normalisation change les chiffres, pas la phrase.
+        assert_eq!(app.doc().sentences[app.current_sentence()].text[..8], before[..8]);
+        // Une phrase au milieu, après le bloc de code.
+        r.with_session(Instant::now(), |app| app.seek_to(3));
+        let middle = r.session().unwrap().doc().sentences[3].text.clone();
+        r.set_document_language(None, Instant::now()).unwrap();
+        let app = r.session().unwrap();
+        assert_eq!(app.doc().sentences[app.current_sentence()].text[..8], middle[..8]);
+    }
+
+    #[test]
+    fn a_missing_or_corrupt_store_is_empty_and_left_alone() {
+        let dir = std::env::temp_dir().join(format!("sillon-langues-abimes-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        assert!(LanguageChoices::load_from(&dir.join("absent.json")).items.is_empty());
+        let corrupt = dir.join("abime.json");
+        std::fs::write(&corrupt, "{ pas du json").unwrap();
+        assert!(LanguageChoices::load_from(&corrupt).items.is_empty());
+        // Ouvrir un document sans rien changer ne réécrit pas le fichier.
+        let mut r = reader();
+        r.choices_path = Some(corrupt.clone());
+        r.open_text(FR, "sélection", Instant::now());
+        assert_eq!(std::fs::read_to_string(&corrupt).unwrap(), "{ pas du json");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn a_reader_off_disk_neither_reads_nor_writes_the_choices() {
+        let dir = std::env::temp_dir().join(format!("sillon-langues-hors-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("languages.json");
+        let mut seeded = LanguageChoices::default();
+        seeded.set("quelconque", Some("en"));
+        seeded.save_to(&file).unwrap();
+        let mut r = reader();
+        r.choices_path = Some(file.clone());
+        r.set_persistent(false);
+        r.open_text(FR, "sélection", Instant::now());
+        assert_eq!(r.document_language().unwrap().chosen, None, "le fichier n'est pas lu");
+        r.set_document_language(Some("en"), Instant::now()).unwrap();
+        let on_disk = LanguageChoices::load_from(&file);
+        assert_eq!(on_disk.items.len(), 1, "le fichier n'est pas écrit");
+        assert_eq!(on_disk.get("quelconque"), Some("en"));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn a_failed_save_keeps_the_applied_choice_and_says_so() {
+        let dir = std::env::temp_dir().join(format!("sillon-langues-echec-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let blocker = dir.join("fichier");
+        std::fs::write(&blocker, "x").unwrap();
+        let mut r = reader();
+        // Un « dossier » qui est un fichier : l'écriture ne peut pas aboutir.
+        r.choices_path = Some(blocker.join("languages.json"));
+        r.open_text(&format!("{FR} {FR}"), "sélection", Instant::now());
+        r.set_document_language(Some("en"), Instant::now()).unwrap();
+        assert_eq!(r.document_language().unwrap().effective, "en", "appliqué malgré l'échec");
+        assert_eq!(r.session().unwrap().synth.params().language, "en");
+        assert!(r.session().unwrap().status().contains("non enregistré"), "{}", r.session().unwrap().status());
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]
