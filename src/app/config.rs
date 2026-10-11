@@ -249,7 +249,7 @@ impl Field {
             Field::Pitch => "Décalage de hauteur transmis au modèle, de -1 à +1.",
             Field::Energy => "Intensité de la diction.",
             Field::Volume => "Volume de sortie, sans effet sur la synthèse.",
-            Field::Language => "Langue du texte, transmise au modèle.",
+            Field::Language => "Langue des documents : « auto » suit chacun d'eux.",
             Field::Emotion => "Intonation demandée, si la famille la prend en charge.",
             Field::Voice => "Voix du modèle.",
             Field::Instruction => "Consigne de style en langage naturel.",
@@ -351,7 +351,8 @@ impl Field {
             Field::Emotion => text(&config.voice.emotion),
             Field::Voice => {
                 let voices = models::voices_for_family(&config.engine.family);
-                match voices.iter().find(|v| v.id == config.voice.voice) {
+                let shown = voice_in_use(config);
+                match voices.iter().find(|v| v.id == shown) {
                     Some(voice) => voice.label.to_string(),
                     None if config.voice.voice.is_empty() && !voices.is_empty() => {
                         format!("{} (défaut)", voices[0].label)
@@ -455,10 +456,12 @@ impl Field {
             }
             Field::Volume => Effect::Volume(0.05 * step),
             Field::Language => {
-                // Les langues du modèle, plus seulement sept langues fixes.
-                let languages = models::languages_for_family(&config.engine.family);
+                // « auto » d'abord : chaque document prend alors sa langue.
+                // La normalisation en dépend : effet à la prochaine ouverture.
+                let mut languages = vec![crate::text::language::AUTO];
+                languages.extend(models::languages_for_family(&config.engine.family));
                 cycle_string(&mut config.voice.language, &languages, delta);
-                Effect::Resynthesize
+                Effect::Reparse
             }
             Field::Emotion => {
                 cycle_string(&mut config.voice.emotion, EMOTIONS, delta);
@@ -569,6 +572,23 @@ impl Field {
                     // Champ libre : il s'édite avec Entrée.
                     return Effect::None;
                 }
+                if models::voices_follow_language(&config.engine.family) {
+                    // Kokoro : une voix par langue. Le champ défile parmi
+                    // celles de la langue par défaut et écrit sa ligne de
+                    // `[voice.per_language]`, que seule `tts_params_in` lit.
+                    let language = config.default_language();
+                    let code = language.split(['-', '_']).next().unwrap_or(&language).to_string();
+                    let own: Vec<&models::VoiceOption> =
+                        voices.iter().filter(|v| v.language.is_empty() || v.language == code).collect();
+                    if own.is_empty() {
+                        return Effect::None;
+                    }
+                    let shown = voice_in_use(config);
+                    let current = own.iter().position(|v| v.id == shown).unwrap_or(0) as i32;
+                    let next = (current + delta).rem_euclid(own.len() as i32) as usize;
+                    config.voice.per_language.insert(code, own[next].id.to_string());
+                    return Effect::Resynthesize;
+                }
                 let current = voices
                     .iter()
                     .position(|v| v.id == config.voice.voice)
@@ -581,6 +601,16 @@ impl Field {
             Field::Instruction | Field::ModelPath | Field::Family => Effect::None,
         }
     }
+}
+
+/// La voix réellement parlée par le champ « Voix » : pour Kokoro, celle de la
+/// langue par défaut dans `[voice.per_language]` (ou son défaut) ; pour les
+/// autres familles, `voice.voice`.
+fn voice_in_use(config: &Config) -> String {
+    if models::voices_follow_language(&config.engine.family) {
+        return config.tts_params().voice;
+    }
+    config.voice.voice.clone()
 }
 
 /// Raccourcit un chemin pour qu'il tienne dans une colonne.
@@ -896,15 +926,15 @@ mod tests {
         let mut config = Config::default();
         config.engine.family = "supertonic".into();
         config.voice.language = "fr".into();
-        for _ in 0..31 {
+        for _ in 0..32 {
             Field::Language.adjust(&mut config, 1);
         }
-        assert_eq!(config.voice.language, "fr", "trente et une langues, un tour complet");
+        assert_eq!(config.voice.language, "fr", "trente et une langues et « auto », un tour complet");
         config.engine.family = "magpie_tts".into();
-        for _ in 0..11 {
+        for _ in 0..12 {
             Field::Language.adjust(&mut config, 1);
         }
-        assert_eq!(config.voice.language, "fr", "onze langues chez MagpieTTS");
+        assert_eq!(config.voice.language, "fr", "onze langues et « auto » chez MagpieTTS");
     }
 
     #[test]
@@ -1011,6 +1041,29 @@ mod tests {
         Field::Voice.adjust(&mut config, -1);
         assert_eq!(config.voice.voice, "F5");
         assert!(Field::Voice.value(&config, 1.0).contains("féminine"));
+    }
+
+    #[test]
+    fn kokoro_voice_field_cycles_the_voices_of_the_default_language() {
+        let mut config = Config::default();
+        config.engine.family = "kokoro".into();
+        config.voice.voice = "M3".into();
+        assert!(!Field::Voice.is_text(&config));
+        // Français par défaut : deux voix, on boucle.
+        assert_eq!(Field::Voice.value(&config, 1.0), "p-fenrir60 · française, recommandée");
+        assert_eq!(Field::Voice.adjust(&mut config, 1), Effect::Resynthesize);
+        assert_eq!(config.voice.per_language["fr"], "ff_siwis");
+        assert_eq!(config.tts_params().voice, "ff_siwis");
+        Field::Voice.adjust(&mut config, 1);
+        assert_eq!(config.voice.per_language["fr"], "p-fenrir60");
+        assert_eq!(config.voice.voice, "M3", "la voix de l'ancien modèle reste");
+        // Langue imposée en anglais : les 28 voix anglaises.
+        config.voice.language = "en".into();
+        Field::Voice.adjust(&mut config, 1);
+        assert_eq!(config.voice.per_language["en"], "af_alloy");
+        assert_eq!(config.tts_params().voice, "af_alloy");
+        Field::Voice.adjust(&mut config, -2);
+        assert_eq!(config.voice.per_language["en"], "bm_lewis");
     }
 
     #[test]

@@ -502,6 +502,8 @@ pub fn human_size(bytes: u64) -> String {
 pub struct VoiceOption {
     pub id: &'static str,
     pub label: &'static str,
+    /// Langue de la voix ; vide : toutes celles du modèle.
+    pub language: &'static str,
 }
 
 /// Voix de Supertonic 3 : cinq masculines, cinq féminines.
@@ -509,16 +511,16 @@ pub struct VoiceOption {
 /// Le modèle n'accepte pas de référence externe — pas de clonage : seuls ces
 /// identifiants ont un effet.
 const SUPERTONIC_VOICES: &[VoiceOption] = &[
-    VoiceOption { id: "M1", label: "M1 · masculine 1" },
-    VoiceOption { id: "M2", label: "M2 · masculine 2" },
-    VoiceOption { id: "M3", label: "M3 · masculine 3" },
-    VoiceOption { id: "M4", label: "M4 · masculine 4" },
-    VoiceOption { id: "M5", label: "M5 · masculine 5" },
-    VoiceOption { id: "F1", label: "F1 · féminine 1" },
-    VoiceOption { id: "F2", label: "F2 · féminine 2" },
-    VoiceOption { id: "F3", label: "F3 · féminine 3" },
-    VoiceOption { id: "F4", label: "F4 · féminine 4" },
-    VoiceOption { id: "F5", label: "F5 · féminine 5" },
+    VoiceOption { id: "M1", label: "M1 · masculine 1", language: "" },
+    VoiceOption { id: "M2", label: "M2 · masculine 2", language: "" },
+    VoiceOption { id: "M3", label: "M3 · masculine 3", language: "" },
+    VoiceOption { id: "M4", label: "M4 · masculine 4", language: "" },
+    VoiceOption { id: "M5", label: "M5 · masculine 5", language: "" },
+    VoiceOption { id: "F1", label: "F1 · féminine 1", language: "" },
+    VoiceOption { id: "F2", label: "F2 · féminine 2", language: "" },
+    VoiceOption { id: "F3", label: "F3 · féminine 3", language: "" },
+    VoiceOption { id: "F4", label: "F4 · féminine 4", language: "" },
+    VoiceOption { id: "F5", label: "F5 · féminine 5", language: "" },
 ];
 
 /// Voix proposées pour une famille donnée.
@@ -529,6 +531,7 @@ pub fn voices_for_family(family: &str) -> &'static [VoiceOption] {
     match family {
         "supertonic" => SUPERTONIC_VOICES,
         "magpie_tts" => MAGPIE_VOICES,
+        "kokoro" => KOKORO_VOICES,
         _ => &[],
     }
 }
@@ -539,11 +542,48 @@ pub fn voices_for_family(family: &str) -> &'static [VoiceOption] {
 /// survivrait à un réordonnancement du paquet. Aucun timbre n'est décrit ici :
 /// je ne les ai pas écoutés, et `t` le fait mieux qu'une étiquette.
 const MAGPIE_VOICES: &[VoiceOption] = &[
-    VoiceOption { id: "Aria", label: "Aria" },
-    VoiceOption { id: "Jason", label: "Jason" },
-    VoiceOption { id: "John", label: "John" },
-    VoiceOption { id: "Leo", label: "Leo" },
-    VoiceOption { id: "Sofia", label: "Sofia" },
+    VoiceOption { id: "Aria", label: "Aria", language: "" },
+    VoiceOption { id: "Jason", label: "Jason", language: "" },
+    VoiceOption { id: "John", label: "John", language: "" },
+    VoiceOption { id: "Leo", label: "Leo", language: "" },
+    VoiceOption { id: "Sofia", label: "Sofia", language: "" },
+];
+
+/// Voix de Kokoro : deux françaises, les 28 anglaises officielles (US, GB).
+///
+/// `p-fenrir60` est livrée avec Sillon (timbre de `ff_siwis`, prosodie mêlée à
+/// celle d'`am_fenrir`, §11 du rapport) ; les autres viennent du paquet.
+const KOKORO_VOICES: &[VoiceOption] = &[
+    VoiceOption { id: "p-fenrir60", label: "p-fenrir60 · française, recommandée", language: "fr" },
+    VoiceOption { id: "ff_siwis", label: "ff_siwis · française", language: "fr" },
+    VoiceOption { id: "af_bella", label: "af_bella · américaine, femme, recommandée", language: "en" },
+    VoiceOption { id: "af_alloy", label: "af_alloy · américaine, femme", language: "en" },
+    VoiceOption { id: "af_aoede", label: "af_aoede · américaine, femme", language: "en" },
+    VoiceOption { id: "af_heart", label: "af_heart · américaine, femme", language: "en" },
+    VoiceOption { id: "af_jessica", label: "af_jessica · américaine, femme", language: "en" },
+    VoiceOption { id: "af_kore", label: "af_kore · américaine, femme", language: "en" },
+    VoiceOption { id: "af_nicole", label: "af_nicole · américaine, femme, chuchotée", language: "en" },
+    VoiceOption { id: "af_nova", label: "af_nova · américaine, femme", language: "en" },
+    VoiceOption { id: "af_river", label: "af_river · américaine, femme", language: "en" },
+    VoiceOption { id: "af_sarah", label: "af_sarah · américaine, femme", language: "en" },
+    VoiceOption { id: "af_sky", label: "af_sky · américaine, femme", language: "en" },
+    VoiceOption { id: "am_adam", label: "am_adam · américaine, homme", language: "en" },
+    VoiceOption { id: "am_echo", label: "am_echo · américaine, homme", language: "en" },
+    VoiceOption { id: "am_eric", label: "am_eric · américaine, homme", language: "en" },
+    VoiceOption { id: "am_fenrir", label: "am_fenrir · américaine, homme", language: "en" },
+    VoiceOption { id: "am_liam", label: "am_liam · américaine, homme", language: "en" },
+    VoiceOption { id: "am_michael", label: "am_michael · américaine, homme", language: "en" },
+    VoiceOption { id: "am_onyx", label: "am_onyx · américaine, homme", language: "en" },
+    VoiceOption { id: "am_puck", label: "am_puck · américaine, homme", language: "en" },
+    VoiceOption { id: "am_santa", label: "am_santa · américaine, homme", language: "en" },
+    VoiceOption { id: "bf_alice", label: "bf_alice · britannique, femme", language: "en" },
+    VoiceOption { id: "bf_emma", label: "bf_emma · britannique, femme", language: "en" },
+    VoiceOption { id: "bf_isabella", label: "bf_isabella · britannique, femme", language: "en" },
+    VoiceOption { id: "bf_lily", label: "bf_lily · britannique, femme", language: "en" },
+    VoiceOption { id: "bm_daniel", label: "bm_daniel · britannique, homme", language: "en" },
+    VoiceOption { id: "bm_fable", label: "bm_fable · britannique, homme", language: "en" },
+    VoiceOption { id: "bm_george", label: "bm_george · britannique, homme", language: "en" },
+    VoiceOption { id: "bm_lewis", label: "bm_lewis · britannique, homme", language: "en" },
 ];
 
 /// Sessions de synthèse qu'une famille demande pour lire d'un trait.
@@ -618,6 +658,40 @@ pub fn knows_voice(family: &str, voice: &str) -> bool {
 /// Voix par défaut d'une famille, quand elle en nomme.
 pub fn default_voice(family: &str) -> &'static str {
     voices_for_family(family).first().map_or("", |v| v.id)
+}
+
+/// Vrai quand la famille choisit sa voix selon la langue du document.
+pub fn voices_follow_language(family: &str) -> bool {
+    family == "kokoro"
+}
+
+fn language_code(language: &str) -> &str {
+    language.split(['-', '_']).next().unwrap_or(language)
+}
+
+/// Voix par défaut d'une famille dans une langue ; sa voix par défaut tout
+/// court si aucune n'est rangée sous cette langue.
+pub fn default_voice_for_language(family: &str, language: &str) -> &'static str {
+    let code = language_code(language);
+    voices_for_family(family)
+        .iter()
+        .find(|v| v.language == code)
+        .map_or_else(|| default_voice(family), |v| v.id)
+}
+
+/// La voix qui parle `language` : celle de la configuration si la famille la
+/// connaît dans cette langue, sinon sa voix par défaut — sans réécrire la
+/// configuration (règle des valeurs non listées).
+pub fn voice_for_language(family: &str, language: &str, configured: Option<&str>) -> &'static str {
+    let code = language_code(language);
+    configured
+        .map(str::trim)
+        .and_then(|c| {
+            voices_for_family(family)
+                .iter()
+                .find(|v| v.id == c && (v.language.is_empty() || v.language == code))
+        })
+        .map_or_else(|| default_voice_for_language(family, code), |v| v.id)
 }
 
 /// Écarte une voix que la famille ne reconnaît pas.
@@ -948,5 +1022,25 @@ mod tests {
             assert!(is_active_path_with(&via_link.to_string_lossy(), &model, Some(&home)), "dossier lié");
         }
         std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn kokoro_names_its_voices_by_language() {
+        assert!(voices_follow_language("kokoro"));
+        assert!(!voices_follow_language("supertonic"));
+        let voices = voices_for_family("kokoro");
+        assert_eq!(voices.iter().filter(|v| v.language == "fr").count(), 2);
+        assert_eq!(voices.iter().filter(|v| v.language == "en").count(), 28);
+        assert_eq!(default_voice_for_language("kokoro", "fr"), "p-fenrir60");
+        assert_eq!(default_voice_for_language("kokoro", "en-US"), "af_bella");
+        assert!(voices.iter().any(|v| v.id == "af_nicole" && v.label.contains("chuchotée")));
+    }
+
+    #[test]
+    fn an_unknown_voice_gives_the_default_of_its_language() {
+        assert_eq!(voice_for_language("kokoro", "fr", Some("ff_siwis")), "ff_siwis");
+        assert_eq!(voice_for_language("kokoro", "fr", Some("af_bella")), "p-fenrir60", "voix d'une autre langue");
+        assert_eq!(voice_for_language("kokoro", "en", Some("F1")), "af_bella");
+        assert_eq!(voice_for_language("kokoro", "en", None), "af_bella");
     }
 }

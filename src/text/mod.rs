@@ -2,6 +2,7 @@
 
 pub mod acronyms;
 pub mod dates;
+pub mod language;
 pub mod number;
 pub mod numerals;
 pub mod sanitizer;

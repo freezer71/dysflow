@@ -85,6 +85,8 @@ impl Default for EngineConfig {
 pub struct VoiceConfig {
     /// Nom de voix, préréglage, ou chemin d'un WAV de référence.
     pub voice: String,
+    /// `auto` : chaque document prend sa langue détectée. `fr`, `en`… : tous
+    /// les documents parlent cette langue, sauf choix fait pour l'un d'eux.
     pub language: String,
     /// Vitesse de lecture. Appliquée au son par Sonic, sans changer la hauteur ;
     /// la synthèse, elle, se fait toujours à 1×.
@@ -97,19 +99,23 @@ pub struct VoiceConfig {
     /// Consigne de style en langage naturel.
     pub instruction: String,
     pub volume: f32,
+    /// Voix par langue de document, pour les familles qui en ont une par
+    /// langue (Kokoro) : `fr = "p-fenrir60"`, `en = "af_bella"`.
+    pub per_language: BTreeMap<String, String>,
 }
 
 impl Default for VoiceConfig {
     fn default() -> Self {
         Self {
             voice: String::new(),
-            language: "fr".to_string(),
+            language: crate::text::language::AUTO.to_string(),
             speed: 1.0,
             pitch: 0.0,
             energy: 1.0,
             emotion: String::new(),
             instruction: String::new(),
             volume: 1.0,
+            per_language: BTreeMap::new(),
         }
     }
 }
@@ -243,17 +249,33 @@ impl Config {
         self
     }
 
-    /// Paramètres de synthèse dérivés de la configuration.
+    /// La langue des documents quand rien d'autre ne décide : celle de la
+    /// configuration, le français pour `auto`.
+    pub fn default_language(&self) -> String {
+        crate::text::language::resolve(&self.voice.language, None, None)
+    }
+
+    /// Paramètres de synthèse dans la langue par défaut.
     pub fn tts_params(&self) -> TtsParams {
-        TtsParams {
+        self.tts_params_in(&self.default_language())
+    }
+
+    /// Paramètres de synthèse pour un document dans `language`.
+    pub fn tts_params_in(&self, language: &str) -> TtsParams {
+        let family = &self.engine.family;
+        let voice = if crate::models::voices_follow_language(family) {
+            let code = language.split(['-', '_']).next().unwrap_or(language);
+            let configured = self.voice.per_language.get(code).map(String::as_str);
+            crate::models::voice_for_language(family, code, configured).to_string()
+        } else {
             // Une voix que la famille ne connaît pas ne doit jamais atteindre
             // le moteur : elle y provoque une erreur illisible. Un chemin de
             // WAV sous `~` est développé : le moteur ne le ferait pas.
-            voice: expand_tilde(&crate::models::sanitised_voice(
-                &self.engine.family,
-                &self.voice.voice,
-            )),
-            language: self.voice.language.clone(),
+            expand_tilde(&crate::models::sanitised_voice(family, &self.voice.voice))
+        };
+        TtsParams {
+            voice,
+            language: language.to_string(),
             pitch_shift: self.voice.pitch.clamp(-1.0, 1.0),
             energy: self.voice.energy.clamp(0.0, 2.0),
             emotion: self.voice.emotion.clone(),
@@ -273,12 +295,26 @@ impl Config {
     ///
     /// Les préréglages sont propres à chaque modèle : garder celui du
     /// précédent afficherait un nom que le nouveau ne saurait pas honorer.
-    /// Renvoie vrai si la voix a dû être remplacée.
+    /// Kokoro choisit sa voix par langue : `voice.voice` reste alors celle de
+    /// l'ancien modèle, pour qui voudra y revenir, et seules les langues sans
+    /// voix reçoivent la leur. Renvoie vrai si quelque chose a changé.
     pub fn align_voice_with_family(&mut self) -> bool {
-        if crate::models::knows_voice(&self.engine.family, &self.voice.voice) {
+        let family = self.engine.family.clone();
+        if crate::models::voices_follow_language(&family) {
+            let mut changed = false;
+            for language in ["fr", "en"] {
+                if !self.voice.per_language.contains_key(language) {
+                    let voice = crate::models::default_voice_for_language(&family, language);
+                    self.voice.per_language.insert(language.to_string(), voice.to_string());
+                    changed = true;
+                }
+            }
+            return changed;
+        }
+        if crate::models::knows_voice(&family, &self.voice.voice) {
             return false;
         }
-        self.voice.voice = crate::models::default_voice(&self.engine.family).to_string();
+        self.voice.voice = crate::models::default_voice(&family).to_string();
         true
     }
 
@@ -349,7 +385,7 @@ mod tests {
     fn partial_config_keeps_defaults_for_missing_fields() {
         let parsed: Config = toml::from_str("[voice]\nspeed = 1.5\n").unwrap();
         assert_eq!(parsed.voice.speed, 1.5);
-        assert_eq!(parsed.voice.language, "fr");
+        assert_eq!(parsed.voice.language, "auto");
         assert_eq!(parsed.reading.code_blocks, "announce");
     }
 
@@ -564,5 +600,48 @@ mod tests {
         assert_eq!(c.sampling.guidance_scale, Some(0.0));
         assert_eq!(c.sampling.repetition_penalty, Some(2.0));
         assert_eq!(c.sampling.inference_steps, Some(1));
+    }
+
+    #[test]
+    fn auto_is_the_default_and_speaks_french_until_a_document_says_otherwise() {
+        let config = Config::default();
+        assert_eq!(config.voice.language, "auto");
+        assert_eq!(config.default_language(), "fr");
+        assert_eq!(config.tts_params().language, "fr");
+        assert_eq!(config.tts_params_in("en").language, "en");
+    }
+
+    #[test]
+    fn kokoro_takes_its_voice_from_the_document_language() {
+        let mut config = Config::default();
+        config.engine.family = "kokoro".into();
+        config.voice.per_language.insert("en".into(), "af_sky".into());
+        config.voice.per_language.insert("fr".into(), "F1".into());
+        assert_eq!(config.tts_params_in("en").voice, "af_sky");
+        // Inconnue : la voix par défaut de la langue, sans réécrire la valeur.
+        assert_eq!(config.tts_params_in("fr").voice, "p-fenrir60");
+        assert_eq!(config.voice.per_language["fr"], "F1");
+    }
+
+    #[test]
+    fn voices_per_language_round_trip_through_toml() {
+        let mut config = Config::default();
+        config.voice.per_language.insert("fr".into(), "p-fenrir60".into());
+        config.voice.per_language.insert("en".into(), "af_bella".into());
+        let text = toml::to_string_pretty(&config).unwrap();
+        assert!(text.contains("[voice.per_language]"), "{text}");
+        assert_eq!(toml::from_str::<Config>(&text).unwrap(), config);
+    }
+
+    #[test]
+    fn switching_to_kokoro_keeps_the_former_voice_for_a_way_back() {
+        let mut config = Config::default();
+        config.engine.family = "kokoro".into();
+        config.voice.voice = "F2".into();
+        assert!(config.align_voice_with_family());
+        assert_eq!(config.voice.voice, "F2", "la voix de Supertonic reste pour y revenir");
+        assert_eq!(config.voice.per_language["fr"], "p-fenrir60");
+        assert_eq!(config.voice.per_language["en"], "af_bella");
+        assert!(!config.align_voice_with_family(), "rien à refaire");
     }
 }

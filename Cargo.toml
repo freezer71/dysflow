@@ -35,6 +35,8 @@ anyhow = "1.0"
 hound = "3.5"
 ureq = "2.10"
 unicode-width = "0.2"
+# Langue d'un document (français ou anglais), MIT.
+whatlang = "0.18"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
