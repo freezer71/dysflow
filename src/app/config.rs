@@ -577,7 +577,8 @@ impl Field {
                     // celles de la langue par défaut et écrit sa ligne de
                     // `[voice.per_language]`, que seule `tts_params_in` lit.
                     let language = config.default_language();
-                    let code = language.split(['-', '_']).next().unwrap_or(&language).to_string();
+                    let code = crate::text::language::Lang::parse(&language)
+                        .map_or_else(|| language.clone(), |l| l.code().to_string());
                     let own: Vec<&models::VoiceOption> =
                         voices.iter().filter(|v| v.language.is_empty() || v.language == code).collect();
                     if own.is_empty() {
@@ -1064,6 +1065,15 @@ mod tests {
         assert_eq!(config.tts_params().voice, "af_alloy");
         Field::Voice.adjust(&mut config, -2);
         assert_eq!(config.voice.per_language["en"], "bm_lewis");
+    }
+
+    #[test]
+    fn language_cycle_starts_with_auto_and_reparses() {
+        let mut config = Config::default();
+        config.engine.family = "kokoro".into();
+        config.voice.language = "fr".into();
+        assert_eq!(Field::Language.adjust(&mut config, -1), Effect::Reparse);
+        assert_eq!(config.voice.language, "auto");
     }
 
     #[test]

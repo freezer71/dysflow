@@ -264,7 +264,7 @@ impl Config {
     pub fn tts_params_in(&self, language: &str) -> TtsParams {
         let family = &self.engine.family;
         let voice = if crate::models::voices_follow_language(family) {
-            let code = language.split(['-', '_']).next().unwrap_or(language);
+            let code = crate::text::language::Lang::parse(language).map_or(language, |l| l.code());
             let configured = self.voice.per_language.get(code).map(String::as_str);
             crate::models::voice_for_language(family, code, configured).to_string()
         } else {

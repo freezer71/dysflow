@@ -666,7 +666,7 @@ pub fn voices_follow_language(family: &str) -> bool {
 }
 
 fn language_code(language: &str) -> &str {
-    language.split(['-', '_']).next().unwrap_or(language)
+    crate::text::language::Lang::parse(language).map_or(language, |l| l.code())
 }
 
 /// Voix par défaut d'une famille dans une langue ; sa voix par défaut tout

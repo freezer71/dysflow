@@ -64,27 +64,75 @@ fn lang_of(detected: Detected) -> Option<Lang> {
     }
 }
 
+/// Lettres minimum d'une unité pour compter dans la part de chaque langue.
+const MIN_UNIT_LETTERS: usize = 20;
+/// Lettres visées par unité : les lignes courtes d'un texte replié s'y
+/// rejoignent, les paragraphes plus longs restent entiers.
+const UNIT_LETTERS: usize = 120;
+/// Lettres analysées au plus : au-delà, des unités régulièrement espacées.
+const MAX_SAMPLE_LETTERS: usize = 20_000;
+
+/// Découpe en unités d'analyse : un paragraphe, ou des lignes jointes jusqu'à
+/// `UNIT_LETTERS` quand le texte n'a pas de ligne vide (OCR, texte collé).
+fn units(text: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut current = String::new();
+    let mut count = 0usize;
+    let flush = |current: &mut String, count: &mut usize, out: &mut Vec<String>| {
+        if *count >= MIN_UNIT_LETTERS {
+            out.push(std::mem::take(current));
+        } else {
+            current.clear();
+        }
+        *count = 0;
+    };
+    for line in text.lines() {
+        let n = letters(line);
+        if line.trim().is_empty() {
+            flush(&mut current, &mut count, &mut out);
+            continue;
+        }
+        if !current.is_empty() {
+            current.push(' ');
+        }
+        current.push_str(line.trim());
+        count += n;
+        if count >= UNIT_LETTERS {
+            flush(&mut current, &mut count, &mut out);
+        }
+    }
+    flush(&mut current, &mut count, &mut out);
+    out
+}
+
 /// La langue d'un texte brut, ou `None` s'il est trop court ou ambigu.
 ///
-/// La fiabilité se juge sur le texte entier ; la part de chaque langue se
-/// compte paragraphe par paragraphe, la détection globale ne disant pas
-/// combien de lettres sont dans l'autre.
+/// La fiabilité se juge sur le texte (échantillonné) ; la part de chaque
+/// langue se compte par unité, en ne retenant que les unités dont la
+/// détection est fiable : un titre, « OK » ou une ligne de code ne pèsent pas.
 pub fn detect(text: &str) -> Option<Detection> {
     if letters(text) < MIN_LETTERS {
         return None;
     }
+    let all = units(text);
+    let total_letters: usize = all.iter().map(|u| letters(u)).sum();
+    let step = total_letters.div_ceil(MAX_SAMPLE_LETTERS).max(1);
+    let sample: Vec<&String> = all.iter().step_by(step).collect();
     let detector = detector();
-    let whole = detector.detect(text)?;
+    let joined = if sample.is_empty() {
+        text.chars().take(MAX_SAMPLE_LETTERS * 2).collect()
+    } else {
+        sample.iter().map(|u| u.as_str()).collect::<Vec<_>>().join("\n\n")
+    };
+    let whole = detector.detect(&joined)?;
     if !whole.is_reliable() {
         return None;
     }
     let (mut fr, mut en) = (0usize, 0usize);
-    for paragraph in text.split("\n\n") {
-        let n = letters(paragraph);
-        if n == 0 {
-            continue;
-        }
-        match detector.detect(paragraph).and_then(|info| lang_of(info.lang())) {
+    for unit in &sample {
+        let Some(info) = detector.detect(unit).filter(|i| i.is_reliable()) else { continue };
+        let n = letters(unit);
+        match lang_of(info.lang()) {
             Some(Lang::Fr) => fr += n,
             Some(Lang::En) => en += n,
             None => {}
@@ -213,5 +261,32 @@ mod tests {
         assert_eq!(resolve("fr", None, en), "fr", "langue imposée par la configuration");
         assert_eq!(resolve("de", None, en), "de", "une langue d'un autre modèle reste telle quelle");
         assert_eq!(resolve("fr", Some("en"), None), "en", "le choix fait pour ce document");
+    }
+
+    #[test]
+    fn short_titles_and_unfenced_code_do_not_weigh() {
+        let text = format!(
+            "# Chapitre 3\n\nOK\n\n{FR}\n\nlet value = items.iter().map(|x| x.len()).sum::<usize>();\n\n{FR}"
+        );
+        let d = detect(&text).unwrap();
+        assert_eq!(d.language, Lang::Fr);
+        assert!(d.minority_share < 0.05, "{}", d.minority_share);
+    }
+
+    #[test]
+    fn a_half_and_half_text_without_blank_lines_is_mixed() {
+        let text = format!("{FR} {FR}\n{EN} {EN}");
+        let d = detect(&text).unwrap();
+        assert!(d.minority_share >= MIXED_THRESHOLD, "{}", d.minority_share);
+    }
+
+    #[test]
+    fn a_huge_document_is_sampled() {
+        let text = format!("{FR}\n\n").repeat(30_000);
+        assert!(text.len() > 3_000_000);
+        let start = std::time::Instant::now();
+        let d = detect(&text).unwrap();
+        assert_eq!(d.language, Lang::Fr);
+        assert!(start.elapsed().as_millis() < 500, "{:?}", start.elapsed());
     }
 }
