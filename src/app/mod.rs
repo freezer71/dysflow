@@ -1708,8 +1708,17 @@ pub(crate) mod tests {
             Vec::new(),
             crate::audio::Player::silent(),
         );
-        assert!(wait_for(|| app.synth.stats().ready >= 3));
+        // Attendre que la fenêtre soit entièrement synthétisée, pas seulement
+        // trois phrases : la quatrième, encore à venir, tombait parfois dans
+        // le compte d'après et passait pour une resynthèse.
+        let total = app.doc().sentences.len();
+        assert!(total <= app.config.engine.prefetch as usize, "tout le document tient dans la fenêtre");
+        assert!(wait_for(|| {
+            let stats = app.synth.stats();
+            stats.ready == total && stats.in_flight == 0
+        }));
         let before = calls.load(std::sync::atomic::Ordering::SeqCst);
+        assert_eq!(before, total, "une synthèse par phrase");
 
         app.set_speed(2.0);
         app.change_speed(0.5);

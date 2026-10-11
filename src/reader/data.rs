@@ -264,9 +264,13 @@ mod tests {
         let path = models::install_path(package).expect("dossier isolé");
         // Le dossier de la famille est partagé par les tests : une suppression
         // (`models::remove` retire le dossier devenu vide) peut passer entre
-        // sa création et l'écriture. On recommence alors.
+        // sa création et l'écriture, ou dans `create_dir_all` même, qui rend
+        // alors « File exists » pour un dossier disparu entre-temps. On
+        // recommence dans les deux cas.
         for _ in 0..50 {
-            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            if std::fs::create_dir_all(path.parent().unwrap()).is_err() {
+                continue;
+            }
             if std::fs::write(&path, b"faux modele").is_ok() {
                 return path;
             }
