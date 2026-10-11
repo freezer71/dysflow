@@ -255,7 +255,11 @@ impl Sentence {
             return None;
         }
         for (i, span) in spans.iter().enumerate() {
-            if elapsed < span.end {
+            // Tolérance d'un cheveu sous la fin, comme `word_fraction` : un
+            // saut au mot suivant repasse par `Duration` et peut revenir un
+            // ulp sous son début, qui est la fin de celui-ci.
+            let tolerance = (span.end.abs() * 1e-5).max(1e-6);
+            if elapsed < span.end - tolerance {
                 let length = (span.end - span.start).max(f32::EPSILON);
                 return Some((i, ((elapsed - span.start) / length).clamp(0.0, 1.0)));
             }
@@ -401,6 +405,31 @@ mod tests {
         assert_eq!(s.word_fraction_timed(5.0, &spans), Some((2, 1.0)));
         // Un minutage qui ne couvre pas les mots ne sert à rien.
         assert_eq!(s.word_fraction_timed(0.1, &spans[..2]), None);
+    }
+
+    #[test]
+    fn a_jump_to_a_measured_word_highlights_that_word() {
+        // Le saut passe par `Duration::from_secs_f32` puis revient en `f32` :
+        // l'aller-retour peut tomber un ulp sous le début du mot, qui est
+        // aussi la fin du précédent. Le mot visé doit rester surligné.
+        let words: Vec<String> = (0..6).map(|i| format!("m{i}")).collect();
+        let refs: Vec<&str> = words.iter().map(String::as_str).collect();
+        let s = sentence_of(&refs);
+        for step in 1..10_000u32 {
+            let unit = step as f32 * 0.0001;
+            let spans: Vec<WordSpan> = (0..6)
+                .map(|i| WordSpan { start: i as f32 * unit, end: (i + 1) as f32 * unit })
+                .collect();
+            for (i, span) in spans.iter().enumerate() {
+                let elapsed = std::time::Duration::from_secs_f32(span.start).as_secs_f32();
+                assert_eq!(
+                    s.word_fraction_timed(elapsed, &spans).map(|(w, _)| w),
+                    Some(i),
+                    "mot {i}, début {} relu {elapsed}",
+                    span.start
+                );
+            }
+        }
     }
 
     #[test]

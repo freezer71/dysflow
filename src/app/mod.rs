@@ -1669,8 +1669,9 @@ pub(crate) mod tests {
         app.player.simulate(0, Duration::from_millis(500), Duration::from_secs(1));
         assert_eq!(app.current_word_fraction().map(|(w, _)| w), Some(2));
         app.timings.clear();
-        // Sans minutage, la répartition par poids reprend la main.
-        assert!(app.current_word_fraction().is_some());
+        // Sans minutage, la répartition par poids reprend la main : à mi-parole,
+        // « long » (poids 2, 3, 4, 4, 9 sur 22 : la cible 11 tombe dans le 4e).
+        assert_eq!(app.current_word_fraction().map(|(w, _)| w), Some(3));
     }
 
     #[test]

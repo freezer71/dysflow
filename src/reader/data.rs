@@ -267,15 +267,18 @@ mod tests {
         // sa création et l'écriture, ou dans `create_dir_all` même, qui rend
         // alors « File exists » pour un dossier disparu entre-temps. On
         // recommence dans les deux cas.
+        let mut last_error = None;
         for _ in 0..50 {
-            if std::fs::create_dir_all(path.parent().unwrap()).is_err() {
+            if let Err(err) = std::fs::create_dir_all(path.parent().unwrap()) {
+                last_error = Some(err);
                 continue;
             }
-            if std::fs::write(&path, b"faux modele").is_ok() {
-                return path;
+            match std::fs::write(&path, b"faux modele") {
+                Ok(()) => return path,
+                Err(err) => last_error = Some(err),
             }
         }
-        panic!("installation du faux modèle impossible : {}", path.display());
+        panic!("installation du faux modèle impossible : {} ({last_error:?})", path.display());
     }
 
     #[test]

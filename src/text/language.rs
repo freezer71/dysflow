@@ -105,6 +105,14 @@ fn units(text: &str) -> Vec<String> {
     out
 }
 
+/// Les unités que la détection lit vraiment : une sur `step`, de sorte
+/// qu'un document immense ne coûte pas plus qu'environ `MAX_SAMPLE_LETTERS`.
+fn sample_units(all: &[String]) -> Vec<&String> {
+    let total_letters: usize = all.iter().map(|u| letters(u)).sum();
+    let step = total_letters.div_ceil(MAX_SAMPLE_LETTERS).max(1);
+    all.iter().step_by(step).collect()
+}
+
 /// La langue d'un texte brut, ou `None` s'il est trop court ou ambigu.
 ///
 /// La fiabilité se juge sur le texte (échantillonné) ; la part de chaque
@@ -115,9 +123,7 @@ pub fn detect(text: &str) -> Option<Detection> {
         return None;
     }
     let all = units(text);
-    let total_letters: usize = all.iter().map(|u| letters(u)).sum();
-    let step = total_letters.div_ceil(MAX_SAMPLE_LETTERS).max(1);
-    let sample: Vec<&String> = all.iter().step_by(step).collect();
+    let sample = sample_units(&all);
     let detector = detector();
     let joined = if sample.is_empty() {
         text.chars().take(MAX_SAMPLE_LETTERS * 2).collect()
@@ -284,9 +290,16 @@ mod tests {
     fn a_huge_document_is_sampled() {
         let text = format!("{FR}\n\n").repeat(30_000);
         assert!(text.len() > 3_000_000);
+        // La borne porte sur ce que le détecteur lit, pas sur l'horloge : un
+        // temps mural échouait sous charge (571 ms, 1,03 s pour 160 ms seul).
+        let all = units(&text);
+        let read: usize = sample_units(&all).iter().map(|u| letters(u)).sum();
+        assert!(read <= MAX_SAMPLE_LETTERS, "{read} lettres lues");
+        assert!(read * 2 >= MAX_SAMPLE_LETTERS, "échantillon trop maigre : {read}");
         let start = std::time::Instant::now();
         let d = detect(&text).unwrap();
         assert_eq!(d.language, Lang::Fr);
-        assert!(start.elapsed().as_millis() < 500, "{:?}", start.elapsed());
+        // Garde-fou large contre un retour au quadratique, pas une mesure.
+        assert!(start.elapsed().as_secs() < 10, "{:?}", start.elapsed());
     }
 }
