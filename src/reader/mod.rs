@@ -18,6 +18,7 @@ use crate::tts::{Synthesizer, TtsEngine};
 pub mod command;
 pub mod data;
 pub mod handle;
+pub mod language;
 pub mod preview;
 pub mod settings;
 pub mod view;
@@ -57,6 +58,10 @@ pub struct Reader {
     lone_preview: Option<preview::LonePreview>,
     /// Dernier échec de cet aperçu.
     preview_error: Option<String>,
+    /// Choix de langue faits à la main, par document.
+    choices: language::LanguageChoices,
+    /// Langue du document gardé.
+    language: Option<language::DocumentLanguage>,
 }
 
 impl Reader {
@@ -76,6 +81,8 @@ impl Reader {
             persist: true,
             lone_preview: None,
             preview_error: None,
+            choices: language::LanguageChoices::load(),
+            language: None,
         }
     }
 
@@ -91,6 +98,10 @@ impl Reader {
     /// s'efface (modèles, cache, signets).
     pub fn set_persistent(&mut self, on: bool) {
         self.persist = on;
+        if !on {
+            // Hors disque : ni lecture ni écriture des choix de langue.
+            self.choices = language::LanguageChoices::default();
+        }
     }
 
     /// Change à chaque nouveau document — pas à chaque réveil de la voix.
@@ -165,6 +176,13 @@ impl Reader {
     pub fn open_file(&mut self, path: &Path, now: Instant) -> anyhow::Result<()> {
         let markdown = crate::source::load(path)?;
         let source = crate::launch::document_identity(path);
+        // Le choix de langue suit le fichier, comme sa position : il doit
+        // être là avant l'ouverture, qui en dépend.
+        if let Some(name) = path.file_name() {
+            if self.choices.adopt(&name.to_string_lossy(), &source) && self.persist {
+                let _ = self.choices.save();
+            }
+        }
         self.open(Text { markdown, source, identity: true }, now);
         if let Some(app) = self.session.as_mut() {
             if let Some(name) = path.file_name() {
@@ -229,8 +247,9 @@ impl Reader {
         self.config = app.config.clone();
         self.resting_at = Some(app.current_sentence());
         drop(app);
+        let language = self.current_language();
         self.resting_doc = self.text.as_ref().map(|t| {
-            crate::doc::builder::parse_document(&t.markdown, self.config.code_policy())
+            crate::doc::builder::parse_document_in(&t.markdown, self.config.code_policy(), &language)
         });
         self.engine = None;
     }
@@ -265,6 +284,7 @@ impl Reader {
         self.resting_at = None;
         self.resting_doc = None;
         let engine = self.ensure_engine();
+        let language = self.language_of(&text.markdown, &text.source);
         let (synth, player) = match self.session.take() {
             Some(mut old) => {
                 old.remember_position();
@@ -274,7 +294,7 @@ impl Reader {
             None => (
                 Synthesizer::new(
                     engine,
-                    self.config.tts_params(),
+                    self.config.tts_params_in(&language.effective),
                     self.config.sessions() as usize,
                     self.config.engine.prefetch as usize,
                 ),
@@ -282,7 +302,8 @@ impl Reader {
             ),
         };
         synth.reset();
-        let mut builder = DocumentBuilder::new(self.config.code_policy());
+        let mut builder = DocumentBuilder::with_language(self.config.code_policy(), &language.effective);
+        self.language = Some(language);
         for block in crate::input::split_blocks(&text.markdown) {
             builder.push_block(&block);
         }

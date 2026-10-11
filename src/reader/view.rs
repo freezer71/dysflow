@@ -69,6 +69,8 @@ pub struct Snapshot {
     pub download: Option<super::settings::DownloadView>,
     /// L'aperçu de voix (« Écouter »).
     pub preview: super::preview::PreviewView,
+    /// Langue du document gardé : détectée, choisie, part de l'autre langue.
+    pub document_language: Option<super::language::DocumentLanguage>,
 }
 
 /// Un mot, avec sa mise en valeur.
@@ -168,6 +170,7 @@ pub fn snapshot(reader: &Reader) -> Snapshot {
             voice,
             download: reader.download(),
             preview: reader.preview_view(),
+            document_language: reader.document_language().cloned(),
             ..Snapshot::default()
         };
     };
@@ -205,6 +208,7 @@ pub fn snapshot(reader: &Reader) -> Snapshot {
         skipped: app.skipped_count(),
         download: reader.download(),
         preview: reader.preview_view(),
+        document_language: reader.document_language().cloned(),
     }
 }
 

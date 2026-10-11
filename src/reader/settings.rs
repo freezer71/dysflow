@@ -56,6 +56,8 @@ pub struct SettingsView {
     pub keep_voice_minutes: i64,
     // [extra]
     pub extra: BTreeMap<String, String>,
+    /// `[voice.per_language]` : la voix de chaque langue (Kokoro).
+    pub voices_by_language: BTreeMap<String, String>,
 }
 
 impl SettingsView {
@@ -91,6 +93,7 @@ impl SettingsView {
             reading_ruler: c.reading.reading_ruler,
             keep_voice_minutes: c.app.keep_voice_minutes,
             extra: c.extra.clone(),
+            voices_by_language: c.voice.per_language.clone(),
         }
     }
 }
@@ -133,6 +136,8 @@ pub struct SettingsPatch {
     pub extra_set: Vec<(String, String)>,
     /// Options libres retirées.
     pub extra_remove: Vec<String>,
+    /// La voix d'une langue : `("en", "af_sky")`.
+    pub voice_for_language: Option<(String, String)>,
 }
 
 fn set<T: Clone>(slot: &mut T, value: &Option<T>) {
@@ -171,6 +176,9 @@ impl SettingsPatch {
         set(&mut c.reading.line_spacing, &self.line_spacing);
         set(&mut c.reading.reading_ruler, &self.reading_ruler);
         set(&mut c.app.keep_voice_minutes, &self.keep_voice_minutes);
+        if let Some((language, voice)) = &self.voice_for_language {
+            c.voice.per_language.insert(language.clone(), voice.clone());
+        }
         for (key, value) in &self.extra_set {
             c.extra.insert(key.clone(), value.clone());
         }
@@ -198,27 +206,42 @@ pub enum SettingsEffect {
 }
 
 impl SettingsEffect {
-    /// L'effet le plus fort de ce qui change de `before` à `after`.
+    /// L'effet le plus fort, pour un document dans la langue par défaut.
+    pub fn between(before: &Config, after: &Config) -> Self {
+        Self::between_in(before, after, &before.default_language())
+    }
+
+    /// L'effet le plus fort de ce qui change de `before` à `after`, pour un
+    /// document dans `language`.
     ///
     /// Mesuré sur la configuration, pas sur les champs présents : renvoyer
-    /// une valeur déjà en place ne relance rien.
-    pub fn between(before: &Config, after: &Config) -> Self {
+    /// une valeur déjà en place ne relance rien. La langue change la
+    /// normalisation, donc le découpage ; la voix de l'autre langue ne change
+    /// rien à ce qu'on entend.
+    pub fn between_in(before: &Config, after: &Config, language: &str) -> Self {
         if before.engine != after.engine {
             return Self::Reload;
         }
-        if before.reading.code_blocks != after.reading.code_blocks {
+        if before.reading.code_blocks != after.reading.code_blocks
+            || before.voice.language != after.voice.language
+        {
             return Self::Reparse;
         }
         let mut voice = before.voice.clone();
         voice.volume = after.voice.volume;
         voice.speed = after.voice.speed;
-        if voice != after.voice || before.sampling != after.sampling || before.extra != after.extra {
+        voice.per_language = after.voice.per_language.clone();
+        let heard = before.tts_params_in(language).voice != after.tts_params_in(language).voice;
+        if voice != after.voice || heard || before.sampling != after.sampling || before.extra != after.extra {
             return Self::Resynthesize;
         }
         if before.voice.volume != after.voice.volume || before.voice.speed != after.voice.speed {
             return Self::Immediate;
         }
-        if before.reading != after.reading || before.app != after.app {
+        if before.reading != after.reading
+            || before.app != after.app
+            || before.voice.per_language != after.voice.per_language
+        {
             return Self::Display;
         }
         Self::Nothing
@@ -304,7 +327,7 @@ impl Reader {
         let mut next = before.clone();
         patch.write_into(&mut next);
         let next = next.normalised();
-        let effect = SettingsEffect::between(&before, &next);
+        let effect = SettingsEffect::between_in(&before, &next, &self.current_language());
         if let Some(app) = self.session.as_mut() {
             app.config = next.clone();
             if (app.player.volume() - next.voice.volume).abs() >= f32::EPSILON {
@@ -368,7 +391,7 @@ impl Reader {
     /// Reconstruit le document avec la politique des blocs de code courante,
     /// à la même phrase de texte : « sauter » retire des phrases, « lire » en
     /// ajoute, le numéro seul ne suffit donc pas.
-    fn reparse(&mut self, now: Instant) {
+    pub(super) fn reparse(&mut self, now: Instant) {
         if let Some(app) = self.session.as_ref() {
             let playing = app.player.is_playing() && !app.is_finished();
             let place = Place::of(app.doc(), app.current_sentence());
@@ -393,7 +416,10 @@ impl Reader {
         }
         let (Some(at), Some(text)) = (self.resting_at, self.text.as_ref()) else { return };
         let place = self.resting_doc.as_ref().map_or(Place { rank: 0, code: None }, |doc| Place::of(doc, at));
-        let doc = crate::doc::builder::parse_document(&text.markdown, self.config.code_policy());
+        let text = text.clone();
+        let language = self.language_of(&text.markdown, &text.source);
+        let doc = crate::doc::builder::parse_document_in(&text.markdown, self.config.code_policy(), &language.effective);
+        self.language = Some(language);
         self.resting_at = Some(place.find(&doc));
         self.resting_doc = Some(doc);
         self.revision += 1;
@@ -719,6 +745,7 @@ mod tests {
             keep_voice_minutes: Some(30),
             extra_set: vec![("cfg_scale".into(), "3".into())],
             extra_remove: vec![],
+            voice_for_language: Some(("en".into(), "af_sky".into())),
         };
         let expected = SettingsView {
             voice: "F2".into(),
@@ -751,6 +778,7 @@ mod tests {
             reading_ruler: false,
             keep_voice_minutes: 30,
             extra: BTreeMap::from([("cfg_scale".to_string(), "3".to_string())]),
+            voices_by_language: BTreeMap::from([("en".to_string(), "af_sky".to_string())]),
         };
         assert_eq!(r.apply_patch(&patch, Instant::now()), expected);
         assert_eq!(r.settings(), expected);
@@ -795,7 +823,7 @@ mod tests {
         assert_eq!(effect_of(|c| c.voice.volume = 0.5), Immediate);
         assert_eq!(effect_of(|c| c.voice.speed = 1.5), Immediate, "la vitesse s'applique au son");
         assert_eq!(effect_of(|c| c.voice.voice = "F1".into()), Resynthesize);
-        assert_eq!(effect_of(|c| c.voice.language = "en".into()), Resynthesize);
+        assert_eq!(effect_of(|c| c.voice.language = "en".into()), Reparse, "la normalisation suit la langue");
         assert_eq!(effect_of(|c| c.sampling.temperature = Some(0.5)), Resynthesize);
         assert_eq!(effect_of(|c| c.sampling.seed = Some(1)), Resynthesize);
         assert_eq!(effect_of(|c| { c.extra.insert("k".into(), "v".into()); }), Resynthesize);

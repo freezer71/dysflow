@@ -34,11 +34,18 @@ impl Reader {
     /// Fait dire la phrase d'exemple. Un texte au repos se réveille ; sans
     /// texte, la voix se charge. Rend la raison d'un refus.
     pub fn preview_voice(&mut self, now: Instant) -> Result<(), String> {
+        let language = self.current_language();
+        self.preview_voice_in(&language, now)
+    }
+
+    /// La phrase d'exemple dans `language` : chaque voix s'écoute dans la
+    /// sienne.
+    pub fn preview_voice_in(&mut self, language: &str, now: Instant) -> Result<(), String> {
         self.last_activity = now;
         self.preview_error = None;
         self.wake(now);
         if let Some(app) = self.session.as_mut() {
-            return app.request_preview();
+            return app.request_preview_in(language);
         }
         let engine = self.ensure_engine();
         if self.lone_preview.is_none() {
@@ -53,7 +60,7 @@ impl Reader {
             &mut lone.player,
             engine.requires_reference(),
             &self.config,
-            &self.config.default_language(),
+            language,
             label,
         )
     }

@@ -695,6 +695,7 @@ fn patch_from(p: SettingsPatch) -> settings::SettingsPatch {
         keep_voice_minutes: p.keep_voice_minutes,
         extra_set: p.extra_set.into_iter().map(|o| (o.key, o.value)).collect(),
         extra_remove: p.extra_remove,
+        voice_for_language: None,
     }
 }
 

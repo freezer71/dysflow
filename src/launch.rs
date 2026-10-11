@@ -249,16 +249,25 @@ fn extracted(args: &Args) -> Result<Option<String>> {
     }
 }
 
+/// Un document prêt à recevoir `text` : la langue vient du choix retenu pour
+/// lui, de la configuration, ou de la détection.
+fn builder_for(config: &Config, text: &str, identity: Option<&str>) -> DocumentBuilder {
+    let detected = crate::text::language::detect_markdown(text);
+    let choices = crate::reader::language::LanguageChoices::load();
+    let chosen = identity.and_then(|id| choices.get(id)).map(str::to_string);
+    let language = crate::text::language::resolve(&config.voice.language, chosen.as_deref(), detected);
+    DocumentBuilder::with_language(config.code_policy(), &language)
+}
+
 /// Ce qu'il y a à lire : le document assemblé, le flux qui l'alimente encore,
 /// et le nom sous lequel il se retient.
 fn read_input(
     args: &Args,
     config: &Config,
 ) -> Result<(DocumentBuilder, Option<Receiver<InputEvent>>, String)> {
-    let mut builder = DocumentBuilder::new(config.code_policy());
-
     if args.clip {
         let text = read_clipboard()?;
+        let mut builder = builder_for(config, &text, None);
         for block in input::split_blocks(&text) {
             builder.push_block(&block);
         }
@@ -270,15 +279,21 @@ fn read_input(
             // Un fichier est analysé d'emblée : sommaire et durée sont
             // disponibles dès l'ouverture.
             let text = crate::source::load_with_cache(path, !args.no_cache)?;
+            let identity = document_identity(path);
+            let mut builder = builder_for(config, &text, Some(&identity));
             for block in input::split_blocks(&text) {
                 builder.push_block(&block);
             }
-            Ok((builder, None, document_identity(path)))
+            Ok((builder, None, identity))
         }
         None if std::io::stdin().is_terminal() => {
             // Lancé sans rien : il n'y a rien à lire, mais tout à régler.
             // Ouvrir la configuration vaut mieux qu'un message d'erreur.
-            Ok((builder, None, "configuration".to_string()))
+            Ok((
+                DocumentBuilder::with_language(config.code_policy(), &config.default_language()),
+                None,
+                "configuration".to_string(),
+            ))
         }
         None => {
             // Le tube est mis de côté et le descripteur 0 rendu au terminal,
@@ -288,9 +303,12 @@ fn read_input(
                 Some(file) => input::spawn_reader(file),
                 None => input::spawn_reader(std::io::stdin()),
             };
-            // Le flux est lu au fil de l'eau : la lecture commence sans
-            // attendre la fin de l'entrée.
-            Ok((builder, Some(stream), "stdin".to_string()))
+            // Le flux est lu au fil de l'eau : sa langue est celle par défaut.
+            Ok((
+                DocumentBuilder::with_language(config.code_policy(), &config.default_language()),
+                Some(stream),
+                "stdin".to_string(),
+            ))
         }
     }
 }

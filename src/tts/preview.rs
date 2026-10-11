@@ -25,7 +25,11 @@ use super::{PcmBuffer, TtsEngine, TtsParams};
 /// cinq secondes — parce qu'on enchaîne dix voix pour les comparer, et qu'un
 /// extrait de dix secondes rendrait la comparaison pénible.
 pub fn sample_text(language: &str) -> &'static str {
-    match language.trim().to_ascii_lowercase().as_str() {
+    let code = crate::text::language::Lang::parse(language).map_or_else(
+        || language.trim().split(['-', '_']).next().unwrap_or("").to_ascii_lowercase(),
+        |l| l.code().to_string(),
+    );
+    match code.as_str() {
         "en" => "Hello, this is a preview of the selected voice, at the current speed.",
         "de" => "Guten Tag, dies ist eine Hörprobe der gewählten Stimme, in diesem Tempo.",
         "es" => "Hola, esta es una muestra de la voz seleccionada, a esta velocidad.",
@@ -251,6 +255,12 @@ fn latest(mut request: Request, requests: &Receiver<Request>) -> Request {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_regional_english_code_gets_the_english_sample() {
+        assert_eq!(sample_text("en-US"), sample_text("en"));
+        assert_ne!(sample_text("en_GB"), sample_text("fr"));
+    }
 
     #[test]
     fn a_cloning_model_without_a_wav_is_refused_before_the_audio_check() {
