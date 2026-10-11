@@ -10,6 +10,14 @@ pub mod builder;
 
 pub use builder::DocumentBuilder;
 
+/// Le temps d'un mot dans sa phrase, en secondes de synthèse (1×) : l'unité
+/// du chronomètre du lecteur, quelle que soit la vitesse.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct WordSpan {
+    pub start: f32,
+    pub end: f32,
+}
+
 use serde::{Deserialize, Serialize};
 
 /// Nature d'un bloc, qui détermine à la fois son rendu et sa mise en voix.
@@ -231,6 +239,29 @@ impl Sentence {
         let before: f32 = self.words[..word].iter().map(Word::weight).sum();
         Some(before / sum)
     }
+
+    /// Les mots tels que la voix les dit : forme parlée, sinon écrite.
+    pub fn spoken_words(&self) -> Vec<String> {
+        self.words
+            .iter()
+            .map(|w| w.spoken.clone().unwrap_or_else(|| w.text.clone()))
+            .collect()
+    }
+
+    /// Le mot prononcé à `elapsed` d'après le minutage mesuré de chaque mot,
+    /// et la part déjà dite. `None` si le minutage ne couvre pas les mots.
+    pub fn word_fraction_timed(&self, elapsed: f32, spans: &[WordSpan]) -> Option<(usize, f32)> {
+        if spans.is_empty() || spans.len() != self.words.len() {
+            return None;
+        }
+        for (i, span) in spans.iter().enumerate() {
+            if elapsed < span.end {
+                let length = (span.end - span.start).max(f32::EPSILON);
+                return Some((i, ((elapsed - span.start) / length).clamp(0.0, 1.0)));
+            }
+        }
+        Some((spans.len() - 1, 1.0))
+    }
 }
 
 /// Un bloc du document : un titre, un paragraphe, un item de liste…
@@ -355,6 +386,28 @@ mod tests {
                 .collect(),
             trailing_pause_ms: 0,
         }
+    }
+
+    #[test]
+    fn a_measured_timing_drives_the_highlight() {
+        let s = sentence_of(&["un", "deux", "trois"]);
+        let spans = [
+            WordSpan { start: 0.0, end: 0.5 },
+            WordSpan { start: 0.5, end: 0.6 },
+            WordSpan { start: 0.6, end: 1.0 },
+        ];
+        assert_eq!(s.word_fraction_timed(0.25, &spans), Some((0, 0.5)));
+        assert_eq!(s.word_fraction_timed(0.55, &spans).map(|(w, _)| w), Some(1));
+        assert_eq!(s.word_fraction_timed(5.0, &spans), Some((2, 1.0)));
+        // Un minutage qui ne couvre pas les mots ne sert à rien.
+        assert_eq!(s.word_fraction_timed(0.1, &spans[..2]), None);
+    }
+
+    #[test]
+    fn spoken_words_prefer_the_spoken_form() {
+        let mut s = sentence_of(&["en", "2027"]);
+        s.words[1].spoken = Some("deux mille vingt-sept".into());
+        assert_eq!(s.spoken_words(), ["en", "deux mille vingt-sept"]);
     }
 
     #[test]

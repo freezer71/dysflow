@@ -18,13 +18,32 @@ use std::sync::{Arc, Condvar, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
-use super::{PcmBuffer, TtsEngine, TtsParams};
+use super::{PcmBuffer, Synthesis, TtsEngine, TtsParams, WordSpan};
 
 /// Phrase à synthétiser.
 #[derive(Debug, Clone)]
 struct Job {
     text: String,
+    /// Formes parlées des mots affichés, pour le minutage.
+    words: Vec<String>,
     pause_ms: u64,
+}
+
+/// Ce qu'un worker prend : la phrase, ses mots, et sous quels paramètres.
+struct Picked {
+    id: usize,
+    text: String,
+    words: Vec<String>,
+    params: TtsParams,
+    generation: u64,
+    pause_ms: u64,
+}
+
+/// Quelle partie d'une phrase un audio porte.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Part {
+    /// La phrase entière.
+    Whole,
 }
 
 /// Audio prêt à jouer pour une phrase.
@@ -37,6 +56,9 @@ pub struct Rendered {
     /// Le curseur de mots s'appuie dessus : inclure le silence ferait traîner le
     /// dernier mot jusqu'au bloc suivant.
     pub speech: Duration,
+    /// Temps de chaque mot affiché, quand le moteur le donne.
+    pub words: Option<Arc<[WordSpan]>>,
+    pub part: Part,
 }
 
 /// Compteur affiché dans la barre d'état.
@@ -47,6 +69,8 @@ pub struct SynthesisStats {
     pub failed: usize,
     pub total: usize,
     pub workers: usize,
+    /// Temps passé à synthétiser, cumulé sur toutes les sessions.
+    pub busy: Duration,
 }
 
 struct Entry {
@@ -66,11 +90,13 @@ struct State {
     cache: HashMap<usize, Entry>,
     in_flight: HashSet<usize>,
     failures: HashMap<usize, String>,
+    /// Temps passé à synthétiser, cumulé.
+    busy: Duration,
 }
 
 impl State {
     /// Prochaine phrase à synthétiser, au plus près du curseur.
-    fn next_job(&self) -> Option<(usize, String, TtsParams, u64, u64)> {
+    fn next_job(&self) -> Option<Picked> {
         let end = (self.cursor + self.window).min(self.jobs.len());
         for id in self.cursor..end {
             if self.in_flight.contains(&id) || self.failures.contains_key(&id) {
@@ -80,13 +106,14 @@ impl State {
                 continue;
             }
             let job = &self.jobs[id];
-            return Some((
+            return Some(Picked {
                 id,
-                job.text.clone(),
-                self.params.clone(),
-                self.generation,
-                job.pause_ms,
-            ));
+                text: job.text.clone(),
+                words: job.words.clone(),
+                params: self.params.clone(),
+                generation: self.generation,
+                pause_ms: job.pause_ms,
+            });
         }
         None
     }
@@ -133,6 +160,7 @@ impl Synthesizer {
                 cache: HashMap::new(),
                 in_flight: HashSet::new(),
                 failures: HashMap::new(),
+                busy: Duration::ZERO,
             }),
             wake: Condvar::new(),
             shutdown: AtomicBool::new(false),
@@ -152,10 +180,15 @@ impl Synthesizer {
         }
     }
 
-    /// Ajoute une phrase à la fin du document.
+    /// Ajoute une phrase à la fin du document, sans mots à minuter.
     pub fn push(&self, text: String, pause_ms: u64) {
+        self.push_with_words(text, Vec::new(), pause_ms);
+    }
+
+    /// Ajoute une phrase et les formes parlées de ses mots affichés.
+    pub fn push_with_words(&self, text: String, words: Vec<String>, pause_ms: u64) {
         let mut state = self.shared.state.lock().unwrap();
-        state.jobs.push(Job { text, pause_ms });
+        state.jobs.push(Job { text, words, pause_ms });
         drop(state);
         self.shared.wake.notify_all();
     }
@@ -271,6 +304,7 @@ impl Synthesizer {
             failed: state.failures.len(),
             total: state.jobs.len(),
             workers: self.worker_count,
+            busy: state.busy,
         }
     }
 
@@ -299,14 +333,14 @@ fn worker_loop(shared: Arc<Shared>) {
     let mut session = None;
 
     loop {
-        let (id, text, params, generation, pause_ms) = {
+        let job = {
             let mut state = shared.state.lock().unwrap();
             loop {
                 if shared.shutdown.load(Ordering::SeqCst) {
                     return;
                 }
                 if let Some(job) = state.next_job() {
-                    state.in_flight.insert(job.0);
+                    state.in_flight.insert(job.id);
                     break job;
                 }
                 state = shared.wake.wait(state).unwrap();
@@ -319,8 +353,8 @@ fn worker_loop(shared: Arc<Shared>) {
                 Err(err) => {
                     finish_generation(
                         &shared,
-                        id,
-                        generation,
+                        job.id,
+                        job.generation,
                         Err(format!("ouverture de session : {err}")),
                     );
                     continue;
@@ -328,20 +362,29 @@ fn worker_loop(shared: Arc<Shared>) {
             }
         }
 
-        let outcome = session
-            .as_mut()
-            .expect("session ouverte juste au-dessus")
-            .synthesize(&text, &params)
-            .map_err(|e| e.to_string())
-            .and_then(|pcm| {
-                if pcm.is_empty() {
-                    Err("aucun échantillon produit".to_string())
-                } else {
-                    Ok(with_trailing_silence(pcm, pause_ms))
-                }
-            });
+        let session = session.as_mut().expect("session ouverte juste au-dessus");
+        let outcome = synthesize(&shared, session.as_mut(), &job.text, &job.words, &job.params)
+            .map(|s| with_trailing_silence(s, job.words.len(), job.pause_ms));
+        finish_generation(&shared, job.id, job.generation, outcome);
+    }
+}
 
-        finish_generation(&shared, id, generation, outcome);
+/// Une synthèse, chronométrée : le temps occupé est la mesure du filtre de
+/// charge. Un son vide est un échec.
+fn synthesize(
+    shared: &Arc<Shared>,
+    session: &mut dyn super::TtsSession,
+    text: &str,
+    words: &[String],
+    params: &TtsParams,
+) -> Result<Synthesis, String> {
+    let started = std::time::Instant::now();
+    let outcome = session.synthesize_timed(text, words, params);
+    shared.state.lock().unwrap().busy += started.elapsed();
+    match outcome {
+        Ok(s) if s.pcm.is_empty() => Err("aucun échantillon produit".to_string()),
+        Ok(s) => Ok(s),
+        Err(e) => Err(e.to_string()),
     }
 }
 
@@ -349,22 +392,26 @@ fn worker_loop(shared: Arc<Shared>) {
 ///
 /// Ce silence porte la hiérarchie à l'oreille : une pause plus longue après un
 /// titre qu'après un item de liste, sans jamais prononcer le moindre marqueur.
-fn with_trailing_silence(speech: PcmBuffer, pause_ms: u64) -> Rendered {
+/// Un minutage qui ne couvre pas exactement les mots est écarté.
+fn with_trailing_silence(synthesis: Synthesis, expected_words: usize, pause_ms: u64) -> Rendered {
+    let speech = synthesis.pcm;
+    let words = synthesis
+        .words
+        .filter(|w| expected_words > 0 && w.len() == expected_words)
+        .map(Arc::from);
     let speech_duration = speech.duration;
     if pause_ms == 0 {
-        return Rendered {
-            audio: Arc::new(speech),
-            speech: speech_duration,
-        };
+        return Rendered { audio: Arc::new(speech), speech: speech_duration, words, part: Part::Whole };
     }
     let frames = (speech.sample_rate as u64 * pause_ms / 1000) as usize;
     let mut samples = Vec::with_capacity(speech.samples.len() + frames * speech.channels as usize);
     samples.extend_from_slice(&speech.samples);
     samples.resize(samples.len() + frames * speech.channels as usize, 0.0);
-
     Rendered {
         audio: Arc::new(PcmBuffer::new(samples, speech.sample_rate, speech.channels)),
         speech: speech_duration,
+        words,
+        part: Part::Whole,
     }
 }
 
@@ -736,10 +783,73 @@ mod tests {
         assert!(cached <= 32, "le cache a grossi sans borne : {cached}");
     }
 
+    /// Un mot = 100 ms ; le minutage rendu suit les mots reçus. Avec
+    /// `wrong`, il en oublie un.
+    struct TimedEngine {
+        wrong: bool,
+    }
+    struct TimedSession {
+        wrong: bool,
+    }
+
+    impl TtsEngine for TimedEngine {
+        fn name(&self) -> String {
+            "minuté".into()
+        }
+        fn open_session(&self) -> Result<Box<dyn TtsSession>> {
+            Ok(Box::new(TimedSession { wrong: self.wrong }))
+        }
+        fn max_sessions(&self) -> usize {
+            1
+        }
+    }
+
+    impl TtsSession for TimedSession {
+        fn synthesize(&mut self, text: &str, _: &TtsParams) -> Result<PcmBuffer> {
+            let words = text.split_whitespace().count().max(1);
+            Ok(PcmBuffer::new(vec![0.1; words * 100], 1000, 1))
+        }
+        fn synthesize_timed(&mut self, text: &str, words: &[String], p: &TtsParams) -> Result<super::super::Synthesis> {
+            let pcm = self.synthesize(text, p)?;
+            let count = if self.wrong { words.len().saturating_sub(1) } else { words.len() };
+            let spans = (0..count)
+                .map(|i| crate::doc::WordSpan { start: i as f32 * 0.1, end: (i + 1) as f32 * 0.1 })
+                .collect();
+            Ok(super::super::Synthesis { pcm, words: Some(spans) })
+        }
+    }
+
+    #[test]
+    fn the_timing_of_each_word_reaches_the_rendered_audio() {
+        let synth = Synthesizer::new(Arc::new(TimedEngine { wrong: false }), TtsParams::default(), 1, 4);
+        synth.push_with_words("un deux trois".into(), vec!["un".into(), "deux".into(), "trois".into()], 0);
+        let rendered = wait_ready(&synth, 0);
+        let words = rendered.words.expect("minutage rendu");
+        assert_eq!(words.len(), 3);
+        assert_eq!(words[2].end, 0.3);
+        assert_eq!(rendered.part, Part::Whole);
+    }
+
+    #[test]
+    fn a_timing_that_does_not_cover_the_words_is_dropped() {
+        let synth = Synthesizer::new(Arc::new(TimedEngine { wrong: true }), TtsParams::default(), 1, 4);
+        synth.push_with_words("un deux".into(), vec!["un".into(), "deux".into()], 0);
+        assert!(wait_ready(&synth, 0).words.is_none());
+    }
+
+    #[test]
+    fn the_time_spent_synthesizing_is_counted() {
+        let (engine, _, _) = engine();
+        let synth = Synthesizer::new(engine, TtsParams::default(), 1, 4);
+        synth.push("une phrase".into(), 0);
+        wait_ready(&synth, 0);
+        assert!(synth.stats().busy >= Duration::from_millis(25), "{:?}", synth.stats().busy);
+    }
+
     #[test]
     fn trailing_silence_extends_audio_but_not_speech() {
         let pcm = PcmBuffer::new(vec![0.5; 1000], 1000, 1);
-        let rendered = with_trailing_silence(pcm, 500);
+        let rendered = with_trailing_silence(Synthesis { pcm, words: None }, 0, 500);
         assert_eq!(rendered.speech, Duration::from_millis(1000));
         assert_eq!(rendered.audio.duration, Duration::from_millis(1500));
         assert_eq!(rendered.audio.samples.len(), 1500);

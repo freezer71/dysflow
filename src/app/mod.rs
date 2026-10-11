@@ -81,6 +81,8 @@ pub struct App {
     /// Saut au mot en attente de son audio : la phrase, le mot, et la part
     /// de la parole à passer. Tombe dès que la phrase entre en file.
     start_at: Option<StartAt>,
+    /// Minutage des mots des phrases en file, par phrase.
+    timings: std::collections::HashMap<usize, Arc<[crate::doc::WordSpan]>>,
 
     pub panel: Panel,
     pub selection: usize,
@@ -123,6 +125,15 @@ struct StartAt {
 /// la phrase visée, et l'offset a déjà été appliqué.
 fn relay_done(start: &StartAt, playing_sentence: Option<usize>) -> bool {
     start.consumed && playing_sentence == Some(start.sentence)
+}
+
+/// Où commencer une phrase après un saut au mot : au début mesuré du mot si
+/// le minutage existe, sinon à sa part de la parole selon les poids.
+fn start_offset(start: &StartAt, rendered: &crate::tts::pool::Rendered) -> Duration {
+    match rendered.words.as_deref().and_then(|spans| spans.get(start.word)) {
+        Some(span) => Duration::from_secs_f32(span.start.max(0.0)),
+        None => rendered.speech.mul_f32(start.ratio),
+    }
 }
 
 impl App {
@@ -192,6 +203,7 @@ impl App {
             skipped: HashSet::new(),
             pace: Pace::default(),
             start_at: None,
+            timings: std::collections::HashMap::new(),
             panel: Panel::None,
             selection: 0,
             show_help: false,
@@ -302,14 +314,20 @@ impl App {
         self.current_word_fraction().map(|(word, _)| word)
     }
 
-    /// Mot prononcé dans la phrase courante, et la part de ce mot déjà dite.
+    /// Mot prononcé dans la phrase courante, et la part de ce mot déjà dite :
+    /// d'après le minutage mesuré s'il existe, d'après les lettres sinon.
     pub fn current_word_fraction(&self) -> Option<(usize, f32)> {
         let position = self.player.position()?;
         let sentence = self.doc().sentence(position.sentence_id)?;
-        sentence.word_fraction(
-            position.elapsed.as_secs_f32(),
-            position.speech.as_secs_f32(),
-        )
+        let elapsed = position.elapsed.as_secs_f32();
+        if let Some(found) = self
+            .timings
+            .get(&position.sentence_id)
+            .and_then(|spans| sentence.word_fraction_timed(elapsed, spans))
+        {
+            return Some(found);
+        }
+        sentence.word_fraction(elapsed, position.speech.as_secs_f32())
     }
 
     /// La part du mot lu déjà dite : zéro tant qu'aucun son ne la mesure
@@ -386,21 +404,25 @@ impl App {
         self.publish_new_sentences();
     }
 
-    /// Transmet à la synthèse les phrases apparues depuis le dernier tour.
+    /// Transmet à la synthèse les phrases apparues depuis le dernier tour,
+    /// avec leurs mots : un moteur qui sait minuter les mots s'en sert.
     fn publish_new_sentences(&mut self) {
         let total = self.builder.sentence_count();
         while self.published < total {
-            let (text, pause) = {
+            let (text, words, pause) = {
                 let sentence = &self.builder.document().sentences[self.published];
-                (sentence.text.clone(), sentence.trailing_pause_ms)
+                (sentence.text.clone(), sentence.spoken_words(), sentence.trailing_pause_ms)
             };
-            self.synth.push(text, pause);
+            self.synth.push_with_words(text, words, pause);
             self.published += 1;
         }
     }
 
     fn advance_playback(&mut self) {
         let finished = self.player.reconcile();
+        for id in &finished {
+            self.timings.remove(id);
+        }
         if let Some(last) = finished.last() {
             self.last_known = last.saturating_add(1);
         }
@@ -437,10 +459,13 @@ impl App {
                 let offset = match self.start_at.as_mut() {
                     Some(start) if start.sentence == self.queue_head && !start.consumed => {
                         start.consumed = true;
-                        rendered.speech.mul_f32(start.ratio)
+                        start_offset(start, &rendered)
                     }
                     _ => Duration::ZERO,
                 };
+                if let Some(spans) = &rendered.words {
+                    self.timings.insert(self.queue_head, Arc::clone(spans));
+                }
                 self.player.enqueue_from(
                     self.queue_head,
                     &rendered.audio,
@@ -579,6 +604,7 @@ impl App {
         self.start_at = None;
         let target = target.min(total - 1);
         self.player.flush();
+        self.timings.clear();
         // Ce qu'on rejoint mérite d'être tenté à nouveau : un refus du moteur
         // ne doit pas rendre un passage définitivement muet.
         self.synth.retry_from(target);
@@ -1368,7 +1394,7 @@ impl App {
             self.config.engine.prefetch as usize,
         );
         for sentence in &self.builder.document().sentences {
-            synth.push(sentence.text.clone(), sentence.trailing_pause_ms);
+            synth.push_with_words(sentence.text.clone(), sentence.spoken_words(), sentence.trailing_pause_ms);
         }
         self.published = self.builder.sentence_count();
         // La cadence mesurée valait pour l'ancien moteur, et une phrase qu'il
@@ -1386,6 +1412,7 @@ impl App {
         std::thread::spawn(move || drop(previous));
 
         self.player.flush();
+        self.timings.clear();
         let current = self.current_sentence();
         self.queue_head = current;
         self.synth.set_cursor(current);
@@ -1630,6 +1657,37 @@ pub(crate) mod tests {
             self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             Ok(PcmBuffer::new(vec![0.0; 100], 1000, 1))
         }
+    }
+
+    #[test]
+    fn a_measured_timing_wins_over_the_weights() {
+        let mut app = app_reading("Un mot très long ici.");
+        let spans: Arc<[crate::doc::WordSpan]> = (0..5)
+            .map(|i| crate::doc::WordSpan { start: i as f32 * 0.2, end: (i + 1) as f32 * 0.2 })
+            .collect();
+        app.timings.insert(0, Arc::clone(&spans));
+        app.player.simulate(0, Duration::from_millis(500), Duration::from_secs(1));
+        assert_eq!(app.current_word_fraction().map(|(w, _)| w), Some(2));
+        app.timings.clear();
+        // Sans minutage, la répartition par poids reprend la main.
+        assert!(app.current_word_fraction().is_some());
+    }
+
+    #[test]
+    fn a_jump_to_a_word_starts_at_its_measured_time() {
+        let audio = Arc::new(crate::tts::PcmBuffer::new(vec![0.0; 1000], 1000, 1));
+        let spans: Arc<[crate::doc::WordSpan]> =
+            vec![crate::doc::WordSpan { start: 0.0, end: 0.25 }, crate::doc::WordSpan { start: 0.25, end: 1.0 }].into();
+        let rendered = crate::tts::pool::Rendered {
+            audio,
+            speech: Duration::from_secs(1),
+            words: Some(spans),
+            part: crate::tts::pool::Part::Whole,
+        };
+        let start = StartAt { sentence: 0, word: 1, ratio: 0.5, consumed: false };
+        assert_eq!(start_offset(&start, &rendered), Duration::from_millis(250));
+        let untimed = crate::tts::pool::Rendered { words: None, ..rendered };
+        assert_eq!(start_offset(&start, &untimed), Duration::from_millis(500), "les poids, faute de mieux");
     }
 
     #[test]

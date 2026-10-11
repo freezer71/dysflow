@@ -11,6 +11,16 @@ pub mod audio_cpp;
 
 pub use pool::{SynthesisStats, Synthesizer};
 
+pub use crate::doc::WordSpan;
+
+/// Une phrase synthétisée, avec le temps de chacun de ses mots affichés
+/// quand le moteur sait le dire.
+#[derive(Debug, Clone)]
+pub struct Synthesis {
+    pub pcm: PcmBuffer,
+    pub words: Option<Vec<WordSpan>>,
+}
+
 use anyhow::Result;
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -204,11 +214,25 @@ pub trait TtsEngine: Send + Sync {
     fn readiness(&self) -> Readiness {
         Readiness::Ready
     }
+
+    /// Vrai quand le moteur gagne à synthétiser la phrase attendue en deux
+    /// morceaux (tête jusqu'à la première virgule, puis la suite).
+    fn splits_first_clause(&self) -> bool {
+        false
+    }
 }
 
 /// Une session de synthèse, utilisée par un seul thread.
 pub trait TtsSession: Send {
     fn synthesize(&mut self, text: &str, params: &TtsParams) -> Result<PcmBuffer>;
+
+    /// Comme `synthesize`, avec le temps de chaque mot de `words` — les
+    /// formes parlées des mots affichés, dans l'ordre. Sans minutage par
+    /// défaut : le lecteur répartit alors la durée selon les lettres.
+    fn synthesize_timed(&mut self, text: &str, words: &[String], params: &TtsParams) -> Result<Synthesis> {
+        let _ = words;
+        Ok(Synthesis { pcm: self.synthesize(text, params)?, words: None })
+    }
 }
 
 /// Construit le moteur demandé, sans jamais bloquer l'appelant.

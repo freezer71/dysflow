@@ -81,6 +81,7 @@ mod tests {
             failed,
             total,
             workers: 3,
+            busy: std::time::Duration::ZERO,
         }
     }
 
