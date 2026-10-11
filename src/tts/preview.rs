@@ -67,6 +67,7 @@ pub fn start(
     player: &mut crate::audio::Player,
     requires_reference: bool,
     config: &crate::config::Config,
+    language: &str,
     label: String,
 ) -> Result<(), String> {
     previewer.cancel();
@@ -76,7 +77,7 @@ pub fn start(
     }
     player.pause();
     previewer
-        .request(sample_text(&config.voice.language).to_string(), config.tts_params(), label)
+        .request(sample_text(language).to_string(), config.tts_params_in(language), label)
         .map_err(|err| format!("aperçu impossible : {err}"))
 }
 

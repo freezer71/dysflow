@@ -53,6 +53,7 @@ impl Reader {
             &mut lone.player,
             engine.requires_reference(),
             &self.config,
+            &self.config.default_language(),
             label,
         )
     }

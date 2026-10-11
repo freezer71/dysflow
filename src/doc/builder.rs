@@ -223,10 +223,19 @@ pub struct DocumentBuilder {
     /// Mises en valeur ouvertes : elles traversent les fragments de texte.
     emphases: Emphases,
     word_counter: usize,
+    /// Langue du document : la mise en mots des nombres, dates et sigles est
+    /// française, et ne vaut que pour un document français.
+    language: String,
 }
 
 impl DocumentBuilder {
+    /// Un document français : la normalisation complète.
     pub fn new(code_policy: CodePolicy) -> Self {
+        Self::with_language(code_policy, "fr")
+    }
+
+    /// Un document dans `language` (`fr`, `en`, ou un code d'un autre modèle).
+    pub fn with_language(code_policy: CodePolicy, language: &str) -> Self {
         let mut doc = Document::default();
         // Section racine : accueille le texte qui précède tout titre.
         doc.sections.push(Section {
@@ -249,7 +258,16 @@ impl DocumentBuilder {
             in_table: false,
             emphases: Emphases::default(),
             word_counter: 0,
+            language: language.trim().to_string(),
         }
+    }
+
+    pub fn language(&self) -> &str {
+        &self.language
+    }
+
+    fn french(&self) -> bool {
+        crate::text::language::Lang::parse(&self.language) == Some(crate::text::language::Lang::Fr)
     }
 
     fn options() -> Options {
@@ -459,6 +477,7 @@ impl DocumentBuilder {
             .unwrap_or_default();
         let widths = column_widths(&rows);
 
+        let french = self.french();
         for (header, cells) in rows {
             // Une ligne de corps dit la colonne de chaque cellule : « alpha,
             // huit mille quatre-vingts » ne disait pas lequel était le port.
@@ -475,7 +494,8 @@ impl DocumentBuilder {
                     .enumerate()
                     .filter(|(_, cell)| !cell.is_empty())
                     .map(|(i, cell)| match headers.get(i) {
-                        Some(name) if !name.is_empty() => format!("{name} : {cell}."),
+                        Some(name) if !name.is_empty() && french => format!("{name} : {cell}."),
+                        Some(name) if !name.is_empty() => format!("{name}: {cell}."),
                         _ => format!("{cell}."),
                     })
                     .collect::<Vec<_>>()
@@ -507,10 +527,17 @@ impl DocumentBuilder {
                 match self.code_policy {
                     CodePolicy::Skip => return,
                     CodePolicy::Read => pending.text.clone(),
-                    CodePolicy::Announce => match language {
-                        Some(lang) => format!("Bloc de code {lang}."),
-                        None => "Bloc de code.".to_string(),
-                    },
+                    CodePolicy::Announce => {
+                        let (named, bare) = if self.french() {
+                            ("Bloc de code", "Bloc de code.")
+                        } else {
+                            ("Code block", "Code block.")
+                        };
+                        match language {
+                            Some(lang) => format!("{named} {lang}."),
+                            None => bare.to_string(),
+                        }
+                    }
                 }
             }
             _ => pending.text.clone(),
@@ -593,10 +620,13 @@ impl DocumentBuilder {
             for word in &mut words {
                 word.emphasis = emphasis_of(&word.text, marks, &mut mark);
             }
-            let text = if titled {
-                verbalize(&sanitize(&verbalize_section_number(raw_text)))
-            } else {
-                verbalize(&written)
+            // Un document anglais garde ses chiffres : espeak-ng les lit, et
+            // la mise en mots française les dirait en français.
+            let text = match (titled, self.french()) {
+                (true, true) => verbalize(&sanitize(&verbalize_section_number(raw_text))),
+                (true, false) => shown.clone(),
+                (false, true) => verbalize(&written),
+                (false, false) => written.clone(),
             };
             self.doc.sentences.push(Sentence {
                 id,
@@ -637,7 +667,7 @@ impl DocumentBuilder {
             // Un nombre se dit bien plus longtemps qu'il ne s'écrit : garder
             // sa forme parlée laisse le curseur suivre la voix. Le contexte
             // manque à l'échelle du mot, mais un poids n'a pas à être exact.
-            let said = verbalize(token);
+            let said = if self.french() { verbalize(token) } else { token.to_string() };
             words.push(Word {
                 text: token.to_string(),
                 index: self.word_counter,
@@ -686,9 +716,14 @@ impl DocumentBuilder {
     }
 }
 
-/// Raccourci : analyse un document complet en une fois.
+/// Raccourci : analyse un document français complet en une fois.
 pub fn parse_document(markdown: &str, code_policy: CodePolicy) -> Document {
-    let mut builder = DocumentBuilder::new(code_policy);
+    parse_document_in(markdown, code_policy, "fr")
+}
+
+/// Analyse un document complet dans `language`.
+pub fn parse_document_in(markdown: &str, code_policy: CodePolicy, language: &str) -> Document {
+    let mut builder = DocumentBuilder::with_language(code_policy, language);
     for block in crate::input::split_blocks(markdown) {
         builder.push_block(&block);
     }
@@ -1072,5 +1107,41 @@ mod tests {
             doc.blocks[0].display_lines,
             vec!["Nom      Rôle", "alpha    serveur"]
         );
+    }
+
+    #[test]
+    fn an_english_document_keeps_its_figures() {
+        let d = parse_document_in("The report has 37 pages, dated 2024.\n", CodePolicy::Announce, "en");
+        let s = &d.sentences[0];
+        assert_eq!(s.text, "The report has 37 pages, dated 2024.");
+        assert!(s.words.iter().all(|w| w.spoken.is_none()), "{:?}", s.words);
+    }
+
+    #[test]
+    fn a_french_document_still_says_its_figures_in_words() {
+        let d = parse_document_in("Le rapport a 37 pages.\n", CodePolicy::Announce, "fr");
+        assert!(d.sentences[0].text.contains("trente-sept"), "{}", d.sentences[0].text);
+        assert_eq!(parse_document("Le rapport a 37 pages.\n", CodePolicy::Announce), d);
+    }
+
+    #[test]
+    fn an_english_heading_keeps_its_number_as_written() {
+        let d = parse_document_in("## 1. Context\n\nSome text.", CodePolicy::Announce, "en");
+        assert_eq!(d.sentences[0].text, "1. Context");
+    }
+
+    #[test]
+    fn code_and_tables_are_announced_in_the_document_language() {
+        let d = parse_document_in("```rust\nfn a() {}\n```", CodePolicy::Announce, "en");
+        assert_eq!(d.sentences[0].text, "Code block rust.");
+        let t = parse_document_in("| Name | Port |\n|---|---|\n| alpha | 8080 |\n", CodePolicy::Announce, "en");
+        let spoken: Vec<&str> = t.sentences.iter().map(|s| s.text.as_str()).collect();
+        assert!(spoken.contains(&"Name: alpha."), "{spoken:?}");
+    }
+
+    #[test]
+    fn the_builder_remembers_its_language() {
+        assert_eq!(DocumentBuilder::new(CodePolicy::Announce).language(), "fr");
+        assert_eq!(DocumentBuilder::with_language(CodePolicy::Skip, "en").language(), "en");
     }
 }

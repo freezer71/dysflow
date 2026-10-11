@@ -137,7 +137,7 @@ impl App {
     ) -> Self {
         let synth = Synthesizer::new(
             engine,
-            config.tts_params(),
+            config.tts_params_in(builder.language()),
             config.sessions() as usize,
             config.engine.prefetch as usize,
         );
@@ -157,7 +157,7 @@ impl App {
         notices: Vec<String>,
         mut player: Player,
     ) -> Self {
-        synth.set_params(config.tts_params());
+        synth.set_params(config.tts_params_in(builder.language()));
         let previewer = Previewer::new(synth.engine());
         player.set_volume(config.voice.volume);
         player.set_speed(config.voice.speed);
@@ -679,8 +679,13 @@ impl App {
         self.notify(if muted { "Son coupé" } else { "Son rétabli" });
     }
 
+    /// Paramètres de synthèse, dans la langue du document.
+    pub fn synthesis_params(&self) -> TtsParams {
+        self.config.tts_params_in(self.builder.language())
+    }
+
     fn apply_tts_params(&mut self) {
-        let params: TtsParams = self.config.tts_params();
+        let params = self.synthesis_params();
         self.synth.set_params(params);
     }
 
@@ -1237,6 +1242,13 @@ impl App {
     /// phrase d'exemple, la lecture mise en pause, le précédent coupé. Rend
     /// la raison d'un refus.
     pub fn request_preview(&mut self) -> Result<(), String> {
+        let language = self.builder.language().to_string();
+        self.request_preview_in(&language)
+    }
+
+    /// L'aperçu dans une langue donnée : chaque voix de l'onglet Voix
+    /// s'écoute dans la sienne.
+    pub fn request_preview_in(&mut self, language: &str) -> Result<(), String> {
         self.preview_error = None;
         let label = self.preview_label();
         preview::start(
@@ -1244,6 +1256,7 @@ impl App {
             &mut self.player,
             self.synth.requires_reference(),
             &self.config,
+            language,
             label,
         )
     }
@@ -1350,7 +1363,7 @@ impl App {
         }
         let synth = Synthesizer::new(
             engine,
-            self.config.tts_params(),
+            self.synthesis_params(),
             self.config.sessions() as usize,
             self.config.engine.prefetch as usize,
         );
@@ -1526,6 +1539,25 @@ pub(crate) mod tests {
             Vec::new(),
             crate::audio::Player::silent(),
         )
+    }
+
+    #[test]
+    fn the_synthesis_speaks_the_document_language() {
+        let mut builder = DocumentBuilder::with_language(CodePolicy::Announce, "en");
+        builder.push_block("The report has 37 pages.");
+        let mut config = Config::default();
+        config.reading.autoplay = false;
+        let app = App::new(
+            builder,
+            None,
+            Arc::new(SilentEngine),
+            config,
+            "test.md".to_string(),
+            Vec::new(),
+            crate::audio::Player::silent(),
+        );
+        assert_eq!(app.synth.params().language, "en");
+        assert_eq!(app.synthesis_params().language, "en");
     }
 
     /// Moteur qui refuse une phrase une seule fois, puis accepte tout.
