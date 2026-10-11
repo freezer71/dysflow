@@ -60,7 +60,7 @@ moteurs légers mesurés.
 | Langue | Détectée par document (français / anglais), avec un choix manuel par document |
 | Vitesse | Inchangée : synthèse à 1×, Sonic à la lecture. Kokoro reçoit toujours `speed = 1` |
 | Surlignage | Minutage par mot, tiré des durées de phonèmes de Kokoro |
-| Voix par défaut | Kokoro (paquet recommandé). Supertonic, MagpieTTS et la voix du système restent disponibles et servent de repli |
+| Voix par défaut | Kokoro (paquet recommandé), **y compris pour une configuration existante** : passage unique au premier lancement après la mise à jour (voir « Passage à Kokoro »). Supertonic, MagpieTTS et la voix du système restent installés, sélectionnables, et servent de repli |
 | Hors sujet | Qwen3 |
 
 Ces chemins ont été écartés sur mesure (spike) : le fournisseur Core ML d'ONNX,
@@ -171,10 +171,40 @@ la même bibliothèque appelée depuis Python.
   plus vite que la parole sur M5 : lecture fluide ») et les licences.
 - **`p-fenrir60` est livrée avec Sillon** (522 Ko, avec sa recette JSON et la
   mention Apache-2.0). Elle n'est pas téléchargée.
-- **Voix par défaut :** une configuration neuve prend Kokoro dès qu'il est
-  installé, et l'accueil propose de l'installer. Une configuration qui nomme
-  déjà un modèle n'est pas modifiée : l'onglet Modèles marque Kokoro
-  « Recommandé », et l'utilisateur décide.
+- **Voix par défaut :** Kokoro, pour une configuration neuve comme pour une
+  configuration qui nomme déjà un modèle (voir « Passage à Kokoro »).
+  L'onglet Modèles marque Kokoro « Recommandé ».
+
+### Passage à Kokoro (une seule fois)
+
+Décision du 2026-10-11 : Kokoro **remplace** la voix par défaut, y compris
+dans une configuration existante. La configuration de l'utilisateur nomme
+aujourd'hui un modèle ; elle passe donc à Kokoro.
+
+- **Quand :** au premier lancement après la mise à jour, si Kokoro est
+  installé ou installable dans ce binaire (paquet MLX dans l'app, paquet int8
+  avec `kokoro-onnx`).
+  - **Installé :** le modèle actif passe à Kokoro tout de suite
+    (`engine.model_path`, `engine.family = "kokoro"`, voix `p-fenrir60` et
+    `af_bella` dans `[voice.per_language]`).
+  - **Installable :** son téléchargement démarre (annulable dans l'onglet
+    Modèles), et le modèle actif passe à Kokoro à la fin du téléchargement.
+- **Une seule fois :** la migration est retenue dans `config.toml`
+  (`app.voice_migration`) au moment où elle agit. Elle ne se refait jamais,
+  même si l'utilisateur revient à l'ancien modèle ou annule le téléchargement.
+  Sans Kokoro possible dans ce binaire, rien n'est retenu : une version qui
+  l'apporte fera la migration.
+- **Rien n'est perdu :** l'ancien modèle reste installé et sélectionnable
+  (« Modèle actif » dans l'onglet Voix, « Utiliser » dans l'onglet Modèles).
+  Ses réglages propres (voix, échantillonnage) restent dans `config.toml`.
+- **Un court avis le dit :** « Nouvelle voix : Kokoro remplace Supertonic 3 ·
+  F16. L'ancien modèle reste installé : Réglages › Voix pour y revenir. »
+  Pendant le téléchargement : « Nouvelle voix Kokoro en téléchargement
+  (342 Mo) : elle remplacera Supertonic 3 · F16 à la fin. » L'app l'affiche
+  dans le panneau et l'onglet Voix, et l'annonce à VoiceOver.
+- **Au terminal :** un Kokoro installé est adopté de la même façon, avec le
+  même avis dans la barre d'état. Le téléchargement automatique est réservé à
+  l'app ; le terminal indique `s` pour installer, sans rien retenir.
 
 ## Architecture
 
@@ -252,6 +282,9 @@ la même bibliothèque appelée depuis Python.
   - L'instantané gagne `document_language { détectée, choisie, part }`.
   - `ModelCapabilities.voices` porte la langue de chaque voix.
   - `SettingsEffect::between` traite un changement de langue comme `Reparse`.
+  - Passage à Kokoro : `Reader::migrate_voice() -> Option<String>` (l'avis),
+    appelé une fois au lancement de l'app ; `app.voice_migration` (entier, 0
+    par défaut) retient qu'il a eu lieu.
 
 ### Minutage des mots (`align.rs`)
 
@@ -372,6 +405,11 @@ pub struct KokoroOutput { pub samples: Vec<f32>, pub durations: Vec<u32> }
   - Réglages : aller-retour de `voice_for_language` ; changement de langue →
     `Reparse` ; voix de l'autre langue → aucune resynthèse ; capacités de
     `kokoro` (voix par langue, réglages masqués).
+  - Passage à Kokoro : configuration existante → Kokoro installé adopté,
+    Kokoro installable téléchargé puis adopté à la fin ; retenu une fois (un
+    second lancement ne refait rien, un retour à l'ancien modèle tient) ;
+    rien de retenu sans Kokoro possible ; ancien modèle toujours installé ;
+    lecteur hors disque : rien ne bouge.
   - Catalogue : paquet multi-fichiers installé seulement complet ; voix
     partagées ; MLX absent du catalogue sans calcul fourni.
 - **Alignement, sur des phrases françaises :**
