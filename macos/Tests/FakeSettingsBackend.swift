@@ -16,6 +16,15 @@ enum Capabilities {
         honoured: ["voice", "voice_id", "speaker", "language", "temperature", "top_k",
                    "guidance_scale", "seed"],
         requiresReference: false)
+    static let kokoro = ModelCapabilities(
+        family: "kokoro",
+        voices: [VoiceChoice(id: "p-fenrir60", label: "p-fenrir60 · française, recommandée", language: "fr"),
+                 VoiceChoice(id: "ff_siwis", label: "ff_siwis · française", language: "fr"),
+                 VoiceChoice(id: "af_bella", label: "af_bella · américaine, femme, recommandée", language: "en"),
+                 VoiceChoice(id: "af_sky", label: "af_sky · américaine, femme", language: "en")],
+        languages: ["fr", "en"],
+        honoured: ["voice", "language"],
+        requiresReference: false)
 }
 
 /// Un moteur pour les tests : il garde les patchs, borne l'interlignage
@@ -57,6 +66,10 @@ final class FakeSettingsBackend: SettingsBackend {
 
     func previewVoice() async throws {
         log.append("écoute")
+        if let failPreview { throw SillonError.Failed(message: failPreview) }
+    }
+    func previewVoice(in language: String) async throws {
+        log.append("écoute \(language)")
         if let failPreview { throw SillonError.Failed(message: failPreview) }
     }
     func stopPreview() async { log.append("arrêt") }
@@ -112,5 +125,6 @@ final class GatedSettingsBackend: SettingsBackend {
         return stored
     }
     func previewVoice() async throws {}
+    func previewVoice(in language: String) async throws {}
     func stopPreview() async {}
 }

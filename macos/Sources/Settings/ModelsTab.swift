@@ -43,9 +43,14 @@ struct ModelsTab: View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(m.name).fontWeight(.semibold)
+                if m.recommended {
+                    Text("Recommandé").fontWeight(.semibold).accessibilityIdentifier("recommande")
+                }
                 Text(m.summary)
+                if !m.voicesLabel.isEmpty { Text(m.voicesLabel) }
                 Text("\(m.languagesLabel) · \(ByteCountFormatter.string(fromByteCount: Int64(m.bytes), countStyle: .file)) · \(m.precision.uppercased())")
                 Text(m.pace)
+                if !m.licenses.isEmpty { Text(m.licenses) }
                 if let d = download, d.id == m.id, let failed = d.failed {
                     ErrorText("Téléchargement interrompu : \(failed)", identifier: "erreur-telechargement")
                 }

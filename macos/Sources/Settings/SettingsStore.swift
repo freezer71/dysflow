@@ -8,6 +8,8 @@ protocol SettingsBackend: AnyObject {
     func loadCapabilities() async -> ModelCapabilities
     func updateSettings(_ patch: SettingsPatch) async throws -> SettingsView
     func previewVoice() async throws
+    /// La phrase d'exemple dans une langue (Kokoro : une voix par langue).
+    func previewVoice(in language: String) async throws
     func stopPreview() async
 }
 
@@ -192,6 +194,20 @@ final class SettingsStore {
         previewError.clear()
         await committer.flush()
         do { try await backend.previewVoice() } catch { previewError.fail(Self.message(of: error)) }
+    }
+
+    /// La voix d'une langue (Kokoro) : l'écran suit, l'écriture après la pause.
+    func setVoice(_ voice: String, language: String) {
+        var voices = values.voicesByLanguage.filter { $0.language != language }
+        voices.append(LanguageVoice(language: language, voice: voice))
+        set(\.voicesByLanguage, voices)
+    }
+
+    /// La phrase d'exemple dans `language`, avec ce qui vient d'être choisi.
+    func listen(language: String) async {
+        previewError.clear()
+        await committer.flush()
+        do { try await backend.previewVoice(in: language) } catch { previewError.fail(Self.message(of: error)) }
     }
 
     func stopListening() async { await backend.stopPreview() }

@@ -58,7 +58,8 @@ final class KokoroBridgeTests: XCTestCase {
     @MainActor
     func testTheSilentReaderNeitherMigratesNorOffers() async {
         let m = ReaderModel(reader: SillonReader.silent())
-        XCTAssertNil(m.migrateVoice())
+        let notice = await m.migrateVoice()
+        XCTAssertNil(notice)
         XCTAssertNil(m.snapshot.offer)
         do {
             try await m.acceptVoiceOffer()
@@ -66,8 +67,32 @@ final class KokoroBridgeTests: XCTestCase {
         } catch {
             XCTAssertTrue(SettingsStore.message(of: error).contains("aucune proposition"))
         }
-        m.dismissVoiceOffer()
+        await m.dismissVoiceOffer()
         m.dismissNotice()
         XCTAssertNil(m.snapshot.notice)
+        XCTAssertFalse(m.snapshot.configUnreadable)
+        XCTAssertFalse(m.voicePreparation.isRunning)
+    }
+
+    /// « Remplacer » une configuration illisible passe par le moteur, hors
+    /// du fil principal ; le lecteur muet n'écrit rien et le dit.
+    @MainActor
+    func testReplacingAnUnreadableConfigIsRefusedBySilentReader() async {
+        let m = ReaderModel(reader: SillonReader.silent())
+        do {
+            try await m.replaceUnreadableConfig()
+            XCTFail("le lecteur muet n'écrit rien")
+        } catch {
+            XCTAssertTrue(SettingsStore.message(of: error).contains("mode d'essai"))
+        }
+    }
+
+    /// Le bandeau des réglages : rien tant que la configuration se lit.
+    @MainActor
+    func testTheUnreadableConfigNoticeIsShownOnlyWhenNeeded() {
+        XCTAssertNil(ConfigUnreadableBanner.line(unreadable: false))
+        XCTAssertEqual(ConfigUnreadableBanner.line(unreadable: true),
+                       "Configuration illisible : config.toml n'a pas pu être lu. Les réglages s'appliquent, "
+                       + "mais ne sont pas enregistrés tant qu'il n'est pas corrigé ou remplacé.")
     }
 }

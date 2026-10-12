@@ -1,5 +1,6 @@
 import Foundation
 import MachO
+import Observation
 
 /// La première synthèse après une installation ou une mise à jour compile les
 /// noyaux Metal (≈ 9 s), gardés ensuite dans le cache du système. L'app la
@@ -10,9 +11,6 @@ import MachO
 @MainActor
 enum KokoroWarmUp {
     static let versionKey = "kokoroPreparedVersion"
-    /// Vrai pendant la préparation : l'onglet Voix dit « Voix en préparation
-    /// (première fois)… ».
-    private(set) static var isRunning = false
 
     /// La version de l'app pour la préparation : `CFBundleShortVersionString`
     /// et `CFBundleVersion` (MARKETING_VERSION, CURRENT_PROJECT_VERSION). En
@@ -65,12 +63,15 @@ enum KokoroWarmUp {
         return URL(fileURLWithPath: settings.modelPath).deletingLastPathComponent().path
     }
 
+    /// `preparation` : l'état observé par l'onglet Voix (celui de
+    /// `ReaderModel`) ; une préparation déjà en cours n'est pas relancée.
     @discardableResult
     static func runIfNeeded(compute: KokoroCompute, modelDirectory: String?, version: String,
-                            defaults: UserDefaults = .standard) -> Task<Void, Never>? {
-        guard let directory = modelDirectory, !isRunning,
+                            defaults: UserDefaults = .standard,
+                            preparation: VoicePreparation) -> Task<Void, Never>? {
+        guard let directory = modelDirectory, !preparation.isRunning,
               defaults.string(forKey: versionKey) != version else { return nil }
-        isRunning = true
+        preparation.isRunning = true
         // `.utility` et non `.background` : le lecteur peut attendre le verrou
         // MLX derrière elle, et une préparation bridée le ferait attendre.
         let work = Task.detached(priority: .utility) { () -> Bool in
@@ -85,8 +86,16 @@ enum KokoroWarmUp {
         }
         return Task { @MainActor in
             let prepared = await work.value
-            isRunning = false
+            preparation.isRunning = false
             if prepared { defaults.set(version, forKey: versionKey) }
         }
     }
+}
+
+/// La préparation des noyaux Metal, observable : l'onglet Voix dit « Voix en
+/// préparation (première fois)… » tant qu'elle tourne.
+@MainActor
+@Observable
+final class VoicePreparation {
+    fileprivate(set) var isRunning = false
 }

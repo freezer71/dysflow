@@ -119,12 +119,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// noyaux Metal, maintenant et à chaque fois que la voix active a pu
     /// changer.
     private func startKokoro() {
-        if let notice = model.migrateVoice() {
-            model.message = notice
-            panel.post(notice)
-        }
         model.onVoiceMayHaveChanged = { [weak self] in self?.kokoroBecameActive() }
-        kokoroBecameActive()
+        // Le passage écrit `config.toml` : hors du fil principal, puis la
+        // préparation, sur la voix qui en sort.
+        Task { @MainActor [weak self] in
+            guard let self, let model = self.model else { return }
+            if let notice = await model.migrateVoice() {
+                model.message = notice
+                self.panel.post(notice)
+            }
+            self.kokoroBecameActive()
+        }
     }
 
     /// Kokoro est peut-être devenu la voix active (lancement, voix choisie,
@@ -136,12 +141,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let version = KokoroWarmUp.version(of: .main)
         // Déjà faite pour cette version : pas même la lecture des réglages.
         guard UserDefaults.standard.string(forKey: KokoroWarmUp.versionKey) != version,
-              !KokoroWarmUp.isRunning else { return }
+              !model.voicePreparation.isRunning else { return }
         Task { @MainActor in
             let settings = await model.loadSettings()
             KokoroWarmUp.runIfNeeded(compute: compute,
                                      modelDirectory: KokoroWarmUp.modelDirectory(settings: settings),
-                                     version: version)
+                                     version: version, preparation: model.voicePreparation)
         }
     }
 

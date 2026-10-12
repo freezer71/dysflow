@@ -13,7 +13,7 @@ struct AdvancedTab: View {
             ErrorText(store.error, identifier: "erreur-reglages")
             Section("Moteur") {
                 // Les changements d'ici rechargent la voix : on voit le chargement.
-                VoiceStateLine(state: model.snapshot.voice)
+                VoiceStateLine(state: model.snapshot.voice, preparing: model.voicePreparation.isRunning)
                 LabeledContent("Moteur") {
                     PopUpPicker(label: "Moteur", identifier: "moteur",
                                 options: Self.engineOptions(current: store.values.engine),

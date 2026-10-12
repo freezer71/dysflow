@@ -68,4 +68,15 @@ final class SettingsDiffTests: XCTestCase {
     func testTheSpeedIsNotAModelSetting() {
         XCTAssertNil(SettingKey(rawValue: "speaking_rate"))
     }
+
+    func testAVoicePerLanguageBecomesItsOwnPatch() {
+        var old = SettingsView.defaults
+        old.voicesByLanguage = []
+        var new = old
+        new.voicesByLanguage = [LanguageVoice(language: "fr", voice: "ff_siwis")]
+        let patch = SettingsDiff.patch(from: old, to: new)
+        XCTAssertEqual(patch.voiceForLanguage, LanguageVoice(language: "fr", voice: "ff_siwis"))
+        XCTAssertNil(patch.voice)
+        XCTAssertTrue(SettingsDiff.patch(from: new, to: new).isEmpty)
+    }
 }

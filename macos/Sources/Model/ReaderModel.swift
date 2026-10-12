@@ -36,6 +36,9 @@ final class ReaderModel {
     /// acceptée, téléchargement fini (le passage à Kokoro accepté attend sa
     /// fin). L'app y prépare les noyaux Metal de Kokoro.
     @ObservationIgnored var onVoiceMayHaveChanged: (@MainActor () -> Void)?
+    /// La préparation des noyaux Metal de Kokoro (`KokoroWarmUp`), observée
+    /// par l'onglet Voix.
+    @ObservationIgnored let voicePreparation = VoicePreparation()
 
     init(reader: SillonReader, now: @escaping () -> Date = Date.init,
          frames: FrameSource? = nil) {
@@ -357,8 +360,9 @@ final class ReaderModel {
     }
     /// Le passage unique à Kokoro : appelé une fois au lancement. Rend
     /// l'avis à montrer (passage fait, ou proposition dans `snapshot.offer`).
-    func migrateVoice() -> String? {
-        let notice = reader.migrateVoice()
+    func migrateVoice() async -> String? {
+        let reader = reader
+        let notice = await Task.detached { reader.migrateVoice() }.value
         wake()
         return notice
     }
@@ -370,8 +374,17 @@ final class ReaderModel {
         onVoiceMayHaveChanged?()
     }
     /// « Plus tard » : le refus est retenu.
-    func dismissVoiceOffer() {
-        reader.dismissVoiceOffer()
+    /// Le refus s'écrit dans `config.toml` : hors du fil principal.
+    func dismissVoiceOffer() async {
+        let reader = reader
+        await Task.detached { reader.dismissVoiceOffer() }.value
+        wake()
+    }
+    /// « Remplacer » un `config.toml` illisible (une copie est gardée à
+    /// côté), hors du fil principal.
+    func replaceUnreadableConfig() async throws {
+        let reader = reader
+        try await Task.detached { try reader.replaceUnreadableConfig() }.value
         wake()
     }
     func dismissNotice() {

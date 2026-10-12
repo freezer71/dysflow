@@ -14,13 +14,17 @@ final class KokoroWarmUpTests: XCTestCase {
     func testTheMetalKernelsArePreparedOncePerVersion() async {
         let defaults = freshDefaults()
         let compute = FakeKokoroCompute()
-        await KokoroWarmUp.runIfNeeded(compute: compute, modelDirectory: "/m/kokoro", version: "1", defaults: defaults)?.value
+        let preparation = VoicePreparation()
+        await KokoroWarmUp.runIfNeeded(compute: compute, modelDirectory: "/m/kokoro", version: "1",
+                                       defaults: defaults, preparation: preparation)?.value
         XCTAssertEqual(compute.loads, 1)
         XCTAssertEqual(compute.warmUps, 1)
         XCTAssertEqual(compute.releases, 1, "le modèle est libéré tout de suite")
-        XCTAssertFalse(KokoroWarmUp.isRunning)
-        XCTAssertNil(KokoroWarmUp.runIfNeeded(compute: compute, modelDirectory: "/m/kokoro", version: "1", defaults: defaults))
-        await KokoroWarmUp.runIfNeeded(compute: compute, modelDirectory: "/m/kokoro", version: "2", defaults: defaults)?.value
+        XCTAssertFalse(preparation.isRunning)
+        XCTAssertNil(KokoroWarmUp.runIfNeeded(compute: compute, modelDirectory: "/m/kokoro", version: "1",
+                                              defaults: defaults, preparation: preparation))
+        await KokoroWarmUp.runIfNeeded(compute: compute, modelDirectory: "/m/kokoro", version: "2",
+                                       defaults: defaults, preparation: preparation)?.value
         XCTAssertEqual(compute.warmUps, 2, "nouvelle version : nouvelle préparation")
     }
 
@@ -28,13 +32,35 @@ final class KokoroWarmUpTests: XCTestCase {
         let defaults = freshDefaults()
         let compute = FakeKokoroCompute()
         compute.failLoad = true
-        await KokoroWarmUp.runIfNeeded(compute: compute, modelDirectory: "/m/kokoro", version: "1", defaults: defaults)?.value
+        let preparation = VoicePreparation()
+        await KokoroWarmUp.runIfNeeded(compute: compute, modelDirectory: "/m/kokoro", version: "1",
+                                       defaults: defaults, preparation: preparation)?.value
         XCTAssertNil(defaults.string(forKey: KokoroWarmUp.versionKey))
-        let retry = KokoroWarmUp.runIfNeeded(compute: compute, modelDirectory: "/m/kokoro", version: "1", defaults: defaults)
+        let retry = KokoroWarmUp.runIfNeeded(compute: compute, modelDirectory: "/m/kokoro", version: "1",
+                                             defaults: defaults, preparation: preparation)
         XCTAssertNotNil(retry)
-        // `isRunning` est partagé : la tâche finit ici, pas pendant un autre test.
         await retry?.value
-        XCTAssertFalse(KokoroWarmUp.isRunning)
+        XCTAssertFalse(preparation.isRunning)
+    }
+
+    /// L'onglet Voix dit « Voix en préparation (première fois)… » pendant
+    /// la préparation : l'état s'observe, et une seconde demande pendant
+    /// qu'elle tourne ne relance rien.
+    func testThePreparationIsObservableWhileItRuns() async {
+        let defaults = freshDefaults()
+        let compute = FakeKokoroCompute()
+        let preparation = VoicePreparation()
+        var seen: [Bool] = []
+        withObservationTracking { _ = preparation.isRunning } onChange: { seen.append(true) }
+        let task = KokoroWarmUp.runIfNeeded(compute: compute, modelDirectory: "/m/kokoro", version: "1",
+                                            defaults: defaults, preparation: preparation)
+        XCTAssertTrue(preparation.isRunning)
+        XCTAssertEqual(seen, [true], "le changement est signalé aux vues")
+        XCTAssertNil(KokoroWarmUp.runIfNeeded(compute: compute, modelDirectory: "/m/kokoro", version: "1",
+                                              defaults: defaults, preparation: preparation))
+        await task?.value
+        XCTAssertFalse(preparation.isRunning)
+        XCTAssertEqual(compute.warmUps, 1)
     }
 
     func testOnlyTheMLXPackageIsPrepared() {

@@ -311,4 +311,30 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertEqual(other.values.speed, 2.5, "geste en cours")
         other.endDragging()
     }
+
+    func testAVoicePerLanguageIsWrittenAlone() async {
+        let backend = FakeSettingsBackend()
+        let store = await loadedStore(backend)
+        store.setVoice("af_sky", language: "en")
+        await store.flush()
+        XCTAssertEqual(backend.patches.last?.voiceForLanguage, LanguageVoice(language: "en", voice: "af_sky"))
+        XCTAssertNil(backend.patches.last?.voice, "la voix des autres modèles ne bouge pas")
+        XCTAssertEqual(store.values.voicesByLanguage.first(where: { $0.language == "en" })?.voice, "af_sky")
+    }
+
+    func testListeningInALanguageWritesFirstThenSpeaksIt() async {
+        let backend = FakeSettingsBackend()
+        let store = await loadedStore(backend)
+        store.setVoice("ff_siwis", language: "fr")
+        await store.listen(language: "fr")
+        XCTAssertEqual(backend.log, ["patch", "écoute fr"])
+    }
+
+    func testARefusedListeningInALanguageIsSaid() async {
+        let backend = FakeSettingsBackend()
+        backend.failPreview = "sortie audio indisponible"
+        let store = await loadedStore(backend)
+        await store.listen(language: "en")
+        XCTAssertEqual(store.previewNote, "sortie audio indisponible")
+    }
 }
