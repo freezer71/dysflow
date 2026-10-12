@@ -339,6 +339,20 @@ impl App {
         let position = self.player.position()?;
         let sentence = self.doc().sentence(position.sentence_id)?;
         let elapsed = position.elapsed.as_secs_f32();
+        // La tête d'une phrase coupée sonne seule : le surlignage reste dans
+        // ses mots, et attend la suite sur le dernier. Un minutage plus
+        // court que la phrase est celui d'une tête (le pool écarte tout
+        // minutage qui ne couvre pas sa partie) : il le reste quand la
+        // suite a été refusée pendant que la tête sonnait.
+        let spans = self.timings.get(&position.sentence_id).map(|s| &s[..]);
+        let head_words = self
+            .awaiting_tail
+            .filter(|w| w.sentence == position.sentence_id)
+            .map(|w| w.head_words)
+            .or_else(|| spans.map(<[_]>::len).filter(|&n| n < sentence.words.len()));
+        if let Some(count) = head_words {
+            return sentence.word_fraction_head(count, elapsed, position.speech.as_secs_f32(), spans);
+        }
         if let Some(found) = self
             .timings
             .get(&position.sentence_id)
@@ -475,8 +489,16 @@ impl App {
                     continue;
                 }
                 if self.synth.failure(waiting.sentence).is_some() {
+                    // La tête a pu sonner, la phrase reste à moitié muette :
+                    // elle se compte, et la lecture passe à la suivante.
+                    let id = waiting.sentence;
                     self.awaiting_tail = None;
-                    self.queue_head = waiting.sentence + 1;
+                    self.skipped.insert(id);
+                    self.queue_head = id + 1;
+                    if self.player.position().is_none() {
+                        self.timings.remove(&id);
+                        self.last_known = id + 1;
+                    }
                     continue;
                 }
                 break;
@@ -2288,19 +2310,22 @@ pub(crate) mod tests {
     /// Le moteur de coupe des tests du pool, recopié : minute ses mots et
     /// coupe la phrase attendue. Avec une barrière, la suite « Camille… »
     /// attend un feu vert.
+    #[derive(Clone, Default)]
     struct Cutting {
         gate: Option<Arc<std::sync::Mutex<std::sync::mpsc::Receiver<()>>>>,
+        /// Ne donne pas le minutage des mots.
+        untimed: bool,
+        /// Refuse la suite « Camille… ».
+        refuse_tail: bool,
     }
-    struct CuttingSession {
-        gate: Option<Arc<std::sync::Mutex<std::sync::mpsc::Receiver<()>>>>,
-    }
+    type CuttingSession = Cutting;
 
     impl TtsEngine for Cutting {
         fn name(&self) -> String {
             "coupe".into()
         }
         fn open_session(&self) -> anyhow::Result<Box<dyn crate::tts::TtsSession>> {
-            Ok(Box::new(CuttingSession { gate: self.gate.clone() }))
+            Ok(Box::new(self.clone()))
         }
         fn max_sessions(&self) -> usize {
             1
@@ -2317,6 +2342,9 @@ pub(crate) mod tests {
                     // Borné : un essai qui échoue ne reste pas suspendu à sa barrière.
                     let _ = gate.lock().unwrap().recv_timeout(Duration::from_secs(5));
                 }
+                if self.refuse_tail {
+                    anyhow::bail!("suite refusée");
+                }
             }
             let n = text.split_whitespace().count().max(1);
             // Une seconde par mot, en durées exactes.
@@ -2332,26 +2360,27 @@ pub(crate) mod tests {
             let spans = (0..words.len())
                 .map(|i| crate::doc::WordSpan { start: i as f32, end: (i + 1) as f32 })
                 .collect();
-            Ok(crate::tts::Synthesis { pcm, words: Some(spans) })
+            Ok(crate::tts::Synthesis { pcm, words: (!self.untimed).then_some(spans) })
         }
     }
 
-    fn cutting_app_with(
-        text: &str,
-        gate: Option<std::sync::mpsc::Receiver<()>>,
-    ) -> (App, rodio::queue::SourcesQueueOutput<f32>) {
+    fn gated(gate: std::sync::mpsc::Receiver<()>) -> Cutting {
+        Cutting { gate: Some(Arc::new(std::sync::Mutex::new(gate))), ..Cutting::default() }
+    }
+
+    fn cutting_app_with(text: &str, engine: Cutting) -> (App, rodio::queue::SourcesQueueOutput<f32>) {
         let mut builder = DocumentBuilder::new(CodePolicy::Announce);
         builder.push_block(text);
         let mut config = Config::default();
         config.reading.autoplay = false;
         let (player, output) = crate::audio::Player::idle(1024);
-        let engine = Arc::new(Cutting { gate: gate.map(|g| Arc::new(std::sync::Mutex::new(g))) });
+        let engine = Arc::new(engine);
         let app = App::new(builder, None, engine, config, "t".into(), Vec::new(), player);
         (app, output)
     }
 
     fn cutting_app(text: &str) -> (App, rodio::queue::SourcesQueueOutput<f32>) {
-        cutting_app_with(text, None)
+        cutting_app_with(text, Cutting::default())
     }
 
     fn tick_until(app: &mut App, done: impl Fn(&App) -> bool) {
@@ -2399,7 +2428,7 @@ pub(crate) mod tests {
     #[test]
     fn a_tail_that_is_late_is_one_stall_and_keeps_the_place() {
         let (release, gate) = std::sync::mpsc::channel();
-        let (mut app, mut output) = cutting_app_with("Le quatorze juillet, Camille harangua la foule.", Some(gate));
+        let (mut app, mut output) = cutting_app_with("Le quatorze juillet, Camille harangua la foule.", gated(gate));
         app.player.play();
         tick_until(&mut app, |a| a.awaiting_tail.is_some());
         assert_eq!(app.stalls(), 0, "le premier son n'est pas une coupure");
@@ -2417,12 +2446,75 @@ pub(crate) mod tests {
         assert_eq!(app.stalls(), 1);
     }
 
+    /// Une phrase coupée dont la tête est en file et la suite retenue.
+    fn head_waiting_for_its_tail(engine: Cutting) -> App {
+        let (mut app, _output) = cutting_app_with("Le quatorze juillet, Camille harangua la foule.", engine);
+        tick_until(&mut app, |a| a.awaiting_tail.is_some());
+        app
+    }
+
+    #[test]
+    fn during_the_head_the_highlight_follows_the_head_words() {
+        let (release, gate) = std::sync::mpsc::channel();
+        let mut app = head_waiting_for_its_tail(gated(gate));
+        // Tête : trois mots d'une seconde ; la suite n'est pas encore là.
+        app.player.simulate(0, Duration::from_millis(1500), Duration::from_secs(3));
+        assert_eq!(app.current_word(), Some(1), "le mot de la tête qui sonne");
+        // La suite tarde : le surlignage attend sur le dernier mot de la tête.
+        app.player.simulate(0, Duration::from_secs(3), Duration::from_secs(3));
+        assert_eq!(app.current_word_fraction(), Some((2, 1.0)));
+        drop(release);
+    }
+
+    #[test]
+    fn an_untimed_head_spreads_the_highlight_over_its_own_words() {
+        let (release, gate) = std::sync::mpsc::channel();
+        let mut app = head_waiting_for_its_tail(Cutting { untimed: true, ..gated(gate) });
+        assert!(!app.timings.contains_key(&0));
+        app.player.simulate(0, Duration::from_millis(2900), Duration::from_secs(3));
+        assert_eq!(app.current_word(), Some(2), "fin de la tête, pas fin de phrase");
+        app.player.simulate(0, Duration::from_millis(100), Duration::from_secs(3));
+        assert_eq!(app.current_word(), Some(0));
+        drop(release);
+    }
+
+    #[test]
+    fn a_refused_tail_after_its_head_moves_on_cleanly() {
+        let (release, gate) = std::sync::mpsc::channel();
+        let (mut app, mut output) = cutting_app_with(
+            "Le quatorze juillet, Camille harangua la foule. Paris bascula sans un mot.",
+            Cutting { refuse_tail: true, ..gated(gate) },
+        );
+        app.player.play();
+        tick_until(&mut app, |a| a.awaiting_tail.is_some());
+        // La tête sort entière, puis la suite est refusée.
+        let _: Vec<f32> = output.by_ref().take(3 * 1024 + 10).collect();
+        app.tick();
+        release.send(()).unwrap();
+        tick_until(&mut app, |a| a.awaiting_tail.is_none());
+        assert_eq!(app.current_sentence(), 1, "rien ne sonne : la place passe à la suivante");
+        assert!(!app.timings.contains_key(&0));
+        assert_eq!(app.skipped_count(), 1, "la phrase restée à moitié muette se dit");
+    }
+
+    #[test]
+    fn a_tail_refused_while_its_head_sounds_lets_the_head_finish() {
+        let (release, gate) = std::sync::mpsc::channel();
+        let mut app = head_waiting_for_its_tail(Cutting { refuse_tail: true, ..gated(gate) });
+        release.send(()).unwrap();
+        tick_until(&mut app, |a| a.awaiting_tail.is_none());
+        assert_eq!(app.current_sentence(), 0, "la tête est encore en file");
+        assert!(app.timings.contains_key(&0), "son minutage la suit jusqu'au bout");
+        app.player.simulate(0, Duration::from_millis(1500), Duration::from_secs(3));
+        assert_eq!(app.current_word(), Some(1));
+    }
+
     #[test]
     fn a_jump_during_the_head_forgets_its_tail() {
         let (release, gate) = std::sync::mpsc::channel();
         let (mut app, _output) = cutting_app_with(
             "Le quatorze juillet, Camille harangua la foule. Paris bascula sans un mot.",
-            Some(gate),
+            gated(gate),
         );
         assert_eq!(app.doc().sentences.len(), 2);
         tick_until(&mut app, |a| a.awaiting_tail.is_some());

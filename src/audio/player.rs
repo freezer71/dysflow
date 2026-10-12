@@ -637,6 +637,49 @@ mod tests {
         assert_eq!(player.reconcile(), vec![0], "finie une fois, à la fin de sa suite");
     }
 
+    /// Plus grand saut entre deux échantillons de sortie consécutifs près de
+    /// la coupe (± 64), et ailleurs, sur un son joué en une ou deux parties —
+    /// préparées comme le fait le pool.
+    fn join_jump(split_at: Option<usize>) -> (f32, f32) {
+        const SYNTH: u32 = 24_000;
+        const OUT: u32 = 48_000;
+        let (mut player, mut output) = Player::idle(OUT);
+        // Une voyelle grave et soutenue, coupée en pleine onde.
+        let signal: Vec<f32> =
+            (0..4800).map(|i| 0.3 * (2.0 * std::f32::consts::PI * 220.0 * i as f32 / SYNTH as f32).sin()).collect();
+        match split_at {
+            Some(at) => {
+                use crate::tts::pool::{fade_edge, Edge};
+                let head = Arc::new(fade_edge(PcmBuffer::new(signal[..at].to_vec(), SYNTH, 1), Edge::End));
+                let tail = Arc::new(fade_edge(PcmBuffer::new(signal[at..].to_vec(), SYNTH, 1), Edge::Start));
+                player.enqueue_part(0, &head, head.duration, Duration::ZERO, Duration::ZERO);
+                player.enqueue_part(0, &tail, tail.duration, head.duration, Duration::ZERO);
+            }
+            None => {
+                let whole = Arc::new(PcmBuffer::new(signal, SYNTH, 1));
+                player.enqueue(0, &whole, whole.duration);
+            }
+        }
+        player.play();
+        let out: Vec<f32> = output.by_ref().take(9000).collect();
+        let jumps: Vec<f32> = out.windows(2).map(|w| (w[1] - w[0]).abs()).collect();
+        let join = 2 * split_at.unwrap_or(2400);
+        let near = jumps[join - 64..join + 64].iter().copied().fold(0.0, f32::max);
+        let elsewhere = jumps[200..join - 200].iter().copied().fold(0.0, f32::max);
+        (near, elsewhere)
+    }
+
+    #[test]
+    fn a_cut_in_mid_wave_does_not_click_when_the_card_resamples() {
+        // Synthèse à 24 kHz, carte à 48 kHz : chaque partie a sa conversion,
+        // qui part d'un silence et y retourne. Sans fondu, une tête coupée en
+        // pleine onde claquait à la jonction (saut de 0,32 contre 0,009).
+        let (whole_near, whole) = join_jump(None);
+        let (cut_near, cut) = join_jump(Some(2427));
+        assert!(whole_near <= 1.1 * whole, "{whole_near} / {whole}");
+        assert!(cut_near <= 1.5 * cut, "claquement à la jonction : {cut_near} contre {cut} ailleurs");
+    }
+
     #[test]
     fn player_without_output_stays_inert() {
         // Sur une machine sans carte son, le lecteur ne doit pas paniquer.

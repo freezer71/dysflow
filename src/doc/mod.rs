@@ -199,29 +199,26 @@ impl Sentence {
     /// Même répartition que `word_at` : le trait sous la ligne avance dans le
     /// mot que le surlignage désigne, et repart de zéro au mot suivant.
     pub fn word_fraction(&self, elapsed: f32, total: f32) -> Option<(usize, f32)> {
-        if self.words.is_empty() || total <= 0.0 {
-            return None;
+        fraction_by_weight(&self.words, elapsed, total)
+    }
+
+    /// Le mot prononcé quand seuls les `count` premiers mots sonnent — la
+    /// tête d'une phrase coupée, dont la suite n'est pas encore là. Le
+    /// minutage de la tête sert s'il les couvre exactement, sinon la parole
+    /// `total` se répartit sur ces mots seuls ; au-delà, le surlignage
+    /// attend sur le dernier.
+    pub fn word_fraction_head(
+        &self,
+        count: usize,
+        elapsed: f32,
+        total: f32,
+        spans: Option<&[WordSpan]>,
+    ) -> Option<(usize, f32)> {
+        let words = &self.words[..count.min(self.words.len())];
+        match spans {
+            Some(spans) if !spans.is_empty() && spans.len() == words.len() => fraction_by_spans(elapsed, spans),
+            _ => fraction_by_weight(words, elapsed, total),
         }
-        let ratio = (elapsed / total).clamp(0.0, 1.0);
-        let sum: f32 = self.words.iter().map(Word::weight).sum();
-        if sum <= 0.0 {
-            return None;
-        }
-        let target = ratio * sum;
-        let mut acc = 0.0;
-        for (i, word) in self.words.iter().enumerate() {
-            let weight = word.weight();
-            let start = acc;
-            acc += weight;
-            // Tolérance d'un cheveu sous la frontière : `word_start` puis
-            // `word_at` repasse par des flottants et peut tomber un ulp en
-            // dessous ; sans cela, un saut au mot surlignerait le précédent.
-            if target < acc - sum * 1e-5 {
-                // Un poids vaut au moins 1 : la division est sûre.
-                return Some((i, ((target - start) / weight).clamp(0.0, 1.0)));
-            }
-        }
-        Some((self.words.len() - 1, 1.0))
     }
 
     /// Instant où commence le mot `word`, en fraction de la parole.
@@ -254,18 +251,52 @@ impl Sentence {
         if spans.is_empty() || spans.len() != self.words.len() {
             return None;
         }
-        for (i, span) in spans.iter().enumerate() {
-            // Tolérance d'un cheveu sous la fin, comme `word_fraction` : un
-            // saut au mot suivant repasse par `Duration` et peut revenir un
-            // ulp sous son début, qui est la fin de celui-ci.
-            let tolerance = (span.end.abs() * 1e-5).max(1e-6);
-            if elapsed < span.end - tolerance {
-                let length = (span.end - span.start).max(f32::EPSILON);
-                return Some((i, ((elapsed - span.start) / length).clamp(0.0, 1.0)));
-            }
-        }
-        Some((spans.len() - 1, 1.0))
+        fraction_by_spans(elapsed, spans)
     }
+}
+
+/// Répartition par poids de `total` sur `words` : le mot à `elapsed`, et la
+/// part déjà dite.
+fn fraction_by_weight(words: &[Word], elapsed: f32, total: f32) -> Option<(usize, f32)> {
+    if words.is_empty() || total <= 0.0 {
+        return None;
+    }
+    let ratio = (elapsed / total).clamp(0.0, 1.0);
+    let sum: f32 = words.iter().map(Word::weight).sum();
+    if sum <= 0.0 {
+        return None;
+    }
+    let target = ratio * sum;
+    let mut acc = 0.0;
+    for (i, word) in words.iter().enumerate() {
+        let weight = word.weight();
+        let start = acc;
+        acc += weight;
+        // Tolérance d'un cheveu sous la frontière : `word_start` puis
+        // `word_at` repasse par des flottants et peut tomber un ulp en
+        // dessous ; sans cela, un saut au mot surlignerait le précédent.
+        if target < acc - sum * 1e-5 {
+            // Un poids vaut au moins 1 : la division est sûre.
+            return Some((i, ((target - start) / weight).clamp(0.0, 1.0)));
+        }
+    }
+    Some((words.len() - 1, 1.0))
+}
+
+/// Le mot minuté à `elapsed`, et la part déjà dite ; au-delà du dernier, le
+/// dernier, entièrement dit.
+fn fraction_by_spans(elapsed: f32, spans: &[WordSpan]) -> Option<(usize, f32)> {
+    for (i, span) in spans.iter().enumerate() {
+        // Tolérance d'un cheveu sous la fin, comme `word_fraction` : un saut
+        // au mot suivant repasse par `Duration` et peut revenir un ulp sous
+        // son début, qui est la fin de celui-ci.
+        let tolerance = (span.end.abs() * 1e-5).max(1e-6);
+        if elapsed < span.end - tolerance {
+            let length = (span.end - span.start).max(f32::EPSILON);
+            return Some((i, ((elapsed - span.start) / length).clamp(0.0, 1.0)));
+        }
+    }
+    Some((spans.len() - 1, 1.0))
 }
 
 /// Un bloc du document : un titre, un paragraphe, un item de liste…

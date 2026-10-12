@@ -150,14 +150,16 @@ impl TtsEngine for LazyEngine {
         }
     }
 
-    /// L'annonce vaut dès la création ; une fois chargé, le moteur réel
-    /// peut aussi le demander de lui-même, comme pour `requires_reference`.
+    /// L'annonce vaut pendant le chargement ; une fois chargé, le moteur
+    /// réel peut aussi le demander de lui-même, comme pour
+    /// `requires_reference`. Après un échec, c'est le repli qui parle : il
+    /// répond pour lui. Le pool le redemande à chaque phrase.
     fn splits_first_clause(&self) -> bool {
-        self.splits
-            || match &*self.shared.state.lock().unwrap() {
-                State::Ready(engine) => engine.splits_first_clause(),
-                _ => false,
-            }
+        match &*self.shared.state.lock().unwrap() {
+            State::Loading => self.splits,
+            State::Ready(engine) => self.splits || engine.splits_first_clause(),
+            State::Failed(_) => self.shared.fallback.splits_first_clause(),
+        }
     }
 }
 
@@ -255,6 +257,20 @@ mod tests {
         });
         engine.open_session().unwrap();
         assert!(engine.splits_first_clause());
+    }
+
+    #[test]
+    fn a_failed_load_cuts_as_its_fallback_does() {
+        // L'annonce valait pour le modèle attendu : le repli parle à sa façon.
+        let engine = LazyEngine::spawn("Kokoro".into(), 1, Arc::new(Splitting), || Err(anyhow!("absent")))
+            .splitting_first_clause();
+        engine.open_session().unwrap();
+        assert!(engine.splits_first_clause(), "le repli coupe");
+        let counter = Arc::new(AtomicUsize::new(0));
+        let engine = LazyEngine::spawn("Kokoro".into(), 1, fallback(&counter), || Err(anyhow!("absent")))
+            .splitting_first_clause();
+        engine.open_session().unwrap();
+        assert!(!engine.splits_first_clause(), "le repli ne coupe pas");
     }
 
     #[test]

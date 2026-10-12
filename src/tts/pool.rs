@@ -68,6 +68,74 @@ pub(crate) fn split_first_clause(words: &[String]) -> Option<Split> {
     })
 }
 
+/// Coupe la phrase à envoyer au moteur : la coupe se décide sur les mots,
+/// mais tête et suite sont prises dans `text`, la forme parlée de la phrase
+/// entière, à la même ponctuation. Un mot verbalisé seul perd son contexte
+/// (« 10 000 » dirait « dix zéro zéro zéro ») : la phrase doit se dire de la
+/// même façon, coupée ou non. Faute de retrouver la coupe dans `text`, la
+/// phrase reste entière.
+pub(crate) fn split_sentence(text: &str, words: &[String]) -> Option<Split> {
+    let split = split_first_clause(words)?;
+    // Les signes de coupe suivis d'un blanc (ou finaux), dans la tête : le
+    // dernier est la coupe ; le texte est coupé à son homologue.
+    let rank = cut_marks(&split.head_text).count();
+    let (at, mark) = cut_marks(text).nth(rank.checked_sub(1)?)?;
+    let head = text[..at + mark.len_utf8()].trim();
+    let tail = text[at + mark.len_utf8()..].trim();
+    if head.is_empty() || tail.is_empty() {
+        return None;
+    }
+    Some(Split { head_text: head.to_string(), tail_text: tail.to_string(), ..split })
+}
+
+/// Bord d'un son à adoucir.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Edge {
+    Start,
+    End,
+}
+
+/// Durée du fondu à la coupe : assez court pour ne pas s'entendre comme
+/// tel, assez long pour ne pas claquer.
+const CUT_FADE: Duration = Duration::from_millis(5);
+
+/// Fondu en cosinus sur `CUT_FADE` au bord `edge`, jusqu'au silence.
+///
+/// Tête et suite passent chacune par leur propre conversion de fréquence,
+/// qui part d'un silence et y retourne : une tête coupée en pleine onde
+/// claquait à la jonction dès que la carte son ne tourne pas à la fréquence
+/// de la synthèse (24 kHz contre 48 kHz, le cas courant sur Mac).
+pub(crate) fn fade_edge(pcm: PcmBuffer, edge: Edge) -> PcmBuffer {
+    let ch = pcm.channels as usize;
+    let frames = pcm.samples.len() / ch;
+    let n = ((pcm.sample_rate as f64 * CUT_FADE.as_secs_f64()) as usize).min(frames);
+    if n == 0 {
+        return pcm;
+    }
+    let mut samples = pcm.samples.to_vec();
+    for k in 0..n {
+        // `k` : distance au bord, en trames ; gain nul au bord même.
+        let gain = 0.5 * (1.0 - (std::f32::consts::PI * k as f32 / n as f32).cos());
+        let frame = match edge {
+            Edge::Start => k,
+            Edge::End => frames - 1 - k,
+        };
+        for sample in &mut samples[frame * ch..(frame + 1) * ch] {
+            *sample *= gain;
+        }
+    }
+    PcmBuffer::new(samples, pcm.sample_rate, pcm.channels)
+}
+
+/// Position des virgules, points-virgules et deux-points qui finissent un
+/// mot (suivis d'un blanc, ou en fin de texte).
+fn cut_marks(text: &str) -> impl Iterator<Item = (usize, char)> + '_ {
+    text.char_indices().filter(move |&(i, c)| {
+        matches!(c, ',' | ';' | ':')
+            && text[i + c.len_utf8()..].chars().next().map_or(true, char::is_whitespace)
+    })
+}
+
 /// Quelle partie d'une phrase un audio porte.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Part {
@@ -125,14 +193,14 @@ struct State {
     failures: HashMap<usize, String>,
     /// Temps passé à synthétiser, cumulé.
     busy: Duration,
-    /// Le moteur demande que la phrase attendue (au curseur) soit coupée en
-    /// deux : sa tête sonne plus tôt.
-    split_cursor: bool,
 }
 
 impl State {
     /// Prochaine phrase à synthétiser, au plus près du curseur.
-    fn next_job(&self) -> Option<Picked> {
+    ///
+    /// `split_cursor` : le moteur demande, à cet instant, que la phrase
+    /// attendue (au curseur) soit coupée en deux pour sonner plus tôt.
+    fn next_job(&self, split_cursor: bool) -> Option<Picked> {
         let end = (self.cursor + self.window).min(self.jobs.len());
         for id in self.cursor..end {
             if self.in_flight.contains(&id) || self.failures.contains_key(&id) {
@@ -149,7 +217,7 @@ impl State {
                 params: self.params.clone(),
                 generation: self.generation,
                 pause_ms: job.pause_ms,
-                split: self.split_cursor && id == self.cursor,
+                split: split_cursor && id == self.cursor,
             });
         }
         None
@@ -185,7 +253,6 @@ impl Synthesizer {
         window: usize,
     ) -> Self {
         let worker_count = workers.clamp(1, engine.max_sessions().max(1));
-        let split_cursor = engine.splits_first_clause();
         let shared = Arc::new(Shared {
             engine,
             state: Mutex::new(State {
@@ -199,7 +266,6 @@ impl Synthesizer {
                 in_flight: HashSet::new(),
                 failures: HashMap::new(),
                 busy: Duration::ZERO,
-                split_cursor,
             }),
             wake: Condvar::new(),
             shutdown: AtomicBool::new(false),
@@ -389,7 +455,9 @@ fn worker_loop(shared: Arc<Shared>) {
                 if shared.shutdown.load(Ordering::SeqCst) {
                     return;
                 }
-                if let Some(job) = state.next_job() {
+                // Demandé à chaque choix : un moteur chargé en différé ne le
+                // sait qu'une fois prêt.
+                if let Some(job) = state.next_job(shared.engine.splits_first_clause()) {
                     state.in_flight.insert(job.id);
                     break job;
                 }
@@ -413,7 +481,7 @@ fn worker_loop(shared: Arc<Shared>) {
         }
 
         let session = session.as_mut().expect("session ouverte juste au-dessus");
-        let split = if job.split { split_first_clause(&job.words) } else { None };
+        let split = if job.split { split_sentence(&job.text, &job.words) } else { None };
         let Some(split) = split else {
             let outcome = synthesize(&shared, session.as_mut(), &job.text, &job.words, &job.params)
                 .map(|s| with_trailing_silence(s, job.words.len(), job.pause_ms));
@@ -424,6 +492,7 @@ fn worker_loop(shared: Arc<Shared>) {
         // jusqu'à la suite.
         let head = synthesize(&shared, session.as_mut(), &split.head_text, &split.head_words, &job.params)
             .map(|s| {
+                let s = Synthesis { pcm: fade_edge(s.pcm, Edge::End), ..s };
                 let mut rendered = with_trailing_silence(s, split.head_words.len(), 0);
                 rendered.part = Part::Head { words: split.head_words.len() };
                 rendered
@@ -436,6 +505,7 @@ fn worker_loop(shared: Arc<Shared>) {
             }
         }
         let tail = synthesize(&shared, session.as_mut(), &split.tail_text, &split.tail_words, &job.params)
+            .map(|s| Synthesis { pcm: fade_edge(s.pcm, Edge::Start), ..s })
             .map(|s| with_trailing_silence(s, split.tail_words.len(), job.pause_ms));
         finish_tail(&shared, job.id, job.generation, tail);
     }
@@ -973,6 +1043,8 @@ mod tests {
     struct SplittingEngine {
         texts: Arc<std::sync::Mutex<Vec<String>>>,
         fail_tail: Arc<AtomicBool>,
+        /// Ce que le moteur répond à `splits_first_clause`, à tout moment.
+        splits: Arc<AtomicBool>,
     }
     struct SplittingSession {
         texts: Arc<std::sync::Mutex<Vec<String>>>,
@@ -981,7 +1053,11 @@ mod tests {
 
     impl SplittingEngine {
         fn new(texts: &Arc<std::sync::Mutex<Vec<String>>>) -> Self {
-            Self { texts: Arc::clone(texts), fail_tail: Arc::new(AtomicBool::new(false)) }
+            Self {
+                texts: Arc::clone(texts),
+                fail_tail: Arc::new(AtomicBool::new(false)),
+                splits: Arc::new(AtomicBool::new(true)),
+            }
         }
     }
 
@@ -999,7 +1075,7 @@ mod tests {
             1
         }
         fn splits_first_clause(&self) -> bool {
-            true
+            self.splits.load(Ordering::SeqCst)
         }
     }
 
@@ -1054,6 +1130,54 @@ mod tests {
     }
 
     #[test]
+    fn the_cut_keeps_the_spoken_form_of_the_whole_sentence() {
+        // « 10 000 » ne se dit bien qu'en contexte : mot à mot, « 000 »
+        // deviendrait « zéro ». La tête et la suite sont prises dans la forme
+        // parlée de la phrase entière, coupée à la même virgule.
+        let mut builder = crate::doc::DocumentBuilder::new(crate::doc::builder::CodePolicy::Announce);
+        builder.push_block("Le seuil fixé à 10 000 euros, reste bas pour tous.");
+        let sentence = builder.document().sentences[0].clone();
+        assert_ne!(
+            sentence.spoken_words().join(" "),
+            sentence.text,
+            "l'essai suppose une forme parlée qui dépend du contexte"
+        );
+        let texts = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let synth = Synthesizer::new(Arc::new(SplittingEngine::new(&texts)), TtsParams::default(), 1, 4);
+        synth.push_with_words(sentence.text.clone(), sentence.spoken_words(), 0);
+        let head = wait_ready(&synth, 0);
+        assert_eq!(head.part, Part::Head { words: 7 });
+        wait_tail(&synth, 0);
+        let said = texts.lock().unwrap().clone();
+        assert_eq!(said.len(), 2, "{said:?}");
+        assert!(said[0].ends_with(','), "{said:?}");
+        assert_eq!(format!("{} {}", said[0], said[1]), sentence.text);
+    }
+
+    #[test]
+    fn a_spoken_text_without_the_cut_stays_whole() {
+        let words = words("Le quatorze juillet, Camille harangua la foule.");
+        assert!(split_sentence("Le quatorze juillet Camille harangua la foule.", &words).is_none());
+        let split = split_sentence("Le 14 juillet, Camille harangua la foule.", &words).unwrap();
+        assert_eq!((split.head_text.as_str(), split.tail_text.as_str()), ("Le 14 juillet,", "Camille harangua la foule."));
+        assert_eq!(split.head_words.len(), 3);
+    }
+
+    #[test]
+    fn the_cut_follows_the_engine_once_it_is_loaded() {
+        // Un moteur chargé en différé ne sait qu'après coup s'il coupe : le
+        // pool le lui demande à chaque phrase, pas une fois à sa création.
+        let texts = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let engine = Arc::new(SplittingEngine::new(&texts));
+        engine.splits.store(false, Ordering::SeqCst);
+        let synth = Synthesizer::new(Arc::clone(&engine) as Arc<dyn TtsEngine>, TtsParams::default(), 1, 4);
+        engine.splits.store(true, Ordering::SeqCst);
+        let first = "Le quatorze juillet, Camille harangua la foule.";
+        synth.push_with_words(first.into(), words(first), 0);
+        assert_eq!(wait_ready(&synth, 0).part, Part::Head { words: 3 });
+    }
+
+    #[test]
     fn a_refused_tail_lets_the_sentence_be_retried_whole() {
         // La tête seule en cache, sans suite ni travail en cours, bloquerait
         // la phrase pour de bon : y revenir doit la refaire.
@@ -1069,6 +1193,33 @@ mod tests {
         synth.retry_from(0);
         assert_eq!(wait_ready(&synth, 0).part, Part::Head { words: 3 });
         assert_eq!(wait_tail(&synth, 0).words.as_ref().map(|w| w.len()), Some(4));
+    }
+
+    #[test]
+    fn the_cut_fades_only_its_own_edge() {
+        let pcm = || PcmBuffer::new(vec![0.5; 2000], 1000, 1);
+        let head = fade_edge(pcm(), Edge::End);
+        assert_eq!(head.samples.len(), 2000);
+        assert!(head.samples[1999].abs() < 0.01, "{}", head.samples[1999]);
+        assert_eq!(head.samples[..1995], [0.5; 1995][..], "5 ms à 1 kHz : le reste intact");
+        let tail = fade_edge(pcm(), Edge::Start);
+        assert!(tail.samples[0].abs() < 0.01);
+        assert_eq!(tail.samples[5..], [0.5; 1995][..]);
+        assert_eq!(tail.duration, Duration::from_secs(2));
+    }
+
+    #[test]
+    fn head_and_tail_reach_the_cache_faded_at_the_cut() {
+        let texts = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let synth = Synthesizer::new(Arc::new(SplittingEngine::new(&texts)), TtsParams::default(), 1, 4);
+        let first = "Le quatorze juillet, Camille harangua la foule.";
+        synth.push_with_words(first.into(), words(first), 0);
+        let head = wait_ready(&synth, 0);
+        let tail = wait_tail(&synth, 0);
+        assert!(head.audio.samples.last().unwrap().abs() < 0.01);
+        assert_eq!(head.audio.samples[0], 0.1, "le début de la tête n'est pas touché");
+        assert!(tail.audio.samples[0].abs() < 0.01);
+        assert_eq!(*tail.audio.samples.last().unwrap(), 0.1, "la fin de la suite non plus");
     }
 
     #[test]
