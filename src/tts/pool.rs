@@ -37,6 +37,35 @@ struct Picked {
     params: TtsParams,
     generation: u64,
     pause_ms: u64,
+    /// La phrase attendue, à couper en tête et suite si elle s'y prête.
+    split: bool,
+}
+
+/// Une phrase coupée en tête et suite.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct Split {
+    pub head_text: String,
+    pub head_words: Vec<String>,
+    pub tail_text: String,
+    pub tail_words: Vec<String>,
+}
+
+/// Coupe après le premier mot qui finit par une virgule, un point-virgule
+/// ou deux-points, à condition que la tête ait au moins trois mots et que
+/// la suite ne soit pas vide. La coupe peut toucher l'intonation : elle est
+/// réservée à la phrase qui conditionne l'attente.
+pub(crate) fn split_first_clause(words: &[String]) -> Option<Split> {
+    let cut = words.iter().position(|w| w.ends_with([',', ';', ':']))?;
+    if cut < 2 || cut + 1 >= words.len() {
+        return None;
+    }
+    let (head, tail) = words.split_at(cut + 1);
+    Some(Split {
+        head_text: head.join(" "),
+        head_words: head.to_vec(),
+        tail_text: tail.join(" "),
+        tail_words: tail.to_vec(),
+    })
 }
 
 /// Quelle partie d'une phrase un audio porte.
@@ -44,6 +73,8 @@ struct Picked {
 pub enum Part {
     /// La phrase entière.
     Whole,
+    /// La tête de la phrase attendue ; la suite vient par `Synthesizer::tail`.
+    Head { words: usize },
 }
 
 /// Audio prêt à jouer pour une phrase.
@@ -75,6 +106,8 @@ pub struct SynthesisStats {
 
 struct Entry {
     rendered: Rendered,
+    /// La suite d'une phrase coupée, quand elle est prête.
+    tail: Option<Rendered>,
     generation: u64,
 }
 
@@ -92,6 +125,9 @@ struct State {
     failures: HashMap<usize, String>,
     /// Temps passé à synthétiser, cumulé.
     busy: Duration,
+    /// Le moteur demande que la phrase attendue (au curseur) soit coupée en
+    /// deux : sa tête sonne plus tôt.
+    split_cursor: bool,
 }
 
 impl State {
@@ -113,6 +149,7 @@ impl State {
                 params: self.params.clone(),
                 generation: self.generation,
                 pause_ms: job.pause_ms,
+                split: self.split_cursor && id == self.cursor,
             });
         }
         None
@@ -148,6 +185,7 @@ impl Synthesizer {
         window: usize,
     ) -> Self {
         let worker_count = workers.clamp(1, engine.max_sessions().max(1));
+        let split_cursor = engine.splits_first_clause();
         let shared = Arc::new(Shared {
             engine,
             state: Mutex::new(State {
@@ -161,6 +199,7 @@ impl Synthesizer {
                 in_flight: HashSet::new(),
                 failures: HashMap::new(),
                 busy: Duration::ZERO,
+                split_cursor,
             }),
             wake: Condvar::new(),
             shutdown: AtomicBool::new(false),
@@ -234,6 +273,17 @@ impl Synthesizer {
             .get(&id)
             .filter(|e| e.generation == state.generation)
             .map(|e| e.rendered.clone())
+    }
+
+    /// La suite d'une phrase coupée, si elle est prête et à jour. Son
+    /// minutage part du début de la suite.
+    pub fn tail(&self, id: usize) -> Option<Rendered> {
+        let state = self.shared.state.lock().unwrap();
+        state
+            .cache
+            .get(&id)
+            .filter(|e| e.generation == state.generation)
+            .and_then(|e| e.tail.clone())
     }
 
     /// Message d'erreur si la synthèse de cette phrase a échoué.
@@ -363,9 +413,31 @@ fn worker_loop(shared: Arc<Shared>) {
         }
 
         let session = session.as_mut().expect("session ouverte juste au-dessus");
-        let outcome = synthesize(&shared, session.as_mut(), &job.text, &job.words, &job.params)
-            .map(|s| with_trailing_silence(s, job.words.len(), job.pause_ms));
-        finish_generation(&shared, job.id, job.generation, outcome);
+        let split = if job.split { split_first_clause(&job.words) } else { None };
+        let Some(split) = split else {
+            let outcome = synthesize(&shared, session.as_mut(), &job.text, &job.words, &job.params)
+                .map(|s| with_trailing_silence(s, job.words.len(), job.pause_ms));
+            finish_generation(&shared, job.id, job.generation, outcome);
+            continue;
+        };
+        // La tête d'abord, jouable aussitôt ; la phrase reste « en cours »
+        // jusqu'à la suite.
+        let head = synthesize(&shared, session.as_mut(), &split.head_text, &split.head_words, &job.params)
+            .map(|s| {
+                let mut rendered = with_trailing_silence(s, split.head_words.len(), 0);
+                rendered.part = Part::Head { words: split.head_words.len() };
+                rendered
+            });
+        match head {
+            Ok(rendered) => finish_head(&shared, job.id, job.generation, rendered),
+            Err(message) => {
+                finish_generation(&shared, job.id, job.generation, Err(message));
+                continue;
+            }
+        }
+        let tail = synthesize(&shared, session.as_mut(), &split.tail_text, &split.tail_words, &job.params)
+            .map(|s| with_trailing_silence(s, split.tail_words.len(), job.pause_ms));
+        finish_tail(&shared, job.id, job.generation, tail);
     }
 }
 
@@ -427,10 +499,43 @@ fn finish_generation(
     if generation == state.generation {
         match outcome {
             Ok(rendered) => {
-                state.cache.insert(id, Entry { rendered, generation });
+                state.cache.insert(id, Entry { rendered, tail: None, generation });
                 state.evict();
             }
             Err(message) => {
+                state.failures.insert(id, message);
+            }
+        }
+    }
+    drop(state);
+    shared.wake.notify_all();
+}
+
+/// Range la tête d'une phrase coupée ; la phrase reste en cours.
+fn finish_head(shared: &Arc<Shared>, id: usize, generation: u64, rendered: Rendered) {
+    let mut state = shared.state.lock().unwrap();
+    if generation == state.generation {
+        state.cache.insert(id, Entry { rendered, tail: None, generation });
+    }
+    drop(state);
+    shared.wake.notify_all();
+}
+
+/// Range la suite d'une phrase coupée. Un échec de la suite se dit comme
+/// celui d'une phrase : la lecture passe à la suivante. La tête part avec
+/// elle : restée seule en cache, elle empêcherait de refaire la phrase.
+fn finish_tail(shared: &Arc<Shared>, id: usize, generation: u64, outcome: Result<Rendered, String>) {
+    let mut state = shared.state.lock().unwrap();
+    state.in_flight.remove(&id);
+    if generation == state.generation {
+        match outcome {
+            Ok(rendered) => {
+                if let Some(entry) = state.cache.get_mut(&id) {
+                    entry.tail = Some(rendered);
+                }
+            }
+            Err(message) => {
+                state.cache.remove(&id);
                 state.failures.insert(id, message);
             }
         }
@@ -844,6 +949,126 @@ mod tests {
         synth.push("une phrase".into(), 0);
         wait_ready(&synth, 0);
         assert!(synth.stats().busy >= Duration::from_millis(25), "{:?}", synth.stats().busy);
+    }
+
+    fn words(text: &str) -> Vec<String> {
+        text.split_whitespace().map(str::to_string).collect()
+    }
+
+    #[test]
+    fn the_first_clause_is_cut_after_three_words_at_least() {
+        let split = split_first_clause(&words("Le quatorze juillet, Camille harangua la foule.")).unwrap();
+        assert_eq!(split.head_text, "Le quatorze juillet,");
+        assert_eq!(split.head_words.len(), 3);
+        assert_eq!(split.tail_text, "Camille harangua la foule.");
+        assert!(split_first_clause(&words("Oui, bien sûr, tout à fait.")).is_none(), "tête trop courte");
+        assert!(split_first_clause(&words("Une phrase sans virgule du tout.")).is_none());
+        assert!(split_first_clause(&words("Trois mots ici,")).is_none(), "rien après");
+        assert_eq!(split_first_clause(&words("Pour le corriger ; lancez les tests.")).unwrap().head_words.len(), 4);
+    }
+
+    /// Minute ses mots (100 ms chacun) et coupe la phrase attendue. Avec
+    /// `fail_tail`, refuse toute suite (un texte sans virgule) la première
+    /// fois.
+    struct SplittingEngine {
+        texts: Arc<std::sync::Mutex<Vec<String>>>,
+        fail_tail: Arc<AtomicBool>,
+    }
+    struct SplittingSession {
+        texts: Arc<std::sync::Mutex<Vec<String>>>,
+        fail_tail: Arc<AtomicBool>,
+    }
+
+    impl SplittingEngine {
+        fn new(texts: &Arc<std::sync::Mutex<Vec<String>>>) -> Self {
+            Self { texts: Arc::clone(texts), fail_tail: Arc::new(AtomicBool::new(false)) }
+        }
+    }
+
+    impl TtsEngine for SplittingEngine {
+        fn name(&self) -> String {
+            "coupe".into()
+        }
+        fn open_session(&self) -> Result<Box<dyn TtsSession>> {
+            Ok(Box::new(SplittingSession {
+                texts: Arc::clone(&self.texts),
+                fail_tail: Arc::clone(&self.fail_tail),
+            }))
+        }
+        fn max_sessions(&self) -> usize {
+            1
+        }
+        fn splits_first_clause(&self) -> bool {
+            true
+        }
+    }
+
+    impl TtsSession for SplittingSession {
+        fn synthesize(&mut self, text: &str, _: &TtsParams) -> Result<PcmBuffer> {
+            self.texts.lock().unwrap().push(text.to_string());
+            if !text.contains(',') && self.fail_tail.swap(false, Ordering::SeqCst) {
+                anyhow::bail!("suite refusée");
+            }
+            let n = text.split_whitespace().count().max(1);
+            Ok(PcmBuffer::new(vec![0.1; n * 100], 1000, 1))
+        }
+        fn synthesize_timed(&mut self, text: &str, words: &[String], p: &TtsParams) -> Result<Synthesis> {
+            let pcm = self.synthesize(text, p)?;
+            let spans = (0..words.len())
+                .map(|i| WordSpan { start: i as f32 * 0.1, end: (i + 1) as f32 * 0.1 })
+                .collect();
+            Ok(Synthesis { pcm, words: Some(spans) })
+        }
+    }
+
+    fn wait_tail(synth: &Synthesizer, id: usize) -> Rendered {
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        loop {
+            if let Some(r) = synth.tail(id) {
+                return r;
+            }
+            assert!(std::time::Instant::now() < deadline, "suite {id} jamais prête");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    #[test]
+    fn only_the_awaited_sentence_is_cut_in_two() {
+        let texts = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let engine = Arc::new(SplittingEngine::new(&texts));
+        let synth = Synthesizer::new(engine, TtsParams::default(), 1, 4);
+        let first = "Le quatorze juillet, Camille harangua la foule.";
+        let second = "Paris bascula, en quelques heures, sans un mot.";
+        synth.push_with_words(first.into(), words(first), 300);
+        synth.push_with_words(second.into(), words(second), 0);
+
+        let head = wait_ready(&synth, 0);
+        assert_eq!(head.part, Part::Head { words: 3 });
+        assert_eq!(head.words.as_ref().map(|w| w.len()), Some(3));
+        let tail = wait_tail(&synth, 0);
+        assert_eq!(tail.part, Part::Whole);
+        assert_eq!(tail.words.as_ref().map(|w| w.len()), Some(4));
+        assert!(tail.audio.duration > tail.speech, "la pause de fin de bloc va à la suite");
+        assert_eq!(wait_ready(&synth, 1).part, Part::Whole, "les phrases suivantes restent entières");
+        assert_eq!(texts.lock().unwrap()[..2], ["Le quatorze juillet,", "Camille harangua la foule."]);
+    }
+
+    #[test]
+    fn a_refused_tail_lets_the_sentence_be_retried_whole() {
+        // La tête seule en cache, sans suite ni travail en cours, bloquerait
+        // la phrase pour de bon : y revenir doit la refaire.
+        let texts = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let engine = Arc::new(SplittingEngine::new(&texts));
+        engine.fail_tail.store(true, Ordering::SeqCst);
+        let synth = Synthesizer::new(Arc::clone(&engine) as Arc<dyn TtsEngine>, TtsParams::default(), 1, 4);
+        let first = "Le quatorze juillet, Camille harangua la foule.";
+        synth.push_with_words(first.into(), words(first), 0);
+        assert!(wait_for(|| synth.failure(0).is_some()), "la suite refusée se dit");
+        assert!(synth.get(0).is_none(), "la tête orpheline ne reste pas en cache");
+
+        synth.retry_from(0);
+        assert_eq!(wait_ready(&synth, 0).part, Part::Head { words: 3 });
+        assert_eq!(wait_tail(&synth, 0).words.as_ref().map(|w| w.len()), Some(4));
     }
 
     #[test]

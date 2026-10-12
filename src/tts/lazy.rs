@@ -34,6 +34,8 @@ struct Shared {
 /// Moteur dont le chargement se fait en arrière-plan.
 pub struct LazyEngine {
     shared: Arc<Shared>,
+    /// Le moteur chargé coupera la phrase attendue.
+    splits: bool,
 }
 
 impl LazyEngine {
@@ -65,7 +67,14 @@ impl LazyEngine {
             worker.ready.notify_all();
         });
 
-        Self { shared }
+        Self { shared, splits: false }
+    }
+
+    /// Annonce d'avance que le moteur chargé coupera la phrase attendue : le
+    /// pool en décide à sa création, avant la fin du chargement.
+    pub fn splitting_first_clause(mut self) -> Self {
+        self.splits = true;
+        self
     }
 
     /// Vrai tant que le modèle n'est pas prêt.
@@ -140,6 +149,16 @@ impl TtsEngine for LazyEngine {
             _ => false,
         }
     }
+
+    /// L'annonce vaut dès la création ; une fois chargé, le moteur réel
+    /// peut aussi le demander de lui-même, comme pour `requires_reference`.
+    fn splits_first_clause(&self) -> bool {
+        self.splits
+            || match &*self.shared.state.lock().unwrap() {
+                State::Ready(engine) => engine.splits_first_clause(),
+                _ => false,
+            }
+    }
 }
 
 #[cfg(test)]
@@ -193,6 +212,49 @@ mod tests {
         engine.open_session().unwrap();
         assert!(!engine.is_loading());
         assert_eq!(engine.name(), "réel");
+    }
+
+    #[test]
+    fn the_cut_is_announced_before_the_model_is_there() {
+        let counter = Arc::new(AtomicUsize::new(0));
+        let engine = LazyEngine::spawn("Kokoro".into(), 1, fallback(&counter), || {
+            thread::sleep(Duration::from_millis(200));
+            Ok(Arc::new(Stub("réel", Arc::new(AtomicUsize::new(0)))) as Arc<dyn TtsEngine>)
+        })
+        .splitting_first_clause();
+        assert!(engine.is_loading());
+        assert!(engine.splits_first_clause());
+        let plain = LazyEngine::spawn("audio.cpp".into(), 1, fallback(&counter), || {
+            Ok(Arc::new(Stub("réel", Arc::new(AtomicUsize::new(0)))) as Arc<dyn TtsEngine>)
+        });
+        assert!(!plain.splits_first_clause(), "sans annonce, pas de coupe");
+    }
+
+    /// Un moteur qui demande lui-même la coupe.
+    struct Splitting;
+    impl TtsEngine for Splitting {
+        fn name(&self) -> String {
+            "coupe".into()
+        }
+        fn open_session(&self) -> Result<Box<dyn TtsSession>> {
+            Ok(Box::new(StubSession))
+        }
+        fn max_sessions(&self) -> usize {
+            1
+        }
+        fn splits_first_clause(&self) -> bool {
+            true
+        }
+    }
+
+    #[test]
+    fn the_loaded_engine_passes_its_cut_through() {
+        let counter = Arc::new(AtomicUsize::new(0));
+        let engine = LazyEngine::spawn("Kokoro".into(), 1, fallback(&counter), || {
+            Ok(Arc::new(Splitting) as Arc<dyn TtsEngine>)
+        });
+        engine.open_session().unwrap();
+        assert!(engine.splits_first_clause());
     }
 
     #[test]

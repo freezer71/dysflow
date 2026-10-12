@@ -83,6 +83,11 @@ pub struct App {
     start_at: Option<StartAt>,
     /// Minutage des mots des phrases en file, par phrase.
     timings: std::collections::HashMap<usize, Arc<[crate::doc::WordSpan]>>,
+    awaiting_tail: Option<AwaitingTail>,
+    /// Coupures : la sortie s'est vidée en pleine lecture faute de son prêt.
+    stalls: usize,
+    /// La sortie est déjà vide : une coupure ne compte qu'une fois.
+    starved: bool,
 
     pub panel: Panel,
     pub selection: usize,
@@ -119,6 +124,16 @@ struct StartAt {
     /// Le décalage a servi à l'entrée en file : il ne doit pas servir deux
     /// fois, mais le relais d'affichage reste jusqu'à une position réelle.
     consumed: bool,
+}
+
+/// La tête d'une phrase coupée est partie (ou a été passée) : sa suite est
+/// attendue avant toute autre phrase.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct AwaitingTail {
+    sentence: usize,
+    /// Parole de la tête : là où la suite reprend le chronomètre.
+    base: Duration,
+    head_words: usize,
 }
 
 /// Le relais d'un saut peut tomber : le lecteur donne enfin une position pour
@@ -204,6 +219,10 @@ impl App {
             pace: Pace::default(),
             start_at: None,
             timings: std::collections::HashMap::new(),
+            awaiting_tail: None,
+            stalls: 0,
+            // Rien n'a encore joué : le premier son n'est pas une reprise.
+            starved: true,
             panel: Panel::None,
             selection: 0,
             show_help: false,
@@ -419,7 +438,11 @@ impl App {
     }
 
     fn advance_playback(&mut self) {
-        let finished = self.player.reconcile();
+        let mut finished = self.player.reconcile();
+        // Une tête jouée dont la suite n'est pas encore là ne termine pas sa
+        // phrase : son minutage et la place de lecture restent.
+        let waiting = self.awaiting_tail.map(|w| w.sentence);
+        finished.retain(|&id| Some(id) != waiting);
         for id in &finished {
             self.timings.remove(id);
         }
@@ -437,13 +460,27 @@ impl App {
 
     /// Alimente la sortie audio, sans jamais la laisser prendre trop d'avance.
     ///
-    /// Deux phrases en file suffisent à enchaîner sans blanc, tout en gardant la
-    /// possibilité de sauter avec une latence imperceptible.
+    /// Deux parties en file suffisent à enchaîner sans blanc, tout en gardant
+    /// la possibilité de sauter avec une latence imperceptible. Une phrase
+    /// coupée entre en deux fois : sa tête dès qu'elle est prête, puis sa
+    /// suite, au même chronomètre.
     fn fill_output(&mut self) {
         if !self.player.is_available() {
             return;
         }
         while self.player.queue_len() < 2 {
+            if let Some(waiting) = self.awaiting_tail {
+                if let Some(tail) = self.synth.tail(waiting.sentence) {
+                    self.enqueue_tail(waiting, &tail);
+                    continue;
+                }
+                if self.synth.failure(waiting.sentence).is_some() {
+                    self.awaiting_tail = None;
+                    self.queue_head = waiting.sentence + 1;
+                    continue;
+                }
+                break;
+            }
             let total = self.builder.sentence_count();
             if self.queue_head >= total {
                 break;
@@ -455,6 +492,10 @@ impl App {
                     .sentence(self.queue_head)
                     .map(|s| s.words.len())
                     .unwrap_or(0);
+                if let crate::tts::pool::Part::Head { words: head_words } = rendered.part {
+                    self.enqueue_head(head_words, &rendered);
+                    continue;
+                }
                 self.pace.record(rendered.speech.as_secs_f64(), words);
                 let offset = match self.start_at.as_mut() {
                     Some(start) if start.sentence == self.queue_head && !start.consumed => {
@@ -466,12 +507,8 @@ impl App {
                 if let Some(spans) = &rendered.words {
                     self.timings.insert(self.queue_head, Arc::clone(spans));
                 }
-                self.player.enqueue_from(
-                    self.queue_head,
-                    &rendered.audio,
-                    rendered.speech,
-                    offset,
-                );
+                self.player.enqueue_from(self.queue_head, &rendered.audio, rendered.speech, offset);
+                self.starved = false;
                 self.queue_head += 1;
                 continue;
             }
@@ -483,6 +520,74 @@ impl App {
             }
             break; // Synthèse en cours : on attend.
         }
+        let reading = self.player.is_playing() && self.queue_head < self.builder.sentence_count();
+        if reading && self.player.queue_len() == 0 && !self.starved {
+            self.stalls += 1;
+            self.starved = true;
+        }
+    }
+
+    /// La tête d'une phrase coupée : jouée, sauf si le saut en cours vise un
+    /// mot de la suite.
+    fn enqueue_head(&mut self, head_words: usize, head: &crate::tts::pool::Rendered) {
+        let id = self.queue_head;
+        if let Some(spans) = &head.words {
+            self.timings.insert(id, Arc::clone(spans));
+        }
+        let start = self.start_at.filter(|s| s.sentence == id && !s.consumed);
+        match start {
+            Some(s) if s.word >= head_words => {}
+            Some(s) => {
+                if let Some(start) = self.start_at.as_mut() {
+                    start.consumed = true;
+                }
+                self.player.enqueue_part(id, &head.audio, head.speech, Duration::ZERO, start_offset(&s, head));
+                self.starved = false;
+            }
+            None => {
+                self.player.enqueue_part(id, &head.audio, head.speech, Duration::ZERO, Duration::ZERO);
+                self.starved = false;
+            }
+        }
+        self.awaiting_tail = Some(AwaitingTail { sentence: id, base: head.speech, head_words });
+    }
+
+    /// La suite d'une phrase coupée, au chronomètre de la tête ; son
+    /// minutage est mis bout à bout avec celui de la tête.
+    fn enqueue_tail(&mut self, waiting: AwaitingTail, tail: &crate::tts::pool::Rendered) {
+        let id = waiting.sentence;
+        let shift = waiting.base.as_secs_f32();
+        let head = self.timings.remove(&id);
+        if let (Some(head), Some(rest)) = (head, &tail.words) {
+            let joined: Vec<crate::doc::WordSpan> = head
+                .iter()
+                .copied()
+                .chain(rest.iter().map(|w| crate::doc::WordSpan { start: w.start + shift, end: w.end + shift }))
+                .collect();
+            self.timings.insert(id, joined.into());
+        }
+        let skip = match self.start_at.as_mut() {
+            Some(start) if start.sentence == id && !start.consumed => {
+                start.consumed = true;
+                let word = start.word.saturating_sub(waiting.head_words);
+                tail.words
+                    .as_deref()
+                    .and_then(|w| w.get(word))
+                    .map_or(Duration::ZERO, |w| Duration::from_secs_f32(w.start.max(0.0)))
+            }
+            _ => Duration::ZERO,
+        };
+        let words = self.builder.document().sentence(id).map_or(0, |s| s.words.len());
+        self.pace.record((waiting.base + tail.speech).as_secs_f64(), words);
+        self.player.enqueue_part(id, &tail.audio, tail.speech, waiting.base, skip);
+        self.starved = false;
+        self.awaiting_tail = None;
+        self.queue_head = id + 1;
+    }
+
+    /// Coupures comptées depuis l'ouverture (mesure du filtre de charge).
+    pub fn stalls(&self) -> usize {
+        self.stalls
     }
 
     pub fn is_finished(&self) -> bool {
@@ -605,6 +710,9 @@ impl App {
         let target = target.min(total - 1);
         self.player.flush();
         self.timings.clear();
+        self.awaiting_tail = None;
+        // La sortie vidée par un saut n'est pas une coupure.
+        self.starved = true;
         // Ce qu'on rejoint mérite d'être tenté à nouveau : un refus du moteur
         // ne doit pas rendre un passage définitivement muet.
         self.synth.retry_from(target);
@@ -1413,6 +1521,8 @@ impl App {
 
         self.player.flush();
         self.timings.clear();
+        self.awaiting_tail = None;
+        self.starved = true;
         let current = self.current_sentence();
         self.queue_head = current;
         self.synth.set_cursor(current);
@@ -2173,5 +2283,155 @@ pub(crate) mod tests {
         app.seek_words(-1);
         assert_eq!(app.current_sentence(), 0);
         assert_eq!(app.status(), "Aucun mot de ce côté");
+    }
+
+    /// Le moteur de coupe des tests du pool, recopié : minute ses mots et
+    /// coupe la phrase attendue. Avec une barrière, la suite « Camille… »
+    /// attend un feu vert.
+    struct Cutting {
+        gate: Option<Arc<std::sync::Mutex<std::sync::mpsc::Receiver<()>>>>,
+    }
+    struct CuttingSession {
+        gate: Option<Arc<std::sync::Mutex<std::sync::mpsc::Receiver<()>>>>,
+    }
+
+    impl TtsEngine for Cutting {
+        fn name(&self) -> String {
+            "coupe".into()
+        }
+        fn open_session(&self) -> anyhow::Result<Box<dyn crate::tts::TtsSession>> {
+            Ok(Box::new(CuttingSession { gate: self.gate.clone() }))
+        }
+        fn max_sessions(&self) -> usize {
+            1
+        }
+        fn splits_first_clause(&self) -> bool {
+            true
+        }
+    }
+
+    impl crate::tts::TtsSession for CuttingSession {
+        fn synthesize(&mut self, text: &str, _: &TtsParams) -> anyhow::Result<crate::tts::PcmBuffer> {
+            if text.starts_with("Camille") {
+                if let Some(gate) = &self.gate {
+                    // Borné : un essai qui échoue ne reste pas suspendu à sa barrière.
+                    let _ = gate.lock().unwrap().recv_timeout(Duration::from_secs(5));
+                }
+            }
+            let n = text.split_whitespace().count().max(1);
+            // Une seconde par mot, en durées exactes.
+            Ok(crate::tts::PcmBuffer::new(vec![0.1; n * 1024], 1024, 1))
+        }
+        fn synthesize_timed(
+            &mut self,
+            text: &str,
+            words: &[String],
+            p: &TtsParams,
+        ) -> anyhow::Result<crate::tts::Synthesis> {
+            let pcm = self.synthesize(text, p)?;
+            let spans = (0..words.len())
+                .map(|i| crate::doc::WordSpan { start: i as f32, end: (i + 1) as f32 })
+                .collect();
+            Ok(crate::tts::Synthesis { pcm, words: Some(spans) })
+        }
+    }
+
+    fn cutting_app_with(
+        text: &str,
+        gate: Option<std::sync::mpsc::Receiver<()>>,
+    ) -> (App, rodio::queue::SourcesQueueOutput<f32>) {
+        let mut builder = DocumentBuilder::new(CodePolicy::Announce);
+        builder.push_block(text);
+        let mut config = Config::default();
+        config.reading.autoplay = false;
+        let (player, output) = crate::audio::Player::idle(1024);
+        let engine = Arc::new(Cutting { gate: gate.map(|g| Arc::new(std::sync::Mutex::new(g))) });
+        let app = App::new(builder, None, engine, config, "t".into(), Vec::new(), player);
+        (app, output)
+    }
+
+    fn cutting_app(text: &str) -> (App, rodio::queue::SourcesQueueOutput<f32>) {
+        cutting_app_with(text, None)
+    }
+
+    fn tick_until(app: &mut App, done: impl Fn(&App) -> bool) {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !done(app) {
+            assert!(Instant::now() < deadline, "jamais atteint");
+            app.tick();
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    #[test]
+    fn the_tail_follows_the_head_in_the_queue() {
+        let (mut app, _output) = cutting_app("Le quatorze juillet, Camille harangua la foule.");
+        tick_until(&mut app, |a| a.queue_head >= 1);
+        assert_eq!(app.player.queued_parts(), [(0, Duration::ZERO), (0, Duration::from_secs(3))]);
+        assert_eq!(app.timings.get(&0).map(|t| t.len()), Some(7), "tête et suite mises bout à bout");
+        assert_eq!(app.timings[&0][3].start, 3.0, "la suite commence à la fin de la tête");
+    }
+
+    #[test]
+    fn a_jump_into_the_tail_skips_the_head() {
+        let (mut app, _output) = cutting_app("Le quatorze juillet, Camille harangua la foule.");
+        app.seek_to_word(0, 5);
+        tick_until(&mut app, |a| a.queue_head >= 1);
+        let parts = app.player.queued_parts();
+        assert_eq!(parts.len(), 1, "la tête n'est pas jouée : {parts:?}");
+        // Base 3 s (la tête) + 2 s (deux mots de la suite) : le mot 5.
+        assert_eq!(parts[0], (0, Duration::from_secs(5)));
+    }
+
+    #[test]
+    fn the_highlight_crosses_from_the_head_into_the_tail() {
+        let (mut app, mut output) = cutting_app("Le quatorze juillet, Camille harangua la foule.");
+        tick_until(&mut app, |a| a.queue_head >= 1);
+        app.player.play();
+        // La tête sort entière (3 s à 1024 Hz), et un peu de la suite.
+        let _: Vec<f32> = output.by_ref().take(3 * 1024 + 100).collect();
+        app.tick();
+        assert_eq!(app.current_sentence(), 0);
+        assert_eq!(app.timings.get(&0).map(|t| t.len()), Some(7), "la fin de la tête garde le minutage");
+        assert_eq!(app.current_word(), Some(3), "le premier mot de la suite");
+    }
+
+    #[test]
+    fn a_tail_that_is_late_is_one_stall_and_keeps_the_place() {
+        let (release, gate) = std::sync::mpsc::channel();
+        let (mut app, mut output) = cutting_app_with("Le quatorze juillet, Camille harangua la foule.", Some(gate));
+        app.player.play();
+        tick_until(&mut app, |a| a.awaiting_tail.is_some());
+        assert_eq!(app.stalls(), 0, "le premier son n'est pas une coupure");
+        let _: Vec<f32> = output.by_ref().take(3 * 1024 + 10).collect();
+        for _ in 0..5 {
+            app.tick();
+        }
+        assert_eq!(app.player.queue_len(), 0);
+        assert_eq!(app.stalls(), 1, "une coupure, comptée une fois");
+        assert_eq!(app.current_sentence(), 0, "la phrase attend sa suite");
+        assert!(app.timings.contains_key(&0));
+        release.send(()).unwrap();
+        tick_until(&mut app, |a| a.queue_head >= 1);
+        assert_eq!(app.player.queued_parts(), [(0, Duration::from_secs(3))]);
+        assert_eq!(app.stalls(), 1);
+    }
+
+    #[test]
+    fn a_jump_during_the_head_forgets_its_tail() {
+        let (release, gate) = std::sync::mpsc::channel();
+        let (mut app, _output) = cutting_app_with(
+            "Le quatorze juillet, Camille harangua la foule. Paris bascula sans un mot.",
+            Some(gate),
+        );
+        assert_eq!(app.doc().sentences.len(), 2);
+        tick_until(&mut app, |a| a.awaiting_tail.is_some());
+        app.seek_to(1);
+        assert!(app.awaiting_tail.is_none());
+        release.send(()).unwrap();
+        tick_until(&mut app, |a| a.queue_head >= 2);
+        let parts = app.player.queued_parts();
+        assert!(parts.iter().all(|&(id, _)| id == 1), "rien de la phrase quittée : {parts:?}");
+        assert_eq!(app.stalls(), 0, "un saut n'est pas une coupure");
     }
 }
