@@ -121,7 +121,11 @@ enum Measure {
         let echeance = ContinuousClock.now + .seconds(10)
         while !condition(reader.snapshot()) {
             if ContinuousClock.now >= echeance {
-                switch reader.snapshot().voice {
+                // L'état au délai dépassé, pour savoir où la lecture s'est
+                // arrêtée ; jamais le texte du document.
+                let s = reader.snapshot()
+                print("MESURE etat document=\(s.hasDocument) lecture=\(s.playing) audible=\(s.audible) fini=\(s.finished) phrase=\(s.sentence) revision=\(s.revision) voix=\(s.voice) statut=\(s.status) sautees=\(s.skipped)")
+                switch s.voice {
                 case .resting, .fallback:
                     print("MESURE erreur voix-indisponible")
                 default:
