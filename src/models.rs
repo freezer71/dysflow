@@ -447,10 +447,27 @@ pub fn installed_bytes(package: &ModelPackage) -> u64 {
 
 /// Vrai si un fichier du paquet, ou un `.part` de lui, traîne sur le disque :
 /// de quoi proposer de le retirer même incomplet.
+///
+/// Un compagnon qu'un autre paquet de la famille, présent, nomme aussi ne
+/// compte pas : il n'est pas à ce paquet seul, et `remove_in` le garderait.
 pub fn has_files_in(root: &Path, package: &ModelPackage) -> bool {
-    planned_files_in(root, package)
-        .into_iter()
-        .any(|(_, path, _)| path.exists() || path.with_extension("part").exists())
+    let present = |p: &Path| p.exists() || p.with_extension("part").exists();
+    present(&main_path_in(root, package))
+        || package.companions.iter().any(|c| {
+            !shared_with_sibling(root, package, c) && present(&companion_path_in(root, package, c))
+        })
+}
+
+/// Un autre paquet de la famille nomme ce compagnon et est là : installé, ou
+/// en cours de téléchargement (son fichier principal ou son `.part`).
+fn shared_with_sibling(root: &Path, package: &ModelPackage, companion: &Companion) -> bool {
+    CATALOG.iter().any(|other| {
+        let main = main_path_in(root, other);
+        other.id != package.id
+            && other.family == package.family
+            && (main.exists() || main.with_extension("part").exists())
+            && other.companions.iter().any(|c| c.dest == companion.dest)
+    })
 }
 
 pub fn has_files(package: &ModelPackage) -> bool {
@@ -486,13 +503,7 @@ pub fn remove_in(root: &Path, package: &ModelPackage) -> Result<()> {
         }
     }
     for companion in package.companions {
-        let shared = CATALOG.iter().any(|other| {
-            other.id != package.id
-                && other.family == package.family
-                && main_path_in(root, other).exists()
-                && other.companions.iter().any(|c| c.dest == companion.dest)
-        });
-        if !shared {
+        if !shared_with_sibling(root, package, companion) {
             let file = companion_path_in(root, package, companion);
             let _ = std::fs::remove_file(&file);
             let _ = std::fs::remove_file(file.with_extension("part"));
@@ -1503,16 +1514,94 @@ mod tests {
         std::fs::remove_dir_all(&root).ok();
     }
 
+    /// Un serveur qui annonce `total` octets, en envoie `first`, le dit sur
+    /// `sent`, puis attend `release` avant d'envoyer le reste.
+    fn serve_in_two_parts(
+        first: &'static [u8],
+        rest: &'static [u8],
+        sent: std::sync::mpsc::Sender<()>,
+        release: std::sync::mpsc::Receiver<()>,
+    ) -> String {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/m.bin", listener.local_addr().unwrap());
+        std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0u8; 2048];
+            let _ = stream.read(&mut request);
+            let head = format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                first.len() + rest.len()
+            );
+            stream.write_all(head.as_bytes()).unwrap();
+            stream.write_all(first).unwrap();
+            stream.flush().unwrap();
+            let _ = sent.send(());
+            let _ = release.recv();
+            let _ = stream.write_all(rest);
+        });
+        url
+    }
+
     #[test]
-    fn a_cancelled_download_is_reported_cancelled_and_stops() {
+    fn a_download_cancelled_mid_package_is_cancelled_and_keeps_its_part() {
         let root = scratch("telechargement-annule");
-        let (one, two) = (root.join("f/un.bin"), root.join("f/deux.bin"));
-        let files = files_for(&[(serve_once(b"abc"), &one, 3), ("http://127.0.0.1:1/jamais".into(), &two, 1)]);
+        let (one, two, three) = (root.join("f/un.bin"), root.join("f/deux.bin"), root.join("f/trois.bin"));
+        let (sent_tx, sent_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let files = files_for(&[
+            (serve_once(b"abc"), &one, 3),
+            (serve_in_two_parts(b"d", b"efgh", sent_tx, release_rx), &two, 5),
+            ("http://127.0.0.1:1/jamais".into(), &three, 1),
+        ]);
         let download = Download::start_in(&CATALOG[0], files).unwrap();
-        download.cancel(); // avant même le premier octet : le thread le voit à la première boucle
-        let state = wait(&download);
-        assert!(matches!(state, Progress::Cancelled | Progress::Failed(_)), "{state:?}");
-        assert!(!two.exists(), "rien après l'annulation");
+        sent_rx.recv_timeout(std::time::Duration::from_secs(10)).unwrap();
+        let started = std::time::Instant::now();
+        loop {
+            match download.progress() {
+                Progress::Running { received, .. } if received >= 4 => break,
+                other => assert!(started.elapsed().as_secs() < 10, "pas de progression : {other:?}"),
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        download.cancel();
+        release_tx.send(()).unwrap();
+        assert_eq!(wait(&download), Progress::Cancelled);
+        assert_eq!(std::fs::read(&one).unwrap(), b"abc");
+        assert!(!two.exists(), "le fichier annulé n'est pas installé");
+        assert!(two.with_extension("part").exists(), "le .part reste pour la reprise");
+        assert!(!three.exists() && !three.with_extension("part").exists());
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn what_a_sibling_shares_is_not_this_packages_to_remove() {
+        let root = scratch("partage-presence");
+        let (mlx, int8) = (package("kokoro_82m_mlx"), package("kokoro_82m_int8"));
+        sparse(&root, int8, true);
+        assert!(!has_files_in(&root, mlx), "rien qui soit au seul paquet MLX");
+        assert!(has_files_in(&root, int8));
+        // Le MLX arrive à moitié : son fichier principal le rend visible.
+        std::fs::write(main_path_in(&root, mlx).with_extension("part"), b"x").unwrap();
+        assert!(has_files_in(&root, mlx));
+        // Un frère qui télécharge protège ses compagnons communs.
+        remove_in(&root, int8).unwrap();
+        assert!(companion_path_in(&root, int8, &int8.companions[0]).exists(), "le MLX en cours les attend");
+        assert!(!main_path_in(&root, int8).exists());
+        remove_in(&root, mlx).unwrap();
+        assert!(!root.join("kokoro").exists(), "plus personne : tout est retiré");
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn removing_the_mlx_only_files_leaves_the_shared_ones() {
+        let root = scratch("seuls-au-mlx");
+        let (mlx, int8) = (package("kokoro_82m_mlx"), package("kokoro_82m_int8"));
+        sparse(&root, mlx, true);
+        std::fs::write(main_path_in(&root, int8), b"x").unwrap(); // l'autre paquet est là, voix partagées
+        remove_in(&root, mlx).unwrap();
+        assert!(!main_path_in(&root, mlx).exists());
+        assert!(companion_path_in(&root, mlx, &mlx.companions[0]).exists());
         std::fs::remove_dir_all(&root).ok();
     }
 
