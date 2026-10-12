@@ -63,9 +63,11 @@ final class SettingsStore {
         self.engineDelay = engineDelay
         self.dragTimeout = dragTimeout
         committer = Committer(delay: delay, writeApplied: { [backend] new, old in
-            let patch = SettingsDiff.patch(from: old, to: new)
-            if patch.isEmpty { return new }   // rien à écrire
-            return try await backend.updateSettings(patch)
+            let patches = SettingsDiff.patches(from: old, to: new)
+            if patches.isEmpty { return new }   // rien à écrire
+            var applied = new
+            for patch in patches { applied = try await backend.updateSettings(patch) }
+            return applied
         }, onApplied: { [weak self] sent, applied in
             // Une valeur changée depuis l'envoi reste : elle partira à son tour.
             guard let self, self.values == sent else { return }

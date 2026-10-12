@@ -79,4 +79,24 @@ final class SettingsDiffTests: XCTestCase {
         XCTAssertNil(patch.voice)
         XCTAssertTrue(SettingsDiff.patch(from: new, to: new).isEmpty)
     }
+
+    /// Deux langues changées dans la même pause : un patch par langue, le
+    /// premier portant aussi les autres champs.
+    func testTwoChangedLanguagesMakeTwoPatches() {
+        var old = SettingsView.defaults
+        old.voicesByLanguage = [LanguageVoice(language: "fr", voice: "ff_siwis"),
+                                LanguageVoice(language: "en", voice: "am_fenrir")]
+        var new = old
+        new.speed = 1.2
+        new.voicesByLanguage = [LanguageVoice(language: "fr", voice: "p-fenrir60"),
+                                LanguageVoice(language: "en", voice: "af_sky")]
+        let patches = SettingsDiff.patches(from: old, to: new)
+        XCTAssertEqual(patches.count, 2)
+        XCTAssertEqual(patches.first?.speed, 1.2)
+        XCTAssertEqual(Set(patches.compactMap(\.voiceForLanguage)),
+                       [LanguageVoice(language: "fr", voice: "p-fenrir60"),
+                        LanguageVoice(language: "en", voice: "af_sky")])
+        XCTAssertNil(patches.last?.speed, "le second patch ne redit que sa langue")
+        XCTAssertTrue(SettingsDiff.patches(from: new, to: new).isEmpty)
+    }
 }

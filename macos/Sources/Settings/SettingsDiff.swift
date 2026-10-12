@@ -37,14 +37,30 @@ enum SettingsDiff {
         let after = Dictionary(new.extra.map { ($0.key, $0.value) }, uniquingKeysWith: { $1 })
         p.extraSet = new.extra.filter { before[$0.key] != $0.value }
         p.extraRemove = old.extra.map(\.key).filter { after[$0] == nil }
-        // Une voix par langue : la première langue changée part (un geste
-        // n'en touche qu'une).
+        // Une voix par langue et par patch : la première langue changée part
+        // avec les autres champs, les suivantes dans `patches`.
+        p.voiceForLanguage = changedVoices(from: old, to: new).first
+        return p
+    }
+
+    /// Tous les patchs à envoyer, dans l'ordre : `patch(from:to:)`, puis un
+    /// patch par langue changée en plus — deux voix changées dans la même
+    /// pause sont écrites toutes les deux. Vide si rien n'a changé.
+    static func patches(from old: SettingsView, to new: SettingsView) -> [SettingsPatch] {
+        let first = patch(from: old, to: new)
+        if first.isEmpty { return [] }
+        let others = changedVoices(from: old, to: new).dropFirst().map { voice -> SettingsPatch in
+            var p = SettingsPatch.empty
+            p.voiceForLanguage = voice
+            return p
+        }
+        return [first] + others
+    }
+
+    private static func changedVoices(from old: SettingsView, to new: SettingsView) -> [LanguageVoice] {
         let voicesBefore = Dictionary(old.voicesByLanguage.map { ($0.language, $0.voice) },
                                       uniquingKeysWith: { $1 })
-        if let changed = new.voicesByLanguage.first(where: { voicesBefore[$0.language] != $0.voice }) {
-            p.voiceForLanguage = changed
-        }
-        return p
+        return new.voicesByLanguage.filter { voicesBefore[$0.language] != $0.voice }
     }
 
     private static func float(_ v: Float?) -> SamplingFloat { v.map { .value(value: $0) } ?? .model }

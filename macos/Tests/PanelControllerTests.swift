@@ -545,6 +545,20 @@ final class PanelStatusTests: XCTestCase {
                        "Signet ajouté", "le lecteur parle d'abord")
     }
 
+    /// La toute première préparation des noyaux Metal : le texte de la spec,
+    /// plutôt que « Voix en chargement… », même voix déjà chargée.
+    func testAFirstPreparationSaysSo() {
+        XCTAssertEqual(PanelStatus.line(message: nil, snapshot: snapshot(voice: .loading), preparing: true),
+                       "Voix en préparation (première fois)…")
+        XCTAssertEqual(PanelStatus.line(message: nil, snapshot: snapshot(voice: .ready), preparing: true),
+                       "Voix en préparation (première fois)…")
+        XCTAssertEqual(PanelStatus.line(message: nil, snapshot: snapshot(status: "Signet ajouté", voice: .loading),
+                                        preparing: true),
+                       "Signet ajouté", "le lecteur parle d'abord")
+        XCTAssertEqual(PanelStatus.line(message: nil, snapshot: snapshot(voice: .fallback(reason: "x")), preparing: true),
+                       "Voix du système — installer une voix : ⌘,", "en repli, c'est la voix du système qui parle")
+    }
+
     func testAppMessageWins() {
         XCTAssertEqual(PanelStatus.line(message: "Phrase copiée",
                                         snapshot: snapshot(status: "Signet ajouté")), "Phrase copiée")

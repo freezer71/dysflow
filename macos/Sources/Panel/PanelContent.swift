@@ -95,7 +95,8 @@ struct PanelContent: View {
                     // Le message prend place dans la rangée des aides : la
                     // hauteur réservée autour du texte (PanelGeometry.chrome)
                     // ne change pas quand il paraît.
-                    if let message = PanelStatus.line(message: model.message, snapshot: model.snapshot) {
+                    if let message = PanelStatus.line(message: model.message, snapshot: model.snapshot,
+                                                         preparing: model.voicePreparation.isRunning) {
                         Spacer(minLength: 8)
                         Text(message)
                             .font(.system(size: 13))
@@ -161,16 +162,19 @@ struct HelpOverlay: View {
 /// La ligne de message du panneau : ce que l'app vient de dire (« Phrase
 /// copiée »), sinon le statut du lecteur (« Signet ajouté », « Aucun mot de
 /// ce côté », sortie audio indisponible), sinon, voix de repli, comment en
-/// installer une.
+/// installer une ; sinon la première préparation des noyaux Metal, ou le
+/// chargement de la voix.
 enum PanelStatus {
     static let fallbackHint = "Voix du système — installer une voix : ⌘,"
+    static let preparingLine = "Voix en préparation (première fois)…"
     static let loadingLine = "Voix en chargement…"
 
-    static func line(message: String?, snapshot: Snapshot) -> String? {
+    static func line(message: String?, snapshot: Snapshot, preparing: Bool = false) -> String? {
         if let message { return message }
         if !snapshot.status.isEmpty { return snapshot.status }
-        if case .loading = snapshot.voice { return loadingLine }
         if case .fallback = snapshot.voice { return fallbackHint }
+        if preparing { return preparingLine }
+        if case .loading = snapshot.voice { return loadingLine }
         return nil
     }
 }

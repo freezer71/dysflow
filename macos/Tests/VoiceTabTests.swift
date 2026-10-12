@@ -97,6 +97,9 @@ final class VoiceTabTests: XCTestCase {
         XCTAssertEqual(SizeFormat.bytes(999_700), "1 Mo", "jamais « 1 000 Ko »")
         XCTAssertEqual(SizeFormat.bytes(999), "999 octets")
         XCTAssertEqual(SizeFormat.bytes(1), "1 octet")
+        XCTAssertEqual(SizeFormat.bytes(0), "0 octet")
+        XCTAssertEqual(SizeFormat.bytes(999_499), "999 Ko", "sous la frontière")
+        XCTAssertEqual(SizeFormat.bytes(999_500), "1 Mo", "à la frontière : jamais « 1 000 Ko »")
     }
 
     /// L'avis et l'offre se disent une fois par valeur, pas à chaque retour

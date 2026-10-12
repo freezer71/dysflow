@@ -188,7 +188,7 @@ enum Measure {
 
     private static func counters(_ reader: SillonReader, _ compute: KokoroMLXCompute?) {
         let m = reader.measures()
-        print(String(format: "COMPTEUR busy_s=%.3f stalls=%d mlx_calls=%d forward_s=%.3f", m.busySeconds, m.stalls, compute?.calls ?? -1, compute?.forwardSeconds ?? -1))
+        print(String(format: "COMPTEUR busy_s=%.3f stalls=%u mlx_calls=%ld forward_s=%.3f", m.busySeconds, m.stalls, compute?.calls ?? -1, compute?.forwardSeconds ?? -1))
         fflush(stdout)
     }
 
@@ -333,7 +333,7 @@ enum Measure {
                 durees.append(r.ms)
             }
             guard !durees.isEmpty else { continue }
-            print(String(format: "MESURE pont_copie_%ds %.2f ms", secondes, durees.sorted()[durees.count / 2]))
+            print(String(format: "MESURE pont_copie_%lds %.2f ms", secondes, durees.sorted()[durees.count / 2]))
         }
         fflush(stdout)
     }

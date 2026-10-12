@@ -68,7 +68,7 @@ final class KokoroBridgeTests: XCTestCase {
             XCTAssertTrue(SettingsStore.message(of: error).contains("aucune proposition"))
         }
         await m.dismissVoiceOffer()
-        m.dismissNotice()
+        await m.dismissNotice()
         XCTAssertNil(m.snapshot.notice)
         XCTAssertFalse(m.snapshot.configUnreadable)
         XCTAssertFalse(m.voicePreparation.isRunning)

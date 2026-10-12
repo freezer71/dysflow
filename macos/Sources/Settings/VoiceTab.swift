@@ -35,7 +35,7 @@ struct VoiceTab: View {
                     HStack {
                         Text(notice).accessibilityIdentifier("avis-voix")
                         Spacer()
-                        Button("Compris") { model.dismissNotice() }
+                        Button("Compris") { Task { await model.dismissNotice() } }
                             .accessibilityLabel("Compris, fermer l'avis de la nouvelle voix")
                     }
                 }
@@ -107,9 +107,9 @@ struct VoiceTab: View {
         .onChange(of: model.snapshot.offer, initial: true) { _, offer in
             if let offer { AnnounceOnce.post("Nouvelle voix disponible. \(Self.offerTitle(offer)) ?") }
         }
-        .onChange(of: Self.acceptedDownloadFailure(accepted: acceptedOffer, download: model.snapshot.download)) { _, failure in
-            if let failure { Announcement.post(failure) }
-        }
+        // L'échec d'un téléchargement accepté se dit déjà par ReglagesView
+        // (« Téléchargement interrompu : … », quel que soit l'onglet) : pas
+        // de seconde annonce ici.
         .onChange(of: model.voicePreparation.isRunning) { _, running in
             if running { Announcement.post("Voix en préparation, la première fois") }
         }

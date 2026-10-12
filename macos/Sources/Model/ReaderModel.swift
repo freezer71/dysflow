@@ -391,8 +391,11 @@ final class ReaderModel {
         try await Task.detached { try reader.replaceUnreadableConfig() }.value
         wake()
     }
-    func dismissNotice() {
-        reader.dismissNotice()
+    /// « Compris » : l'appel attend le verrou du lecteur, hors du fil
+    /// principal comme les autres réponses à l'offre.
+    func dismissNotice() async {
+        let reader = reader
+        await Task.detached { reader.dismissNotice() }.value
         wake()
     }
     /// Vide le cache des documents ; rend les octets libérés.

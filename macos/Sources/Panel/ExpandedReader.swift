@@ -42,7 +42,8 @@ struct ExpandedReader: View {
                              : "\(search.position + 1) / \(search.count)")
                             .accessibilityIdentifier("resultats-recherche")
                     }
-                    if let message = PanelStatus.line(message: model.message, snapshot: model.snapshot) {
+                    if let message = PanelStatus.line(message: model.message, snapshot: model.snapshot,
+                                                         preparing: model.voicePreparation.isRunning) {
                         Text(message).lineLimit(1)
                     }
                 }

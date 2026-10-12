@@ -29,6 +29,21 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertEqual(backend.patches, [expected])
     }
 
+    /// Deux voix changées avant la fin de la pause : les deux sont écrites.
+    func testTwoVoiceChangesInOnePauseBothApply() async {
+        let backend = FakeSettingsBackend()
+        let store = await loadedStore(backend)
+        store.setVoice("p-fenrir60", language: "fr")
+        store.setVoice("af_sky", language: "en")
+        let sent = await eventuallyTrue { backend.patches.count == 2 }
+        XCTAssertTrue(sent)
+        XCTAssertEqual(Set(backend.stored.voicesByLanguage),
+                       [LanguageVoice(language: "fr", voice: "p-fenrir60"),
+                        LanguageVoice(language: "en", voice: "af_sky")])
+        let applied = await eventuallyTrue { store.values.voicesByLanguage.count == 2 }
+        XCTAssertTrue(applied)
+    }
+
     /// Point d'attention 2 : une valeur écrite à la main ne repart jamais
     /// tant qu'on n'y touche pas.
     func testOpeningTheTabRewritesNothing() async throws {
