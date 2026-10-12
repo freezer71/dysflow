@@ -309,12 +309,11 @@ fn kokoro_backend(
     mlx: Option<Arc<kokoro::SharedCompute>>,
 ) -> Result<Arc<dyn kokoro::KokoroBackend>, String> {
     if settings.model_path.ends_with(".onnx") {
-        // Le calcul ONNX Runtime (`kokoro::onnx::OrtBackend`) arrive avec la
-        // Tâche 10 ; d'ici là la feature, encore vide, ne charge rien. Un
+        // ONNX Runtime sur processeur, `min(engine.threads, 4)` fils. Un
         // calcul propre à chaque construction : l'envelopper dans un
         // `SharedCompute` neuf garde le même contrat que MLX.
         #[cfg(feature = "kokoro-onnx")]
-        return Err("Kokoro int8 : calcul ONNX Runtime pas encore livré".to_string());
+        return Ok(Arc::new(kokoro::SharedCompute::new(Arc::new(kokoro::onnx::OrtBackend::new(settings.threads)))));
         #[cfg(not(feature = "kokoro-onnx"))]
         return Err("Kokoro int8 : binaire compilé sans `kokoro-onnx`".to_string());
     }
@@ -460,6 +459,18 @@ mod tests {
         let path = kokoro_files("onnx", "model_quantized.onnx");
         let (_, note) = build_engine_with(EnginePreference::Auto, &kokoro_settings(&path.to_string_lossy(), "cpu"), None);
         assert!(note.unwrap().contains("kokoro-onnx"));
+    }
+
+    #[test]
+    #[cfg(feature = "kokoro-onnx")]
+    fn kokoro_int8_loads_onnx_runtime_in_the_background() {
+        // Aucune bibliothèque ORT sur la machine de test : le chargement
+        // échouera en arrière-plan, mais rien n'est tranché d'avance.
+        let path = kokoro_files("onnx-ort", "model_quantized.onnx");
+        let (engine, note) =
+            build_engine_with(EnginePreference::Auto, &kokoro_settings(&path.to_string_lossy(), "cpu"), None);
+        assert_eq!(note, None, "le calcul ORT part en arrière-plan");
+        assert!(engine.splits_first_clause());
     }
 
     #[test]

@@ -37,6 +37,10 @@ ureq = "2.10"
 unicode-width = "0.2"
 # Langue d'un document (français ou anglais), MIT.
 whatlang = "0.18"
+# Kokoro au terminal : ONNX Runtime chargé dynamiquement (≥ 1.31, livré à
+# côté du binaire par package.sh), MIT/Apache.
+ort = { version = "=2.0.0-rc.13", optional = true, default-features = false, features = ["load-dynamic", "ndarray", "std", "api-22"] }
+libloading = { version = "0.8", optional = true }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
@@ -57,9 +61,8 @@ clipboard = ["dep:arboard"]
 # compris — la reconnaissance s'ajoute au collage, elle ne le conditionne pas.
 ocr = ["dep:tesseract-rs", "dep:image", "clipboard"]
 # Kokoro au terminal par ONNX Runtime (≥ 1.31, chargé dynamiquement). Jamais
-# dans l'app macOS, qui calcule Kokoro en MLX. Ses dépendances arrivent avec
-# le moteur ONNX.
-kokoro-onnx = []
+# dans l'app macOS, qui calcule Kokoro en MLX.
+kokoro-onnx = ["dep:ort", "dep:libloading"]
 
 [[bin]]
 name = "sillon"
@@ -98,3 +101,7 @@ required-features = ["audio-cpp"]
 [[example]]
 name = "speed_headroom"
 required-features = ["audio-cpp"]
+
+[[example]]
+name = "kokoro_serve"
+required-features = ["kokoro-onnx"]

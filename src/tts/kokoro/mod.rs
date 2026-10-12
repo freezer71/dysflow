@@ -5,6 +5,8 @@ pub mod align;
 pub mod backend;
 pub mod phonemes;
 pub mod voices;
+#[cfg(feature = "kokoro-onnx")]
+pub mod onnx;
 
 pub use backend::{check, KokoroBackend, KokoroRaw, SharedCompute};
 
