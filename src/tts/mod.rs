@@ -1,6 +1,7 @@
 //! Synthèse vocale : contrat commun, moteurs, et ordonnanceur parallèle.
 
 pub mod lazy;
+pub mod fallback;
 pub mod kokoro;
 pub mod pool;
 pub mod preview;
@@ -246,11 +247,22 @@ pub fn build_engine(
     preference: EnginePreference,
     settings: &EngineSettings,
 ) -> (Arc<dyn TtsEngine>, Option<String>) {
-    let fallback: Arc<dyn TtsEngine> = Arc::new(system::SystemEngine::new());
-    if preference == EnginePreference::System {
-        return (fallback, None);
-    }
+    build_engine_with(preference, settings, None)
+}
 
+/// `build_engine`, avec le calcul MLX de Kokoro quand l'app le fournit.
+pub fn build_engine_with(
+    preference: EnginePreference,
+    settings: &EngineSettings,
+    mlx: Option<Arc<dyn kokoro::KokoroBackend>>,
+) -> (Arc<dyn TtsEngine>, Option<String>) {
+    if preference == EnginePreference::System {
+        return (Arc::new(system::SystemEngine::new()), None);
+    }
+    if settings.family == "kokoro" {
+        return build_kokoro(settings, mlx);
+    }
+    let fallback: Arc<dyn TtsEngine> = Arc::new(system::SystemEngine::new());
     if let Err(reason) = audio_cpp_precondition(settings) {
         let note = format!("audio.cpp indisponible ({reason}) — repli sur la voix système");
         return (fallback, Some(note));
@@ -262,6 +274,48 @@ pub fn build_engine(
         try_audio_cpp(&owned)
     });
     (Arc::new(engine), None)
+}
+
+/// Kokoro : le calcul selon le fichier du paquet (`.onnx` : ORT ; sinon
+/// MLX, fourni par l'app), espeak-ng cherché au chargement.
+fn build_kokoro(
+    settings: &EngineSettings,
+    mlx: Option<Arc<dyn kokoro::KokoroBackend>>,
+) -> (Arc<dyn TtsEngine>, Option<String>) {
+    let fallback = fallback::fallback_engine(settings);
+    let Some(dir) = crate::models::kokoro_dir(&settings.model_path) else {
+        return (fallback, Some("Kokoro n'est pas installé — voir l'onglet Modèles".to_string()));
+    };
+    let backend = match kokoro_backend(settings, mlx) {
+        Ok(backend) => backend,
+        Err(reason) => return (fallback, Some(reason)),
+    };
+    let repli = Arc::clone(&fallback);
+    let engine = lazy::LazyEngine::spawn("Kokoro".to_string(), 1, fallback, move || {
+        let phonemizer = kokoro::phonemes::EspeakProcess::locate()?;
+        let engine = kokoro::KokoroEngine::load(backend, Box::new(phonemizer), &dir, repli)?;
+        Ok(Arc::new(engine) as Arc<dyn TtsEngine>)
+    })
+    .splitting_first_clause();
+    (Arc::new(engine), None)
+}
+
+fn kokoro_backend(
+    settings: &EngineSettings,
+    mlx: Option<Arc<dyn kokoro::KokoroBackend>>,
+) -> Result<Arc<dyn kokoro::KokoroBackend>, String> {
+    if settings.model_path.ends_with(".onnx") {
+        // Le calcul ONNX Runtime (`kokoro::onnx::OrtBackend`) arrive avec la
+        // Tâche 10 ; d'ici là la feature, encore vide, ne charge rien.
+        #[cfg(feature = "kokoro-onnx")]
+        return Err("Kokoro int8 : calcul ONNX Runtime pas encore livré".to_string());
+        #[cfg(not(feature = "kokoro-onnx"))]
+        return Err("Kokoro int8 : binaire compilé sans `kokoro-onnx`".to_string());
+    }
+    match mlx {
+        Some(backend) if settings.backend != "cpu" => Ok(backend),
+        _ => Err("Calcul Metal indisponible — Kokoro MLX ne tourne que dans l'app, sur la puce graphique".to_string()),
+    }
 }
 
 /// Vérifie ce qui peut l'être sans toucher au modèle.
@@ -360,5 +414,73 @@ mod tests {
             params.model_options("supertonic").get("speaking_rate").map(String::as_str),
             Some("0.8")
         );
+    }
+
+    fn kokoro_settings(model_path: &str, backend: &str) -> EngineSettings {
+        EngineSettings {
+            model_path: model_path.into(),
+            family: "kokoro".into(),
+            backend: backend.into(),
+            threads: 4,
+            sessions: 1,
+        }
+    }
+
+    fn kokoro_files(name: &str, file: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("sillon-build-{}-{name}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("config.json"), "{}").unwrap();
+        std::fs::write(dir.join(file), b"x").unwrap();
+        dir.join(file)
+    }
+
+    #[test]
+    fn kokoro_without_its_files_falls_back_and_says_why() {
+        let settings = kokoro_settings("/nulle/part/kokoro-v1_0.safetensors", "metal");
+        let (_, note) = build_engine_with(EnginePreference::Auto, &settings, None);
+        assert!(note.unwrap().contains("Kokoro n'est pas installé"));
+    }
+
+    #[test]
+    fn kokoro_mlx_needs_the_compute_of_the_app() {
+        let path = kokoro_files("mlx", "kokoro-v1_0.safetensors");
+        let (_, note) = build_engine_with(EnginePreference::Auto, &kokoro_settings(&path.to_string_lossy(), "metal"), None);
+        assert!(note.unwrap().contains("Calcul Metal indisponible"));
+    }
+
+    #[test]
+    #[cfg(not(feature = "kokoro-onnx"))]
+    fn kokoro_int8_needs_the_onnx_feature() {
+        let path = kokoro_files("onnx", "model_quantized.onnx");
+        let (_, note) = build_engine_with(EnginePreference::Auto, &kokoro_settings(&path.to_string_lossy(), "cpu"), None);
+        assert!(note.unwrap().contains("kokoro-onnx"));
+    }
+
+    #[test]
+    fn kokoro_with_its_compute_loads_in_the_background() {
+        struct Idle;
+        impl kokoro::KokoroBackend for Idle {
+            fn label(&self) -> &'static str {
+                "MLX"
+            }
+            fn load(&self, _: &std::path::Path) -> Result<()> {
+                std::thread::sleep(Duration::from_millis(200));
+                Ok(())
+            }
+            fn warm_up(&self) -> Result<()> {
+                Ok(())
+            }
+            fn infer(&self, _: &[i64], _: &[f32]) -> Result<kokoro::KokoroRaw> {
+                anyhow::bail!("non utilisé")
+            }
+            fn release(&self) {}
+        }
+        let path = kokoro_files("charge", "kokoro-v1_0.safetensors");
+        let (engine, note) =
+            build_engine_with(EnginePreference::Auto, &kokoro_settings(&path.to_string_lossy(), "metal"), Some(Arc::new(Idle)));
+        assert_eq!(note, None, "rien à dire d'avance : le chargement part en arrière-plan");
+        // Le nom dépend de l'issue du chargement (espeak-ng présent ou non
+        // sur la machine de test) : seule la coupe, annoncée d'avance, est sûre.
+        assert!(engine.splits_first_clause(), "annoncé avant la fin du chargement");
     }
 }

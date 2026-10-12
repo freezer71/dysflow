@@ -23,7 +23,15 @@ pub enum AlignFailure {
     TooFar { cost: usize, length: usize },
     /// Ce mot n'a reçu aucun phonème.
     EmptyWord(usize),
+    /// La table d'alignement dépasserait `MAX_CELLS` cases.
+    TooLong { cells: usize },
+    /// Moins de mots que de morceaux : chaque morceau en veut un.
+    TooFewWords { words: usize, chunks: usize },
 }
+
+/// Le plus grand tableau d'alignement accepté (4 Mo en cases de 32 bits) :
+/// un morceau de 510 phonèmes face à ses mots en prend 300 000 environ.
+pub const MAX_CELLS: usize = 1_000_000;
 
 fn is_phone(c: char) -> bool {
     !c.is_whitespace() && !PUNCTUATION.contains(&c)
@@ -46,23 +54,29 @@ pub fn word_spans(tokens: &[char], durations: &[u32], words: &[String]) -> Resul
         return Err(AlignFailure::NoPhonemes);
     }
     let (n, m) = (sentence.len(), target.len());
+    // Vérifié avant d'allouer : la table croît en n × m.
+    let cells = (n + 1).saturating_mul(m + 1);
+    if cells > MAX_CELLS {
+        return Err(AlignFailure::TooLong { cells });
+    }
     let at = |i: usize, j: usize| i * (m + 1) + j;
-    let mut cost = vec![0usize; (n + 1) * (m + 1)];
+    // Un coût ne dépasse jamais n + m, bien sous u32::MAX ici.
+    let mut cost = vec![0u32; cells];
     for i in 0..=n {
-        cost[at(i, 0)] = i;
+        cost[at(i, 0)] = i as u32;
     }
     for j in 0..=m {
-        cost[at(0, j)] = j;
+        cost[at(0, j)] = j as u32;
     }
     for i in 1..=n {
         for j in 1..=m {
-            let differ = usize::from(tokens[sentence[i - 1]] != target[j - 1].0);
+            let differ = u32::from(tokens[sentence[i - 1]] != target[j - 1].0);
             cost[at(i, j)] = (cost[at(i - 1, j - 1)] + differ)
                 .min(cost[at(i - 1, j)] + 1)
                 .min(cost[at(i, j - 1)] + 1);
         }
     }
-    let total = cost[at(n, m)];
+    let total = cost[at(n, m)] as usize;
     let length = n.max(m);
     if total * 2 > length {
         return Err(AlignFailure::TooFar { cost: total, length });
@@ -74,7 +88,7 @@ pub fn word_spans(tokens: &[char], durations: &[u32], words: &[String]) -> Resul
     let (mut i, mut j) = (n, m);
     while i > 0 {
         if j > 0 {
-            let differ = usize::from(tokens[sentence[i - 1]] != target[j - 1].0);
+            let differ = u32::from(tokens[sentence[i - 1]] != target[j - 1].0);
             if cost[at(i, j)] == cost[at(i - 1, j - 1)] + differ {
                 label[i - 1] = target[j - 1].1;
                 i -= 1;
@@ -171,6 +185,70 @@ pub fn word_spans(tokens: &[char], durations: &[u32], words: &[String]) -> Resul
     Ok(spans)
 }
 
+/// Le temps de chaque mot d'une phrase synthétisée en plusieurs morceaux
+/// (au-delà de 510 phonèmes) : chaque morceau, avec ses jetons de bord et
+/// ses durées, est aligné sur ses propres mots, puis les temps sont mis bout
+/// à bout. La table reste ainsi bornée par la taille d'un morceau.
+pub fn chunked_word_spans(chunks: &[(Vec<char>, Vec<u32>)], words: &[String]) -> Result<Vec<WordSpan>, AlignFailure> {
+    if chunks.len() == 1 {
+        return word_spans(&chunks[0].0, &chunks[0].1, words);
+    }
+    if words.len() < chunks.len() {
+        return Err(AlignFailure::TooFewWords { words: words.len(), chunks: chunks.len() });
+    }
+    let bounds = word_bounds(chunks, words);
+    let mut spans = Vec::with_capacity(words.len());
+    let mut offset = 0.0f32;
+    let mut from = 0;
+    for ((tokens, durations), &to) in chunks.iter().zip(&bounds) {
+        for span in word_spans(tokens, durations, &words[from..to])? {
+            spans.push(WordSpan { start: offset + span.start, end: offset + span.end });
+        }
+        offset += durations.iter().map(|&d| d as f32).sum::<f32>() * FRAME_SECONDS;
+        from = to;
+    }
+    Ok(spans)
+}
+
+/// La fin (exclue) des mots de chaque morceau. La coupe d'un morceau tombe
+/// où le compte des phonèmes des mots rejoint celui des morceaux ; quand le
+/// morceau finit sur une ponctuation, un mot qui finit sur la même est
+/// préféré (les liaisons décalent le compte de quelques phonèmes). Chaque
+/// morceau garde au moins un mot.
+fn word_bounds(chunks: &[(Vec<char>, Vec<u32>)], words: &[String]) -> Vec<usize> {
+    let phones = |s: &[char]| s.iter().filter(|&&c| is_phone(c)).count();
+    let mut cumulative = vec![0usize; words.len() + 1];
+    for (j, word) in words.iter().enumerate() {
+        cumulative[j + 1] = cumulative[j] + word.chars().filter(|&c| is_phone(c)).count();
+    }
+    let mut bounds = Vec::with_capacity(chunks.len());
+    let mut reached = 0usize;
+    let mut previous = 0usize;
+    for (k, (tokens, _)) in chunks.iter().enumerate() {
+        let left = chunks.len() - k - 1;
+        if left == 0 {
+            bounds.push(words.len());
+            break;
+        }
+        reached += phones(tokens);
+        let candidates = previous + 1..=words.len() - left;
+        let distance = |j: &usize| cumulative[*j].abs_diff(reached);
+        let mark = tokens.iter().rev().find(|c| !c.is_whitespace()).filter(|c| PUNCTUATION.contains(c));
+        let on_mark = mark.and_then(|m| {
+            candidates
+                .clone()
+                .filter(|&j| words[j - 1].trim_end().ends_with(*m))
+                .min_by_key(distance)
+                // Une marque trop loin du compte n'est pas la bonne.
+                .filter(|j| distance(j) * 4 <= phones(tokens).max(4))
+        });
+        let bound = on_mark.unwrap_or_else(|| candidates.min_by_key(distance).expect("au moins un mot par morceau"));
+        bounds.push(bound);
+        previous = bound;
+    }
+    bounds
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -245,6 +323,53 @@ mod tests {
         assert_eq!(word_spans(&tokens, &[1, 1], &words(&["bɔ̃ʒuʁ"])), Err(AlignFailure::LengthMismatch));
     }
 
+    #[test]
+    fn a_huge_alignment_is_refused_before_any_allocation() {
+        // 1 600 phonèmes d'un seul tenant : 2,5 millions de cases, refusé.
+        let tokens: Vec<char> = "abcd ".repeat(400).trim_end().chars().collect();
+        let durations = vec![1u32; tokens.len() + 2];
+        let word_list = vec!["abcd".to_string(); 400];
+        assert!(matches!(word_spans(&tokens, &durations, &word_list), Err(AlignFailure::TooLong { .. })));
+    }
+
+    #[test]
+    fn a_long_unpunctuated_sentence_is_aligned_chunk_by_chunk() {
+        // Plus de 1 500 phonèmes sans ponctuation, coupés aux espaces comme
+        // la synthèse le fait : chaque morceau reste sous le plafond.
+        let unit = "abcd ";
+        let sentence = unit.repeat(400);
+        let part: Vec<char> = unit.repeat(100).trim_end().chars().collect();
+        let chunks: Vec<(Vec<char>, Vec<u32>)> = (0..4).map(|_| (part.clone(), vec![2u32; part.len() + 2])).collect();
+        let word_list = vec!["abcd".to_string(); 400];
+        assert!(sentence.chars().filter(|c| is_phone(*c)).count() > 1_500);
+        let spans = chunked_word_spans(&chunks, &word_list).unwrap();
+        assert_eq!(spans.len(), 400);
+        let total: u32 = chunks.iter().flat_map(|(_, d)| d).sum();
+        assert!((spans.last().unwrap().end - total as f32 * FRAME_SECONDS).abs() < 1e-3);
+        for pair in spans.windows(2) {
+            assert!((pair[0].end - pair[1].start).abs() < 1e-4, "dans l'ordre, sans trou");
+        }
+        // Le mot 100 ouvre le deuxième morceau : il prend son jeton de bord.
+        let first_chunk: u32 = chunks[0].1.iter().sum();
+        assert!((spans[100].start - first_chunk as f32 * FRAME_SECONDS).abs() < 1e-4, "{:?}", spans[100]);
+    }
+
+    #[test]
+    fn chunks_take_the_words_that_end_on_their_mark() {
+        // Coupé après « ef, » : les liaisons ajoutent deux phonèmes au
+        // morceau, et le compte seul donnerait « g » au premier ; la virgule
+        // tranche.
+        let chunks = vec![(chars("abxy, cdef,"), vec![1u32; 13]), (chars("ghi"), vec![1u32; 5])];
+        let word_list = words(&["ab,", "cd", "ef,", "g", "hi"]);
+        let spans = chunked_word_spans(&chunks, &word_list).unwrap();
+        assert_eq!(spans.len(), 5);
+        assert!((spans[3].start - 13.0 * FRAME_SECONDS).abs() < 1e-4, "{spans:?}");
+        assert_eq!(
+            chunked_word_spans(&chunks, &words(&["abcdefgh"])),
+            Err(AlignFailure::TooFewWords { words: 1, chunks: 2 })
+        );
+    }
+
     #[derive(serde::Deserialize)]
     struct Fixture {
         sentence: String,
@@ -264,11 +389,33 @@ mod tests {
             .filter(|f| f.sentence.split_whitespace().count() != f.words.len())
             .count();
         assert!(mismatched >= 4, "les cas où les groupes ne suivent pas les mots : {mismatched}");
-        for f in &fixtures {
+        assert_aligned(&fixtures);
+    }
+
+    /// Les phrases anglaises du spike, plus contractions, « Dr. » et
+    /// nombres dits en plusieurs mots.
+    #[test]
+    fn every_english_sentence_is_aligned_in_order_and_in_full() {
+        let fixtures: Vec<Fixture> =
+            serde_json::from_str(include_str!("../../../tests/fixtures/kokoro/align-en.json")).unwrap();
+        assert!(fixtures.len() >= 20, "{}", fixtures.len());
+        let mismatched = fixtures
+            .iter()
+            .filter(|f| f.sentence.split_whitespace().count() != f.words.len())
+            .count();
+        assert!(mismatched >= 4, "nombres dits en plusieurs mots : {mismatched}");
+        assert!(fixtures.iter().any(|f| f.words.iter().any(|w| w == "Dr.")));
+        assert!(fixtures.iter().any(|f| f.words.iter().any(|w| w.contains('’'))), "contractions");
+        assert_aligned(&fixtures);
+    }
+
+    fn assert_aligned(fixtures: &[Fixture]) {
+        for f in fixtures {
             let tokens = chars(&f.sentence);
             let durations: Vec<u32> = (0..tokens.len() + 2).map(|i| 2 + (i % 3) as u32).collect();
             let total: u32 = durations.iter().sum();
-            let spans = word_spans(&tokens, &durations, &f.word_phonemes).unwrap();
+            let spans = word_spans(&tokens, &durations, &f.word_phonemes)
+                .unwrap_or_else(|e| panic!("phrase de {} mots : {e:?}", f.words.len()));
             assert_eq!(spans.len(), f.words.len());
             for pair in spans.windows(2) {
                 assert!((pair[0].end - pair[1].start).abs() < 1e-6, "mots dans l'ordre, sans trou");

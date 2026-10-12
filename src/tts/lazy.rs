@@ -108,7 +108,7 @@ impl TtsEngine for LazyEngine {
     fn readiness(&self) -> super::Readiness {
         match &*self.shared.state.lock().unwrap() {
             State::Loading => super::Readiness::Loading,
-            State::Ready(_) => super::Readiness::Ready,
+            State::Ready(engine) => engine.readiness(),
             State::Failed(err) => super::Readiness::Fallback(err.clone()),
         }
     }
@@ -312,5 +312,28 @@ mod tests {
         }
         // Le modèle n'est chargé qu'une fois, quel que soit le nombre de threads.
         assert_eq!(loads.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn a_loaded_engine_that_falls_back_says_so() {
+        struct Broken;
+        impl TtsEngine for Broken {
+            fn name(&self) -> String {
+                "cassé".into()
+            }
+            fn open_session(&self) -> Result<Box<dyn TtsSession>> {
+                anyhow::bail!("non")
+            }
+            fn max_sessions(&self) -> usize {
+                1
+            }
+            fn readiness(&self) -> crate::tts::Readiness {
+                crate::tts::Readiness::Fallback("espeak-ng s'est arrêté".into())
+            }
+        }
+        let counter = Arc::new(AtomicUsize::new(0));
+        let engine = LazyEngine::spawn("Kokoro".into(), 1, fallback(&counter), || Ok(Arc::new(Broken) as Arc<dyn TtsEngine>));
+        let _ = engine.open_session();
+        assert_eq!(engine.readiness(), crate::tts::Readiness::Fallback("espeak-ng s'est arrêté".into()));
     }
 }

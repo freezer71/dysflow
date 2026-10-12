@@ -154,12 +154,7 @@ pub fn prepare(args: &Args) -> Result<Launch> {
 
     // Une configuration écrite pour un autre modèle peut nommer une voix que
     // celui-ci ne connaît pas ; le moteur la rejetterait sans rien expliquer.
-    if config.align_voice_with_family() {
-        notices.push(format!(
-            "voix inconnue de {} — repli sur sa voix par défaut",
-            config.engine.family
-        ));
-    }
+    notices.extend(aligned_voice_notice(&mut config));
 
     // La redirection couvre le chargement du modèle, qui est déjà bavard, et
     // tout ce qui suit : le chargement se poursuit en fond pendant la lecture
@@ -330,6 +325,15 @@ fn read_clipboard() -> Result<String> {
 /// Le lecteur ne télécharge jamais de lui-même : quand rien n'est installé, il
 /// se contente de dire où aller le chercher, et lit avec la voix du système en
 /// attendant.
+/// Fait suivre la voix de la famille, et le dit si la voix configurée lui
+/// était inconnue. Kokoro, qui choisit sa voix par langue, remplit les
+/// langues sans voix en silence : rien n'y était inconnu.
+fn aligned_voice_notice(config: &mut Config) -> Option<String> {
+    let changed = config.align_voice_with_family();
+    let follows = crate::models::voices_follow_language(&config.engine.family);
+    (changed && !follows).then(|| format!("voix inconnue de {} — repli sur sa voix par défaut", config.engine.family))
+}
+
 fn adopt_installed_model(config: &mut Config, notices: &mut Vec<String>) {
     let configured = config.engine.model_path.trim();
     if !configured.is_empty() {
@@ -465,5 +469,21 @@ mod tests {
         let args = Args { sessions: Some(0), ..Args::default() };
         apply_overrides(&mut config, &args, &mut Vec::new()).unwrap();
         assert_eq!(config.engine.sessions, 0);
+    }
+
+    #[test]
+    fn adopting_kokoro_fills_its_voices_without_a_notice() {
+        // Kokoro remplit ses voix par langue en silence : rien d'inconnu.
+        let mut config = Config::default();
+        config.engine.family = "kokoro".into();
+        config.voice.per_language.clear();
+        assert_eq!(aligned_voice_notice(&mut config), None);
+        assert!(config.voice.per_language.contains_key("fr"), "rempli quand même");
+
+        // Une autre famille qui ne connaît pas la voix configurée le dit.
+        let mut config = Config::default();
+        config.engine.family = "supertonic".into();
+        config.voice.voice = "voix-qui-n-existe-pas".into();
+        assert!(aligned_voice_notice(&mut config).is_some_and(|n| n.contains("voix inconnue de supertonic")));
     }
 }

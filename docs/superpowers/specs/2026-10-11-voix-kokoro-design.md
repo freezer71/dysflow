@@ -300,9 +300,18 @@ aujourd'hui un modèle ; elle passe donc à Kokoro.
 4. Le temps d'un mot est la somme des durées de ses phonèmes, plus la moitié
    des espaces et ponctuations voisines (convention de `join_timestamps`). Les
    jetons de bord vont au premier et au dernier mot.
-5. Si l'alignement est trop mauvais (coût > 50 % de la longueur) ou qu'un mot
-   n'a aucun phonème, la phrase garde la répartition par poids. L'événement est
-   journalisé.
+5. Un mot affiché fait de ponctuation seule (« ? », « : » de la typographie
+   française) n'a aucun phonème : il prend les ponctuations de la phrase
+   situées entre ses voisins (partagées dans l'ordre s'il y en a plusieurs).
+6. Une phrase de plus de 510 phonèmes, synthétisée en plusieurs morceaux, est
+   alignée morceau par morceau : chaque morceau reçoit les mots dont le compte
+   de phonèmes rejoint le sien (un mot qui finit sur la ponctuation de la
+   coupe est préféré), et les temps sont mis bout à bout. La table
+   d'alignement est plafonnée à 1 000 000 de cases.
+7. Si l'alignement est trop mauvais (coût > 50 % de la longueur), qu'un mot
+   n'a aucun phonème ou que la table dépasserait le plafond, la phrase garde
+   la répartition par poids. L'événement est journalisé (la raison chiffrée,
+   jamais le texte).
 
 Aligner sur les mots affichés, et non sur les mots de `Sentence::text`, règle le
 cas des formes parlées : « 1789 » est un mot à l'écran et quatre mots dans la

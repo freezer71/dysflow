@@ -375,6 +375,9 @@ impl EspeakProcess {
                 let mut child = command
                     .stdin(Stdio::piped())
                     .stdout(Stdio::piped())
+                    // Doit rester `Stdio::null()` : libespeak-ng écrit une
+                    // erreur par mot qu'elle ne sait pas lire ; un tube que
+                    // personne ne vide finit plein, et l'assistant bloque.
                     .stderr(Stdio::null())
                     .spawn()
                     .with_context(|| format!("lancement de {}", program.display()))?;
