@@ -2731,6 +2731,7 @@ dependencies = [
 name = "sillon-ffi"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "sillon",
  "thiserror 2.0.20",
  "uniffi",

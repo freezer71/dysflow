@@ -4,14 +4,14 @@
 enum Capabilities {
     static let supertonic = ModelCapabilities(
         family: "supertonic",
-        voices: [VoiceChoice(id: "M1", label: "M1 · masculine 1"),
-                 VoiceChoice(id: "F2", label: "F2 · féminine 2")],
+        voices: [VoiceChoice(id: "M1", label: "M1 · masculine 1", language: ""),
+                 VoiceChoice(id: "F2", label: "F2 · féminine 2", language: "")],
         languages: ["fr", "en"],
         honoured: ["voice", "language", "speaking_rate", "seed", "num_inference_steps"],
         requiresReference: false)
     static let magpie = ModelCapabilities(
         family: "magpie_tts",
-        voices: [VoiceChoice(id: "Aria", label: "Aria")],
+        voices: [VoiceChoice(id: "Aria", label: "Aria", language: "")],
         languages: ["fr", "en", "de"],
         honoured: ["voice", "voice_id", "speaker", "language", "temperature", "top_k",
                    "guidance_scale", "seed"],
@@ -45,6 +45,10 @@ final class FakeSettingsBackend: SettingsBackend {
         if let v = patch.threads { stored.threads = v }
         if let v = patch.lineSpacing { stored.lineSpacing = min(v, 3) }
         if let v = patch.codeBlocks { stored.codeBlocks = v }
+        if let v = patch.voiceForLanguage {
+            stored.voicesByLanguage.removeAll { $0.language == v.language }
+            stored.voicesByLanguage.append(v)
+        }
         return stored
     }
 

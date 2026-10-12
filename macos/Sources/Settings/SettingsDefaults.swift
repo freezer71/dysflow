@@ -14,7 +14,7 @@ extension SettingsPatch {
             prefetch: nil, temperature: nil, topP: nil, topK: nil, guidanceScale: nil,
             repetitionPenalty: nil, inferenceSteps: nil, seed: nil, codeBlocks: nil,
             autoplay: nil, seekStep: nil, lineWidth: nil, lineSpacing: nil, readingRuler: nil,
-            keepVoiceMinutes: nil, extraSet: [], extraRemove: [])
+            keepVoiceMinutes: nil, extraSet: [], extraRemove: [], voiceForLanguage: nil)
     }
 
     var isEmpty: Bool { self == .empty }

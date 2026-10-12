@@ -10,6 +10,20 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 FEATURES=${FEATURES-audio-cpp,ocr}
+
+# L'app calcule Kokoro en MLX : ONNX Runtime n'y entre jamais.
+case ",$FEATURES," in
+*kokoro-onnx*)
+    echo "Erreur : kokoro-onnx est réservé au terminal, pas à l'app" >&2
+    exit 1
+    ;;
+esac
+# Ni par une option du crate ni par une dépendance : `ort` absent du graphe.
+if cargo tree -p sillon-ffi ${FEATURES:+--features "$FEATURES"} -e normal -i ort 2>/dev/null | grep -q '^ort '; then
+    echo "Erreur : ONNX Runtime (ort) entrerait dans l'app" >&2
+    exit 1
+fi
+
 GEN=macos/Generated
 LIB=macos/Libraries
 mkdir -p "$GEN" "$LIB"

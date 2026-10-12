@@ -19,6 +19,7 @@ required-features = ["bindgen"]
 sillon = { path = "..", default-features = false, features = ["clipboard"] }
 uniffi = "0.32"
 thiserror = "2"
+anyhow = "1.0"
 
 [features]
 audio-cpp = ["sillon/audio-cpp"]

@@ -7,7 +7,8 @@ extension VoiceModel {
         VoiceModel(id: id, name: name, bytes: bytes, installed: installed, active: active,
                    recommended: false, summary: "Rapide et léger.", family: "supertonic",
                    precision: "f16", languagesLabel: "31 langues, dont le français",
-                   languages: ["fr", "en"], pace: "Lecture fluide.")
+                   languages: ["fr", "en"], pace: "Lecture fluide.", voicesLabel: "",
+                   licenses: "")
     }
 }
 

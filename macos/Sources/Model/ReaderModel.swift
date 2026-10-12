@@ -332,6 +332,40 @@ final class ReaderModel {
         await Task.detached { reader.stopPreview() }.value
         wake()
     }
+    /// La langue du document gardé (`nil` : automatique), hors du fil principal.
+    func setDocumentLanguage(_ language: String?) async throws {
+        let reader = reader
+        try await Task.detached { try reader.setDocumentLanguage(language: language) }.value
+        wake()
+    }
+    /// « Écouter » une voix dans sa langue.
+    func previewVoice(in language: String) async throws {
+        let reader = reader
+        try await Task.detached { try reader.previewVoiceIn(language: language) }.value
+        wake()
+    }
+    /// Le passage unique à Kokoro : appelé une fois au lancement. Rend
+    /// l'avis à montrer (passage fait, ou proposition dans `snapshot.offer`).
+    func migrateVoice() -> String? {
+        let notice = reader.migrateVoice()
+        wake()
+        return notice
+    }
+    /// « Passer à Kokoro » : le téléchargement démarre, hors du fil principal.
+    func acceptVoiceOffer() async throws {
+        let reader = reader
+        try await Task.detached { try reader.acceptVoiceOffer() }.value
+        wake()
+    }
+    /// « Plus tard » : le refus est retenu.
+    func dismissVoiceOffer() {
+        reader.dismissVoiceOffer()
+        wake()
+    }
+    func dismissNotice() {
+        reader.dismissNotice()
+        wake()
+    }
     /// Vide le cache des documents ; rend les octets libérés.
     func clearDocumentCache() async throws -> UInt64 {
         let reader = reader

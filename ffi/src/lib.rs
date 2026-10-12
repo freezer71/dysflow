@@ -12,6 +12,7 @@ use sillon::config::Config;
 use sillon::reader::command::Command;
 use sillon::reader::handle::{ReaderHandle, Request};
 use sillon::reader::{data, preview, settings, view, Reader};
+use sillon::tts::kokoro::{self, KokoroBackend, KokoroRaw};
 use sillon::tts::{self, silent::SilentEngine, TtsEngine};
 
 uniffi::setup_scaffolding!();
@@ -24,6 +25,86 @@ pub enum SillonError {
 
 fn failed(e: impl ToString) -> SillonError {
     SillonError::Failed { message: e.to_string() }
+}
+
+/// Une erreur inattendue côté Swift (exception non prévue) devient un échec
+/// ordinaire : UniFFI l'exige des erreurs d'une interface étrangère.
+impl From<uniffi::UnexpectedUniFFICallbackError> for SillonError {
+    fn from(e: uniffi::UnexpectedUniFFICallbackError) -> Self {
+        SillonError::Failed { message: e.reason }
+    }
+}
+
+/// Le calcul de Kokoro, fourni par l'app (MLX). Le moteur Rust garde
+/// phonétisation, découpage, voix, minutage, Sonic et lecteur ; ces appels
+/// arrivent sur le fil de synthèse et bloquent jusqu'au résultat.
+#[uniffi::export(with_foreign)]
+pub trait KokoroCompute: Send + Sync {
+    fn load(&self, model_dir: String) -> Result<(), SillonError>;
+    fn warm_up(&self) -> Result<(), SillonError>;
+    fn synthesize(&self, ids: Vec<i64>, style: Vec<f32>) -> Result<KokoroOutput, SillonError>;
+    fn release(&self);
+}
+
+#[derive(uniffi::Record)]
+pub struct KokoroOutput {
+    pub samples: Vec<f32>,
+    pub durations: Vec<u32>,
+}
+
+/// `KokoroCompute` vu par le moteur.
+struct ForeignKokoro(Arc<dyn KokoroCompute>);
+
+impl KokoroBackend for ForeignKokoro {
+    fn label(&self) -> &'static str {
+        "MLX"
+    }
+    fn load(&self, model_dir: &std::path::Path) -> anyhow::Result<()> {
+        self.0.load(model_dir.to_string_lossy().into_owned()).map_err(|e| anyhow::anyhow!(e.to_string()))
+    }
+    fn warm_up(&self) -> anyhow::Result<()> {
+        self.0.warm_up().map_err(|e| anyhow::anyhow!(e.to_string()))
+    }
+    fn infer(&self, ids: &[i64], style: &[f32]) -> anyhow::Result<KokoroRaw> {
+        let out = self.0.synthesize(ids.to_vec(), style.to_vec()).map_err(|e| anyhow::anyhow!(e.to_string()))?;
+        Ok(KokoroRaw { samples: out.samples, durations: out.durations })
+    }
+    fn release(&self) {
+        self.0.release();
+    }
+}
+
+/// Vérifie le pont vers un calcul Kokoro étranger : chargement, trois
+/// jetons, libération, sortie contrôlée. Rend le nombre d'échantillons.
+#[uniffi::export]
+pub fn kokoro_bridge_check(compute: Arc<dyn KokoroCompute>, model_dir: String) -> Result<u64, SillonError> {
+    let backend = ForeignKokoro(compute);
+    backend.load(std::path::Path::new(&model_dir)).map_err(failed)?;
+    let raw = backend.infer(&[0, 43, 0], &[0.0; 256]).map_err(failed);
+    backend.release();
+    let raw = raw?;
+    kokoro::check(&raw, 3).map_err(failed)?;
+    Ok(raw.samples.len() as u64)
+}
+
+/// Le lecteur de l'app sur la configuration lue (`Config::load`). Un
+/// `config.toml` illisible est retenu : la migration ne l'écrasera pas.
+/// `mlx` : le calcul Kokoro de l'app, enveloppé **une fois** — chaque moteur
+/// reçoit ce même `Arc` (voir `SharedCompute`).
+fn app_reader(loaded: (Config, Option<String>), mlx: Option<Arc<kokoro::SharedCompute>>) -> Reader {
+    let (config, unreadable) = loaded;
+    let available = mlx.is_some();
+    let mut reader = Reader::new(
+        config,
+        Box::new(move |config: &Config| {
+            tts::build_engine_with(config.engine_preference(), &config.engine_settings(), mlx.clone()).0
+        }),
+        Box::new(Player::new),
+        Instant::now(),
+    );
+    reader.set_mlx_compute(available);
+    reader.set_config_unreadable(unreadable.is_some());
+    reader
 }
 
 #[derive(uniffi::Enum)]
@@ -107,6 +188,41 @@ pub struct PreviewView {
     pub error: Option<String>,
 }
 
+#[derive(uniffi::Record, Clone, PartialEq, Debug)]
+pub struct LanguageVoice {
+    pub language: String,
+    pub voice: String,
+}
+
+#[derive(uniffi::Record)]
+pub struct DocumentLanguageView {
+    pub detected: Option<String>,
+    pub chosen: Option<String>,
+    pub effective: String,
+    pub minority_share: f32,
+    /// Plus de 30 % des lettres dans l'autre langue.
+    pub mixed: bool,
+}
+
+/// La proposition de passer à Kokoro, en attente d'une réponse.
+#[derive(uniffi::Record)]
+pub struct VoiceOfferView {
+    /// Le paquet proposé.
+    pub id: String,
+    /// Ce qu'il pèse à télécharger (l'app l'écrit avec `ByteCountFormatter`).
+    pub bytes: u64,
+    /// La voix qu'il remplacerait.
+    pub former: String,
+    /// Le message du moteur (taille écrite à sa façon).
+    pub message: String,
+}
+
+#[derive(uniffi::Record)]
+pub struct Measures {
+    pub busy_seconds: f64,
+    pub stalls: u32,
+}
+
 #[derive(uniffi::Record)]
 pub struct Snapshot {
     pub revision: u64,
@@ -132,6 +248,11 @@ pub struct Snapshot {
     pub skipped: u32,
     pub download: Option<DownloadView>,
     pub preview: PreviewView,
+    pub document_language: Option<DocumentLanguageView>,
+    /// L'avis du passage à Kokoro, jusqu'à `dismiss_notice`.
+    pub notice: Option<String>,
+    /// La proposition de passer à Kokoro, jusqu'à une réponse.
+    pub offer: Option<VoiceOfferView>,
 }
 
 #[derive(uniffi::Record)]
@@ -233,6 +354,7 @@ pub struct SettingsView {
     pub reading_ruler: bool,
     pub keep_voice_minutes: i64,
     pub extra: Vec<ExtraOption>,
+    pub voices_by_language: Vec<LanguageVoice>,
 }
 
 /// Un réglage d'échantillonnage : la valeur du modèle, ou une valeur posée.
@@ -287,12 +409,16 @@ pub struct SettingsPatch {
     pub keep_voice_minutes: Option<i64>,
     pub extra_set: Vec<ExtraOption>,
     pub extra_remove: Vec<String>,
+    /// La voix d'une langue (Kokoro : une voix par langue).
+    pub voice_for_language: Option<LanguageVoice>,
 }
 
 #[derive(uniffi::Record)]
 pub struct VoiceChoice {
     pub id: String,
     pub label: String,
+    /// La langue de la voix (`fr`, `en`), vide si elle les parle toutes.
+    pub language: String,
 }
 
 #[derive(uniffi::Record)]
@@ -318,6 +444,8 @@ pub struct VoiceModel {
     pub languages_label: String,
     pub languages: Vec<String>,
     pub pace: String,
+    pub voices_label: String,
+    pub licenses: String,
 }
 
 #[derive(uniffi::Record)]
@@ -340,19 +468,15 @@ impl SillonReader {
     /// Le lecteur réel : configuration de l'utilisateur, voix audio.cpp.
     #[uniffi::constructor]
     pub fn new() -> Arc<Self> {
-        Arc::new(Self {
-            handle: ReaderHandle::spawn(|| {
-                let (config, _) = Config::load();
-                Reader::new(
-                    config,
-                    Box::new(|config: &Config| {
-                        tts::build_engine(config.engine_preference(), &config.engine_settings()).0
-                    }),
-                    Box::new(Player::new),
-                    Instant::now(),
-                )
-            }),
-        })
+        Arc::new(Self { handle: ReaderHandle::spawn(|| app_reader(Config::load(), None)) })
+    }
+
+    /// Le lecteur réel avec Kokoro en MLX : le calcul vient de l'app. Il est
+    /// enveloppé une seule fois, et chaque moteur reconstruit le partage.
+    #[uniffi::constructor]
+    pub fn with_kokoro(compute: Arc<dyn KokoroCompute>) -> Arc<Self> {
+        let shared = Arc::new(kokoro::SharedCompute::new(Arc::new(ForeignKokoro(compute))));
+        Arc::new(Self { handle: ReaderHandle::spawn(move || app_reader(Config::load(), Some(shared))) })
     }
 
     /// Lecteur muet, sans modèle ni carte son : tests et mode de test.
@@ -477,7 +601,7 @@ impl SillonReader {
                     voices: c
                         .voices
                         .into_iter()
-                        .map(|v| VoiceChoice { id: v.id, label: v.label })
+                        .map(|v| VoiceChoice { id: v.id, label: v.label, language: v.language })
                         .collect(),
                     languages: c.languages,
                     honoured: c.honoured,
@@ -512,6 +636,8 @@ impl SillonReader {
                         languages_label: v.languages_label,
                         languages: v.languages,
                         pace: v.pace,
+                        voices_label: v.voices_label,
+                        licenses: v.licenses,
                     })
                     .collect()
             })
@@ -542,6 +668,64 @@ impl SillonReader {
 
     pub fn stop_preview(&self) {
         let _ = self.handle.ask(|reader| reader.stop_preview());
+    }
+
+    /// La langue du document gardé (`None` : automatique).
+    pub fn set_document_language(&self, language: Option<String>) -> Result<(), SillonError> {
+        self.handle
+            .ask(move |reader| {
+                reader
+                    .set_document_language(language.as_deref(), Instant::now())
+                    .map_err(|e| e.to_string())
+            })
+            .ok_or_else(|| failed("lecteur indisponible"))?
+            .map_err(failed)
+    }
+
+    /// La phrase d'exemple dans une langue : chaque voix dans la sienne.
+    pub fn preview_voice_in(&self, language: String) -> Result<(), SillonError> {
+        self.handle
+            .ask(move |reader| reader.preview_voice_in(&language, Instant::now()))
+            .ok_or_else(|| failed("lecteur indisponible"))?
+            .map_err(failed)
+    }
+
+    /// Le passage unique à Kokoro, au lancement de l'app ; l'avis à montrer
+    /// (passage fait, ou proposition, alors aussi dans `Snapshot.offer`).
+    pub fn migrate_voice(&self) -> Option<String> {
+        self.handle.ask(|reader| reader.migrate_voice(Instant::now())).flatten()
+    }
+
+    /// « Passer à Kokoro » : le téléchargement démarre (ou Kokoro devient
+    /// actif tout de suite s'il est déjà installé).
+    pub fn accept_voice_offer(&self) -> Result<(), SillonError> {
+        self.handle
+            .ask(|reader| reader.accept_offer(Instant::now()).map_err(|e| e.to_string()))
+            .ok_or_else(|| failed("lecteur indisponible"))?
+            .map_err(failed)
+    }
+
+    /// « Plus tard » : le refus est retenu.
+    pub fn dismiss_voice_offer(&self) {
+        let _ = self.handle.ask(|reader| reader.dismiss_offer());
+    }
+
+    pub fn dismiss_notice(&self) {
+        let _ = self.handle.ask(|reader| reader.dismiss_notice());
+    }
+
+    /// Temps passé à synthétiser et coupures du document ouvert : la mesure
+    /// du filtre de charge.
+    pub fn measures(&self) -> Measures {
+        self.handle
+            .ask(|reader| {
+                reader.session().map(|app| Measures {
+                    busy_seconds: app.synth.stats().busy.as_secs_f64(),
+                    stalls: app.stalls() as u32,
+                })
+            })
+            .flatten()
+            .unwrap_or(Measures { busy_seconds: 0.0, stalls: 0 })
     }
 
     pub fn cancel_download(&self) -> Result<(), SillonError> {
@@ -644,6 +828,11 @@ fn settings_of(s: settings::SettingsView) -> SettingsView {
             .into_iter()
             .map(|(key, value)| ExtraOption { key, value })
             .collect(),
+        voices_by_language: s
+            .voices_by_language
+            .into_iter()
+            .map(|(language, voice)| LanguageVoice { language, voice })
+            .collect(),
     }
 }
 
@@ -695,7 +884,7 @@ fn patch_from(p: SettingsPatch) -> settings::SettingsPatch {
         keep_voice_minutes: p.keep_voice_minutes,
         extra_set: p.extra_set.into_iter().map(|o| (o.key, o.value)).collect(),
         extra_remove: p.extra_remove,
-        voice_for_language: None,
+        voice_for_language: p.voice_for_language.map(|v| (v.language, v.voice)),
     }
 }
 
@@ -752,6 +941,15 @@ fn snapshot_of(s: view::Snapshot) -> Snapshot {
             failed: d.failed,
         }),
         preview: preview_of(s.preview),
+        document_language: s.document_language.map(|l| DocumentLanguageView {
+            mixed: l.mixed(),
+            detected: l.detected,
+            chosen: l.chosen,
+            effective: l.effective,
+            minority_share: l.minority_share,
+        }),
+        notice: s.notice,
+        offer: s.offer.map(|o| VoiceOfferView { id: o.id, bytes: o.bytes, former: o.former, message: o.message }),
     }
 }
 
@@ -903,5 +1101,90 @@ mod tests {
         assert_eq!(d.speed, settings::SettingsView::of(&c).speed);
         assert_eq!(d.line_spacing, settings::SettingsView::of(&c).line_spacing);
         assert!(d.temperature.is_none() && d.extra.is_empty());
+    }
+
+    /// Un calcul « étranger » écrit en Rust : deux trames par jeton.
+    struct FakeCompute {
+        fail: bool,
+    }
+
+    impl KokoroCompute for FakeCompute {
+        fn load(&self, _model_dir: String) -> Result<(), SillonError> {
+            Ok(())
+        }
+        fn warm_up(&self) -> Result<(), SillonError> {
+            Ok(())
+        }
+        fn synthesize(&self, ids: Vec<i64>, _style: Vec<f32>) -> Result<KokoroOutput, SillonError> {
+            if self.fail {
+                return Err(SillonError::Failed { message: "Calcul Metal indisponible".into() });
+            }
+            Ok(KokoroOutput { samples: vec![0.0; ids.len() * 2 * 600], durations: vec![2; ids.len()] })
+        }
+        fn release(&self) {}
+    }
+
+    #[test]
+    fn a_foreign_compute_crosses_the_bridge() {
+        assert_eq!(kokoro_bridge_check(Arc::new(FakeCompute { fail: false }), "/x".into()).unwrap(), 3 * 2 * 600);
+        let err = kokoro_bridge_check(Arc::new(FakeCompute { fail: true }), "/x".into()).unwrap_err().to_string();
+        assert!(err.contains("Calcul Metal indisponible"), "{err}");
+    }
+
+    #[test]
+    fn the_language_of_the_document_reaches_the_snapshot() {
+        let reader = SillonReader::silent();
+        reader.open_text(
+            "Monads let you chain computations that carry a context, without handling it by hand at every step.".into(),
+            "test".into(),
+        );
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while reader.snapshot().document_language.is_none() {
+            assert!(Instant::now() < deadline, "langue jamais publiée");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        let lang = reader.snapshot().document_language.unwrap();
+        assert_eq!(lang.effective, "en");
+        assert!(!lang.mixed);
+        reader.set_document_language(Some("fr".into())).unwrap();
+        // L'instantané se republie au tour suivant du fil du lecteur.
+        while reader.snapshot().document_language.and_then(|l| l.chosen).as_deref() != Some("fr") {
+            assert!(Instant::now() < deadline, "choix jamais publié");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert!(reader.set_document_language(Some("de".into())).is_err());
+    }
+
+    #[test]
+    fn a_voice_per_language_round_trips_and_the_silent_reader_never_migrates() {
+        let reader = SillonReader::silent();
+        let mut patch = SettingsPatch::default();
+        patch.voice_for_language = Some(LanguageVoice { language: "en".into(), voice: "af_sky".into() });
+        let applied = reader.apply_patch(patch);
+        assert_eq!(applied.voices_by_language, [LanguageVoice { language: "en".into(), voice: "af_sky".into() }]);
+        assert_eq!(reader.migrate_voice(), None, "hors disque : rien ne bouge");
+        assert_eq!(reader.measures().stalls, 0);
+    }
+
+    #[test]
+    fn the_offer_answers_cross_the_bridge() {
+        let reader = SillonReader::silent();
+        assert!(reader.snapshot().offer.is_none());
+        let err = reader.accept_voice_offer().unwrap_err().to_string();
+        assert!(err.contains("aucune proposition"), "{err}");
+        reader.dismiss_voice_offer();
+        reader.dismiss_notice();
+        assert!(reader.snapshot().notice.is_none());
+    }
+
+    /// Un `config.toml` illisible : l'app tourne sur les défauts, et le
+    /// lecteur le sait (la migration ne réécrira pas le fichier). Aucun
+    /// disque touché : le lecteur est seulement construit.
+    #[test]
+    fn an_unreadable_config_reaches_the_reader() {
+        let damaged = app_reader((Config::default(), Some("configuration ignorée".into())), None);
+        assert!(damaged.config_unreadable());
+        let fine = app_reader((Config::default(), None), None);
+        assert!(!fine.config_unreadable());
     }
 }
