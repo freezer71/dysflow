@@ -12,6 +12,36 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
+/// Un fichier de plus, téléchargé dans le dossier de la famille.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Companion {
+    pub repo: &'static str,
+    pub revision: &'static str,
+    /// Chemin dans le dépôt.
+    pub file: &'static str,
+    /// Chemin sous `models/<famille>/`. Deux paquets d'une famille qui
+    /// nomment le même `dest` le partagent.
+    pub dest: &'static str,
+    pub bytes: u64,
+}
+
+impl Companion {
+    pub fn url(&self) -> String {
+        format!("https://huggingface.co/{}/resolve/{}/{}", self.repo, self.revision, self.file)
+    }
+}
+
+/// Ce qu'un paquet demande pour se charger.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Runtime {
+    /// Une famille compilée dans audio.cpp.
+    AudioCpp,
+    /// Kokoro en MLX : seulement dans l'app, qui fournit le calcul.
+    KokoroMlx,
+    /// Kokoro par ONNX Runtime : seulement avec la feature `kokoro-onnx`.
+    KokoroOnnx,
+}
+
 /// Un paquet téléchargeable : une variante de précision d'une famille.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ModelPackage {
@@ -39,9 +69,21 @@ pub struct ModelPackage {
     /// Ce que la lecture donnera : fluide, ou hachée parce que le modèle
     /// produit moins vite qu'il ne parle. Mesuré, pas promis.
     pub pace: &'static str,
+    /// Fichiers téléchargés à côté du fichier principal.
+    pub companions: &'static [Companion],
+    pub runtime: Runtime,
+    /// Les voix, pour la fiche (« Française : … · Anglaise : … »).
+    pub voices_label: &'static str,
+    /// Les licences, pour la fiche.
+    pub licenses: &'static str,
 }
 
 impl ModelPackage {
+    /// Taille annoncée du paquet entier, compagnons compris.
+    pub fn total_bytes(&self) -> u64 {
+        self.bytes + self.companions.iter().map(|c| c.bytes).sum::<u64>()
+    }
+
     /// Nom du fichier une fois installé.
     pub fn file_name(&self) -> &str {
         self.file.rsplit('/').next().unwrap_or(self.file)
@@ -74,6 +116,70 @@ const MAGPIE_LANGUAGES: &[&str] = &[
     "ar", "de", "en", "es", "fr", "hi", "it", "ko", "pt", "vi", "zh",
 ];
 
+const KOKORO_MLX_REPO: &str = "mlx-community/Kokoro-82M-bf16";
+const KOKORO_MLX_REVISION: &str = "a71e4d38b236d968966a2002c4c895dbd12b1c3c";
+const KOKORO_ONNX_REPO: &str = "onnx-community/Kokoro-82M-v1.0-ONNX-timestamped";
+const KOKORO_ONNX_REVISION: &str = "dd4401a9add81ac692d20e240d22ec9dda82cc29";
+const KOKORO_LANGUAGES: &[&str] = &["fr", "en"];
+/// Une voix Kokoro : 510 × 256 flottants, en safetensors.
+pub const KOKORO_VOICE_BYTES: u64 = 522_320;
+
+macro_rules! kokoro_voice {
+    ($name:literal) => {
+        Companion {
+            repo: KOKORO_MLX_REPO,
+            revision: KOKORO_MLX_REVISION,
+            file: concat!("voices/", $name, ".safetensors"),
+            dest: concat!("voices/", $name, ".safetensors"),
+            bytes: KOKORO_VOICE_BYTES,
+        }
+    };
+}
+
+/// Ce que les deux paquets Kokoro partagent : la configuration (elle porte
+/// le vocabulaire des phonèmes) et les voix. `p-fenrir60` n'y est pas : elle
+/// est livrée avec Sillon.
+const KOKORO_SHARED: &[Companion] = &[
+    Companion {
+        repo: KOKORO_MLX_REPO,
+        revision: KOKORO_MLX_REVISION,
+        file: "config.json",
+        dest: "config.json",
+        bytes: 2_351,
+    },
+    kokoro_voice!("ff_siwis"),
+    kokoro_voice!("af_bella"),
+    kokoro_voice!("af_alloy"),
+    kokoro_voice!("af_aoede"),
+    kokoro_voice!("af_heart"),
+    kokoro_voice!("af_jessica"),
+    kokoro_voice!("af_kore"),
+    kokoro_voice!("af_nicole"),
+    kokoro_voice!("af_nova"),
+    kokoro_voice!("af_river"),
+    kokoro_voice!("af_sarah"),
+    kokoro_voice!("af_sky"),
+    kokoro_voice!("am_adam"),
+    kokoro_voice!("am_echo"),
+    kokoro_voice!("am_eric"),
+    kokoro_voice!("am_fenrir"),
+    kokoro_voice!("am_liam"),
+    kokoro_voice!("am_michael"),
+    kokoro_voice!("am_onyx"),
+    kokoro_voice!("am_puck"),
+    kokoro_voice!("am_santa"),
+    kokoro_voice!("bf_alice"),
+    kokoro_voice!("bf_emma"),
+    kokoro_voice!("bf_isabella"),
+    kokoro_voice!("bf_lily"),
+    kokoro_voice!("bm_daniel"),
+    kokoro_voice!("bm_fable"),
+    kokoro_voice!("bm_george"),
+    kokoro_voice!("bm_lewis"),
+];
+
+const KOKORO_VOICES_LABEL: &str = "Française : p-fenrir60, ff_siwis · Anglaise : 28 voix";
+
 /// Modèles proposés à l'installation.
 ///
 /// La variante MagpieTTS en précision d'origine n'y figure pas : sa
@@ -92,6 +198,44 @@ const MAGPIE_LANGUAGES: &[&str] = &[
 /// modèle que le moteur ne saurait pas charger n'aiderait personne.
 pub const CATALOG: &[ModelPackage] = &[
     ModelPackage {
+        id: "kokoro_82m_mlx",
+        family: "kokoro",
+        display_name: "Kokoro 82M · MLX",
+        description: "Voix naturelle et légère, calculée par la puce graphique.",
+        precision: "bf16",
+        languages: KOKORO_LANGUAGES,
+        repo: KOKORO_MLX_REPO,
+        revision: KOKORO_MLX_REVISION,
+        file: "kokoro-v1_0.safetensors",
+        languages_label: "Français, anglais",
+        bytes: 327_115_152,
+        recommended: true,
+        pace: "Quinze fois plus vite que la parole sur M5 : lecture fluide.",
+        companions: KOKORO_SHARED,
+        runtime: Runtime::KokoroMlx,
+        voices_label: KOKORO_VOICES_LABEL,
+        licenses: "Poids et voix Apache-2.0 · code MLX MIT · espeak-ng GPL-3.0 (programme séparé)",
+    },
+    ModelPackage {
+        id: "kokoro_82m_int8",
+        family: "kokoro",
+        display_name: "Kokoro 82M · int8",
+        description: "Voix naturelle et légère, calculée par le processeur (ONNX Runtime ≥ 1.31).",
+        precision: "int8",
+        languages: KOKORO_LANGUAGES,
+        repo: KOKORO_ONNX_REPO,
+        revision: KOKORO_ONNX_REVISION,
+        file: "onnx/model_quantized.onnx",
+        languages_label: "Français, anglais",
+        bytes: 92_361_055,
+        recommended: true,
+        pace: "Huit à dix fois plus vite que la parole sur processeur : lecture fluide.",
+        companions: KOKORO_SHARED,
+        runtime: Runtime::KokoroOnnx,
+        voices_label: KOKORO_VOICES_LABEL,
+        licenses: "Poids et voix Apache-2.0 · ONNX Runtime MIT · espeak-ng GPL-3.0 (programme séparé)",
+    },
+    ModelPackage {
         id: "magpie_tts_q8_0",
         family: "magpie_tts",
         display_name: "MagpieTTS Multilingual · Q8_0",
@@ -103,9 +247,13 @@ pub const CATALOG: &[ModelPackage] = &[
         file: "MagpieTTS-Multilingual-357M-GGUF/magpie-tts-multilingual-357m-q8_0.gguf",
         languages_label: "11 langues, dont le français",
         bytes: 1_562_142_912,
-        recommended: true,
+        recommended: false,
         pace: "Plus lent que la parole sur Apple Silicon — 1,4 fois le temps réel mesuré sur M5 : \
                la voix marque des silences entre les phrases.",
+        companions: &[],
+        runtime: Runtime::AudioCpp,
+        voices_label: "",
+        licenses: "",
     },
     ModelPackage {
         id: "supertonic_3_f16",
@@ -121,6 +269,10 @@ pub const CATALOG: &[ModelPackage] = &[
         bytes: 312_784_196,
         recommended: false,
         pace: "Vingt fois plus vite que la parole : lecture fluide, sauts immédiats.",
+        companions: &[],
+        runtime: Runtime::AudioCpp,
+        voices_label: "",
+        licenses: "",
     },
     ModelPackage {
         id: "supertonic_3_q8_0",
@@ -136,6 +288,10 @@ pub const CATALOG: &[ModelPackage] = &[
         bytes: 454_072_836,
         recommended: false,
         pace: "Vingt fois plus vite que la parole : lecture fluide, sauts immédiats.",
+        companions: &[],
+        runtime: Runtime::AudioCpp,
+        voices_label: "",
+        licenses: "",
     },
 ];
 
@@ -151,18 +307,24 @@ pub fn compiled_families() -> Vec<&'static str> {
 
 /// Catalogue restreint à ce que ce binaire sait charger.
 ///
-/// Sans la feature `audio-cpp`, aucune famille n'est compilée : le catalogue
-/// est alors vide et l'interface le dit, plutôt que de proposer des
-/// installations sans effet.
-pub fn available() -> Vec<&'static ModelPackage> {
+/// audio.cpp : les familles compilées. Kokoro MLX : seulement quand l'app
+/// fournit le calcul (`mlx`), et alors jamais le paquet ONNX à côté. Kokoro
+/// int8 : seulement avec la feature `kokoro-onnx`.
+pub fn available_with(mlx: bool) -> Vec<&'static ModelPackage> {
     let families = compiled_families();
-    if families.is_empty() {
-        return Vec::new();
-    }
     CATALOG
         .iter()
-        .filter(|p| families.contains(&p.family))
+        .filter(|p| match p.runtime {
+            Runtime::AudioCpp => families.contains(&p.family),
+            Runtime::KokoroMlx => mlx,
+            Runtime::KokoroOnnx => !mlx && cfg!(feature = "kokoro-onnx"),
+        })
         .collect()
+}
+
+/// Le catalogue du terminal : sans calcul MLX.
+pub fn available() -> Vec<&'static ModelPackage> {
+    available_with(false)
 }
 
 /// Répertoire où sont rangés les modèles installés.
@@ -171,7 +333,27 @@ pub fn models_dir() -> Option<PathBuf> {
 }
 
 pub fn install_path(package: &ModelPackage) -> Option<PathBuf> {
-    models_dir().map(|d| d.join(package.family).join(package.file_name()))
+    models_dir().map(|d| main_path_in(&d, package))
+}
+
+fn main_path_in(root: &Path, package: &ModelPackage) -> PathBuf {
+    root.join(package.family).join(package.file_name())
+}
+
+fn companion_path_in(root: &Path, package: &ModelPackage, companion: &Companion) -> PathBuf {
+    root.join(package.family).join(companion.dest)
+}
+
+/// Ce qu'il faut télécharger pour ce paquet : adresse, destination, taille.
+pub(crate) fn planned_files_in(root: &Path, package: &ModelPackage) -> Vec<(String, PathBuf, u64)> {
+    let mut files = vec![(package.url(), main_path_in(root, package), package.bytes)];
+    files.extend(
+        package
+            .companions
+            .iter()
+            .map(|c| (c.url(), companion_path_in(root, package, c), c.bytes)),
+    );
+    files
 }
 
 /// Vrai si le `model_path` configuré désigne ce fichier installé.
@@ -198,7 +380,7 @@ pub fn is_active_package(configured: &str, package: &ModelPackage) -> bool {
     install_path(package).is_some_and(|p| is_active_path(configured, &p))
 }
 
-/// Taille sur disque si le modèle est installé.
+/// Taille sur disque du fichier principal, s'il est là.
 ///
 /// Un téléchargement interrompu laisse un `.part`, qui n'est jamais confondu
 /// avec un modèle complet.
@@ -207,17 +389,37 @@ pub fn installed_size(package: &ModelPackage) -> Option<u64> {
     std::fs::metadata(path).ok().map(|m| m.len())
 }
 
-pub fn is_installed(package: &ModelPackage) -> bool {
-    installed_size(package).is_some()
+fn size_of(path: &Path) -> Option<u64> {
+    std::fs::metadata(path).ok().map(|m| m.len())
 }
 
-/// Vrai si le fichier est là mais n'a pas la taille annoncée.
+/// Installé : le fichier principal est là, et chaque compagnon a sa taille.
+pub fn is_installed_in(root: &Path, package: &ModelPackage) -> bool {
+    size_of(&main_path_in(root, package)).is_some()
+        && package
+            .companions
+            .iter()
+            .all(|c| size_of(&companion_path_in(root, package, c)) == Some(c.bytes))
+}
+
+pub fn is_installed(package: &ModelPackage) -> bool {
+    models_dir().is_some_and(|root| is_installed_in(&root, package))
+}
+
+/// Vrai si un fichier du paquet est là sans avoir la taille annoncée.
 ///
 /// Un téléchargement interrompu ailleurs que par nous, un disque plein, une
 /// copie tronquée : le fichier existe et se présente comme installé, puis le
 /// moteur refuse de l'ouvrir sur un message illisible. Mieux vaut le dire.
+pub fn is_truncated_in(root: &Path, package: &ModelPackage) -> bool {
+    size_of(&main_path_in(root, package)).is_some_and(|s| s != package.bytes)
+        || package.companions.iter().any(|c| {
+            size_of(&companion_path_in(root, package, c)).is_some_and(|s| s != c.bytes)
+        })
+}
+
 pub fn is_truncated(package: &ModelPackage) -> bool {
-    installed_size(package).is_some_and(|size| size != package.bytes)
+    models_dir().is_some_and(|root| is_truncated_in(&root, package))
 }
 
 /// Premier modèle installé, celui que le lecteur choisit par défaut.
@@ -225,13 +427,38 @@ pub fn first_installed() -> Option<&'static ModelPackage> {
     available().into_iter().find(|p| is_installed(p))
 }
 
+/// Le dossier d'un paquet Kokoro complet, d'après son fichier principal :
+/// celui où se trouvent `config.json` et `voices/`.
+pub fn kokoro_dir(model_path: &str) -> Option<PathBuf> {
+    let dir = Path::new(model_path).parent()?;
+    (Path::new(model_path).is_file() && dir.join("config.json").is_file()).then(|| dir.to_path_buf())
+}
+
 pub fn remove(package: &ModelPackage) -> Result<()> {
-    let path = install_path(package).context("répertoire de données introuvable")?;
+    let root = models_dir().context("répertoire de données introuvable")?;
+    remove_in(&root, package)
+}
+
+/// Supprime un paquet. Un compagnon partagé reste tant qu'un autre paquet de
+/// la famille, présent, le nomme : retirer le paquet MLX ne casse pas l'int8.
+pub fn remove_in(root: &Path, package: &ModelPackage) -> Result<()> {
+    let path = main_path_in(root, package);
     std::fs::remove_file(&path).with_context(|| format!("suppression de {}", path.display()))?;
-    // Laisse le répertoire de famille propre s'il devient vide.
-    if let Some(parent) = path.parent() {
-        let _ = std::fs::remove_dir(parent);
+    for companion in package.companions {
+        let shared = CATALOG.iter().any(|other| {
+            other.id != package.id
+                && other.family == package.family
+                && main_path_in(root, other).exists()
+                && other.companions.iter().any(|c| c.dest == companion.dest)
+        });
+        if !shared {
+            let _ = std::fs::remove_file(companion_path_in(root, package, companion));
+        }
     }
+    // Laisse le dossier de famille propre s'il devient vide.
+    let family = root.join(package.family);
+    let _ = std::fs::remove_dir(family.join("voices"));
+    let _ = std::fs::remove_dir(&family);
     Ok(())
 }
 
@@ -282,25 +509,33 @@ pub struct Download {
 }
 
 impl Download {
-    /// Lance le téléchargement dans un thread dédié.
+    /// Lance le téléchargement dans un thread dédié : fichier principal puis
+    /// compagnons, en reprenant ce qui est déjà là.
     pub fn start(package: &'static ModelPackage) -> Result<Self> {
-        let destination = install_path(package).context("répertoire de données introuvable")?;
+        let root = models_dir().context("répertoire de données introuvable")?;
+        let files = planned_files_in(&root, package);
         let received = Arc::new(AtomicU64::new(0));
-        let total = Arc::new(AtomicU64::new(package.bytes));
+        let total = Arc::new(AtomicU64::new(package.total_bytes()));
         let outcome = Arc::new(Mutex::new(None));
         let cancel = Arc::new(AtomicBool::new(false));
 
-        let worker = (
-            Arc::clone(&received),
-            Arc::clone(&total),
-            Arc::clone(&outcome),
-            Arc::clone(&cancel),
-        );
-        let url = package.url();
-
+        let worker = (Arc::clone(&received), Arc::clone(&outcome), Arc::clone(&cancel));
         thread::spawn(move || {
-            let (received, total, outcome, cancel) = worker;
-            let result = fetch(&url, &destination, &received, &total, &cancel);
+            let (received, outcome, cancel) = worker;
+            let mut base = 0u64;
+            let mut result = Ok(());
+            for (url, destination, bytes) in files {
+                if size_of(&destination) == Some(bytes) {
+                    base += bytes;
+                    received.store(base, Ordering::Relaxed);
+                    continue;
+                }
+                result = fetch(&url, &destination, bytes, &received, base, &cancel);
+                if result.is_err() || cancel.load(Ordering::Relaxed) {
+                    break;
+                }
+                base += bytes;
+            }
             let state = match result {
                 Ok(()) if cancel.load(Ordering::Relaxed) => Progress::Cancelled,
                 Ok(()) => Progress::Done,
@@ -309,13 +544,7 @@ impl Download {
             *outcome.lock().unwrap() = Some(state);
         });
 
-        Ok(Self {
-            package,
-            received,
-            total,
-            outcome,
-            cancel,
-        })
+        Ok(Self { package, received, total, outcome, cancel })
     }
 
     pub fn progress(&self) -> Progress {
@@ -334,7 +563,7 @@ impl Download {
         Self {
             package,
             received: Arc::new(AtomicU64::new(0)),
-            total: Arc::new(AtomicU64::new(package.bytes)),
+            total: Arc::new(AtomicU64::new(package.total_bytes())),
             outcome: Arc::new(Mutex::new(finished.then_some(Progress::Done))),
             cancel: Arc::new(AtomicBool::new(false)),
         }
@@ -359,23 +588,50 @@ impl Download {
 ///
 /// L'écriture passe par un fichier `.part` renommé à la fin : un modèle présent
 /// dans le répertoire est donc toujours un modèle complet.
+///
+/// `base` est ce que les fichiers précédents du paquet ont déjà reçu : la
+/// progression est celle du paquet entier.
 fn fetch(
     url: &str,
     destination: &Path,
+    expected: u64,
     received: &AtomicU64,
-    total: &AtomicU64,
+    base: u64,
     cancel: &AtomicBool,
 ) -> Result<()> {
-    if let Some(parent) = destination.parent() {
-        std::fs::create_dir_all(parent)
-            .with_context(|| format!("création de {}", parent.display()))?;
-    }
+    fetch_with(url, destination, expected, received, base, cancel, &|| {})
+}
+
+/// `fetch`, avec un point d'accroche juste avant que le `.part` soit créé.
+///
+/// Entre la première création du dossier et la création du `.part`, une
+/// requête réseau s'écoule : un `models::remove` concurrent peut y retirer un
+/// dossier de famille devenu vide. Le dossier est donc recréé au dernier
+/// moment, et le test d'accroche le retire exactement là.
+fn fetch_with(
+    url: &str,
+    destination: &Path,
+    expected: u64,
+    received: &AtomicU64,
+    base: u64,
+    cancel: &AtomicBool,
+    before_create: &dyn Fn(),
+) -> Result<()> {
+    let ensure_parent = || -> Result<()> {
+        if let Some(parent) = destination.parent() {
+            std::fs::create_dir_all(parent)
+                .with_context(|| format!("création de {}", parent.display()))?;
+        }
+        Ok(())
+    };
+    ensure_parent()?;
     let partial = destination.with_extension("part");
-    let expected = total.load(Ordering::Relaxed);
     let already = match resume_from(&partial, expected) {
         // Tout est déjà là : le serveur répondrait 416 à une reprise.
         Resume::Complete => {
-            received.store(expected, Ordering::Relaxed);
+            received.store(base + expected, Ordering::Relaxed);
+            before_create();
+            ensure_parent()?;
             return settle(&partial, destination, expected);
         }
         Resume::At(bytes) => bytes,
@@ -396,16 +652,13 @@ fn fetch(
     let response = request.call().map_err(|e| anyhow!("{e}"))?;
 
     let resuming = response.status() == 206;
-    if let Some(length) = response.header("Content-Length").and_then(|v| v.parse::<u64>().ok()) {
-        let full = if resuming { already + length } else { length };
-        total.store(full, Ordering::Relaxed);
-    }
-
+    before_create();
+    ensure_parent()?;
     let mut file = if resuming {
-        received.store(already, Ordering::Relaxed);
+        received.store(base + already, Ordering::Relaxed);
         std::fs::OpenOptions::new().append(true).open(&partial)?
     } else {
-        received.store(0, Ordering::Relaxed);
+        received.store(base, Ordering::Relaxed);
         std::fs::File::create(&partial)?
     };
 
@@ -424,7 +677,7 @@ fn fetch(
         }
         file.write_all(&buffer[..read]).context("écriture sur disque")?;
         written += read as u64;
-        received.store(written, Ordering::Relaxed);
+        received.store(base + written, Ordering::Relaxed);
     }
     file.flush()?;
     drop(file);
@@ -605,6 +858,8 @@ pub fn sessions_for_family(family: &str) -> u32 {
         // lecture a besoin arrive tard — la deuxième à 29 s au lieu de 13.
         // Une session : le silence après la première phrase passe de 23 s à 7.
         "magpie_tts" => 1,
+        // Kokoro calcule en série (MLX comme ORT) : une session.
+        "kokoro" => 1,
         // Les familles inconnues sont supposées lentes et parallélisables, la
         // synthèse en avance valant mieux qu'un silence.
         _ => (cores / 3).clamp(2, 4),
@@ -641,6 +896,8 @@ pub fn honoured_options(family: &str) -> &'static [&'static str] {
             "guidance_scale",
             "seed",
         ],
+        // Kokoro : la voix et la langue ; la vitesse s'applique au son.
+        "kokoro" => &["voice", "language"],
         // Famille inconnue : on n'affirme rien, tout est présenté comme possible.
         _ => &[],
     }
@@ -808,19 +1065,114 @@ mod tests {
     }
 
     #[test]
-    fn exactly_one_package_is_recommended() {
-        assert_eq!(CATALOG.iter().filter(|p| p.recommended).count(), 1);
+    fn kokoro_is_the_recommended_voice_wherever_it_runs() {
+        assert!(CATALOG.iter().filter(|p| p.recommended).all(|p| p.family == "kokoro"));
+        for mlx in [true, false] {
+            let recommended = available_with(mlx).into_iter().filter(|p| p.recommended).count();
+            assert!(recommended <= 1, "deux paquets recommandés côte à côte (mlx = {mlx})");
+        }
     }
 
     #[test]
-    fn catalog_is_empty_without_a_compiled_family() {
-        // Sans la feature, aucune famille n'est compilée : rien ne doit être
-        // proposé, faute de pouvoir le charger.
-        if compiled_families().is_empty() {
-            assert!(available().is_empty());
-        } else {
-            assert!(!available().is_empty());
+    fn audio_cpp_packages_need_a_compiled_family() {
+        let audio_cpp: Vec<_> = available().into_iter().filter(|p| p.runtime == Runtime::AudioCpp).collect();
+        assert_eq!(audio_cpp.is_empty(), compiled_families().is_empty());
+    }
+
+    #[test]
+    fn the_mlx_package_needs_the_app_and_never_sits_next_to_onnx() {
+        let with_mlx: Vec<&str> = available_with(true).iter().map(|p| p.id).collect();
+        assert!(with_mlx.contains(&"kokoro_82m_mlx"));
+        assert!(!with_mlx.contains(&"kokoro_82m_int8"), "pas d'ORT dans l'app");
+        let without: Vec<&str> = available_with(false).iter().map(|p| p.id).collect();
+        assert!(!without.contains(&"kokoro_82m_mlx"));
+        assert_eq!(without.contains(&"kokoro_82m_int8"), cfg!(feature = "kokoro-onnx"));
+    }
+
+    #[test]
+    fn kokoro_packages_are_pinned_and_carry_their_voices() {
+        let mlx = package("kokoro_82m_mlx");
+        assert_eq!(mlx.revision, "a71e4d38b236d968966a2002c4c895dbd12b1c3c");
+        assert_eq!(mlx.bytes, 327_115_152);
+        let int8 = package("kokoro_82m_int8");
+        assert_eq!(int8.revision, "dd4401a9add81ac692d20e240d22ec9dda82cc29");
+        assert_eq!(int8.file, "onnx/model_quantized.onnx");
+        assert_eq!(int8.bytes, 92_361_055);
+        // config.json et 29 voix : ff_siwis et les 28 anglaises.
+        assert_eq!(mlx.companions.len(), 30);
+        assert_eq!(mlx.companions, int8.companions, "voix et configuration communes");
+        assert_eq!(mlx.total_bytes(), 327_115_152 + 2_351 + 29 * 522_320);
+        assert!(mlx.companions.iter().any(|c| c.dest == "voices/af_bella.safetensors"));
+        assert!(mlx.companions.iter().all(|c| c.repo == "mlx-community/Kokoro-82M-bf16"));
+        assert_eq!(
+            mlx.companions[0].url(),
+            "https://huggingface.co/mlx-community/Kokoro-82M-bf16/resolve/a71e4d38b236d968966a2002c4c895dbd12b1c3c/config.json"
+        );
+    }
+
+    #[test]
+    fn kokoro_reads_only_its_voice_and_language() {
+        for ignored in ["pitch_shift", "energy", "emotion", "temperature", "seed", "instruction"] {
+            assert!(!honours("kokoro", ignored), "{ignored}");
         }
+        assert!(honours("kokoro", "voice") && honours("kokoro", "language"));
+        assert_eq!(sessions_for_family("kokoro"), 1);
+        assert_eq!(languages_for_family("kokoro"), ["fr", "en"]);
+    }
+
+    /// Crée les fichiers d'un paquet, creux (taille annoncée, aucun octet
+    /// écrit) : 327 Mo ne coûtent rien sur APFS ni ext4.
+    fn sparse(root: &Path, package: &ModelPackage, with_companions: bool) {
+        let mut files = vec![(main_path_in(root, package), package.bytes)];
+        if with_companions {
+            files.extend(package.companions.iter().map(|c| (companion_path_in(root, package, c), c.bytes)));
+        }
+        for (path, bytes) in files {
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::File::create(&path).unwrap().set_len(bytes).unwrap();
+        }
+    }
+
+    #[test]
+    fn a_package_is_installed_only_when_every_file_is_there() {
+        let root = scratch("complet-kokoro");
+        let mlx = package("kokoro_82m_mlx");
+        sparse(&root, mlx, false);
+        assert!(!is_installed_in(&root, mlx), "voix absentes");
+        sparse(&root, mlx, true);
+        assert!(is_installed_in(&root, mlx));
+        let voice = companion_path_in(&root, mlx, &mlx.companions[3]);
+        std::fs::File::create(&voice).unwrap().set_len(10).unwrap();
+        assert!(!is_installed_in(&root, mlx), "une voix tronquée");
+        assert!(is_truncated_in(&root, mlx));
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn removing_one_kokoro_package_keeps_what_the_other_needs() {
+        let root = scratch("partage-kokoro");
+        let (mlx, int8) = (package("kokoro_82m_mlx"), package("kokoro_82m_int8"));
+        sparse(&root, mlx, true);
+        sparse(&root, int8, true);
+        remove_in(&root, mlx).unwrap();
+        assert!(!main_path_in(&root, mlx).exists());
+        assert!(is_installed_in(&root, int8), "voix et configuration restent pour l'autre");
+        remove_in(&root, int8).unwrap();
+        assert!(!companion_path_in(&root, int8, &int8.companions[0]).exists(), "plus personne n'en a besoin");
+        assert!(!root.join("kokoro").exists(), "dossier de famille retiré");
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn a_kokoro_dir_is_one_with_its_configuration() {
+        let root = scratch("dossier-kokoro");
+        let main = root.join("kokoro").join("kokoro-v1_0.safetensors");
+        std::fs::create_dir_all(main.parent().unwrap()).unwrap();
+        std::fs::write(&main, b"x").unwrap();
+        assert_eq!(kokoro_dir(&main.to_string_lossy()), None, "config.json manque");
+        std::fs::write(root.join("kokoro").join("config.json"), b"{}").unwrap();
+        assert_eq!(kokoro_dir(&main.to_string_lossy()), Some(root.join("kokoro")));
+        std::fs::remove_dir_all(&root).ok();
     }
 
     #[test]
@@ -956,6 +1308,55 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// Un serveur local qui répond une fois `body`, sans rien d'externe.
+    fn serve_once(body: &'static [u8]) -> String {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/m.bin", listener.local_addr().unwrap());
+        std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0u8; 2048];
+            let _ = stream.read(&mut request);
+            let head = format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len());
+            stream.write_all(head.as_bytes()).unwrap();
+            stream.write_all(body).unwrap();
+        });
+        url
+    }
+
+    #[test]
+    fn a_family_dir_removed_during_the_request_does_not_fail_the_download() {
+        // `remove` retire un dossier de famille vide pendant que la requête
+        // réseau est en vol : le `.part` doit quand même pouvoir être créé,
+        // pour le fichier principal comme pour un compagnon dans `voices/`.
+        for relative in ["modele.bin", "voices/voix.bin"] {
+            let root = scratch("course-dossier");
+            let family = root.join("famille");
+            let destination = family.join(relative);
+            let url = serve_once(b"0123456789");
+            let received = AtomicU64::new(0);
+            let cancel = AtomicBool::new(false);
+            fetch_with(&url, &destination, 10, &received, 0, &cancel, &|| {
+                std::fs::remove_dir_all(&family).unwrap();
+            })
+            .unwrap();
+            assert_eq!(std::fs::read(&destination).unwrap(), b"0123456789");
+            assert_eq!(received.load(Ordering::Relaxed), 10);
+            std::fs::remove_dir_all(&root).ok();
+        }
+    }
+
+    #[test]
+    fn a_later_file_reports_progress_after_the_earlier_ones() {
+        let root = scratch("decalage");
+        let destination = root.join("f").join("deux.bin");
+        let url = serve_once(b"abcde");
+        let received = AtomicU64::new(0);
+        fetch(&url, &destination, 5, &received, 100, &AtomicBool::new(false)).unwrap();
+        assert_eq!(received.load(Ordering::Relaxed), 105);
+        std::fs::remove_dir_all(&root).ok();
     }
 
     fn scratch(name: &str) -> PathBuf {

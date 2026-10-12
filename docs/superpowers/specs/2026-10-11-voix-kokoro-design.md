@@ -265,8 +265,8 @@ aujourd'hui un modèle ; elle passe donc à Kokoro.
   qu'au français. `TtsParams.language` vient de la langue du document, et
   `TtsParams.voice` de `voice.per_language`.
 - **Catalogue** (`models.rs`) :
-  - `ModelPackage` gagne `companions: &[&str]`, des fichiers téléchargés dans le
-    même dossier. Un paquet est installé quand tous ses fichiers ont la taille
+  - `ModelPackage` gagne `companions: &[Companion]` (dépôt, révision, fichier, destination, taille),
+    des fichiers téléchargés dans le dossier de la famille. Un paquet est installé quand tous ses fichiers ont la taille
     attendue. Les voix vont dans `models/kokoro/voices/`, partagé par les deux
     paquets.
   - Famille `kokoro` : langues `fr`, `en` ; voix par langue (`VoiceOption`

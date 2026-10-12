@@ -10,7 +10,6 @@ use anyhow::{anyhow, bail, Result};
 use crate::bookmark::BookmarkStore;
 use crate::models::{self, ModelPackage};
 
-use super::settings::package;
 use super::Reader;
 
 /// Refus d'un lecteur hors disque.
@@ -61,7 +60,8 @@ impl Reader {
     }
 
     pub fn remove_model(&mut self, id: &str) -> Result<()> {
-        self.remove_package(package(id)?)
+        let package = self.package(id)?;
+        self.remove_package(package)
     }
 
     /// Le cœur de `remove_model`, sur un paquet déjà résolu (le catalogue

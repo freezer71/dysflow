@@ -56,6 +56,10 @@ clipboard = ["dep:arboard"]
 # Compile Tesseract dans le binaire pour lire images et scans, presse-papiers
 # compris — la reconnaissance s'ajoute au collage, elle ne le conditionne pas.
 ocr = ["dep:tesseract-rs", "dep:image", "clipboard"]
+# Kokoro au terminal par ONNX Runtime (≥ 1.31, chargé dynamiquement). Jamais
+# dans l'app macOS, qui calcule Kokoro en MLX. Ses dépendances arrivent avec
+# le moteur ONNX.
+kokoro-onnx = []
 
 [[bin]]
 name = "sillon"

@@ -1479,7 +1479,7 @@ fn render_model_list(frame: &mut Frame, app: &App, area: Rect) {
             ),
             Span::styled(badge, badge_style),
             Span::styled(
-                format!("  {}", models::human_size(package.bytes)),
+                format!("  {}", models::human_size(package.total_bytes())),
                 Style::default().fg(DIM),
             ),
         ]));

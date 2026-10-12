@@ -65,6 +65,8 @@ pub struct Reader {
     choices_path: Option<std::path::PathBuf>,
     /// Langue du document gardé.
     language: Option<language::DocumentLanguage>,
+    /// L'app fournit le calcul MLX : le paquet Kokoro MLX est proposé.
+    mlx: bool,
 }
 
 impl Reader {
@@ -87,7 +89,21 @@ impl Reader {
             choices: None,
             choices_path: language::LanguageChoices::path(),
             language: None,
+            mlx: false,
         }
+    }
+
+    /// L'app fournit le calcul MLX : le paquet Kokoro MLX est proposé.
+    pub fn set_mlx_compute(&mut self, available: bool) {
+        self.mlx = available;
+    }
+
+    /// Un paquet du catalogue que ce lecteur sait charger.
+    pub fn package(&self, id: &str) -> anyhow::Result<&'static crate::models::ModelPackage> {
+        crate::models::available_with(self.mlx)
+            .into_iter()
+            .find(|p| p.id == id)
+            .ok_or_else(|| anyhow::anyhow!("voix inconnue : {id}"))
     }
 
     pub fn session(&self) -> Option<&App> {

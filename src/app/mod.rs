@@ -1344,7 +1344,7 @@ impl App {
             self.screen.notice = format!(
                 "supprimer {} ({}) ? d à nouveau pour confirmer",
                 package.display_name,
-                models::human_size(package.bytes)
+                models::human_size(package.total_bytes())
             );
             return;
         }

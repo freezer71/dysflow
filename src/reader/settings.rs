@@ -264,6 +264,10 @@ pub struct VoiceModel {
     pub languages: Vec<String>,
     /// Le rythme mesuré : fluide, ou haché.
     pub pace: String,
+    /// Les voix, pour la fiche.
+    pub voices_label: String,
+    /// Les licences, pour la fiche.
+    pub licenses: String,
 }
 
 /// Une voix intégrée du modèle actif.
@@ -271,6 +275,8 @@ pub struct VoiceModel {
 pub struct VoiceChoice {
     pub id: String,
     pub label: String,
+    /// Langue de la voix (vide : la famille ne les classe pas).
+    pub language: String,
 }
 
 /// Ce que le modèle actif sait faire : ses voix, ses langues, les réglages
@@ -291,7 +297,7 @@ pub fn voice_model(p: &models::ModelPackage, active_path: &str) -> VoiceModel {
     VoiceModel {
         id: p.id.to_string(),
         name: p.display_name.to_string(),
-        bytes: p.bytes,
+        bytes: p.total_bytes(),
         installed: models::is_installed(p),
         active: !active_path.is_empty()
             && models::install_path(p).is_some_and(|path| path.to_string_lossy() == active_path),
@@ -302,6 +308,8 @@ pub fn voice_model(p: &models::ModelPackage, active_path: &str) -> VoiceModel {
         languages_label: p.languages_label.to_string(),
         languages: p.languages.iter().map(|l| l.to_string()).collect(),
         pace: p.pace.to_string(),
+        voices_label: p.voices_label.to_string(),
+        licenses: p.licenses.to_string(),
     }
 }
 
@@ -427,7 +435,7 @@ impl Reader {
 
     pub fn voices(&self) -> Vec<VoiceModel> {
         let active = self.current_config().engine.model_path.clone();
-        models::available().into_iter().map(|p| voice_model(p, &active)).collect()
+        models::available_with(self.mlx).into_iter().map(|p| voice_model(p, &active)).collect()
     }
 
     pub fn capabilities(&self) -> ModelCapabilities {
@@ -435,7 +443,7 @@ impl Reader {
         ModelCapabilities {
             voices: models::voices_for_family(&family)
                 .iter()
-                .map(|v| VoiceChoice { id: v.id.to_string(), label: v.label.to_string() })
+                .map(|v| VoiceChoice { id: v.id.to_string(), label: v.label.to_string(), language: v.language.to_string() })
                 .collect(),
             languages: models::languages_for_family(&family).into_iter().map(String::from).collect(),
             honoured: models::honoured_options(&family).iter().map(|o| o.to_string()).collect(),
@@ -449,7 +457,7 @@ impl Reader {
             // Hors disque, rien ne se télécharge dans le dossier des modèles.
             return Err(anyhow!(crate::reader::data::TRIAL));
         }
-        let package = package(id)?;
+        let package = self.package(id)?;
         if self.download.as_ref().is_some_and(|d| !d.is_finished()) {
             return Err(anyhow!("téléchargement déjà en cours"));
         }
@@ -460,7 +468,7 @@ impl Reader {
     /// Change de modèle : la voix se recharge en place, au même endroit du
     /// texte, et la lecture reprend si elle tournait.
     pub fn use_voice(&mut self, id: &str, now: Instant) -> Result<()> {
-        let package = package(id)?;
+        let package = self.package(id)?;
         let path = models::install_path(package)
             .filter(|_| models::is_installed(package))
             .ok_or_else(|| anyhow!("voix non installée : {id}"))?;
@@ -493,9 +501,9 @@ impl Reader {
         let d = self.download.as_ref()?;
         let (received, total, failed) = match d.progress() {
             Progress::Running { received, total } => (received, total, None),
-            Progress::Done => (d.package.bytes, d.package.bytes, None),
-            Progress::Failed(message) => (0, d.package.bytes, Some(message)),
-            Progress::Cancelled => (0, d.package.bytes, Some("annulé".into())),
+            Progress::Done => (d.package.total_bytes(), d.package.total_bytes(), None),
+            Progress::Failed(message) => (0, d.package.total_bytes(), Some(message)),
+            Progress::Cancelled => (0, d.package.total_bytes(), Some("annulé".into())),
         };
         Some(DownloadView { id: d.package.id.to_string(), received, total, failed })
     }
@@ -527,13 +535,6 @@ impl Reader {
             self.config = app.config.clone();
         }
     }
-}
-
-pub(super) fn package(id: &str) -> Result<&'static models::ModelPackage> {
-    models::available()
-        .into_iter()
-        .find(|p| p.id == id)
-        .ok_or_else(|| anyhow!("voix inconnue : {id}"))
 }
 
 fn in_code(doc: &Document, block: usize) -> bool {
@@ -619,7 +620,7 @@ mod tests {
         let supertonic = reader_on("supertonic").capabilities();
         assert_eq!(supertonic.family, "supertonic");
         assert_eq!(supertonic.voices.len(), 10);
-        assert_eq!(supertonic.voices[0], VoiceChoice { id: "M1".into(), label: "M1 · masculine 1".into() });
+        assert_eq!(supertonic.voices[0], VoiceChoice { id: "M1".into(), label: "M1 · masculine 1".into(), language: String::new() });
         assert_eq!(supertonic.languages.len(), 31);
         assert!(supertonic.honoured.contains(&"speaking_rate".to_string()));
         assert!(!supertonic.honoured.contains(&"temperature".to_string()));
@@ -640,6 +641,33 @@ mod tests {
         assert!(unknown.voices.is_empty());
         assert!(unknown.honoured.is_empty());
         assert_eq!(unknown.languages.len(), 7);
+    }
+
+    #[test]
+    fn kokoro_lists_its_voices_with_their_language() {
+        let caps = reader_on("kokoro").capabilities();
+        assert_eq!(caps.voices.len(), 30);
+        assert_eq!(caps.voices[0], VoiceChoice {
+            id: "p-fenrir60".into(),
+            label: "p-fenrir60 · française, recommandée".into(),
+            language: "fr".into(),
+        });
+        assert_eq!(caps.honoured, ["voice", "language"]);
+        assert_eq!(caps.languages, ["fr", "en"]);
+    }
+
+    #[test]
+    fn the_mlx_package_is_offered_only_once_the_app_provides_the_compute() {
+        let mut r = reader();
+        assert!(!r.voices().iter().any(|v| v.id == "kokoro_82m_mlx"));
+        assert!(r.package("kokoro_82m_mlx").is_err());
+        r.set_mlx_compute(true);
+        let mlx = r.voices().into_iter().find(|v| v.id == "kokoro_82m_mlx").expect("proposé");
+        assert!(mlx.recommended);
+        assert_eq!(mlx.bytes, crate::models::CATALOG[0].total_bytes());
+        assert!(mlx.licenses.contains("GPL-3.0"));
+        assert!(mlx.voices_label.contains("p-fenrir60"));
+        assert!(!r.voices().iter().any(|v| v.id == "kokoro_82m_int8"));
     }
 
     #[test]
