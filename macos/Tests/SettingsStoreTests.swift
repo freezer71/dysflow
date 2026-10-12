@@ -55,11 +55,10 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertTrue(backend.patches.isEmpty)
     }
 
-    /// Supertonic → MagpieTTS : température apparaît, la vitesse disparaît.
+    /// Supertonic → MagpieTTS : température apparaît, la hauteur reste ignorée.
     func testIgnoredSettingsFollowTheActiveModel() async {
         let backend = FakeSettingsBackend()
         let store = await loadedStore(backend)
-        XCTAssertTrue(store.isShown(.speed))
         XCTAssertFalse(store.isShown(.temperature))
         XCTAssertTrue(store.isIgnored(.pitch))
         store.showIgnored = true
@@ -70,7 +69,6 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertTrue(store.isShown(.temperature))
         XCTAssertTrue(store.isShown(.topK))
         XCTAssertTrue(store.isShown(.guidance))
-        XCTAssertFalse(store.isShown(.speed))
     }
 
     func testTheValueShownIsTheOneApplied() async {

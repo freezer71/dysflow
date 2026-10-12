@@ -51,16 +51,13 @@ struct VoiceTab: View {
                         }
                     }
                 }
-                if store.isShown(.speed) {
-                    IgnorableNote(ignored: store.isIgnored(.speed)) {
-                        Slider(value: rounded(\.speed), in: 0.5...3, step: 0.05) {
-                            Text("Vitesse : \(SettingFormat.decimal(store.values.speed))×")
-                        } onEditingChanged: { store.dragChanged($0) }
-                        .accessibilityLabel("Vitesse de lecture")
-                        .accessibilityValue("\(SettingFormat.decimal(store.values.speed)) fois")
-                    }
+                // Vitesse et volume s'appliquent au son, tout de suite et avec
+                // toutes les voix : ni resynthèse, ni réglage ignoré.
+                Slider(value: rounded(\.speed), in: 0.5...3, step: 0.05) {
+                    Text("Vitesse : \(SettingFormat.decimal(store.values.speed))×")
                 }
-                // Le volume s'applique tout de suite, sans resynthèse.
+                .accessibilityLabel("Vitesse de lecture")
+                .accessibilityValue("\(SettingFormat.decimal(store.values.speed)) fois")
                 Slider(value: rounded(\.volume), in: 0...2, step: 0.05) {
                     Text("Volume : \(SettingFormat.percent(store.values.volume))")
                 }

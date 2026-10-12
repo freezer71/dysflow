@@ -1,8 +1,8 @@
 /// Les réglages qu'un modèle peut ignorer, sous le nom que leur donne le
-/// moteur (`models::honoured_options`).
+/// moteur (`models::honoured_options`). Ni la vitesse ni le volume : ils
+/// s'appliquent au son, quelle que soit la voix.
 enum SettingKey: String, CaseIterable {
     case voice, language
-    case speed = "speaking_rate"
     case pitch = "pitch_shift"
     case energy, emotion, instruction, temperature
     case topP = "top_p"
