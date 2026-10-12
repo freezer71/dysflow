@@ -30,26 +30,26 @@ impl OnDemand {
     /// demandé à chaque trame du terminal, n'attend jamais les secondes du
     /// chargement.
     fn resolve(&self) -> Arc<dyn TtsEngine> {
-        if let Some(engine) = self.engine.lock().unwrap().as_ref() {
+        if let Some(engine) = self.engine.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
             return Arc::clone(engine);
         }
-        let mut load = self.load.lock().unwrap();
+        let mut load = self.load.lock().unwrap_or_else(|e| e.into_inner());
         // Un autre appel a pu finir le chargement pendant l'attente.
-        if let Some(engine) = self.engine.lock().unwrap().as_ref() {
+        if let Some(engine) = self.engine.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
             return Arc::clone(engine);
         }
         let chosen = match load.take().map(|load| load()) {
             Some(Ok(e)) => e,
             _ => Arc::clone(&self.fallback),
         };
-        *self.engine.lock().unwrap() = Some(Arc::clone(&chosen));
+        *self.engine.lock().unwrap_or_else(|e| e.into_inner()) = Some(Arc::clone(&chosen));
         chosen
     }
 }
 
 impl TtsEngine for OnDemand {
     fn name(&self) -> String {
-        match self.engine.lock().unwrap().as_ref() {
+        match self.engine.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
             Some(engine) => engine.name(),
             None => self.label.clone(),
         }

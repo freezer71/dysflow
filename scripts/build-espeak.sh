@@ -25,7 +25,15 @@ TARBALL="$OUT/espeak-ng-$VERSION.tar.gz"
 SRC="$OUT/espeak-ng-$VERSION"
 mkdir -p "$OUT"
 
-verify() { echo "$SHA256  $1" | shasum -a 256 -c --status; }
+# sha256sum (GNU, ou BSD sous macOS : ni l'un ni l'autre ne lisent `--status`
+# de la même façon, d'où `-c -` et la sortie jetée), sinon shasum (Perl).
+verify() {
+    if command -v sha256sum >/dev/null 2>&1; then
+        echo "$SHA256  $1" | sha256sum -c - >/dev/null 2>&1
+    else
+        echo "$SHA256  $1" | shasum -a 256 -c --status
+    fi
+}
 
 # L'archive : téléchargée sous un nom provisoire, gardée seulement si son
 # empreinte est la bonne.
@@ -87,6 +95,7 @@ cp scripts/sillon-espeak.c "$OUT/sillon-espeak.c"
 {
     echo "espeak-ng $VERSION, sources exactes : $URL (SHA-256 $SHA256)"
     echo "sillon-espeak : sillon-espeak.c, à côté de ce fichier ; construit par build-espeak.sh"
+    echo "(à placer dans scripts/ avec sillon-espeak.c, à la racine des sources de Sillon)"
     echo "L'archive ci-dessus (même empreinte) est conservée par le distributeur de Sillon et"
     echo "fournie sur demande, tant que ce programme est distribué, si l'adresse venait à disparaître."
 } > "$OUT/SOURCE.txt"

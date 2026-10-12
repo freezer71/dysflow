@@ -27,7 +27,7 @@ const LIBRARY: &str = "libonnxruntime.so";
 /// voisin, sinon le nom nu (chemins de recherche du système).
 pub fn library_path() -> PathBuf {
     if let Some(path) = std::env::var_os("SILLON_ORT_LIB") {
-        return PathBuf::from(path);
+        return explicit_library(path);
     }
     if let Some(dir) = std::env::current_exe().ok().and_then(|e| e.parent().map(Path::to_path_buf)) {
         for candidate in [dir.join(LIBRARY), dir.join("lib").join(LIBRARY), dir.join("../lib").join(LIBRARY)] {
@@ -37,6 +37,19 @@ pub fn library_path() -> PathBuf {
         }
     }
     PathBuf::from(LIBRARY)
+}
+
+/// `SILLON_ORT_LIB` : un chemin relatif devient absolu (depuis le dossier
+/// courant), sans quoi `version_of` et `ort`, qui le résout depuis le
+/// binaire, pourraient charger deux fichiers différents ; un nom nu reste nu.
+fn explicit_library(path: std::ffi::OsString) -> PathBuf {
+    let path = PathBuf::from(path);
+    if path.components().count() > 1 && !path.is_absolute() {
+        if let Ok(absolute) = std::path::absolute(&path) {
+            return absolute;
+        }
+    }
+    path
 }
 
 #[repr(C)]
@@ -154,6 +167,18 @@ mod tests {
         let err = check_version("1.28.0").unwrap_err().to_string();
         assert!(err.contains("1.28.0") && err.contains("4 fois plus lent"), "{err}");
         assert!(check_version("n'importe quoi").is_err());
+    }
+
+    #[test]
+    fn a_relative_library_path_is_made_absolute() {
+        // `version_of` et `ort` (qui résout un chemin relatif depuis le
+        // binaire) doivent charger le même fichier.
+        let relative = explicit_library("lib/libonnxruntime.so".into());
+        assert!(relative.is_absolute(), "{}", relative.display());
+        assert!(relative.ends_with("lib/libonnxruntime.so"));
+        assert_eq!(explicit_library("/opt/ort/libonnxruntime.so".into()), PathBuf::from("/opt/ort/libonnxruntime.so"));
+        // Un nom nu reste nu : les chemins de recherche du système.
+        assert_eq!(explicit_library("libonnxruntime.so".into()), PathBuf::from("libonnxruntime.so"));
     }
 
     #[test]

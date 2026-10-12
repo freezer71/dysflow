@@ -9,6 +9,16 @@
 set -e
 cd "$(dirname "$0")/.."
 
+# Vrai si le fichier $2 a l'empreinte SHA-256 $1 : sha256sum (GNU, ou BSD
+# sous macOS, d'où `-c -` sans `--status`), sinon shasum (Perl).
+sha256_ok() {
+    if command -v sha256sum >/dev/null 2>&1; then
+        echo "$1  $2" | sha256sum -c - >/dev/null 2>&1
+    else
+        echo "$1  $2" | shasum -a 256 -c --status
+    fi
+}
+
 FEATURES="${FEATURES:-audio-cpp,ocr,kokoro-onnx}"
 OUT="${OUT:-dist}"
 
@@ -52,8 +62,14 @@ case ",$FEATURES," in
 
     ORT_VERSION=1.31.0
     case "$(uname -s)-$(uname -m)" in
-    Linux-x86_64) ORT_ARCHIVE="onnxruntime-linux-x64-$ORT_VERSION" ;;
-    Linux-aarch64) ORT_ARCHIVE="onnxruntime-linux-aarch64-$ORT_VERSION" ;;
+    # Empreintes publiées avec la version v1.31.0 : une archive différente
+    # n'est jamais jointe.
+    Linux-x86_64)
+        ORT_ARCHIVE="onnxruntime-linux-x64-$ORT_VERSION"
+        ORT_SHA256=cc5c72baf5ae5c8238a6841f0897227be2d02826b9cf98eaf02fdefaeeb03a57 ;;
+    Linux-aarch64)
+        ORT_ARCHIVE="onnxruntime-linux-aarch64-$ORT_VERSION"
+        ORT_SHA256=c5b8b3cca31f3d643a3b313b8f42e2d0f16a4fcefd02cda343d97bd5306afaab ;;
     *) ORT_ARCHIVE="" ;;
     esac
     if [ -n "$ORT_ARCHIVE" ]; then
@@ -61,15 +77,29 @@ case ",$FEATURES," in
         # Extraite à part, mise en place seulement une fois complète : une
         # extraction interrompue est refaite au lancement suivant.
         if [ ! -d "target/ort/$ORT_ARCHIVE" ]; then
+            # L'archive : téléchargée sous un nom provisoire, gardée seulement
+            # si son empreinte est la bonne.
+            tarball="target/ort/$ORT_ARCHIVE.tgz"
+            if [ ! -f "$tarball" ] || ! sha256_ok "$ORT_SHA256" "$tarball"; then
+                rm -f "$tarball" "$tarball.part"
+                curl -fsSL "https://github.com/microsoft/onnxruntime/releases/download/v$ORT_VERSION/$ORT_ARCHIVE.tgz" \
+                    -o "$tarball.part"
+                if ! sha256_ok "$ORT_SHA256" "$tarball.part"; then
+                    rm -f "$tarball.part"
+                    echo "Erreur : empreinte SHA-256 inattendue pour $ORT_ARCHIVE.tgz" >&2
+                    exit 1
+                fi
+                mv "$tarball.part" "$tarball"
+            fi
             rm -rf target/ort/extraction
             mkdir -p target/ort/extraction
-            curl -fsSL "https://github.com/microsoft/onnxruntime/releases/download/v$ORT_VERSION/$ORT_ARCHIVE.tgz" \
-                | tar -xz -C target/ort/extraction
+            tar -xzf "$tarball" -C target/ort/extraction
             mv "target/ort/extraction/$ORT_ARCHIVE" "target/ort/$ORT_ARCHIVE"
             rm -rf target/ort/extraction
         fi
         cp "target/ort/$ORT_ARCHIVE/lib/libonnxruntime.so.$ORT_VERSION" "$OUT/libonnxruntime.so"
         cp "target/ort/$ORT_ARCHIVE/LICENSE" "$OUT/LICENSE-onnxruntime"
+        cp "target/ort/$ORT_ARCHIVE/ThirdPartyNotices.txt" "$OUT/ThirdPartyNotices-onnxruntime.txt"
         echo "Joint : ONNX Runtime $ORT_VERSION"
     else
         echo "ONNX Runtime non joint sur cette plateforme : SILLON_ORT_LIB=<libonnxruntime> au lancement." >&2
