@@ -4,8 +4,21 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 APP=macos/build/Release/Sillon.app
 # Toujours reconstruire (incrémental), sinon on mesure une app périmée.
-if [ "${1:-}" != "--sans-construire" ]; then
+CHARGE=0
+CONSTRUIRE=1
+for arg in "$@"; do
+    case "$arg" in
+    --charge) CHARGE=1 ;;
+    --sans-construire) CONSTRUIRE=0 ;;
+    esac
+done
+if [ "$CONSTRUIRE" = 1 ]; then
     ./scripts/build-macos.sh
+fi
+# Filtre de charge : le pilote du banc échantillonne l'app pendant son scénario.
+if [ "$CHARGE" = 1 ]; then
+    PY=${SILLON_BENCH_PY:-$HOME/Library/Caches/sillon-bench/light/venv-mlx/bin/python}
+    exec "$PY" -I scripts/mesure-charge.py app --app "$APP" --out /tmp/sillon-charge.json
 fi
 SORTIE=/tmp/sillon-mesures.txt
 JOURNAL=/tmp/sillon-mesures.err
@@ -25,4 +38,10 @@ for name in froid_premier_son chaud_premier_son saut_phrase saut_mot; do
     grep " $name " "$SORTIE" | awk '{print $3}' | sort -n \
         | awk -v n="$name" '{a[NR]=$1} END {print n, a[int((NR+1)/2)], "ms"}'
 done
+# Le tout premier démarrage à froid du lancement : la règle « une fois par
+# version » (noyaux Metal compilés à la volée) se juge au SECOND lancement de
+# la même version. Au-delà de 0,3 s, préparer à chaque activation de Kokoro
+# avec une phrase réaliste.
+PREMIER=$(grep ' froid_premier_son ' "$SORTIE" | head -n 1 | awk '{print $3}')
+echo "froid_premier_son (1er de ce lancement) ${PREMIER:-?} ms"
 grep memoire_repos "$SORTIE" | awk '{print $2, $3, $4}'

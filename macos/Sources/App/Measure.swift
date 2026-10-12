@@ -150,4 +150,130 @@ enum Measure {
         }
         return kr == KERN_SUCCESS ? Int(info.phys_footprint / 1_048_576) : -1
     }
+
+    /// Un texte long : de quoi lire sept minutes sans atteindre la fin.
+    static let longText = Array(repeating: """
+    Le 14 juillet 1789, Camille Desmoulins harangua la foule devant le Palais-Royal, \
+    et Paris bascula en quelques heures. Le rapport de la commission, long de 37 pages, \
+    est arrivé un mardi ; personne n'a lu plus loin que le résumé. Pour corriger le bug, \
+    lancez les tests, puis vérifiez que la configuration renvoie une erreur au lieu de planter. \
+    Marguerite habitait depuis 41 ans la même maison étroite de la rue des Tanneurs, \
+    et pendant tout ce temps, elle n'avait jamais fermé la porte du jardin à clé.
+    """, count: 14).joined(separator: "\n\n")
+
+    /// Le filtre de charge de la spec. Les phases s'annoncent sur la sortie
+    /// standard (`PHASE nom`), avec les compteurs du moteur (`COMPTEUR …`) ;
+    /// `scripts/mesure-charge.py` échantillonne CPU, GPU et mémoire.
+    static func charge(reader: SillonReader, compute: KokoroMLXCompute?) async {
+        do {
+            try await mesurerCharge(reader: reader, compute: compute)
+        } catch {
+            // L'erreur a été écrite au point d'échec (`MESURE erreur …`).
+        }
+        phase("fin")
+    }
+
+    private static func phase(_ name: String) {
+        print("PHASE \(name)")
+        fflush(stdout)
+    }
+
+    private static func counters(_ reader: SillonReader, _ compute: KokoroMLXCompute?) {
+        let m = reader.measures()
+        print(String(format: "COMPTEUR busy_s=%.3f stalls=%d mlx_calls=%d forward_s=%.3f", m.busySeconds, m.stalls, compute?.calls ?? -1, compute?.forwardSeconds ?? -1))
+        fflush(stdout)
+    }
+
+    private static func dormir(_ seconds: Int) async {
+        try? await Task.sleep(for: .seconds(seconds))
+    }
+
+    private static func mesurerCharge(reader: SillonReader, compute: KokoroMLXCompute?) async throws {
+        // Repos : l'app sans voix, puis le GPU de la machine au repos.
+        reader.restVoice()
+        phase("baseline")
+        await dormir(20)
+        print("MESURE empreinte_sans_voix \(residentMB()) Mo")
+        fflush(stdout)
+
+        // Voix chargée, texte long ouvert. La vitesse de l'utilisateur est
+        // rendue avant la pause : la mesure ne doit rien laisser dans sa
+        // configuration.
+        let vitesse = reader.snapshot().speed
+        reader.prepareVoice()
+        reader.command(command: .setSpeed(speed: 1))
+        let avant = reader.snapshot().revision
+        reader.openText(markdown: longText, source: "charge")
+        try await attendre(reader) { $0.revision != avant }
+        if !reader.snapshot().playing { reader.command(command: .togglePlay) }
+        try await attendreSon(reader)
+
+        // Premier son à chaud après un saut loin : la phrase visée n'est pas
+        // prête, elle part en tête et suite.
+        // Le texte compte 56 phrases : les cibles 10, 20… 50 restent dedans.
+        for i in 1...5 {
+            let cible = UInt32(10 * i)
+            let t = ContinuousClock.now
+            reader.command(command: .seekTo(sentence: cible))
+            try await attendre(reader) { $0.sentence == cible && $0.audible }
+            emit("saut_loin_premier_son", t.duration(to: .now))
+        }
+        reader.command(command: .seekTo(sentence: 0))
+        try await attendreSon(reader)
+
+        phase("advance")
+        await dormir(10)
+
+        phase("read_1x")
+        counters(reader, compute)
+        await dormir(120)
+        counters(reader, compute)
+
+        reader.command(command: .setSpeed(speed: 2))
+        phase("read_2x")
+        counters(reader, compute)
+        await dormir(120)
+        counters(reader, compute)
+        reader.command(command: .setSpeed(speed: vitesse))
+
+        // Coût de la copie des échantillons à travers le pont UniFFI.
+        mesurerPont()
+
+        // Pause : la fenêtre de synthèse en avance se remplit, puis plus rien.
+        reader.command(command: .pause)
+        phase("pause_settle")
+        await dormir(5)
+        phase("pause")
+        counters(reader, compute)
+        await dormir(20)
+        counters(reader, compute)
+
+        // Repos : modèle, cache MLX et espeak-ng libérés.
+        phase("rest")
+        reader.restVoice()
+        try await attendre(reader) { $0.voice == .resting }
+        await dormir(5)
+        print("MESURE empreinte_repos \(residentMB()) Mo")
+        fflush(stdout)
+    }
+
+    /// La copie d'une phrase à travers le pont UniFFI (`Vec<f32>`), côté Swift
+    /// (écriture) et côté Rust (relecture) : 2, 5 et 10 s de son à 24 kHz.
+    /// Le pilote la rapporte à la durée moyenne d'un passage MLX
+    /// (`pont_pour_cent_synthese`). Les échantillons sont du silence : rien du
+    /// texte lu n'y passe.
+    private static func mesurerPont() {
+        for secondes in [2, 5, 10] {
+            let sortie = KokoroOutput(samples: [Float](repeating: 0, count: 24_000 * secondes),
+                                      durations: [UInt32](repeating: 2, count: 100))
+            let t = ContinuousClock.now
+            let rendu = try? FfiConverterTypeKokoroOutput_lift(FfiConverterTypeKokoroOutput_lower(sortie))
+            let d = t.duration(to: .now)
+            let ms = Double(d.components.seconds) * 1000 + Double(d.components.attoseconds) / 1e15
+            print(String(format: "MESURE pont_copie_%ds %.2f ms", secondes, ms))
+            if rendu == nil { print("MESURE erreur pont-illisible") }
+        }
+        fflush(stdout)
+    }
+
 }

@@ -73,6 +73,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Mode mesure : seul le lecteur et les mesures tournent. Retour avant le
         // modèle, le panneau, les raccourcis, l'ouverture à la connexion et
         // l'accueil ; sans l'argument, rien ne change.
+        if ProcessInfo.processInfo.arguments.contains("--measure-charge"), !isUnitTesting {
+            Task { @MainActor [reader = reader!, compute = kokoroCompute] in
+                await Measure.charge(reader: reader, compute: compute)
+                NSApp.terminate(nil)
+            }
+            return
+        }
         if ProcessInfo.processInfo.arguments.contains("--measure"), !isUnitTesting {
             Task { @MainActor [reader = reader!] in
                 await Measure.run(reader: reader)

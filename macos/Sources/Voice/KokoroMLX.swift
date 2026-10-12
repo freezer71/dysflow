@@ -41,6 +41,7 @@ final class KokoroMLXCompute: KokoroCompute, @unchecked Sendable {
     /// synthèse en cours.
     private let counter = OSAllocatedUnfairLock()
     private var synthesized = 0
+    private var forwardNanos: UInt64 = 0
 
     init(loadForward: @escaping Loader = KokoroMLXCompute.loadRunner,
          clearCache: @escaping () -> Void = KokoroRunner.clearCache) {
@@ -56,6 +57,10 @@ final class KokoroMLXCompute: KokoroCompute, @unchecked Sendable {
     /// Synthèses faites depuis le lancement (la mesure vérifie qu'il n'y en
     /// a aucune en pause).
     var calls: Int { counter.withLockUnchecked { synthesized } }
+
+    /// Temps cumulé passé dans les passages avant (secondes) : la mesure de
+    /// charge en tire la durée moyenne d'une synthèse.
+    var forwardSeconds: Double { counter.withLockUnchecked { Double(forwardNanos) / 1e9 } }
 
     /// Chaque `load` est une part. Un autre dossier remplace le modèle (le
     /// moteur rend sa part sur l'ancien avant, voir `SharedCompute`) ; les
@@ -99,7 +104,10 @@ final class KokoroMLXCompute: KokoroCompute, @unchecked Sendable {
     private func runLocked(ids: [Int64], style: [Float]) throws -> KokoroOutput {
         guard let forward else { throw SillonError.Failed(message: "modèle Kokoro non chargé") }
         counter.withLockUnchecked { synthesized += 1 }
+        let debut = DispatchTime.now().uptimeNanoseconds
         let (samples, durations) = forward.run(ids: ids.map { Int32(clamping: $0) }, style: style)
+        let fait = DispatchTime.now().uptimeNanoseconds - debut
+        counter.withLockUnchecked { forwardNanos += fait }
         kernelsCompiled = true
         return KokoroOutput(samples: samples, durations: durations.map { UInt32(max(0, $0)) })
     }
