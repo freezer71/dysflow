@@ -1,0 +1,14 @@
+{
+  "name": "p-fenrir60",
+  "license": "Apache-2.0",
+  "source": "hexgrad/Kokoro-82M, voix ff_siwis et am_fenrir via mlx-community/Kokoro-82M-bf16 (révision a71e4d38b236d968966a2002c4c895dbd12b1c3c)",
+  "timbre": { "voice": "ff_siwis", "columns": [0, 128] },
+  "prosody": {
+    "columns": [128, 256],
+    "mix": [
+      { "voice": "ff_siwis", "weight": 0.4 },
+      { "voice": "am_fenrir", "weight": 0.6 }
+    ]
+  },
+  "evaluation": ".superpowers/research/eval/rapport.md §11 : composite 78,3, écart-type F0 3,5 demi-tons"
+}
