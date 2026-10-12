@@ -154,20 +154,12 @@ pub fn prepare(args: &Args) -> Result<Launch> {
     // Le passage à Kokoro s'écrit sur la configuration du disque, jamais sur
     // celle que les options de la ligne de commande ont modifiée.
     if config_notice_is_none {
-        let (mut on_disk, _) = Config::load();
-        if let Some(notice) = migrate_terminal(&mut on_disk) {
-            notices.push(notice);
-            if on_disk.app.voice_migration != config.app.voice_migration {
-                let _ = on_disk.save();
-                config.engine.model_path = on_disk.engine.model_path.clone();
-                config.engine.family = on_disk.engine.family.clone();
-                config.engine.engine = on_disk.engine.engine.clone();
-                config.voice.per_language = on_disk.voice.per_language.clone();
-                config.app.voice_migration = on_disk.app.voice_migration;
-            }
-        } else if on_disk.app.voice_migration != config.app.voice_migration {
-            let _ = on_disk.save();
-            config.app.voice_migration = on_disk.app.voice_migration;
+        let (on_disk, _) = Config::load();
+        let available = crate::models::available();
+        if let Some(migrated) =
+            migrate_for_launch(&mut config, on_disk, args, &mut notices, &available, crate::models::is_installed)
+        {
+            let _ = migrated.save();
         }
     }
 
@@ -370,7 +362,8 @@ fn migrate_terminal_in(
             let path = crate::models::install_path(package)?;
             config.engine.model_path = path.to_string_lossy().into_owned();
             config.engine.family = package.family.to_string();
-            if config.engine.engine == "auto" {
+            // « system » ferait parler la voix du système : l'avis mentirait.
+            if config.engine.engine == "auto" || config.engine.engine == "system" {
                 config.engine.engine = "audio_cpp".to_string();
             }
             config.align_voice_with_family();
@@ -384,6 +377,40 @@ fn migrate_terminal_in(
         Step::Offer(_) => Some("Nouvelle voix Kokoro disponible : `s` pour l'installer.".to_string()),
         Step::Nothing => None,
     }
+}
+
+/// Le passage à Kokoro au lancement du terminal, sur `on_disk` (la
+/// configuration du fichier). Rend ce qu'il faut écrire, s'il y a lieu. La
+/// configuration de ce lancement suit le passage, sauf pour ce que la ligne
+/// de commande a fixé (`--engine`, `--model`, `--family`).
+fn migrate_for_launch(
+    config: &mut Config,
+    mut on_disk: Config,
+    args: &Args,
+    notices: &mut Vec<String>,
+    available: &[&'static crate::models::ModelPackage],
+    installed: impl Fn(&crate::models::ModelPackage) -> bool,
+) -> Option<Config> {
+    let before = on_disk.app.voice_migration;
+    notices.extend(migrate_terminal_in(&mut on_disk, available, installed));
+    if on_disk.app.voice_migration == before {
+        return None;
+    }
+    config.app.voice_migration = on_disk.app.voice_migration;
+    let switched = on_disk.engine.family != config.engine.family || on_disk.engine.model_path != config.engine.model_path;
+    if switched {
+        if args.engine.is_none() {
+            config.engine.engine = on_disk.engine.engine.clone();
+        }
+        if args.model.is_none() {
+            config.engine.model_path = on_disk.engine.model_path.clone();
+        }
+        if args.family.is_none() {
+            config.engine.family = on_disk.engine.family.clone();
+        }
+        config.voice.per_language = on_disk.voice.per_language.clone();
+    }
+    Some(on_disk)
 }
 
 /// Adopte un modèle installé si la configuration n'en désigne aucun.
@@ -519,6 +546,52 @@ mod tests {
         assert_eq!(config.voice.per_language["fr"], "p-fenrir60");
         assert_eq!(config.app.voice_migration, crate::reader::migration::KOKORO_MIGRATION);
         assert_eq!(migrate_terminal_in(&mut config, &[kokoro_int8()], |_| true), None, "une seule fois");
+    }
+
+    /// Une configuration du disque sur Supertonic, Kokoro int8 installé :
+    /// ce que la ligne de commande garde pour ce lancement, ce qui s'écrit.
+    fn migrated_with(args: &Args) -> (Config, Option<Config>, Vec<String>) {
+        let mut config = on_supertonic();
+        apply_overrides(&mut config, args, &mut Vec::new()).unwrap();
+        let mut notices = Vec::new();
+        let to_save = migrate_for_launch(&mut config, on_supertonic(), args, &mut notices, &[kokoro_int8()], |_| true);
+        (config, to_save, notices)
+    }
+
+    #[test]
+    fn the_command_line_keeps_its_engine_through_the_migration() {
+        let args = Args { engine: Some("system".into()), ..Args::default() };
+        let (config, to_save, notices) = migrated_with(&args);
+        assert_eq!(config.engine.engine, "system", "--engine system tient pour ce lancement");
+        let saved = to_save.expect("la migration s'écrit sur le disque");
+        assert_eq!(saved.engine.family, "kokoro");
+        assert_eq!(saved.app.voice_migration, crate::reader::migration::KOKORO_MIGRATION);
+        assert_eq!(notices.len(), 1);
+        // Sans option, le lancement prend Kokoro.
+        let (config, _, _) = migrated_with(&Args::default());
+        assert_eq!(config.engine.family, "kokoro");
+    }
+
+    #[test]
+    fn the_command_line_keeps_its_model_and_family_through_the_migration() {
+        let args = Args {
+            model: Some("/ailleurs/magpie.gguf".into()),
+            family: Some("magpie_tts".into()),
+            ..Args::default()
+        };
+        let (config, to_save, _) = migrated_with(&args);
+        assert_eq!(config.engine.model_path, "/ailleurs/magpie.gguf");
+        assert_eq!(config.engine.family, "magpie_tts");
+        assert_eq!(config.app.voice_migration, crate::reader::migration::KOKORO_MIGRATION);
+        assert_eq!(to_save.expect("écrite").engine.family, "kokoro");
+    }
+
+    #[test]
+    fn a_system_engine_on_disk_leaves_it_for_kokoro() {
+        let mut config = on_supertonic();
+        config.engine.engine = "system".into();
+        migrate_terminal_in(&mut config, &[kokoro_int8()], |_| true).expect("un avis");
+        assert_ne!(config.engine.engine, "system", "l'avis dit vrai : Kokoro parle");
     }
 
     #[test]

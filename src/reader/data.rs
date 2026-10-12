@@ -82,6 +82,9 @@ impl Reader {
         match self.download.as_ref() {
             Some(d) if !d.is_finished() => {
                 d.cancel();
+                // Une fin qui arriverait quand même ne fait plus passer à Kokoro.
+                let id = d.package.id;
+                self.abandon_migration(id);
                 Ok(())
             }
             _ => Err(anyhow!("aucun téléchargement en cours")),

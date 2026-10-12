@@ -9,7 +9,7 @@ use std::time::Instant;
 use anyhow::{anyhow, Result};
 
 use crate::config::Config;
-use crate::models::{self, ModelPackage};
+use crate::models::{self, ModelPackage, Progress};
 
 use super::Reader;
 
@@ -39,7 +39,8 @@ pub struct Offer {
     pub bytes: u64,
     /// La voix qu'il remplacerait, pour l'avis de la fin.
     pub former: String,
-    /// « Nouvelle voix disponible (342 Mo) — Passer à Kokoro ? »
+    /// « Nouvelle voix disponible (326,4 Mo) — Passer à Kokoro ? » (taille
+    /// écrite par `models::human_size`).
     pub message: String,
 }
 
@@ -99,6 +100,7 @@ impl Reader {
                 None
             }
             Step::Switch(package) => {
+                self.leave_system_engine();
                 self.use_voice(package.id, now).ok()?;
                 self.record_migration();
                 let notice = switched(&former);
@@ -130,13 +132,20 @@ impl Reader {
         let offer = self.offer.clone().ok_or_else(|| anyhow!("aucune proposition en attente"))?;
         let package = self.package(&offer.id)?;
         if models::is_installed(package) {
+            self.leave_system_engine();
             self.use_voice(package.id, now)?;
             self.offer = None;
             self.record_migration();
             self.notice = Some(switched(&offer.former));
             return Ok(());
         }
-        self.install_voice(package.id)?;
+        // Déjà en téléchargement (onglet Modèles) : attendre sa fin.
+        let downloading = self.download.as_ref().is_some_and(|d| {
+            d.package.id == package.id && matches!(d.progress(), Progress::Running { .. } | Progress::Done)
+        });
+        if !downloading {
+            self.install_voice(package.id)?;
+        }
         self.offer = None;
         self.switch_when_downloaded = Some((offer.id, offer.former));
         Ok(())
@@ -178,6 +187,7 @@ impl Reader {
             self.switch_when_downloaded = Some((id, former));
             return;
         }
+        self.leave_system_engine();
         if self.use_voice(&id, now).is_ok() {
             self.record_migration();
             self.notice = Some(switched(&former));
@@ -185,11 +195,26 @@ impl Reader {
     }
 
     /// Le téléchargement accepté a échoué ou a été annulé : plus rien
-    /// n'attend sa fin, et rien n'est retenu (la proposition reviendra au
-    /// prochain lancement).
+    /// n'attend sa fin, rien n'est retenu, et la proposition revient.
     pub(super) fn abandon_migration(&mut self, ended: &str) {
-        if self.switch_when_downloaded.as_ref().is_some_and(|(id, _)| id == ended) {
-            self.switch_when_downloaded = None;
+        if !self.switch_when_downloaded.as_ref().is_some_and(|(id, _)| id == ended) {
+            return;
+        }
+        let Some((id, former)) = self.switch_when_downloaded.take() else { return };
+        if let Ok(package) = self.package(&id) {
+            self.offer = Some(Offer { id, bytes: package.total_bytes(), former, message: offered(package) });
+        }
+    }
+
+    /// « system » ferait parler la voix du système après le passage : l'avis
+    /// mentirait. Le moteur repasse en « auto », qui suit la famille.
+    fn leave_system_engine(&mut self) {
+        self.sync_config();
+        if self.config.engine.engine == "system" {
+            self.config.engine.engine = "auto".to_string();
+            if let Some(app) = self.session.as_mut() {
+                app.config.engine.engine = "auto".to_string();
+            }
         }
     }
 }
@@ -421,7 +446,60 @@ mod tests {
             assert_eq!(r.config().app.voice_migration, 0, "{ending:?} : rien de retenu");
             assert_eq!(r.config().engine.family, "supertonic");
             assert_eq!(r.notice(), None);
+            assert_eq!(r.offer().map(|o| o.id.as_str()), Some("kokoro_82m_mlx"), "{ending:?} : proposée à nouveau");
         }
+    }
+
+    #[test]
+    fn a_cancel_abandons_the_switch_at_once() {
+        let _guard = models_lock();
+        let mlx = by_id("kokoro_82m_mlx");
+        let mut r = offered();
+        r.accept_offer(Instant::now()).unwrap();
+        r.cancel_download().unwrap();
+        assert!(r.switch_when_downloaded.is_none(), "plus rien n'attend la fin");
+        assert!(r.offer().is_some(), "proposée à nouveau");
+        // Les fichiers finissent quand même d'arriver : pas de passage à
+        // Kokoro. (Le paquet peut encore devenir actif par la règle « aucune
+        // voix active » : le faux chemin Supertonic n'en désigne aucune.)
+        install_hollow(mlx);
+        r.download = Some(Download::fake(mlx, true));
+        r.tick(Instant::now());
+        assert_eq!(r.config().app.voice_migration, 0, "rien de retenu");
+        assert_eq!(r.notice(), None, "pas d'avis de passage");
+        assert!(r.offer().is_some());
+        models::remove(mlx).unwrap();
+    }
+
+    #[test]
+    fn accepting_while_kokoro_already_downloads_waits_for_it() {
+        let _guard = models_lock();
+        let mlx = by_id("kokoro_82m_mlx");
+        let mut r = offered();
+        // Lancé depuis l'onglet Modèles avant la réponse.
+        r.install_voice(mlx.id).unwrap();
+        r.accept_offer(Instant::now()).unwrap();
+        assert_eq!(r.offer(), None);
+        assert_eq!(r.switch_when_downloaded.as_ref().map(|(id, _)| id.as_str()), Some("kokoro_82m_mlx"));
+        install_hollow(mlx);
+        r.download = Some(Download::fake(mlx, true));
+        r.tick(Instant::now());
+        assert_eq!(r.config().engine.family, "kokoro");
+        assert_eq!(r.config().app.voice_migration, KOKORO_MIGRATION);
+        models::remove(mlx).unwrap();
+    }
+
+    #[test]
+    fn a_system_engine_is_left_for_kokoro() {
+        let _guard = models_lock();
+        let mlx = by_id("kokoro_82m_mlx");
+        install_hollow(mlx);
+        let mut c = on_supertonic();
+        c.engine.engine = "system".into();
+        let mut r = offline_reader(c);
+        assert!(r.migrate_voice(Instant::now()).is_some());
+        assert_ne!(r.config().engine.engine, "system", "l'avis dit vrai : Kokoro parle");
+        models::remove(mlx).unwrap();
     }
 
     #[test]

@@ -197,7 +197,8 @@ aujourd'hui un modèle ; elle passe donc à Kokoro.
   la fin du téléchargement accepté), ou proposition refusée. Elle ne se refait
   jamais, même si l'utilisateur revient ensuite à l'ancien modèle. Une
   proposition laissée sans réponse, ou un téléchargement accepté puis échoué
-  ou annulé, ne retient rien : la proposition revient au lancement suivant.
+  ou annulé, ne retient rien : la proposition revient aussitôt, et au
+  lancement suivant.
   Sans Kokoro possible dans ce binaire, rien n'est retenu : une version qui
   l'apporte fera la migration.
 - **Rien n'est perdu :** l'ancien modèle reste installé et sélectionnable
@@ -205,7 +206,7 @@ aujourd'hui un modèle ; elle passe donc à Kokoro.
   Ses réglages propres (voix, échantillonnage) restent dans `config.toml`.
 - **Un court avis le dit :** « Nouvelle voix : Kokoro remplace Supertonic 3 ·
   F16. L'ancien modèle reste installé : Réglages › Voix pour y revenir. »
-  La proposition : « Nouvelle voix disponible (326.4 Mo) — Passer à
+  La proposition : « Nouvelle voix disponible (326,4 Mo) — Passer à
   Kokoro ? » (taille écrite comme dans l'onglet Modèles), avec les boutons
   « Passer à Kokoro » et « Plus tard ». L'app affiche avis et proposition
   dans le panneau et l'onglet Voix, et les annonce à VoiceOver.

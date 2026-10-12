@@ -814,7 +814,8 @@ pub fn human_size(bytes: u64) -> String {
     const UNITS: [(&str, u64); 3] = [("Go", 1 << 30), ("Mo", 1 << 20), ("Ko", 1 << 10)];
     for (unit, scale) in UNITS {
         if bytes >= scale {
-            return format!("{:.1} {unit}", bytes as f64 / scale as f64);
+            // Virgule décimale, à la française.
+            return format!("{:.1} {unit}", bytes as f64 / scale as f64).replace('.', ",");
         }
     }
     format!("{bytes} o")
@@ -1313,9 +1314,9 @@ mod tests {
     #[test]
     fn sizes_are_formatted_readably() {
         assert_eq!(human_size(512), "512 o");
-        assert_eq!(human_size(2 * 1024), "2.0 Ko");
-        assert_eq!(human_size(312_784_196), "298.3 Mo");
-        assert_eq!(human_size(3 * (1 << 30)), "3.0 Go");
+        assert_eq!(human_size(2 * 1024), "2,0 Ko");
+        assert_eq!(human_size(312_784_196), "298,3 Mo");
+        assert_eq!(human_size(3 * (1 << 30)), "3,0 Go");
     }
 
     #[test]

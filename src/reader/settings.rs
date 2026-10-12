@@ -512,16 +512,21 @@ impl Reader {
     /// la voix active s'il n'y en avait aucune, ou si le passage à Kokoro
     /// l'attendait. Un échec ou une annulation libère ce passage.
     pub(super) fn poll_download(&mut self, now: Instant) {
-        let Some(progress) = self.download.as_ref().map(|d| d.progress()) else { return };
-        let id = self.download.as_ref().map(|d| d.package.id.to_string()).unwrap_or_default();
-        match progress {
-            Progress::Done => {}
-            Progress::Failed(_) | Progress::Cancelled => {
-                self.abandon_migration(&id);
-                return;
-            }
-            Progress::Running { .. } => return,
+        // Rien n'est copié tant que le téléchargement court, ni pour un échec
+        // déjà traité : seulement à une issue qui change quelque chose.
+        let Some(d) = self.download.as_ref() else { return };
+        if !d.is_finished() {
+            return;
         }
+        let package = d.package;
+        let done = matches!(d.progress(), Progress::Done);
+        if !done {
+            if self.switch_when_downloaded.is_some() {
+                self.abandon_migration(package.id);
+            }
+            return;
+        }
+        let id = package.id.to_string();
         self.download = None;
         if self.switch_when_downloaded.as_ref().is_some_and(|(pending, _)| *pending == id) {
             self.finish_migration(&id, now);
