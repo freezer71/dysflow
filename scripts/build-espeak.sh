@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
-# Construit espeak-ng (GPL-3.0) comme programme séparé, pour la phonétisation
-# de Kokoro. Sillon ne s'y lie pas : il le lance et lui parle par ses entrées
-# et sorties standard, ce qui fait de l'ensemble un agrégat.
+# Construit sillon-espeak (GPL-3.0), la phonétisation de Kokoro : un petit
+# programme à nous (scripts/sillon-espeak.c), lié à libespeak-ng construite
+# depuis les sources épinglées d'espeak-ng. Sillon ne s'y lie pas : il le lance
+# et lui parle par ses entrées et sorties standard, ce qui fait de l'ensemble
+# un agrégat.
 #
 #   ./scripts/build-espeak.sh
 #
-# Produit target/espeak/bin/espeak-ng, target/espeak/share/espeak-ng-data
-# (français et anglais seulement), target/espeak/COPYING et SOURCE.txt.
+# Produit target/espeak/bin/sillon-espeak, target/espeak/share/espeak-ng-data
+# (français et anglais seulement), et, pour la GPL : target/espeak/COPYING,
+# SOURCE.txt (l'adresse exacte des sources d'espeak-ng) et sillon-espeak.c.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -54,7 +57,8 @@ cmake -S "$SRC" -B "$OUT/build" -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0 -DCMAKE_OSX_ARCHITECTURES=arm64
 cmake --build "$OUT/build" -j
 
-BIN=$(find "$OUT/build" -type f -name espeak-ng -perm -u+x | head -1)
+LIB=$(find "$OUT/build" -type f -name libespeak-ng.a | head -1)
+UCD=$(find "$OUT/build" -type f -name libucd.a | head -1)
 DATA=$(find "$OUT/build" -type d -name espeak-ng-data | head -1)
 for f in phontab phonindex phondata intonations fr_dict en_dict; do
     if [ ! -f "$DATA/$f" ]; then
@@ -65,16 +69,34 @@ done
 
 rm -rf "$OUT/bin" "$OUT/share"
 mkdir -p "$OUT/bin" "$OUT/share/espeak-ng-data"
-cp "$BIN" "$OUT/bin/espeak-ng"
+# Le programme : sillon-espeak.c et libespeak-ng, liée statiquement.
+CFLAGS=(-O2 -Wall -I"$SRC/src/include")
+if [ "$(uname -s)" = Darwin ]; then
+    CFLAGS+=(-mmacosx-version-min=14.0 -arch arm64)
+fi
+cc "${CFLAGS[@]}" scripts/sillon-espeak.c "$LIB" "$UCD" -lm -o "$OUT/bin/sillon-espeak"
 for f in phontab phonindex phondata phondata-manifest intonations fr_dict en_dict; do
     [ -f "$DATA/$f" ] && cp "$DATA/$f" "$OUT/share/espeak-ng-data/"
 done
 cp -R "$DATA/lang" "$OUT/share/espeak-ng-data/"
 [ -d "$DATA/voices" ] && cp -R "$DATA/voices" "$OUT/share/espeak-ng-data/"
 cp "$SRC/COPYING" "$OUT/COPYING"
-echo "espeak-ng $VERSION, sources exactes : $URL" > "$OUT/SOURCE.txt"
+cp scripts/sillon-espeak.c "$OUT/sillon-espeak.c"
+{
+    echo "espeak-ng $VERSION, sources exactes : $URL (SHA-256 $SHA256)"
+    echo "sillon-espeak : sillon-espeak.c, à côté de ce fichier"
+} > "$OUT/SOURCE.txt"
 
-# Contrôle : une phrase française, une anglaise.
-printf 'Bonjour.\n' | "$OUT/bin/espeak-ng" -q --ipa --tie -v fr-fr --path="$OUT/share"
-printf 'Hello.\n' | "$OUT/bin/espeak-ng" -q --ipa --tie -v en-us --path="$OUT/share"
-du -sh "$OUT/bin/espeak-ng" "$OUT/share/espeak-ng-data"
+# Contrôle : une phrase française, une anglaise (trames : u32 petit-boutiste
+# puis octets ; la voix, puis un lot d'une entrée).
+check() {
+    local got
+    got=$(printf "$1" | "$OUT/bin/sillon-espeak" "$OUT/share" | LC_ALL=C tr -d '\000-\037')
+    case "$got" in
+        *"$2"*) echo "$2" ;;
+        *) echo "Erreur : sillon-espeak ne donne pas $2" >&2; exit 1 ;;
+    esac
+}
+check '\005\000\000\000fr-fr\001\000\000\000\010\000\000\000Bonjour.' 'bɔ̃ʒˈuʁ'
+check '\005\000\000\000en-us\001\000\000\000\006\000\000\000Hello.' 'həlˈo͡ʊ'
+du -sh "$OUT/bin/sillon-espeak" "$OUT/share/espeak-ng-data"

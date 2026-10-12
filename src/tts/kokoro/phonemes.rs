@@ -1,23 +1,20 @@
-//! Phonétisation par espeak-ng, lancé comme programme séparé : la GPL-3.0
-//! d'espeak-ng reste de son côté. Le traitement de misaki (`EspeakG2P` pour
-//! le français, `EspeakFallback` pour l'anglais) est porté tel quel : Kokoro
-//! a été entraîné sur ces phonèmes.
+//! Phonétisation par espeak-ng, par `sillon-espeak` : un petit programme à
+//! nous (GPL-3.0 comme espeak-ng, `scripts/sillon-espeak.c`), lié à
+//! libespeak-ng et lancé comme processus séparé. Sillon ne se lie pas à
+//! espeak-ng : la GPL-3.0 reste de son côté. Le traitement de misaki
+//! (`EspeakG2P` pour le français, `EspeakFallback` pour l'anglais) est porté
+//! tel quel : Kokoro a été entraîné sur ces phonèmes.
 //!
-//! Protocole : une ligne de texte, puis une ligne sentinelle ; tout ce que
-//! espeak-ng écrit avant la réponse connue de la sentinelle appartient à la
-//! ligne. Un texte pourrait répondre comme la sentinelle : la sentinelle ne
-//! fait donc que séparer, et c'est la clôture qui valide le lot. Chaque lot se
-//! termine par trois mots de clôture tirés au hasard (parmi huit dont les
-//! réponses sont apprises au lancement) ; le lot n'est accepté que si leurs
-//! réponses arrivent dans cet ordre, précédées d'exactement une sentinelle par
-//! ligne envoyée. Sinon le processus est relancé et la requête échoue : jamais
-//! de réponses décalées. Aucun texte n'est jamais journalisé.
+//! Protocole binaire : chaque trame est précédée de sa longueur, et chaque
+//! entrée d'un lot reçoit exactement une trame de réponse, puis le lot finit
+//! par « ok ». Le découpage ne tient qu'aux longueurs : aucun texte ne peut
+//! le déplacer. Aucun texte n'est jamais journalisé.
 
 use anyhow::{anyhow, bail, Context, Result};
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufReader, Read, Write};
 use std::path::PathBuf;
-use std::process::{Child, ChildStdin, Command, Stdio};
+use std::process::{Child, Command, Stdio};
 use std::sync::mpsc::{self, Receiver};
 use std::sync::LazyLock;
 use std::time::Duration;
@@ -30,23 +27,16 @@ pub trait Phonemizer: Send {
     fn stop(&mut self) {}
 }
 
-/// Une phrase qu'aucun texte ne contient, dont la réponse marque la fin.
-pub(crate) const SENTINEL: &str = "Zyzomys.";
-/// Les mots de clôture, courts (peu coûteux) et aux réponses distinctes en
-/// français comme en anglais. Un texte peut en contenir : il ne peut pas
-/// deviner la suite tirée pour le lot.
-const CLOSINGS: [&str; 8] = ["Xq.", "Qx.", "Zv.", "Vz.", "Kx.", "Jq.", "Wz.", "Qj."];
-/// La longueur de la suite de clôture d'un lot.
-const CLOSING_RUN: usize = 3;
-/// Au-delà de tant de lignes par ligne envoyée, espeak-ng s'emballe.
-const MAX_LINES_PER_LINE: usize = 64;
-/// espeak-ng lit son entrée par `fgets` de 1 000 octets : une ligne plus
-/// longue serait coupée en plein mot, voire en plein caractère.
+/// La plus longue ligne envoyée : un morceau plus long est coupé, pour
+/// borner la taille d'un lot.
 const MAX_LINE: usize = 900;
 /// Un lot tient dans le tampon d'un tube vide (16 Kio sous macOS) : l'écrire
-/// ne bloque jamais, même si espeak-ng ne lit plus.
+/// ne bloque jamais, même si le programme ne lit plus.
 const MAX_BATCH: usize = 8 * 1024;
-/// Au-delà, espeak-ng est tenu pour bloqué.
+/// La plus longue trame de réponse acceptée (les phonèmes d'une ligne de
+/// `MAX_LINE` octets en font bien moins).
+const MAX_FRAME: usize = 64 * 1024;
+/// Au-delà, le programme est tenu pour bloqué.
 const ANSWER_TIMEOUT: Duration = Duration::from_secs(2);
 /// La ponctuation que misaki garde (phonemizer, `preserve_punctuation`).
 const MARKS: &[char] = &[';', ':', ',', '.', '!', '?', '¡', '¿', '—', '…', '"', '«', '»', '“', '”'];
@@ -59,25 +49,25 @@ pub(crate) fn voice_of(language: &str) -> &'static str {
     }
 }
 
-/// Le programme espeak-ng : `SILLON_ESPEAK` (l'app y met le sien), à côté du
-/// binaire, puis le `PATH`.
+/// Le programme `sillon-espeak` : `SILLON_ESPEAK` (l'app y met le sien), à
+/// côté du binaire, puis le `PATH`.
 pub fn locate_program() -> Option<PathBuf> {
     if let Some(path) = std::env::var_os("SILLON_ESPEAK").map(PathBuf::from) {
         return is_executable(&path).then_some(path);
     }
-    let beside = std::env::current_exe().ok().and_then(|e| e.parent().map(|d| d.join("espeak-ng")));
+    let beside = std::env::current_exe().ok().and_then(|e| e.parent().map(|d| d.join("sillon-espeak")));
     if let Some(path) = beside.filter(|p| is_executable(p)) {
         return Some(path);
     }
     find_in_path(&std::env::var_os("PATH")?)
 }
 
-/// espeak-ng dans un `PATH`, dont les entrées vides ou relatives (le dossier
+/// `sillon-espeak` dans un `PATH`, dont les entrées vides ou relatives (le dossier
 /// courant, donc n'importe quoi) sont ignorées.
 fn find_in_path(paths: &std::ffi::OsStr) -> Option<PathBuf> {
     std::env::split_paths(paths)
         .filter(|d| d.is_absolute())
-        .map(|d| d.join("espeak-ng"))
+        .map(|d| d.join("sillon-espeak"))
         .find(|p| is_executable(p))
 }
 
@@ -118,44 +108,6 @@ fn prepare(text: &str) -> String {
         .collect()
 }
 
-/// Éloigne de la sentinelle les mots qui commencent comme elle (« zyzom… »,
-/// quelles que soient casse et accents : « Zyzomys », « Zyzomies ») : leurs
-/// « y » deviennent des « i ». Ce n'est qu'une précaution, pour qu'un tel
-/// texte se lise au lieu d'échouer : la clôture du lot détecte de toute façon
-/// une réponse qui imiterait la sentinelle.
-fn neutralize(text: &str) -> String {
-    const WORD: [char; 5] = ['z', 'y', 'z', 'o', 'm'];
-    // Ce qu'espeak-ng ne prononce pas entre deux lettres : diacritiques
-    // combinants, espaces sans chasse, trait d'union conditionnel.
-    fn silent(c: char) -> bool {
-        matches!(c, '\u{300}'..='\u{36f}' | '\u{200b}'..='\u{200d}' | '\u{2060}' | '\u{feff}' | '\u{ad}')
-    }
-    fn base(c: char) -> char {
-        match c.to_lowercase().next().unwrap_or(c) {
-            'ý' | 'ÿ' | 'ŷ' | 'ỳ' => 'y',
-            'ó' | 'ò' | 'ô' | 'ö' | 'õ' | 'ø' | 'ō' => 'o',
-            'ž' | 'ź' | 'ż' => 'z',
-            'š' | 'ś' | 'ş' => 's',
-            other => other,
-        }
-    }
-    let mut chars: Vec<char> = text.chars().collect();
-    let letters: Vec<usize> = (0..chars.len()).filter(|&i| !silent(chars[i])).collect();
-    for start in 0..letters.len().saturating_sub(WORD.len() - 1) {
-        let window = &letters[start..start + WORD.len()];
-        if window.iter().zip(WORD).all(|(&i, w)| base(chars[i]) == w) {
-            // Le « y » du préfixe, puis ceux du reste du mot.
-            let rest: Vec<usize> =
-                letters[start + WORD.len()..].iter().copied().take_while(|&i| chars[i].is_alphabetic()).collect();
-            for i in std::iter::once(window[1]).chain(rest) {
-                if base(chars[i]) == 'y' {
-                    chars[i] = if chars[i].is_uppercase() { 'I' } else { 'i' };
-                }
-            }
-        }
-    }
-    chars.into_iter().collect()
-}
 
 /// Un espace où l'on peut couper : pas les espaces insécables (U+00A0,
 /// U+202F, U+2007), qui lient un nombre à son unité ou un mot à sa ponctuation.
@@ -270,132 +222,105 @@ pub(crate) fn finish(language: &str, raw: &str) -> String {
     ps.replace('«', "(").replace('»', ")").trim().to_string()
 }
 
-/// Une suite de clôture tirée au hasard : `RandomState` est semé par le
-/// système à chaque fil et change à chaque appel, SipHash le rend imprévisible.
-fn closing_run() -> [usize; CLOSING_RUN] {
-    use std::hash::{BuildHasher, Hasher};
-    let mut hasher = std::collections::hash_map::RandomState::new().build_hasher();
-    hasher.write_u128(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos());
-    let mut bits = hasher.finish();
-    let mut pool: Vec<usize> = (0..CLOSINGS.len()).collect();
-    let mut run = [0; CLOSING_RUN];
-    for slot in &mut run {
-        let pick = (bits % pool.len() as u64) as usize;
-        bits /= pool.len() as u64;
-        *slot = pool.swap_remove(pick);
-    }
-    run
+/// Un lien avec `sillon-espeak` : ce qu'on lui écrit, les trames qu'il
+/// renvoie (lues par un fil), et le processus lui-même.
+struct Running {
+    writer: Box<dyn Write + Send>,
+    frames: Receiver<Vec<u8>>,
+    child: Option<Child>,
 }
 
-struct Running {
-    process: Child,
-    stdin: ChildStdin,
-    lines: Receiver<String>,
-    sentinel: String,
-    /// Les lignes de réponse de chaque mot de `CLOSINGS`.
-    closings: Vec<Vec<String>>,
+/// Une trame : u32 petit-boutiste, puis les octets.
+fn push_frame(request: &mut Vec<u8>, bytes: &[u8]) {
+    request.extend_from_slice(&(bytes.len() as u32).to_le_bytes());
+    request.extend_from_slice(bytes);
 }
 
 impl Running {
-    fn read_line(&self) -> Result<String> {
-        self.lines.recv_timeout(ANSWER_TIMEOUT).map_err(|_| anyhow!("espeak-ng ne répond plus"))
+    /// Démarre le fil qui lit les trames, puis annonce la voix.
+    fn start(
+        writer: Box<dyn Write + Send>,
+        reader: Box<dyn Read + Send>,
+        child: Option<Child>,
+        voice: &str,
+    ) -> Result<Self> {
+        let (tx, frames) = mpsc::channel();
+        let thread = std::thread::Builder::new().name("sillon-espeak".into()).spawn(move || {
+            let mut reader = BufReader::new(reader);
+            loop {
+                let mut size = [0u8; 4];
+                if reader.read_exact(&mut size).is_err() {
+                    break;
+                }
+                let size = u32::from_le_bytes(size) as usize;
+                // Une trame plus longue que tout ce qu'on a demandé : le
+                // programme déraille, on cesse de le lire.
+                if size > MAX_FRAME {
+                    break;
+                }
+                let mut frame = vec![0; size];
+                if reader.read_exact(&mut frame).is_err() || tx.send(frame).is_err() {
+                    break;
+                }
+            }
+        });
+        let mut running = Self { writer, frames, child };
+        // Désormais, `Running` tue et attend le processus s'il est relâché.
+        thread.context("fil de lecture de sillon-espeak")?;
+        let mut request = Vec::new();
+        push_frame(&mut request, voice.as_bytes());
+        running.send(&request)?;
+        if running.read_frame()? != b"ok" {
+            bail!("sillon-espeak refuse la voix");
+        }
+        Ok(running)
     }
 
-    /// Les lignes qui précèdent la prochaine réponse de la sentinelle.
-    fn read_answer(&self) -> Result<Vec<String>> {
-        let mut parts = Vec::new();
-        loop {
-            let line = self.read_line()?;
-            if line.trim() == self.sentinel {
-                return Ok(parts);
-            }
-            parts.push(line.trim().to_string());
-        }
+    fn send(&mut self, request: &[u8]) -> Result<()> {
+        self.writer.write_all(request).context("écriture vers sillon-espeak")?;
+        self.writer.flush().context("écriture vers sillon-espeak")
     }
 
-    /// Apprend les réponses des mots de clôture, deux fois : elles doivent
-    /// être stables, non vides et toutes différentes.
-    fn learn(&mut self) -> Result<()> {
-        let mut request = format!("{SENTINEL}\n");
-        for _ in 0..2 {
-            for word in CLOSINGS {
-                request.push_str(&format!("{word}\n{SENTINEL}\n"));
-            }
-        }
-        self.stdin.write_all(request.as_bytes())?;
-        self.stdin.flush()?;
-        self.sentinel = self.read_line()?.trim().to_string();
-        let mut rounds = Vec::new();
-        for _ in 0..2 {
-            let round: Vec<Vec<String>> = CLOSINGS.iter().map(|_| self.read_answer()).collect::<Result<_>>()?;
-            rounds.push(round);
-        }
-        let closings = rounds.pop().expect("deux tours");
-        let distinct: std::collections::HashSet<&Vec<String>> = closings.iter().collect();
-        if self.sentinel.is_empty()
-            || closings != rounds[0]
-            || distinct.len() != CLOSINGS.len()
-            || closings.iter().any(|c| c.is_empty() || c.iter().any(String::is_empty))
-        {
-            bail!("espeak-ng ne répond pas comme prévu");
-        }
-        self.closings = closings;
-        Ok(())
+    fn read_frame(&self) -> Result<Vec<u8>> {
+        self.frames.recv_timeout(ANSWER_TIMEOUT).map_err(|_| anyhow!("sillon-espeak ne répond plus"))
     }
 
     /// Prêt pour une requête : vivant, et rien d'une requête passée ne reste
-    /// à lire (sinon les réponses seraient décalées).
+    /// à lire.
     fn is_clean(&mut self) -> bool {
-        matches!(self.process.try_wait(), Ok(None))
-            && matches!(self.lines.try_recv(), Err(mpsc::TryRecvError::Empty))
+        let alive = match &mut self.child {
+            Some(child) => matches!(child.try_wait(), Ok(None)),
+            None => true,
+        };
+        alive && matches!(self.frames.try_recv(), Err(mpsc::TryRecvError::Empty))
     }
 
-    /// Une requête, en lots : chaque ligne suivie de la sentinelle, la
-    /// clôture à la fin de chaque lot, une réponse par ligne.
+    /// Une requête, en lots d'au plus `MAX_BATCH` octets : une réponse par
+    /// ligne, puis « ok ». Le découpage ne tient qu'aux longueurs.
     fn ask(&mut self, lines: &[String]) -> Result<Vec<String>> {
+        if lines.iter().any(|l| l.len() > MAX_LINE) {
+            bail!("entrée trop longue pour sillon-espeak");
+        }
         let mut answers = Vec::with_capacity(lines.len());
         let mut start = 0;
         while start < lines.len() {
-            let mut request = String::new();
+            let mut size = 4;
             let mut end = start;
-            while end < lines.len()
-                && (end == start || request.len() + lines[end].len() + SENTINEL.len() + 2 <= MAX_BATCH)
-            {
-                request.push_str(&lines[end]);
-                request.push('\n');
-                request.push_str(SENTINEL);
-                request.push('\n');
+            while end < lines.len() && (end == start || size + 4 + lines[end].len() <= MAX_BATCH) {
+                size += 4 + lines[end].len();
                 end += 1;
             }
-            let run = closing_run();
-            let mut expected = Vec::new();
-            for &word in &run {
-                request.push_str(CLOSINGS[word]);
-                request.push('\n');
-                expected.extend(self.closings[word].iter().cloned());
+            let mut request = Vec::with_capacity(size);
+            request.extend_from_slice(&((end - start) as u32).to_le_bytes());
+            for line in &lines[start..end] {
+                push_frame(&mut request, line.as_bytes());
             }
-            self.stdin.write_all(request.as_bytes()).context("écriture vers espeak-ng")?;
-            self.stdin.flush().context("écriture vers espeak-ng")?;
-            // Tout jusqu'à la suite de clôture, puis : une sentinelle après
-            // chaque ligne, ni plus ni moins.
-            let count = end - start;
-            let limit = MAX_LINES_PER_LINE * (count + 1) + expected.len();
-            let mut received: Vec<String> = Vec::new();
-            while !received.ends_with(&expected) {
-                if received.len() >= limit {
-                    bail!("espeak-ng répond trop");
-                }
-                received.push(self.read_line()?.trim().to_string());
+            self.send(&request)?;
+            for _ in start..end {
+                answers.push(String::from_utf8_lossy(&self.read_frame()?).into_owned());
             }
-            received.truncate(received.len() - expected.len());
-            if received.iter().filter(|l| **l == self.sentinel).count() != count
-                || received.last() != Some(&self.sentinel)
-            {
-                bail!("réponses d'espeak-ng décalées");
-            }
-            received.pop();
-            for answer in received.split(|l| *l == self.sentinel) {
-                answers.push(answer.join(" "));
+            if self.read_frame()? != b"ok" {
+                bail!("réponses de sillon-espeak en trop");
             }
             start = end;
         }
@@ -405,81 +330,70 @@ impl Running {
 
 impl Drop for Running {
     fn drop(&mut self) {
-        let _ = self.process.kill();
-        let _ = self.process.wait();
+        if let Some(child) = &mut self.child {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
     }
 }
 
-/// espeak-ng, un processus par langue, lancé à la demande.
+/// Une façon de lancer `sillon-espeak` : le vrai programme, ou, dans les
+/// tests, un faux qui tourne dans un fil.
+enum Launcher {
+    Program { program: PathBuf, data: Option<PathBuf> },
+    #[cfg(test)]
+    Fake(std::sync::Arc<dyn Fn(std::io::PipeReader, std::io::PipeWriter) + Send + Sync>),
+}
+
+/// espeak-ng, par `sillon-espeak`, un processus par langue, lancé à la
+/// demande.
 pub struct EspeakProcess {
-    program: PathBuf,
-    data: Option<PathBuf>,
+    launcher: Launcher,
     running: HashMap<&'static str, Running>,
 }
 
 impl EspeakProcess {
     pub fn new(program: PathBuf, data: Option<PathBuf>) -> Self {
-        Self { program, data, running: HashMap::new() }
+        Self { launcher: Launcher::Program { program, data }, running: HashMap::new() }
     }
 
     /// Le programme trouvé, ou la raison de son absence.
     pub fn locate() -> Result<Self> {
         match locate_program() {
             Some(program) => Ok(Self::new(program, data_dir())),
-            None if std::env::var_os("SILLON_ESPEAK").is_some() => {
-                bail!("Installation de Sillon incomplète (espeak-ng)")
-            }
-            None => bail!("espeak-ng introuvable — installez le paquet `espeak-ng`"),
+            None => bail!("Installation de Sillon incomplète (sillon-espeak introuvable)"),
         }
     }
 
     fn spawn(&self, voice: &str) -> Result<Running> {
-        let mut command = Command::new(&self.program);
-        // `-q` n'empêche pas espeak-ng de calculer le son de chaque ligne, puis
-        // de le jeter : au débit le plus haut (450 mots par minute), ce calcul
-        // coûte deux fois moins, et les phonèmes restent les mêmes (vérifié
-        // sur 2 397 lignes françaises et anglaises).
-        command.args(["-q", "--ipa", "--tie", "-s", "450", "-v", voice]);
-        if let Some(data) = &self.data {
-            command.arg(format!("--path={}", data.display()));
-        }
-        let mut process = command
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .spawn()
-            .with_context(|| format!("lancement de {}", self.program.display()))?;
-        let (Some(stdin), Some(stdout)) = (process.stdin.take(), process.stdout.take()) else {
-            let _ = process.kill();
-            let _ = process.wait();
-            bail!("tubes d'espeak-ng absents");
-        };
-        let (tx, lines) = mpsc::channel();
-        let reader = std::thread::Builder::new().name("espeak-ng".into()).spawn(move || {
-            let mut stdout = BufReader::new(stdout);
-            let mut line = Vec::new();
-            loop {
-                line.clear();
-                match stdout.read_until(b'\n', &mut line) {
-                    Ok(0) | Err(_) => break,
-                    Ok(_) => {}
+        match &self.launcher {
+            Launcher::Program { program, data } => {
+                let mut command = Command::new(program);
+                if let Some(data) = data {
+                    command.arg(data);
                 }
-                let text = String::from_utf8_lossy(&line).trim_end_matches(['\n', '\r']).to_string();
-                if tx.send(text).is_err() {
-                    break;
-                }
+                let mut child = command
+                    .stdin(Stdio::piped())
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::null())
+                    .spawn()
+                    .with_context(|| format!("lancement de {}", program.display()))?;
+                let (Some(stdin), Some(stdout)) = (child.stdin.take(), child.stdout.take()) else {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    bail!("tubes de sillon-espeak absents");
+                };
+                Running::start(Box::new(stdin), Box::new(stdout), Some(child), voice)
             }
-        });
-        if let Err(e) = reader {
-            let _ = process.kill();
-            let _ = process.wait();
-            return Err(e).context("fil de lecture d'espeak-ng");
+            #[cfg(test)]
+            Launcher::Fake(fake) => {
+                let (from_us, to_fake) = std::io::pipe()?;
+                let (from_fake, to_us) = std::io::pipe()?;
+                let fake = fake.clone();
+                std::thread::spawn(move || fake(from_us, to_us));
+                Running::start(Box::new(to_fake), Box::new(from_fake), None, voice)
+            }
         }
-        // Désormais, `Running` tue et attend le processus s'il est relâché.
-        let mut running = Running { process, stdin, lines, sentinel: String::new(), closings: Vec::new() };
-        // Les réponses de la sentinelle et des clôtures, apprises une fois.
-        running.learn()?;
-        Ok(running)
     }
 
     fn ask(&mut self, voice: &'static str, lines: &[String]) -> Result<Vec<String>> {
@@ -509,7 +423,7 @@ impl Phonemizer for EspeakProcess {
             .iter()
             .flatten()
             .filter_map(|p| match p {
-                Piece::Text(t) => Some(split_long(&neutralize(t))),
+                Piece::Text(t) => Some(split_long(t)),
                 Piece::Marks(_) => None,
             })
             .collect();
@@ -526,7 +440,7 @@ impl Phonemizer for EspeakProcess {
         };
         if answers.len() != lines.len() {
             self.running.remove(voice);
-            bail!("réponses d'espeak-ng incomplètes");
+            bail!("réponses de sillon-espeak incomplètes");
         }
         let mut answers = answers.into_iter();
         let mut joined = chunked.iter().map(|chunks| {
@@ -556,172 +470,233 @@ impl Phonemizer for EspeakProcess {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::{PipeReader, PipeWriter};
     use std::os::unix::fs::PermissionsExt;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
 
-    /// Un faux espeak-ng : la sentinelle a sa réponse, toute autre ligne
-    /// répond sur deux lignes (`<texte>` puis `x`). Avec `die_once`, la
-    /// ligne `meurs` tue le processus la première fois seulement ; avec
-    /// `die_always`, à chaque fois.
-    fn fake(name: &str, die_once: bool, die_always: bool) -> EspeakProcess {
-        let dir = std::env::temp_dir().join(format!("sillon-espeak-{}-{name}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let marker = dir.join("deja-mort");
-        let _ = std::fs::remove_file(&marker);
-        let script = dir.join("espeak-ng");
-        let death = if die_always {
-            "exit 1".to_string()
-        } else if die_once {
-            format!("if [ ! -f '{m}' ]; then : > '{m}'; exit 1; fi", m = marker.display())
-        } else {
-            ":".to_string()
-        };
-        std::fs::write(
-            &script,
-            format!(
-                "#!/bin/sh\nwhile IFS= read -r line; do\n  if [ \"$line\" = \"{SENTINEL}\" ]; then echo 'zizomis'; continue; fi\n  if [ \"$line\" = \"meurs\" ]; then {death}; fi\n  echo \"<$line>\"; echo x\ndone\n"
-            ),
-        )
-        .unwrap();
-        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
-        EspeakProcess::new(script, None)
+    fn read_u32(r: &mut PipeReader) -> Option<u32> {
+        let mut b = [0u8; 4];
+        r.read_exact(&mut b).ok()?;
+        Some(u32::from_le_bytes(b))
     }
 
-    /// Un faux espeak-ng dont `special` (du shell, placé avant la réponse
-    /// ordinaire `<texte>` puis `x`) traite certaines lignes à part.
-    fn fake_with(name: &str, special: &str) -> EspeakProcess {
-        let dir = std::env::temp_dir().join(format!("sillon-espeak-{}-{name}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let script = dir.join("espeak-ng");
-        std::fs::write(
-            &script,
-            format!(
-                "#!/bin/sh\nwhile IFS= read -r line; do\n  if [ \"$line\" = \"{SENTINEL}\" ]; then echo 'zizomis'; continue; fi\n{special}\n  echo \"<$line>\"; echo x\ndone\n"
-            ),
-        )
-        .unwrap();
-        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
-        EspeakProcess::new(script, None)
+    fn read_frame(r: &mut PipeReader) -> Option<String> {
+        let size = read_u32(r)? as usize;
+        let mut bytes = vec![0; size];
+        r.read_exact(&mut bytes).ok()?;
+        Some(String::from_utf8(bytes).unwrap())
     }
 
-    /// Comme le vrai espeak-ng : le mot de la sentinelle, quelle que soit sa
-    /// casse, répond exactement comme elle.
-    const LIKE_ESPEAK: &str = "  case \"$line\" in [Zz][Yy][Zz][Oo][Mm][Yy][Ss]|Zýzomys) echo 'zizomis'; continue;; esac";
-
-    #[test]
-    fn the_sentinel_word_in_a_text_cannot_end_an_answer_early() {
-        let mut espeak = fake_with("mot-sentinelle", LIKE_ESPEAK);
-        let out = espeak.phonemize("fr", &strings(&["Zyzomys", "ZYZOMYS", "Zýzomys", "après"])).unwrap();
-        assert_eq!(out, ["<Zizomis> x", "<ZIZOMIS> x", "<Zizomis> x", "<après> x"]);
-        assert_eq!(espeak.phonemize("fr", &strings(&["encore"])).unwrap(), ["<encore> x"]);
-    }
-
-    #[test]
-    fn neutralizing_ignores_case_accents_and_silent_marks() {
-        assert_eq!(neutralize("le zyzomys, ZyZoMyS !"), "le zizomis, ZiZoMiS !");
-        assert_eq!(neutralize("Zy\u{301}zo\u{ad}mys"), "Zi\u{301}zo\u{ad}mis");
-        assert_eq!(neutralize("Zyzomies, zyzomy"), "Zizomies, zizomi");
-        assert_eq!(neutralize("zyzo, yzomys"), "zyzo, yzomys");
-    }
-
-    #[test]
-    fn a_collision_never_shifts_the_following_answers() {
-        // Une ligne inconnue qui répondrait comme la sentinelle : la requête
-        // échoue, mais les suivantes ne sont pas décalées.
-        let mut espeak = fake_with("collision", "  if [ \"$line\" = collision ]; then echo 'zizomis'; continue; fi");
-        assert!(espeak.phonemize("fr", &strings(&["collision", "b"])).is_err());
-        assert_eq!(espeak.phonemize("fr", &strings(&["vivant", "aussi"])).unwrap(), ["<vivant> x", "<aussi> x"]);
-        assert!(espeak.phonemize("fr", &strings(&["collision"])).is_err(), "seule aussi");
-        assert_eq!(espeak.phonemize("fr", &strings(&["encore"])).unwrap(), ["<encore> x"]);
-    }
-
-    /// Du shell : chaque mot de clôture, quelle que soit sa casse et avec ou
-    /// sans point, répond comme le mot lui-même (comme le vrai espeak-ng).
-    fn closings_like_espeak() -> String {
-        CLOSINGS
-            .iter()
-            .map(|w| {
-                let letters: String = w.trim_end_matches('.').chars().map(|c| format!("[{}{}]", c.to_ascii_uppercase(), c.to_ascii_lowercase())).collect();
-                format!("  case \"$line\" in {letters}|{letters}.) echo '<{w}>'; echo x; continue;; esac\n")
-            })
-            .collect()
-    }
-
-    #[test]
-    fn closing_words_in_a_text_never_shift_the_answers() {
-        let special = closings_like_espeak() + "  if [ \"$line\" = imite ]; then echo 'zizomis'; continue; fi";
-        let mut espeak = fake_with("clotures", &special);
-        // Chaque mot de clôture, seul ou en suite, dans une entrée ou dans
-        // plusieurs : les réponses sont justes.
-        let mut items: Vec<String> = CLOSINGS.iter().map(|w| w.to_string()).collect();
-        items.extend(CLOSINGS.iter().map(|w| w.trim_end_matches('.').to_uppercase()));
-        items.push(CLOSINGS.join(" "));
-        // Le point du mot seul part avec la ponctuation, comme partout.
-        let mut expected: Vec<String> = CLOSINGS.iter().map(|w| format!("<{w}> x.")).collect();
-        expected.extend(CLOSINGS.iter().map(|w| format!("<{w}> x")));
-        expected.push(CLOSINGS.iter().map(|w| format!("<{w}> x.")).collect::<Vec<_>>().join(" "));
-        for _ in 0..20 {
-            assert_eq!(espeak.phonemize("fr", &items).unwrap(), expected);
+    /// Des trames mises bout à bout, chacune précédée de sa longueur.
+    fn framed(frames: &[Vec<u8>]) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        for frame in frames {
+            push_frame(&mut bytes, frame);
         }
-        // Une réponse qui imite la sentinelle : une erreur, jamais un décalage.
-        for at in 0..3 {
-            let mut items = strings(&["Xq", "a", "Qx."]);
-            items.insert(at, "imite".into());
-            assert!(espeak.phonemize("fr", &items).is_err(), "imitation en position {at}");
-            assert_eq!(espeak.phonemize("fr", &strings(&["Xq", "b"])).unwrap(), ["<Xq.> x", "<b> x"]);
-        }
+        bytes
     }
 
-    #[test]
-    fn a_text_that_replays_every_closing_run_only_gets_an_error() {
-        // Une ligne dont la réponse contient toutes les suites de clôture
-        // possibles : le lot s'arrête trop tôt, le compte des sentinelles le
-        // voit.
-        let mut replay = String::new();
-        for a in CLOSINGS {
-            for b in CLOSINGS {
-                for c in CLOSINGS {
-                    if a != b && b != c && a != c {
-                        replay.push_str(&format!("echo '<{a}>'; echo x; echo '<{b}>'; echo x; echo '<{c}>'; echo x; "));
-                    }
+    fn write_raw(w: &mut PipeWriter, bytes: &[u8]) -> std::io::Result<()> {
+        w.write_all(bytes)?;
+        w.flush()
+    }
+
+    /// Ce que le faux répond à un lot : les octets à écrire (en général les
+    /// trames des réponses puis « ok »), ou `None` pour mourir.
+    type Answer = dyn Fn(usize, &[String]) -> Option<Vec<u8>> + Send + Sync;
+
+    /// Un faux `sillon-espeak` dans un fil, qui parle le vrai protocole.
+    /// `answer` reçoit le numéro du lot (compté sur toutes les relances) et
+    /// ses entrées.
+    fn fake(answer: impl Fn(usize, &[String]) -> Option<Vec<u8>> + Send + Sync + 'static) -> EspeakProcess {
+        let answer: Arc<Answer> = Arc::new(answer);
+        let batches = Arc::new(AtomicUsize::new(0));
+        let run = move |mut r: PipeReader, mut w: PipeWriter| {
+            if read_frame(&mut r).is_none() || write_raw(&mut w, &framed(&[b"ok".to_vec()])).is_err() {
+                return;
+            }
+            while let Some(count) = read_u32(&mut r) {
+                let Some(items) = (0..count).map(|_| read_frame(&mut r)).collect::<Option<Vec<_>>>() else {
+                    return;
+                };
+                let Some(frames) = answer(batches.fetch_add(1, Ordering::SeqCst), &items) else {
+                    return;
+                };
+                if write_raw(&mut w, &frames).is_err() {
+                    return;
                 }
             }
-        }
-        let special = format!("  if [ \"$line\" = rejoue ]; then {replay}continue; fi");
-        let mut espeak = fake_with("rejoue", &special);
-        for items in [strings(&["rejoue"]), strings(&["a", "rejoue"]), strings(&["rejoue", "b"])] {
-            assert!(espeak.phonemize("fr", &items).is_err());
-            assert_eq!(espeak.phonemize("fr", &strings(&["vivant"])).unwrap(), ["<vivant> x"]);
-        }
+        };
+        EspeakProcess { launcher: Launcher::Fake(Arc::new(run)), running: HashMap::new() }
+    }
+
+    fn echo_frames(items: &[String]) -> Vec<Vec<u8>> {
+        items.iter().map(|i| format!("<{i}>").into_bytes()).chain([b"ok".to_vec()]).collect()
+    }
+
+    fn echo(items: &[String]) -> Vec<u8> {
+        framed(&echo_frames(items))
+    }
+
+    fn echoing() -> EspeakProcess {
+        fake(|_, items| Some(echo(items)))
+    }
+
+    fn strings(items: &[&str]) -> Vec<String> {
+        items.iter().map(|s| s.to_string()).collect()
     }
 
     #[test]
-    fn each_batch_draws_its_own_closing_run() {
-        let runs: std::collections::HashSet<[usize; CLOSING_RUN]> = (0..50).map(|_| closing_run()).collect();
-        assert!(runs.len() > 10, "{} suites différentes sur 50", runs.len());
-        for run in runs {
-            assert!(run.iter().all(|&w| w < CLOSINGS.len()));
-            assert!(run[0] != run[1] && run[1] != run[2] && run[0] != run[2]);
-        }
+    fn each_item_gets_its_own_answer_whatever_it_says() {
+        let mut espeak = echoing();
+        let out = espeak.phonemize("fr", &strings(&["bonjour", "le monde"])).unwrap();
+        assert_eq!(out, ["<bonjour>", "<le monde>"]);
+        // Ce qu'un texte contient ne touche pas au découpage.
+        let tricky = strings(&["ok", "Zyzomys Zyzemys", "a\u{3002}b\u{2029}c", "[[h@loU]]", "x \u{2013} y"]);
+        let out = espeak.phonemize("fr", &tricky).unwrap();
+        // (`finish` réduit les espaces, U+2029 compris.)
+        assert_eq!(out, ["<ok>", "<Zyzomys Zyzemys>", "<a\u{3002}b c>", "<[[h@loU]]>", "<x \u{2013} y>"]);
+        // Un second aller-retour sur le même processus.
+        assert_eq!(espeak.phonemize("fr", &strings(&["encore"])).unwrap(), ["<encore>"]);
     }
 
     #[test]
-    fn a_long_piece_is_never_cut_at_a_non_breaking_space() {
-        let text = format!("{} fin", "10\u{a0}km\u{202f}!".repeat(150));
-        let chunks = split_long(&text);
-        assert!(chunks.len() >= 2 && chunks.iter().all(|c| c.len() <= MAX_LINE));
-        assert_eq!(chunks.concat().replace(' ', ""), text.replace(' ', ""), "aucun insécable perdu ni coupé");
-        let normal = split_long(&("mot\u{a0}lié ".repeat(150)));
-        assert!(normal.len() >= 2 && normal.iter().all(|c| c.split(' ').all(|w| w == "mot\u{a0}lié")));
+    fn punctuation_stays_where_it_was() {
+        let mut espeak = echoing();
+        let out = espeak.phonemize("fr", &strings(&["Peut-être : les notes, et (l'ordre)."])).unwrap();
+        // Les morceaux entre ponctuations partent seuls ; « - » disparaît
+        // comme chez misaki, et les parenthèses reviennent.
+        assert_eq!(out, ["<Peutêtre> : <les notes>, <et> (<l'ordre>)."]);
     }
 
-    /// Les lignes `<…>` reçues par le faux, dans l'ordre.
+    #[test]
+    fn an_empty_item_gives_an_empty_answer() {
+        let mut espeak = echoing();
+        assert_eq!(espeak.phonemize("fr", &strings(&["", "."])).unwrap(), ["", "."]);
+    }
+
+    #[test]
+    fn too_many_answers_is_an_error_and_the_next_call_starts_afresh() {
+        // Les deux premiers lots (l'essai et sa relance) reçoivent une réponse
+        // de trop.
+        let mut espeak = fake(|batch, items| {
+            let mut frames = echo_frames(items);
+            if batch < 2 {
+                frames.insert(0, b"<en trop>".to_vec());
+            }
+            Some(framed(&frames))
+        });
+        assert!(espeak.phonemize("fr", &strings(&["a", "b"])).is_err());
+        assert_eq!(espeak.phonemize("fr", &strings(&["a", "b"])).unwrap(), ["<a>", "<b>"]);
+    }
+
+    #[test]
+    fn too_few_answers_is_an_error_and_the_next_call_starts_afresh() {
+        let mut espeak = fake(|batch, items| {
+            let mut frames = echo_frames(items);
+            if batch < 2 {
+                frames.remove(0);
+            }
+            Some(framed(&frames))
+        });
+        assert!(espeak.phonemize("fr", &strings(&["a", "b"])).is_err());
+        assert_eq!(espeak.phonemize("fr", &strings(&["a", "b"])).unwrap(), ["<a>", "<b>"]);
+    }
+
+    #[test]
+    fn an_oversized_answer_is_an_error_and_the_next_call_starts_afresh() {
+        let mut espeak = fake(|batch, items| {
+            if batch < 2 {
+                // Une longueur annoncée démesurée.
+                return Some(u32::MAX.to_le_bytes().to_vec());
+            }
+            Some(echo(items))
+        });
+        let t = std::time::Instant::now();
+        assert!(espeak.phonemize("fr", &strings(&["a"])).is_err());
+        assert!(t.elapsed() < std::time::Duration::from_secs(1), "sans attendre : {:?}", t.elapsed());
+        assert_eq!(espeak.phonemize("fr", &strings(&["a"])).unwrap(), ["<a>"]);
+    }
+
+    #[test]
+    fn an_oversized_item_is_refused_before_sending() {
+        let mut espeak = echoing();
+        assert!(espeak.ask("fr-fr", &["a".repeat(MAX_LINE + 1)]).is_err());
+        assert_eq!(espeak.ask("fr-fr", &["a".repeat(MAX_LINE)]).unwrap(), [format!("<{}>", "a".repeat(MAX_LINE))]);
+    }
+
+    #[test]
+    fn a_dead_helper_is_restarted_once() {
+        let mut espeak = fake(|batch, items| (batch != 0).then(|| echo(items)));
+        assert_eq!(espeak.phonemize("fr", &strings(&["meurs"])).unwrap(), ["<meurs>"]);
+        let mut doomed = fake(|batch, items| (batch >= 2).then(|| echo(items)));
+        assert!(doomed.phonemize("fr", &strings(&["meurs"])).is_err(), "deux morts : échec");
+        assert_eq!(doomed.phonemize("fr", &strings(&["vivant"])).unwrap(), ["<vivant>"], "on repart");
+    }
+
+    #[test]
+    fn a_silent_helper_fails_quickly_and_the_next_call_works() {
+        let mut espeak = fake(|batch, items| Some(if batch < 2 { Vec::new() } else { echo(items) }));
+        let t = std::time::Instant::now();
+        assert!(espeak.phonemize("fr", &strings(&["tais-toi"])).is_err());
+        assert!(t.elapsed() < std::time::Duration::from_secs(6), "{:?}", t.elapsed());
+        assert_eq!(espeak.phonemize("fr", &strings(&["vivant"])).unwrap(), ["<vivant>"]);
+    }
+
+    /// Un vrai processus, écrit en shell.
+    fn script(name: &str, body: &str) -> EspeakProcess {
+        let dir = std::env::temp_dir().join(format!("sillon-espeak-{}-{name}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("sillon-espeak");
+        std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        EspeakProcess::new(path, None)
+    }
+
+    #[test]
+    fn a_helper_process_that_exits_or_stays_mute_is_an_error() {
+        let t = std::time::Instant::now();
+        assert!(script("sortie", "exit 1").phonemize("fr", &strings(&["a"])).is_err());
+        assert!(t.elapsed() < std::time::Duration::from_secs(1), "{:?}", t.elapsed());
+        let t = std::time::Instant::now();
+        assert!(script("muet", "exec cat > /dev/null").phonemize("fr", &strings(&["a"])).is_err());
+        assert!(t.elapsed() < std::time::Duration::from_secs(6), "{:?}", t.elapsed());
+    }
+
+    #[test]
+    fn a_request_larger_than_a_pipe_goes_in_batches() {
+        let mut espeak = echoing();
+        let items: Vec<String> = (0..2000).map(|i| format!("mot numéro {i} assez long pour remplir")).collect();
+        let out = espeak.phonemize("fr", &items).unwrap();
+        assert_eq!(out.len(), 2000);
+        assert!(out.iter().zip(&items).all(|(o, i)| o == &format!("<{i}>")));
+    }
+
+    #[test]
+    fn a_helper_that_stops_reading_never_blocks_a_large_request() {
+        // Après l'annonce de la voix, le faux ne lit plus rien : 2 000 lignes
+        // écrites d'un bloc attendraient indéfiniment.
+        let run = |mut r: PipeReader, mut w: PipeWriter| {
+            if read_frame(&mut r).is_some() && write_raw(&mut w, &framed(&[b"ok".to_vec()])).is_ok() {
+                std::thread::sleep(std::time::Duration::from_secs(20));
+            }
+        };
+        let mut espeak = EspeakProcess { launcher: Launcher::Fake(Arc::new(run)), running: HashMap::new() };
+        let items: Vec<String> = (0..2000).map(|i| format!("mot numéro {i} assez long pour remplir")).collect();
+        let t = std::time::Instant::now();
+        assert!(espeak.phonemize("fr", &items).is_err());
+        assert!(t.elapsed() < std::time::Duration::from_secs(6), "{:?}", t.elapsed());
+    }
+
+    /// Les morceaux `<…>` renvoyés par le faux, dans l'ordre.
     fn received(out: &str) -> Vec<String> {
-        out.split(" x").filter_map(|p| p.trim().strip_prefix('<')?.strip_suffix('>').map(str::to_string)).collect()
+        out.strip_prefix('<').unwrap().strip_suffix('>').unwrap().split("> <").map(str::to_string).collect()
     }
 
     #[test]
-    fn a_long_piece_is_sent_in_lines_espeak_can_read() {
-        let mut espeak = fake_with("long", "");
+    fn a_long_piece_is_sent_in_bounded_lines() {
+        let mut espeak = echoing();
         let words = "été ".repeat(300);
         let words = words.trim();
         let glued = "é".repeat(700);
@@ -737,98 +712,10 @@ mod tests {
     }
 
     #[test]
-    fn control_characters_never_split_a_piece() {
-        let mut espeak = fake_with("controle", "");
+    fn control_characters_become_spaces() {
+        let mut espeak = echoing();
         let out = espeak.phonemize("fr", &strings(&["un\u{7}deux\u{b}trois\nquatre\u{0}cinq"])).unwrap();
-        assert_eq!(out, ["<un deux trois quatre cinq> x"]);
-    }
-
-    #[test]
-    fn a_silent_process_fails_quickly_and_the_next_call_works() {
-        let mut espeak = fake_with("muet", "  if [ \"$line\" = tais-toi ]; then while read -r _; do :; done; fi");
-        let t = std::time::Instant::now();
-        assert!(espeak.phonemize("fr", &strings(&["tais-toi"])).is_err());
-        assert!(t.elapsed() < std::time::Duration::from_secs(6), "{:?}", t.elapsed());
-        assert_eq!(espeak.phonemize("fr", &strings(&["vivant"])).unwrap(), ["<vivant> x"]);
-    }
-
-    #[test]
-    fn a_request_larger_than_a_pipe_goes_in_batches() {
-        let mut espeak = fake_with("lots", "");
-        let items: Vec<String> = (0..2000).map(|i| format!("mot numéro {i} assez long pour remplir")).collect();
-        let out = espeak.phonemize("fr", &items).unwrap();
-        assert_eq!(out.len(), 2000);
-        assert!(out.iter().zip(&items).all(|(o, i)| o == &format!("<{i}> x")));
-    }
-
-    #[test]
-    fn a_process_that_stops_reading_never_blocks_a_large_request() {
-        // 2 000 lignes, bien plus qu'un tube n'en tient : écrites d'un bloc,
-        // l'écriture attendrait espeak-ng indéfiniment.
-        let mut espeak = fake_with("bloque", "  if [ \"$line\" = dors ]; then exec sleep 20; fi");
-        let mut items = vec!["dors".to_string()];
-        items.extend((0..2000).map(|i| format!("mot numéro {i} assez long pour remplir")));
-        let t = std::time::Instant::now();
-        assert!(espeak.phonemize("fr", &items).is_err());
-        assert!(t.elapsed() < std::time::Duration::from_secs(6), "{:?}", t.elapsed());
-    }
-
-    #[test]
-    fn the_path_search_skips_relative_entries_and_plain_files() {
-        let root = std::env::temp_dir().join(format!("sillon-espeak-{}-path", std::process::id()));
-        let (plain, exec) = (root.join("plain"), root.join("exec"));
-        for d in [&plain, &exec] {
-            std::fs::create_dir_all(d).unwrap();
-            std::fs::write(d.join("espeak-ng"), "#!/bin/sh\n").unwrap();
-        }
-        std::fs::set_permissions(plain.join("espeak-ng"), std::fs::Permissions::from_mode(0o644)).unwrap();
-        std::fs::set_permissions(exec.join("espeak-ng"), std::fs::Permissions::from_mode(0o755)).unwrap();
-        let path = |dirs: &[&std::path::Path]| std::env::join_paths(dirs).unwrap();
-        assert_eq!(find_in_path(&path(&[&plain])), None, "pas exécutable");
-        assert_eq!(find_in_path(&path(&[&plain, &exec])), Some(exec.join("espeak-ng")));
-        // Un dossier relatif (ici, le même dossier, atteint depuis le dossier
-        // courant) ou une entrée vide ne comptent pas.
-        let depth = std::env::current_dir().unwrap().components().count() - 1;
-        let relative = std::path::PathBuf::from("../".repeat(depth)).join(exec.strip_prefix("/").unwrap());
-        assert!(relative.join("espeak-ng").is_file(), "le chemin relatif mène bien au programme");
-        assert_eq!(find_in_path(&path(&[&relative, std::path::Path::new("")])), None);
-    }
-
-    fn strings(items: &[&str]) -> Vec<String> {
-        items.iter().map(|s| s.to_string()).collect()
-    }
-
-    #[test]
-    fn the_sentinel_separates_answers_spread_over_several_lines() {
-        let mut espeak = fake("lignes", false, false);
-        let out = espeak.phonemize("fr", &strings(&["bonjour", "le monde"])).unwrap();
-        assert_eq!(out, ["<bonjour> x", "<le monde> x"]);
-        // Un second aller-retour sur le même processus.
-        assert_eq!(espeak.phonemize("fr", &strings(&["encore"])).unwrap(), ["<encore> x"]);
-    }
-
-    #[test]
-    fn punctuation_stays_where_it_was() {
-        let mut espeak = fake("ponctuation", false, false);
-        let out = espeak.phonemize("fr", &strings(&["Peut-être : les notes, et (l'ordre)."])).unwrap();
-        // Les morceaux entre ponctuations partent seuls ; « - » disparaît
-        // comme chez misaki, et les parenthèses reviennent.
-        assert_eq!(out, ["<Peutêtre> x : <les notes> x, <et> x (<l'ordre> x)."]);
-    }
-
-    #[test]
-    fn an_empty_item_gives_an_empty_answer() {
-        let mut espeak = fake("vide", false, false);
-        assert_eq!(espeak.phonemize("fr", &strings(&["", "."])).unwrap(), ["", "."]);
-    }
-
-    #[test]
-    fn a_dead_process_is_restarted_once() {
-        let mut espeak = fake("relance", true, false);
-        assert_eq!(espeak.phonemize("fr", &strings(&["meurs"])).unwrap(), ["<meurs> x"]);
-        let mut doomed = fake("condamne", false, true);
-        assert!(doomed.phonemize("fr", &strings(&["meurs"])).is_err(), "deux morts : échec");
-        assert_eq!(doomed.phonemize("fr", &strings(&["vivant"])).unwrap(), ["<vivant> x"], "on repart");
+        assert_eq!(out, ["<un deux trois quatre cinq>"]);
     }
 
     #[test]
@@ -848,6 +735,37 @@ mod tests {
         assert_eq!(voice_of("en-GB"), "en-us");
     }
 
+    #[test]
+    fn the_path_search_skips_relative_entries_and_plain_files() {
+        let root = std::env::temp_dir().join(format!("sillon-espeak-{}-path", std::process::id()));
+        let (plain, exec) = (root.join("plain"), root.join("exec"));
+        for d in [&plain, &exec] {
+            std::fs::create_dir_all(d).unwrap();
+            std::fs::write(d.join("sillon-espeak"), "#!/bin/sh\n").unwrap();
+        }
+        std::fs::set_permissions(plain.join("sillon-espeak"), std::fs::Permissions::from_mode(0o644)).unwrap();
+        std::fs::set_permissions(exec.join("sillon-espeak"), std::fs::Permissions::from_mode(0o755)).unwrap();
+        let path = |dirs: &[&std::path::Path]| std::env::join_paths(dirs).unwrap();
+        assert_eq!(find_in_path(&path(&[&plain])), None, "pas exécutable");
+        assert_eq!(find_in_path(&path(&[&plain, &exec])), Some(exec.join("sillon-espeak")));
+        // Un dossier relatif (ici, le même dossier, atteint depuis le dossier
+        // courant) ou une entrée vide ne comptent pas.
+        let depth = std::env::current_dir().unwrap().components().count() - 1;
+        let relative = std::path::PathBuf::from("../".repeat(depth)).join(exec.strip_prefix("/").unwrap());
+        assert!(relative.join("sillon-espeak").is_file(), "le chemin relatif mène bien au programme");
+        assert_eq!(find_in_path(&path(&[&relative, std::path::Path::new("")])), None);
+    }
+
+    #[test]
+    fn a_long_piece_is_never_cut_at_a_non_breaking_space() {
+        let text = format!("{} fin", "10\u{a0}km\u{202f}!".repeat(150));
+        let chunks = split_long(&text);
+        assert!(chunks.len() >= 2 && chunks.iter().all(|c| c.len() <= MAX_LINE));
+        assert_eq!(chunks.concat().replace(' ', ""), text.replace(' ', ""), "aucun insécable perdu ni coupé");
+        let normal = split_long(&("mot\u{a0}lié ".repeat(150)));
+        assert!(normal.len() >= 2 && normal.iter().all(|c| c.split(' ').all(|w| w == "mot\u{a0}lié")));
+    }
+
     /// Parité avec misaki : `SILLON_ESPEAK=target/espeak/bin/espeak-ng
     /// SILLON_ESPEAK_DATA=target/espeak/share cargo test --lib kokoro::phonemes -- --ignored`
     #[test]
@@ -855,7 +773,7 @@ mod tests {
     fn french_phonemes_match_misaki() {
         let reference: std::collections::BTreeMap<String, std::collections::BTreeMap<String, String>> =
             serde_json::from_str(include_str!("../../../tests/fixtures/kokoro/misaki-phonemes.json")).unwrap();
-        let mut espeak = EspeakProcess::locate().expect("espeak-ng construit");
+        let mut espeak = EspeakProcess::locate().expect("sillon-espeak construit");
         let fr = &reference["fr"];
         let texts: Vec<String> = fr.keys().cloned().collect();
         let ours = espeak.phonemize("fr", &texts).unwrap();
@@ -871,7 +789,7 @@ mod tests {
     fn english_phonemes_stay_close_to_misaki() {
         let reference: std::collections::BTreeMap<String, std::collections::BTreeMap<String, String>> =
             serde_json::from_str(include_str!("../../../tests/fixtures/kokoro/misaki-phonemes.json")).unwrap();
-        let mut espeak = EspeakProcess::locate().expect("espeak-ng construit");
+        let mut espeak = EspeakProcess::locate().expect("sillon-espeak construit");
         let en = &reference["en"];
         let texts: Vec<String> = en.keys().cloned().collect();
         let ours = espeak.phonemize("en", &texts).unwrap();
@@ -899,46 +817,11 @@ mod tests {
         1.0 - row[b.len()] as f64 / a.len().max(b.len()).max(1) as f64
     }
 
-    /// Le vrai espeak-ng : le mot de la sentinelle et une longue ligne ne
-    /// décalent ni ne corrompent rien.
-    #[test]
-    #[ignore]
-    fn the_real_espeak_survives_the_sentinel_word_and_long_lines() {
-        let mut espeak = EspeakProcess::locate().expect("espeak-ng construit");
-        let reference = espeak.phonemize("fr", &strings(&["bonjour", "maison"])).unwrap();
-        let out = espeak.phonemize("fr", &strings(&["Zyzomys", "ZYZOMYS", "bonjour"])).unwrap();
-        assert!(!out[0].is_empty() && !out[1].is_empty());
-        assert_eq!(out[2], reference[0]);
-        assert_eq!(espeak.phonemize("fr", &strings(&["maison"])).unwrap(), [reference[1].clone()]);
-        let long = espeak.phonemize("fr", &["été ".repeat(300)]).unwrap();
-        let once = espeak.phonemize("fr", &strings(&["été"])).unwrap();
-        assert!(long[0].split(' ').all(|w| w == once[0]), "aucun octet égaré");
-    }
-
-    /// Le vrai espeak-ng : un mot qui répond comme la sentinelle et un mot de
-    /// clôture dans le même lot ne déplacent aucune réponse.
-    #[test]
-    #[ignore]
-    fn the_real_espeak_never_misattributes_answers_in_english() {
-        let mut espeak = EspeakProcess::locate().expect("espeak-ng construit");
-        let hello = espeak.phonemize("en", &strings(&["hello"])).unwrap();
-        let xq = espeak.phonemize("en", &strings(&["Xq"])).unwrap();
-        for _ in 0..20 {
-            // Une erreur serait acceptable ; un succès doit être juste.
-            if let Ok(out) = espeak.phonemize("en", &strings(&["Zyzomies", "hello", "Xq"])) {
-                assert!(!out[0].is_empty());
-                assert_eq!([&out[1], &out[2]], [&hello[0], &xq[0]]);
-            }
-            let again = espeak.phonemize("en", &strings(&["hello", "XQ", "xq"])).unwrap();
-            assert_eq!(again, [hello[0].clone(), xq[0].clone(), xq[0].clone()]);
-        }
-    }
-
     /// Budget : ≤ 5 ms par phrase, phrase et mots seuls compris, à chaud.
     #[test]
     #[ignore]
     fn a_sentence_and_its_words_cost_under_five_milliseconds() {
-        let mut espeak = EspeakProcess::locate().expect("espeak-ng construit");
+        let mut espeak = EspeakProcess::locate().expect("sillon-espeak construit");
         let sentence = "Le rapport de la SNCF, long de trente-sept pages, est arrivé un mardi.";
         let mut items = vec![sentence.to_string()];
         items.extend(sentence.split_whitespace().map(str::to_string));
@@ -952,5 +835,57 @@ mod tests {
         times.sort();
         eprintln!("phonétisation : médiane {:?}", times[10]);
         assert!(times[10] <= std::time::Duration::from_millis(5), "{:?}", times[10]);
+    }
+
+    /// Le vrai programme : des textes qui faisaient écrire plusieurs lignes à
+    /// espeak-ng, ou qui imitaient ses marques, reçoivent chacun leurs propres
+    /// phonèmes, jamais ceux d'un autre. `SILLON_ESPEAK=target/espeak/bin/sillon-espeak
+    /// SILLON_ESPEAK_DATA=target/espeak/share cargo test --lib kokoro::phonemes -- --ignored`
+    #[test]
+    #[ignore]
+    fn the_real_helper_gives_each_item_its_own_phonemes() {
+        let mut espeak = EspeakProcess::locate().expect("sillon-espeak construit");
+        let cases: [(&str, Vec<String>); 2] = [
+            (
+                "en",
+                strings(&[
+                    "Zyzemys\u{3002}hello\u{3002}Zyzemys\u{3002}Xq\u{3002}Qx\u{3002}Zv",
+                    "the bank account number",
+                    "a \u{2013} b\u{2029}c\u{37e} d\u{ff01} e",
+                    "[[h@l'oU]] world",
+                    "Zyzomys Zyzemys Xq",
+                ]),
+            ),
+            ("fr", strings(&["Zyzomys\u{3002}bonjour", "le monde", "[[bOZur]] encore", "x \u{2013} y"])),
+        ];
+        for (language, items) in cases {
+            let alone: Vec<String> =
+                items.iter().map(|i| espeak.phonemize(language, std::slice::from_ref(i)).unwrap().remove(0)).collect();
+            assert!(alone.iter().all(|a| !a.is_empty()));
+            // Les phonèmes entre [[ ]] ne passent pas tels quels.
+            assert!(alone.iter().all(|a| !a.contains("h@l") && !a.contains("bOZ")));
+            for _ in 0..1000 {
+                assert_eq!(espeak.phonemize(language, &items).unwrap(), alone);
+            }
+        }
+    }
+
+    /// Le vrai programme refuse une entrée trop longue en s'arrêtant.
+    #[test]
+    #[ignore]
+    fn the_real_helper_stops_on_an_oversized_item() {
+        let program = locate_program().expect("sillon-espeak construit");
+        let mut command = Command::new(program);
+        if let Some(data) = data_dir() {
+            command.arg(data);
+        }
+        let mut child = command.stdin(Stdio::piped()).stdout(Stdio::piped()).spawn().unwrap();
+        let mut request = Vec::new();
+        push_frame(&mut request, b"fr-fr");
+        request.extend_from_slice(&1u32.to_le_bytes());
+        request.extend_from_slice(&(70_000u32).to_le_bytes());
+        child.stdin.take().unwrap().write_all(&request).unwrap();
+        let status = child.wait().unwrap();
+        assert!(!status.success(), "{status:?}");
     }
 }
