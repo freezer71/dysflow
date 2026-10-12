@@ -12,12 +12,39 @@ cd "$(dirname "$0")/.."
 
 VERSION=1.52.0
 URL="https://github.com/espeak-ng/espeak-ng/archive/refs/tags/$VERSION.tar.gz"
+# Empreinte de l'archive (relevée le 12 oct. 2026) : une archive différente
+# n'est jamais construite.
+SHA256=bb4338102ff3b49a81423da8a1a158b420124b055b60fa76cfb4b18677130a23
 OUT=target/espeak
+TARBALL="$OUT/espeak-ng-$VERSION.tar.gz"
 SRC="$OUT/espeak-ng-$VERSION"
 mkdir -p "$OUT"
-if [ ! -d "$SRC" ]; then
-    curl -fsSL "$URL" -o "$OUT/espeak-ng-$VERSION.tar.gz"
-    tar -xzf "$OUT/espeak-ng-$VERSION.tar.gz" -C "$OUT"
+
+verify() { echo "$SHA256  $1" | shasum -a 256 -c --status; }
+
+# L'archive : téléchargée sous un nom provisoire, gardée seulement si son
+# empreinte est la bonne.
+if [ ! -f "$TARBALL" ] || ! verify "$TARBALL"; then
+    rm -f "$TARBALL" "$TARBALL.part"
+    curl -fsSL "$URL" -o "$TARBALL.part"
+    if ! verify "$TARBALL.part"; then
+        rm -f "$TARBALL.part"
+        echo "Erreur : empreinte SHA-256 inattendue pour $URL" >&2
+        exit 1
+    fi
+    mv "$TARBALL.part" "$TARBALL"
+    rm -rf "$SRC"
+fi
+
+# Les sources : extraites à part, mises en place seulement une fois complètes
+# (une extraction interrompue est refaite).
+if [ ! -f "$SRC/.extrait" ]; then
+    rm -rf "$SRC" "$OUT/extraction"
+    mkdir -p "$OUT/extraction"
+    tar -xzf "$TARBALL" -C "$OUT/extraction"
+    mv "$OUT/extraction/espeak-ng-$VERSION" "$SRC"
+    rmdir "$OUT/extraction"
+    touch "$SRC/.extrait"
 fi
 
 # Programme autonome : bibliothèque statique, ni son, ni MBROLA, ni Klatt.
