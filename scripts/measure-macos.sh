@@ -6,12 +6,22 @@ APP=macos/build/Release/Sillon.app
 # Toujours reconstruire (incrémental), sinon on mesure une app périmée.
 CHARGE=0
 CONSTRUIRE=1
+SECOND=0
+usage() {
+    echo "usage : $0 [--sans-construire] [--charge | --second-lancement]" >&2
+    echo "  --charge            filtre de charge (pilote du banc, 7 verdicts)" >&2
+    echo "  --second-lancement  juge froid_premier_son (1er) <= 300 ms : à lancer au SECOND lancement de la version" >&2
+    exit 2
+}
 for arg in "$@"; do
     case "$arg" in
     --charge) CHARGE=1 ;;
     --sans-construire) CONSTRUIRE=0 ;;
+    --second-lancement) SECOND=1 ;;
+    *) echo "argument inconnu : $arg" >&2; usage ;;
     esac
 done
+[ "$CHARGE" = 1 ] && [ "$SECOND" = 1 ] && usage
 if [ "$CONSTRUIRE" = 1 ]; then
     ./scripts/build-macos.sh
 fi
@@ -44,4 +54,14 @@ done
 # avec une phrase réaliste.
 PREMIER=$(grep ' froid_premier_son ' "$SORTIE" | head -n 1 | awk '{print $3}')
 echo "froid_premier_son (1er de ce lancement) ${PREMIER:-?} ms"
+SORTIE_CODE=0
+if [ "$SECOND" = 1 ]; then
+    if [ -n "$PREMIER" ] && [ "$PREMIER" -le 300 ]; then
+        echo "OK  second lancement : froid_premier_son ${PREMIER} ms <= 300 ms"
+    else
+        echo "NON second lancement : froid_premier_son ${PREMIER:-?} ms > 300 ms : préparer à chaque activation de Kokoro avec une phrase réaliste"
+        SORTIE_CODE=1
+    fi
+fi
 grep memoire_repos "$SORTIE" | awk '{print $2, $3, $4}'
+exit $SORTIE_CODE

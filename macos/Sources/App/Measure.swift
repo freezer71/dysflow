@@ -164,12 +164,20 @@ enum Measure {
     /// Le filtre de charge de la spec. Les phases s'annoncent sur la sortie
     /// standard (`PHASE nom`), avec les compteurs du moteur (`COMPTEUR …`) ;
     /// `scripts/mesure-charge.py` échantillonne CPU, GPU et mémoire.
+    ///
+    /// Aucun fichier de l'utilisateur n'est touché : `openText` ouvre un texte
+    /// sans identité stable, dont la position n'est jamais retenue
+    /// (`positions.json` reste intact). Seule la vitesse passe par la
+    /// configuration ; elle est rendue ici dans tous les cas, échec compris.
     static func charge(reader: SillonReader, compute: KokoroMLXCompute?) async {
+        let vitesse = reader.snapshot().speed
         do {
             try await mesurerCharge(reader: reader, compute: compute)
         } catch {
             // L'erreur a été écrite au point d'échec (`MESURE erreur …`).
         }
+        reader.command(command: .pause)
+        reader.command(command: .setSpeed(speed: vitesse))
         phase("fin")
     }
 
@@ -196,17 +204,19 @@ enum Measure {
         print("MESURE empreinte_sans_voix \(residentMB()) Mo")
         fflush(stdout)
 
-        // Voix chargée, texte long ouvert. La vitesse de l'utilisateur est
-        // rendue avant la pause : la mesure ne doit rien laisser dans sa
-        // configuration.
-        let vitesse = reader.snapshot().speed
+        // Chargement, ouverture et sauts : hors de la ligne de base du GPU.
+        phase("charge_voix")
         reader.prepareVoice()
+        try await attendreVoixKokoro(reader)
         reader.command(command: .setSpeed(speed: 1))
         let avant = reader.snapshot().revision
         reader.openText(markdown: longText, source: "charge")
         try await attendre(reader) { $0.revision != avant }
         if !reader.snapshot().playing { reader.command(command: .togglePlay) }
         try await attendreSon(reader)
+        // Le son ne prouve pas MLX (la voix de repli en fait aussi) : au moins
+        // un passage MLX doit avoir eu lieu.
+        guard (compute?.calls ?? 0) > 0 else { throw refus("aucun-appel-mlx") }
 
         // Premier son à chaud après un saut loin : la phrase visée n'est pas
         // prête, elle part en tête et suite.
@@ -228,13 +238,14 @@ enum Measure {
         counters(reader, compute)
         await dormir(120)
         counters(reader, compute)
+        try verifierEnCours(reader, "read_1x")
 
         reader.command(command: .setSpeed(speed: 2))
         phase("read_2x")
         counters(reader, compute)
         await dormir(120)
         counters(reader, compute)
-        reader.command(command: .setSpeed(speed: vitesse))
+        try verifierEnCours(reader, "read_2x")
 
         // Coût de la copie des échantillons à travers le pont UniFFI.
         mesurerPont()
@@ -257,23 +268,73 @@ enum Measure {
         fflush(stdout)
     }
 
-    /// La copie d'une phrase à travers le pont UniFFI (`Vec<f32>`), côté Swift
-    /// (écriture) et côté Rust (relecture) : 2, 5 et 10 s de son à 24 kHz.
-    /// Le pilote la rapporte à la durée moyenne d'un passage MLX
-    /// (`pont_pour_cent_synthese`). Les échantillons sont du silence : rien du
-    /// texte lu n'y passe.
+    /// Attend que la voix demandée soit prête (60 s au plus). Une voix de repli
+    /// ou un modèle absent n'est pas Kokoro MLX : la mesure s'arrête, elle ne
+    /// mesurerait pas ce que la spec demande.
+    private static func attendreVoixKokoro(_ reader: SillonReader) async throws {
+        let debut = ContinuousClock.now
+        let echeance = debut + .seconds(60)
+        while true {
+            let etat = reader.snapshot().voice
+            switch etat {
+            case .resting where ContinuousClock.now < debut + .seconds(5):
+                break  // la demande n'a pas encore été prise en compte
+            case .ready:
+                print("MESURE voix ready")
+                fflush(stdout)
+                return
+            case .fallback, .resting:
+                throw refus("voix-non-kokoro-mlx-\(String(describing: etat).prefix(8))")
+            case .loading:
+                break
+            }
+            if ContinuousClock.now >= echeance { throw refus("voix-jamais-prete") }
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+    }
+
+    /// La lecture doit encore être en cours : un texte fini ou une pause
+    /// feraient passer « aucun appel » pour un succès.
+    private static func verifierEnCours(_ reader: SillonReader, _ phase: String) throws {
+        let s = reader.snapshot()
+        print("MESURE phrase_apres_\(phase) \(s.sentence) phrase")
+        fflush(stdout)
+        if s.finished || !s.playing { throw refus("lecture-arretee-\(phase)") }
+    }
+
+    private static func refus(_ raison: String) -> Echec {
+        print("MESURE erreur \(raison)")
+        fflush(stdout)
+        return Echec()
+    }
+
+    /// La copie d'une phrase à travers le pont UniFFI (`Vec<f32>`) : écriture
+    /// puis relecture, toutes deux faites ici par le code Swift généré, pour
+    /// 2, 5 et 10 s de son à 24 kHz. C'est une BORNE HAUTE du coût réel (en
+    /// service, Swift écrit et Rust relit une seule fois). Trois passes
+    /// d'échauffement, puis la médiane de 25 répétitions. Le pilote la
+    /// rapporte à la durée moyenne d'un passage MLX (`pont_pour_cent_synthese`).
+    /// Les échantillons sont du silence : rien du texte lu n'y passe.
     private static func mesurerPont() {
-        for secondes in [2, 5, 10] {
-            let sortie = KokoroOutput(samples: [Float](repeating: 0, count: 24_000 * secondes),
-                                      durations: [UInt32](repeating: 2, count: 100))
+        func unePasse(_ sortie: KokoroOutput) -> (ok: Bool, ms: Double) {
             let t = ContinuousClock.now
             let rendu = try? FfiConverterTypeKokoroOutput_lift(FfiConverterTypeKokoroOutput_lower(sortie))
             let d = t.duration(to: .now)
-            let ms = Double(d.components.seconds) * 1000 + Double(d.components.attoseconds) / 1e15
-            print(String(format: "MESURE pont_copie_%ds %.2f ms", secondes, ms))
-            if rendu == nil { print("MESURE erreur pont-illisible") }
+            return (rendu != nil, Double(d.components.seconds) * 1000 + Double(d.components.attoseconds) / 1e15)
+        }
+        for secondes in [2, 5, 10] {
+            let sortie = KokoroOutput(samples: [Float](repeating: 0, count: 24_000 * secondes),
+                                      durations: [UInt32](repeating: 2, count: 100))
+            for _ in 0..<3 { _ = unePasse(sortie) }
+            var durees: [Double] = []
+            for _ in 0..<25 {
+                let r = unePasse(sortie)
+                if !r.ok { print("MESURE erreur pont-illisible"); break }
+                durees.append(r.ms)
+            }
+            guard !durees.isEmpty else { continue }
+            print(String(format: "MESURE pont_copie_%ds %.2f ms", secondes, durees.sorted()[durees.count / 2]))
         }
         fflush(stdout)
     }
-
 }

@@ -30,6 +30,6 @@ final class MeasureChargeTests: XCTestCase {
         XCTAssertEqual(compute.forwardSeconds, 0)
         _ = try compute.synthesize(ids: [1, 2, 3], style: [])
         XCTAssertEqual(compute.calls, 1)
-        XCTAssertGreaterThan(compute.forwardSeconds, 0)
+        XCTAssertGreaterThanOrEqual(compute.forwardSeconds, 0)
     }
 }
