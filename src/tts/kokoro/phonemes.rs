@@ -5,9 +5,13 @@
 //!
 //! Protocole : une ligne de texte, puis une ligne sentinelle ; tout ce que
 //! espeak-ng écrit avant la réponse connue de la sentinelle appartient à la
-//! ligne. Chaque lot se termine par une ligne de clôture dont la réponse est
-//! connue aussi : si elle ne tombe pas à sa place, les réponses se sont
-//! décalées, et le processus est relancé. Aucun texte n'est jamais journalisé.
+//! ligne. Un texte pourrait répondre comme la sentinelle : la sentinelle ne
+//! fait donc que séparer, et c'est la clôture qui valide le lot. Chaque lot se
+//! termine par trois mots de clôture tirés au hasard (parmi huit dont les
+//! réponses sont apprises au lancement) ; le lot n'est accepté que si leurs
+//! réponses arrivent dans cet ordre, précédées d'exactement une sentinelle par
+//! ligne envoyée. Sinon le processus est relancé et la requête échoue : jamais
+//! de réponses décalées. Aucun texte n'est jamais journalisé.
 
 use anyhow::{anyhow, bail, Context, Result};
 use std::collections::HashMap;
@@ -28,9 +32,14 @@ pub trait Phonemizer: Send {
 
 /// Une phrase qu'aucun texte ne contient, dont la réponse marque la fin.
 pub(crate) const SENTINEL: &str = "Zyzomys.";
-/// La clôture d'un lot : sa réponse, apprise au lancement, doit suivre la
-/// dernière réponse du lot, sinon les réponses sont décalées.
-const CLOSING: &str = "Xq.";
+/// Les mots de clôture, courts (peu coûteux) et aux réponses distinctes en
+/// français comme en anglais. Un texte peut en contenir : il ne peut pas
+/// deviner la suite tirée pour le lot.
+const CLOSINGS: [&str; 8] = ["Xq.", "Qx.", "Zv.", "Vz.", "Kx.", "Jq.", "Wz.", "Qj."];
+/// La longueur de la suite de clôture d'un lot.
+const CLOSING_RUN: usize = 3;
+/// Au-delà de tant de lignes par ligne envoyée, espeak-ng s'emballe.
+const MAX_LINES_PER_LINE: usize = 64;
 /// espeak-ng lit son entrée par `fgets` de 1 000 octets : une ligne plus
 /// longue serait coupée en plein mot, voire en plein caractère.
 const MAX_LINE: usize = 900;
@@ -109,11 +118,13 @@ fn prepare(text: &str) -> String {
         .collect()
 }
 
-/// Rend le mot de la sentinelle (quelles que soient casse et accents)
-/// impossible à confondre avec elle : ses « y » deviennent des « i ». Sans
-/// cela, un texte qui le contient finirait sa réponse trop tôt.
+/// Éloigne de la sentinelle les mots qui commencent comme elle (« zyzom… »,
+/// quelles que soient casse et accents : « Zyzomys », « Zyzomies ») : leurs
+/// « y » deviennent des « i ». Ce n'est qu'une précaution, pour qu'un tel
+/// texte se lise au lieu d'échouer : la clôture du lot détecte de toute façon
+/// une réponse qui imiterait la sentinelle.
 fn neutralize(text: &str) -> String {
-    const WORD: [char; 7] = ['z', 'y', 'z', 'o', 'm', 'y', 's'];
+    const WORD: [char; 5] = ['z', 'y', 'z', 'o', 'm'];
     // Ce qu'espeak-ng ne prononce pas entre deux lettres : diacritiques
     // combinants, espaces sans chasse, trait d'union conditionnel.
     fn silent(c: char) -> bool {
@@ -133,16 +144,27 @@ fn neutralize(text: &str) -> String {
     for start in 0..letters.len().saturating_sub(WORD.len() - 1) {
         let window = &letters[start..start + WORD.len()];
         if window.iter().zip(WORD).all(|(&i, w)| base(chars[i]) == w) {
-            for &i in [window[1], window[5]].iter() {
-                chars[i] = if chars[i].is_uppercase() { 'I' } else { 'i' };
+            // Le « y » du préfixe, puis ceux du reste du mot.
+            let rest: Vec<usize> =
+                letters[start + WORD.len()..].iter().copied().take_while(|&i| chars[i].is_alphabetic()).collect();
+            for i in std::iter::once(window[1]).chain(rest) {
+                if base(chars[i]) == 'y' {
+                    chars[i] = if chars[i].is_uppercase() { 'I' } else { 'i' };
+                }
             }
         }
     }
     chars.into_iter().collect()
 }
 
-/// Coupe un morceau trop long pour une ligne d'espeak-ng : à un espace, ou,
-/// faute d'espace, à une frontière de caractère.
+/// Un espace où l'on peut couper : pas les espaces insécables (U+00A0,
+/// U+202F, U+2007), qui lient un nombre à son unité ou un mot à sa ponctuation.
+fn breakable(c: char) -> bool {
+    c.is_whitespace() && !matches!(c, '\u{a0}' | '\u{202f}' | '\u{2007}')
+}
+
+/// Coupe un morceau trop long pour une ligne d'espeak-ng : à un espace
+/// sécable, ou, faute d'espace, à une frontière de caractère.
 fn split_long(text: &str) -> Vec<String> {
     let mut chunks = Vec::new();
     let mut rest = text.trim();
@@ -151,12 +173,12 @@ fn split_long(text: &str) -> Vec<String> {
         while !rest.is_char_boundary(end) {
             end -= 1;
         }
-        let cut = match rest[..end].rfind(char::is_whitespace) {
+        let cut = match rest[..end].rfind(breakable) {
             Some(space) if !rest[..space].trim().is_empty() => space,
             _ => end,
         };
-        chunks.push(rest[..cut].trim_end().to_string());
-        rest = rest[cut..].trim_start();
+        chunks.push(rest[..cut].trim_end_matches(breakable).to_string());
+        rest = rest[cut..].trim_start_matches(breakable);
     }
     if !rest.is_empty() {
         chunks.push(rest.to_string());
@@ -248,12 +270,30 @@ pub(crate) fn finish(language: &str, raw: &str) -> String {
     ps.replace('«', "(").replace('»', ")").trim().to_string()
 }
 
+/// Une suite de clôture tirée au hasard : `RandomState` est semé par le
+/// système à chaque fil et change à chaque appel, SipHash le rend imprévisible.
+fn closing_run() -> [usize; CLOSING_RUN] {
+    use std::hash::{BuildHasher, Hasher};
+    let mut hasher = std::collections::hash_map::RandomState::new().build_hasher();
+    hasher.write_u128(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos());
+    let mut bits = hasher.finish();
+    let mut pool: Vec<usize> = (0..CLOSINGS.len()).collect();
+    let mut run = [0; CLOSING_RUN];
+    for slot in &mut run {
+        let pick = (bits % pool.len() as u64) as usize;
+        bits /= pool.len() as u64;
+        *slot = pool.swap_remove(pick);
+    }
+    run
+}
+
 struct Running {
     process: Child,
     stdin: ChildStdin,
     lines: Receiver<String>,
     sentinel: String,
-    closing: String,
+    /// Les lignes de réponse de chaque mot de `CLOSINGS`.
+    closings: Vec<Vec<String>>,
 }
 
 impl Running {
@@ -261,16 +301,46 @@ impl Running {
         self.lines.recv_timeout(ANSWER_TIMEOUT).map_err(|_| anyhow!("espeak-ng ne répond plus"))
     }
 
-    /// Ce qui précède la prochaine réponse de la sentinelle.
-    fn read_answer(&self) -> Result<String> {
+    /// Les lignes qui précèdent la prochaine réponse de la sentinelle.
+    fn read_answer(&self) -> Result<Vec<String>> {
         let mut parts = Vec::new();
         loop {
             let line = self.read_line()?;
             if line.trim() == self.sentinel {
-                return Ok(parts.join(" "));
+                return Ok(parts);
             }
             parts.push(line.trim().to_string());
         }
+    }
+
+    /// Apprend les réponses des mots de clôture, deux fois : elles doivent
+    /// être stables, non vides et toutes différentes.
+    fn learn(&mut self) -> Result<()> {
+        let mut request = format!("{SENTINEL}\n");
+        for _ in 0..2 {
+            for word in CLOSINGS {
+                request.push_str(&format!("{word}\n{SENTINEL}\n"));
+            }
+        }
+        self.stdin.write_all(request.as_bytes())?;
+        self.stdin.flush()?;
+        self.sentinel = self.read_line()?.trim().to_string();
+        let mut rounds = Vec::new();
+        for _ in 0..2 {
+            let round: Vec<Vec<String>> = CLOSINGS.iter().map(|_| self.read_answer()).collect::<Result<_>>()?;
+            rounds.push(round);
+        }
+        let closings = rounds.pop().expect("deux tours");
+        let distinct: std::collections::HashSet<&Vec<String>> = closings.iter().collect();
+        if self.sentinel.is_empty()
+            || closings != rounds[0]
+            || distinct.len() != CLOSINGS.len()
+            || closings.iter().any(|c| c.is_empty() || c.iter().any(String::is_empty))
+        {
+            bail!("espeak-ng ne répond pas comme prévu");
+        }
+        self.closings = closings;
+        Ok(())
     }
 
     /// Prêt pour une requête : vivant, et rien d'une requête passée ne reste
@@ -297,17 +367,35 @@ impl Running {
                 request.push('\n');
                 end += 1;
             }
-            request.push_str(CLOSING);
-            request.push('\n');
-            request.push_str(SENTINEL);
-            request.push('\n');
+            let run = closing_run();
+            let mut expected = Vec::new();
+            for &word in &run {
+                request.push_str(CLOSINGS[word]);
+                request.push('\n');
+                expected.extend(self.closings[word].iter().cloned());
+            }
             self.stdin.write_all(request.as_bytes()).context("écriture vers espeak-ng")?;
             self.stdin.flush().context("écriture vers espeak-ng")?;
-            for _ in start..end {
-                answers.push(self.read_answer()?);
+            // Tout jusqu'à la suite de clôture, puis : une sentinelle après
+            // chaque ligne, ni plus ni moins.
+            let count = end - start;
+            let limit = MAX_LINES_PER_LINE * (count + 1) + expected.len();
+            let mut received: Vec<String> = Vec::new();
+            while !received.ends_with(&expected) {
+                if received.len() >= limit {
+                    bail!("espeak-ng répond trop");
+                }
+                received.push(self.read_line()?.trim().to_string());
             }
-            if self.read_answer()? != self.closing {
+            received.truncate(received.len() - expected.len());
+            if received.iter().filter(|l| **l == self.sentinel).count() != count
+                || received.last() != Some(&self.sentinel)
+            {
                 bail!("réponses d'espeak-ng décalées");
+            }
+            received.pop();
+            for answer in received.split(|l| *l == self.sentinel) {
+                answers.push(answer.join(" "));
             }
             start = end;
         }
@@ -388,15 +476,9 @@ impl EspeakProcess {
             return Err(e).context("fil de lecture d'espeak-ng");
         }
         // Désormais, `Running` tue et attend le processus s'il est relâché.
-        let mut running = Running { process, stdin, lines, sentinel: String::new(), closing: String::new() };
-        // Les réponses de la sentinelle et de la clôture, apprises une fois.
-        running.stdin.write_all(format!("{SENTINEL}\n{CLOSING}\n{SENTINEL}\n").as_bytes())?;
-        running.stdin.flush()?;
-        running.sentinel = running.read_line()?.trim().to_string();
-        running.closing = running.read_answer()?;
-        if running.sentinel.is_empty() || running.closing.is_empty() {
-            bail!("espeak-ng ne répond pas comme prévu");
-        }
+        let mut running = Running { process, stdin, lines, sentinel: String::new(), closings: Vec::new() };
+        // Les réponses de la sentinelle et des clôtures, apprises une fois.
+        running.learn()?;
         Ok(running)
     }
 
@@ -537,7 +619,8 @@ mod tests {
     fn neutralizing_ignores_case_accents_and_silent_marks() {
         assert_eq!(neutralize("le zyzomys, ZyZoMyS !"), "le zizomis, ZiZoMiS !");
         assert_eq!(neutralize("Zy\u{301}zo\u{ad}mys"), "Zi\u{301}zo\u{ad}mis");
-        assert_eq!(neutralize("zyzomy"), "zyzomy");
+        assert_eq!(neutralize("Zyzomies, zyzomy"), "Zizomies, zizomi");
+        assert_eq!(neutralize("zyzo, yzomys"), "zyzo, yzomys");
     }
 
     #[test]
@@ -549,6 +632,86 @@ mod tests {
         assert_eq!(espeak.phonemize("fr", &strings(&["vivant", "aussi"])).unwrap(), ["<vivant> x", "<aussi> x"]);
         assert!(espeak.phonemize("fr", &strings(&["collision"])).is_err(), "seule aussi");
         assert_eq!(espeak.phonemize("fr", &strings(&["encore"])).unwrap(), ["<encore> x"]);
+    }
+
+    /// Du shell : chaque mot de clôture, quelle que soit sa casse et avec ou
+    /// sans point, répond comme le mot lui-même (comme le vrai espeak-ng).
+    fn closings_like_espeak() -> String {
+        CLOSINGS
+            .iter()
+            .map(|w| {
+                let letters: String = w.trim_end_matches('.').chars().map(|c| format!("[{}{}]", c.to_ascii_uppercase(), c.to_ascii_lowercase())).collect();
+                format!("  case \"$line\" in {letters}|{letters}.) echo '<{w}>'; echo x; continue;; esac\n")
+            })
+            .collect()
+    }
+
+    #[test]
+    fn closing_words_in_a_text_never_shift_the_answers() {
+        let special = closings_like_espeak() + "  if [ \"$line\" = imite ]; then echo 'zizomis'; continue; fi";
+        let mut espeak = fake_with("clotures", &special);
+        // Chaque mot de clôture, seul ou en suite, dans une entrée ou dans
+        // plusieurs : les réponses sont justes.
+        let mut items: Vec<String> = CLOSINGS.iter().map(|w| w.to_string()).collect();
+        items.extend(CLOSINGS.iter().map(|w| w.trim_end_matches('.').to_uppercase()));
+        items.push(CLOSINGS.join(" "));
+        // Le point du mot seul part avec la ponctuation, comme partout.
+        let mut expected: Vec<String> = CLOSINGS.iter().map(|w| format!("<{w}> x.")).collect();
+        expected.extend(CLOSINGS.iter().map(|w| format!("<{w}> x")));
+        expected.push(CLOSINGS.iter().map(|w| format!("<{w}> x.")).collect::<Vec<_>>().join(" "));
+        for _ in 0..20 {
+            assert_eq!(espeak.phonemize("fr", &items).unwrap(), expected);
+        }
+        // Une réponse qui imite la sentinelle : une erreur, jamais un décalage.
+        for at in 0..3 {
+            let mut items = strings(&["Xq", "a", "Qx."]);
+            items.insert(at, "imite".into());
+            assert!(espeak.phonemize("fr", &items).is_err(), "imitation en position {at}");
+            assert_eq!(espeak.phonemize("fr", &strings(&["Xq", "b"])).unwrap(), ["<Xq.> x", "<b> x"]);
+        }
+    }
+
+    #[test]
+    fn a_text_that_replays_every_closing_run_only_gets_an_error() {
+        // Une ligne dont la réponse contient toutes les suites de clôture
+        // possibles : le lot s'arrête trop tôt, le compte des sentinelles le
+        // voit.
+        let mut replay = String::new();
+        for a in CLOSINGS {
+            for b in CLOSINGS {
+                for c in CLOSINGS {
+                    if a != b && b != c && a != c {
+                        replay.push_str(&format!("echo '<{a}>'; echo x; echo '<{b}>'; echo x; echo '<{c}>'; echo x; "));
+                    }
+                }
+            }
+        }
+        let special = format!("  if [ \"$line\" = rejoue ]; then {replay}continue; fi");
+        let mut espeak = fake_with("rejoue", &special);
+        for items in [strings(&["rejoue"]), strings(&["a", "rejoue"]), strings(&["rejoue", "b"])] {
+            assert!(espeak.phonemize("fr", &items).is_err());
+            assert_eq!(espeak.phonemize("fr", &strings(&["vivant"])).unwrap(), ["<vivant> x"]);
+        }
+    }
+
+    #[test]
+    fn each_batch_draws_its_own_closing_run() {
+        let runs: std::collections::HashSet<[usize; CLOSING_RUN]> = (0..50).map(|_| closing_run()).collect();
+        assert!(runs.len() > 10, "{} suites différentes sur 50", runs.len());
+        for run in runs {
+            assert!(run.iter().all(|&w| w < CLOSINGS.len()));
+            assert!(run[0] != run[1] && run[1] != run[2] && run[0] != run[2]);
+        }
+    }
+
+    #[test]
+    fn a_long_piece_is_never_cut_at_a_non_breaking_space() {
+        let text = format!("{} fin", "10\u{a0}km\u{202f}!".repeat(150));
+        let chunks = split_long(&text);
+        assert!(chunks.len() >= 2 && chunks.iter().all(|c| c.len() <= MAX_LINE));
+        assert_eq!(chunks.concat().replace(' ', ""), text.replace(' ', ""), "aucun insécable perdu ni coupé");
+        let normal = split_long(&("mot\u{a0}lié ".repeat(150)));
+        assert!(normal.len() >= 2 && normal.iter().all(|c| c.split(' ').all(|w| w == "mot\u{a0}lié")));
     }
 
     /// Les lignes `<…>` reçues par le faux, dans l'ordre.
@@ -750,6 +913,25 @@ mod tests {
         let long = espeak.phonemize("fr", &["été ".repeat(300)]).unwrap();
         let once = espeak.phonemize("fr", &strings(&["été"])).unwrap();
         assert!(long[0].split(' ').all(|w| w == once[0]), "aucun octet égaré");
+    }
+
+    /// Le vrai espeak-ng : un mot qui répond comme la sentinelle et un mot de
+    /// clôture dans le même lot ne déplacent aucune réponse.
+    #[test]
+    #[ignore]
+    fn the_real_espeak_never_misattributes_answers_in_english() {
+        let mut espeak = EspeakProcess::locate().expect("espeak-ng construit");
+        let hello = espeak.phonemize("en", &strings(&["hello"])).unwrap();
+        let xq = espeak.phonemize("en", &strings(&["Xq"])).unwrap();
+        for _ in 0..20 {
+            // Une erreur serait acceptable ; un succès doit être juste.
+            if let Ok(out) = espeak.phonemize("en", &strings(&["Zyzomies", "hello", "Xq"])) {
+                assert!(!out[0].is_empty());
+                assert_eq!([&out[1], &out[2]], [&hello[0], &xq[0]]);
+            }
+            let again = espeak.phonemize("en", &strings(&["hello", "XQ", "xq"])).unwrap();
+            assert_eq!(again, [hello[0].clone(), xq[0].clone(), xq[0].clone()]);
+        }
     }
 
     /// Budget : ≤ 5 ms par phrase, phrase et mots seuls compris, à chaud.
