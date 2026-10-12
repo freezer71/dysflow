@@ -1337,7 +1337,9 @@ impl App {
             return;
         }
         let Some(package) = self.screen.current_package() else { return };
-        if !models::is_installed(package) {
+        // Un paquet interrompu (annulé, échoué entre deux fichiers) se retire
+        // aussi : son gros fichier ne resterait sinon jamais.
+        if !models::has_files(package) {
             return;
         }
         if !self.screen.confirm_delete(package) {

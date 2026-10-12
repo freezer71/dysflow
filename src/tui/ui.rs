@@ -1492,9 +1492,9 @@ fn render_model_list(frame: &mut Frame, app: &App, area: Rect) {
             if truncated {
                 lines.push(Line::from(Span::styled(
                     format!(
-                        "     Fichier incomplet : {} au lieu de {}. Entrée pour réinstaller.",
-                        models::human_size(models::installed_size(package).unwrap_or(0)),
-                        models::human_size(package.bytes)
+                        "     Paquet incomplet : {} sur {}. Entrée pour réinstaller.",
+                        models::human_size(models::installed_bytes(package)),
+                        models::human_size(package.total_bytes())
                     ),
                     Style::default().fg(ACCENT),
                 )));

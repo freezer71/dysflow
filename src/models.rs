@@ -424,7 +424,37 @@ pub fn is_truncated(package: &ModelPackage) -> bool {
 
 /// Premier modèle installé, celui que le lecteur choisit par défaut.
 pub fn first_installed() -> Option<&'static ModelPackage> {
-    available().into_iter().find(|p| is_installed(p))
+    first_installed_with(false)
+}
+
+/// Comme `first_installed`, pour un lecteur dont l'app fournit (ou non) le
+/// calcul MLX.
+pub fn first_installed_with(mlx: bool) -> Option<&'static ModelPackage> {
+    available_with(mlx).into_iter().find(|p| is_installed(p))
+}
+
+/// Octets présents sur disque pour ce paquet : fichier principal et compagnons.
+pub fn installed_bytes_in(root: &Path, package: &ModelPackage) -> u64 {
+    std::iter::once(main_path_in(root, package))
+        .chain(package.companions.iter().map(|c| companion_path_in(root, package, c)))
+        .filter_map(|p| size_of(&p))
+        .sum()
+}
+
+pub fn installed_bytes(package: &ModelPackage) -> u64 {
+    models_dir().map_or(0, |root| installed_bytes_in(&root, package))
+}
+
+/// Vrai si un fichier du paquet, ou un `.part` de lui, traîne sur le disque :
+/// de quoi proposer de le retirer même incomplet.
+pub fn has_files_in(root: &Path, package: &ModelPackage) -> bool {
+    planned_files_in(root, package)
+        .into_iter()
+        .any(|(_, path, _)| path.exists() || path.with_extension("part").exists())
+}
+
+pub fn has_files(package: &ModelPackage) -> bool {
+    models_dir().is_some_and(|root| has_files_in(&root, package))
 }
 
 /// Le dossier d'un paquet Kokoro complet, d'après son fichier principal :
@@ -443,7 +473,18 @@ pub fn remove(package: &ModelPackage) -> Result<()> {
 /// la famille, présent, le nomme : retirer le paquet MLX ne casse pas l'int8.
 pub fn remove_in(root: &Path, package: &ModelPackage) -> Result<()> {
     let path = main_path_in(root, package);
-    std::fs::remove_file(&path).with_context(|| format!("suppression de {}", path.display()))?;
+    // Un paquet interrompu n'a pas forcément tous ses fichiers : l'absence
+    // n'arrête pas le nettoyage. Les `.part` partent aussi.
+    let mut first_error = None;
+    for file in [path.clone(), path.with_extension("part")] {
+        match std::fs::remove_file(&file) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => {
+                first_error.get_or_insert_with(|| anyhow!("suppression de {} : {e}", file.display()));
+            }
+        }
+    }
     for companion in package.companions {
         let shared = CATALOG.iter().any(|other| {
             other.id != package.id
@@ -452,14 +493,19 @@ pub fn remove_in(root: &Path, package: &ModelPackage) -> Result<()> {
                 && other.companions.iter().any(|c| c.dest == companion.dest)
         });
         if !shared {
-            let _ = std::fs::remove_file(companion_path_in(root, package, companion));
+            let file = companion_path_in(root, package, companion);
+            let _ = std::fs::remove_file(&file);
+            let _ = std::fs::remove_file(file.with_extension("part"));
         }
     }
     // Laisse le dossier de famille propre s'il devient vide.
     let family = root.join(package.family);
     let _ = std::fs::remove_dir(family.join("voices"));
     let _ = std::fs::remove_dir(&family);
-    Ok(())
+    match first_error {
+        Some(err) => Err(err),
+        None => Ok(()),
+    }
 }
 
 /// Espace disque libre du volume des modèles, en octets.
@@ -513,7 +559,11 @@ impl Download {
     /// compagnons, en reprenant ce qui est déjà là.
     pub fn start(package: &'static ModelPackage) -> Result<Self> {
         let root = models_dir().context("répertoire de données introuvable")?;
-        let files = planned_files_in(&root, package);
+        Self::start_in(package, planned_files_in(&root, package))
+    }
+
+    /// Télécharge ces fichiers (adresse, destination, taille) pour ce paquet.
+    pub(crate) fn start_in(package: &'static ModelPackage, files: Vec<(String, PathBuf, u64)>) -> Result<Self> {
         let received = Arc::new(AtomicU64::new(0));
         let total = Arc::new(AtomicU64::new(package.total_bytes()));
         let outcome = Arc::new(Mutex::new(None));
@@ -1356,6 +1406,113 @@ mod tests {
         let received = AtomicU64::new(0);
         fetch(&url, &destination, 5, &received, 100, &AtomicBool::new(false)).unwrap();
         assert_eq!(received.load(Ordering::Relaxed), 105);
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn a_short_companion_shows_in_the_installed_bytes() {
+        let root = scratch("octets-presents");
+        let mlx = package("kokoro_82m_mlx");
+        sparse(&root, mlx, true);
+        assert_eq!(installed_bytes_in(&root, mlx), mlx.total_bytes());
+        let voice = companion_path_in(&root, mlx, &mlx.companions[3]);
+        std::fs::File::create(&voice).unwrap().set_len(10).unwrap();
+        assert_eq!(installed_bytes_in(&root, mlx), mlx.total_bytes() - mlx.companions[3].bytes + 10);
+        assert!(is_truncated_in(&root, mlx));
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn a_partial_package_can_be_found_and_removed_whole() {
+        let root = scratch("partiel-kokoro");
+        let mlx = package("kokoro_82m_mlx");
+        assert!(!has_files_in(&root, mlx));
+        // Le gros fichier est là, la configuration et les voix non, un .part traîne.
+        sparse(&root, mlx, false);
+        let part = companion_path_in(&root, mlx, &mlx.companions[1]).with_extension("part");
+        std::fs::create_dir_all(part.parent().unwrap()).unwrap();
+        std::fs::write(&part, b"xx").unwrap();
+        assert!(!is_installed_in(&root, mlx));
+        assert!(has_files_in(&root, mlx));
+        remove_in(&root, mlx).unwrap();
+        assert!(!root.join("kokoro").exists(), "plus rien, dossier de famille retiré");
+        // Seul un .part : il part aussi, sans fichier principal.
+        std::fs::create_dir_all(root.join("kokoro")).unwrap();
+        std::fs::write(main_path_in(&root, mlx).with_extension("part"), b"x").unwrap();
+        assert!(has_files_in(&root, mlx));
+        remove_in(&root, mlx).unwrap();
+        assert!(!has_files_in(&root, mlx));
+        assert!(!root.join("kokoro").exists());
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn removing_a_partial_package_keeps_what_an_installed_one_shares() {
+        let root = scratch("partiel-partage");
+        let (mlx, int8) = (package("kokoro_82m_mlx"), package("kokoro_82m_int8"));
+        sparse(&root, int8, true);
+        // Le paquet MLX n'a que quelques voix, sans son fichier principal.
+        let voice = companion_path_in(&root, mlx, &mlx.companions[1]);
+        assert!(voice.exists());
+        remove_in(&root, mlx).unwrap();
+        assert!(is_installed_in(&root, int8), "l'int8 garde voix et configuration");
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    fn files_for(urls: &[(String, &Path, u64)]) -> Vec<(String, PathBuf, u64)> {
+        urls.iter().map(|(u, p, b)| (u.clone(), p.to_path_buf(), *b)).collect()
+    }
+
+    fn wait(download: &Download) -> Progress {
+        for _ in 0..500 {
+            if download.is_finished() {
+                return download.progress();
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        panic!("téléchargement jamais terminé");
+    }
+
+    #[test]
+    fn a_download_skips_files_already_complete_and_reports_the_package() {
+        let root = scratch("telechargement");
+        let (one, two) = (root.join("f").join("un.bin"), root.join("f").join("voices").join("deux.bin"));
+        std::fs::create_dir_all(one.parent().unwrap()).unwrap();
+        std::fs::write(&one, b"abc").unwrap();
+        // Le premier est déjà là : son adresse ne répond pas et n'est pas appelée.
+        let files = files_for(&[("http://127.0.0.1:1/jamais".into(), &one, 3), (serve_once(b"defgh"), &two, 5)]);
+        let download = Download::start_in(&CATALOG[0], files).unwrap();
+        assert_eq!(wait(&download), Progress::Done);
+        assert_eq!(std::fs::read(&two).unwrap(), b"defgh");
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn a_download_stops_at_the_first_failing_file() {
+        let root = scratch("telechargement-echec");
+        let (one, two, three) = (root.join("f/un.bin"), root.join("f/deux.bin"), root.join("f/trois.bin"));
+        // Le deuxième fichier arrive trop court : le troisième n'est pas tenté.
+        let files = files_for(&[
+            (serve_once(b"abc"), &one, 3),
+            (serve_once(b"de"), &two, 5),
+            ("http://127.0.0.1:1/jamais".into(), &three, 1),
+        ]);
+        let download = Download::start_in(&CATALOG[0], files).unwrap();
+        assert!(matches!(wait(&download), Progress::Failed(_)));
+        assert!(one.exists() && !two.exists() && !three.exists());
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn a_cancelled_download_is_reported_cancelled_and_stops() {
+        let root = scratch("telechargement-annule");
+        let (one, two) = (root.join("f/un.bin"), root.join("f/deux.bin"));
+        let files = files_for(&[(serve_once(b"abc"), &one, 3), ("http://127.0.0.1:1/jamais".into(), &two, 1)]);
+        let download = Download::start_in(&CATALOG[0], files).unwrap();
+        download.cancel(); // avant même le premier octet : le thread le voit à la première boucle
+        let state = wait(&download);
+        assert!(matches!(state, Progress::Cancelled | Progress::Failed(_)), "{state:?}");
+        assert!(!two.exists(), "rien après l'annulation");
         std::fs::remove_dir_all(&root).ok();
     }
 
