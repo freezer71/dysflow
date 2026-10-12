@@ -13,6 +13,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// raccourcis globaux (ils s'inscriraient pour l'app de développement).
     let isUnitTesting = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
     private(set) var reader: SillonReader!
+    /// Le calcul MLX de Kokoro ; jamais avec le lecteur muet des tests.
+    private(set) var kokoroCompute: KokoroMLXCompute?
     /// Le lecteur est muet et hors disque (tests d'interface, tests unitaires).
     private(set) var readerIsSilent = false
 
@@ -60,7 +62,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Self.shared = self
         readerIsSilent = Self.usesSilentReader(arguments: ProcessInfo.processInfo.arguments,
                                                environment: ProcessInfo.processInfo.environment)
-        reader = readerIsSilent ? SillonReader.silent() : SillonReader()
+        if readerIsSilent {
+            reader = SillonReader.silent()
+        } else {
+            Self.exportEspeakLocation()
+            let compute = KokoroMLXCompute()
+            kokoroCompute = compute
+            reader = SillonReader.withKokoro(compute: compute)
+        }
         // Mode mesure : seul le lecteur et les mesures tournent. Retour avant le
         // modèle, le panneau, les raccourcis, l'ouverture à la connexion et
         // l'accueil ; sans l'argument, rien ne change.
@@ -93,6 +102,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         installShortcuts()
         LoginItem.enableOnFirstLaunch()
         Onboarding.runIfNeeded()
+        startKokoro()
+    }
+
+    /// sillon-espeak (la phonétisation de Kokoro) livré dans l'app : le
+    /// moteur le trouve par ces variables, posées avant la première voix.
+    nonisolated static func exportEspeakLocation(bundle: Bundle = .main) {
+        let helper = bundle.bundleURL.appendingPathComponent("Contents/Helpers/sillon-espeak")
+        setenv("SILLON_ESPEAK", helper.path, 1)
+        if let resources = bundle.resourceURL {
+            setenv("SILLON_ESPEAK_DATA", resources.path, 1)
+        }
+    }
+
+    /// Le passage à Kokoro (une fois, avec un avis), puis la préparation des
+    /// noyaux Metal, maintenant et à chaque fois que la voix active a pu
+    /// changer.
+    private func startKokoro() {
+        if let notice = model.migrateVoice() {
+            model.message = notice
+            panel.post(notice)
+        }
+        model.onVoiceMayHaveChanged = { [weak self] in self?.kokoroBecameActive() }
+        kokoroBecameActive()
+    }
+
+    /// Kokoro est peut-être devenu la voix active (lancement, voix choisie,
+    /// proposition acceptée, téléchargement fini) : les noyaux Metal se
+    /// préparent hors du fil principal, une fois par version de l'app, pour
+    /// que leur compilation (≈ 9 s) ne tombe jamais sur le premier mot lu.
+    func kokoroBecameActive() {
+        guard let compute = kokoroCompute, let model else { return }
+        let version = KokoroWarmUp.version(of: .main)
+        // Déjà faite pour cette version : pas même la lecture des réglages.
+        guard UserDefaults.standard.string(forKey: KokoroWarmUp.versionKey) != version,
+              !KokoroWarmUp.isRunning else { return }
+        Task { @MainActor in
+            let settings = await model.loadSettings()
+            KokoroWarmUp.runIfNeeded(compute: compute,
+                                     modelDirectory: KokoroWarmUp.modelDirectory(settings: settings),
+                                     version: version)
+        }
     }
 
     /// Une seule lecture à la fois, raccourci ou menu.

@@ -6,3 +6,29 @@ sonic.h, sans modification), Copyright 2010 Bill Cox, distribuée sous
 licence Apache 2.0 — voir third_party/sonic/LICENSE.
 Source : https://github.com/waywardgeek/sonic, révision
 b93885dcb70aae50c6f76b0fe4e0868f029a077e (14 mars 2026).
+
+La voix Kokoro-82M (hexgrad, poids et voix sous licence Apache 2.0) est
+téléchargée à la demande depuis mlx-community/Kokoro-82M-bf16 (révision
+a71e4d38b236d968966a2002c4c895dbd12b1c3c) ou
+onnx-community/Kokoro-82M-v1.0-ONNX-timestamped (révision
+dd4401a9add81ac692d20e240d22ec9dda82cc29). La voix p-fenrir60, livrée avec
+Sillon (assets/voices), en est dérivée (Apache 2.0).
+
+L'app macOS contient des fichiers de mlx-audio-swift (macos/Vendor/KokoroMLX,
+licence MIT, Copyright (c) 2025 Prince Canuma) et utilise mlx-swift (licence
+MIT, Apple) ; leurs licences et ce fichier sont joints dans
+Contents/Resources/licences.
+
+L'app macOS contient sillon-espeak (Contents/Helpers/sillon-espeak), un petit
+programme de Sillon (scripts/sillon-espeak.c) lié à espeak-ng 1.52.0, avec
+les données d'espeak-ng (Contents/Resources/espeak-ng-data), sous licence GNU
+GPL version 3. C'est un programme séparé, que Sillon lance et auquel il parle
+par ses entrées et sorties : Sillon ne s'y lie pas. Le texte de la licence,
+l'adresse exacte des sources d'espeak-ng
+(https://github.com/espeak-ng/espeak-ng/archive/refs/tags/1.52.0.tar.gz) et
+les sources de sillon-espeak (sillon-espeak.c, build-espeak.sh) sont livrés
+dans Contents/Resources/espeak-ng (COPYING, SOURCE.txt).
+
+Au terminal, la feature kokoro-onnx charge ONNX Runtime (licence MIT,
+Microsoft), livré à côté du binaire sous Linux par scripts/package.sh, avec
+sillon-espeak, ses données et ses sources (sillon-espeak-source/).

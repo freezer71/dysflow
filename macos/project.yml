@@ -7,6 +7,10 @@ packages:
   KeyboardShortcuts:
     url: https://github.com/sindresorhus/KeyboardShortcuts
     from: 2.2.0
+  # MLX : lié une seule fois, dans le framework KokoroMLX.
+  MLXSwift:
+    url: https://github.com/ml-explore/mlx-swift
+    exactVersion: 0.32.3
 configFiles:
   Debug: Generated/Link.xcconfig
   Release: Generated/Link.xcconfig
@@ -20,6 +24,31 @@ settings:
     # Link.xcconfig s'applique à toutes les cibles, tests compris.
     LIBRARY_SEARCH_PATHS: $(SRCROOT)/Libraries
 targets:
+  # Kokoro en MLX : fichiers de mlx-audio-swift (MIT) et la porte KokoroRunner.
+  # La seule cible liée à MLX : une copie, un cache, un plafond mémoire.
+  KokoroMLX:
+    type: framework
+    platform: macOS
+    sources:
+      - path: Vendor/KokoroMLX
+        # La licence part dans Contents/Resources/licences (script de Sillon).
+        excludes: [ORIGINE.md, LICENSE]
+    dependencies:
+      - package: MLXSwift
+        product: MLX
+      - package: MLXSwift
+        product: MLXNN
+      - package: MLXSwift
+        product: MLXFast
+      - package: MLXSwift
+        product: MLXFFT
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: fr.sillon.kokoromlx
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_VERSION: "5.0"
+        # Link.xcconfig lie le moteur Rust : rien à faire ici.
+        OTHER_LDFLAGS: ""
   Sillon:
     type: application
     platform: macOS
@@ -31,6 +60,9 @@ targets:
         buildPhase: resources
     dependencies:
       - package: KeyboardShortcuts
+      # MLX n'arrive que par ce framework (jamais en paquet ici).
+      - target: KokoroMLX
+        embed: true
       - sdk: MediaPlayer.framework
     settings:
       base:
@@ -52,6 +84,38 @@ targets:
             mkdir -p "$DEST"
             cp "$SHIM" "$DEST/"
             codesign --force --sign - "$DEST/libaudiocpp_shim.dylib"
+          fi
+      - name: Joindre sillon-espeak (GPL-3.0, programme séparé)
+        basedOnDependencyAnalysis: false
+        script: |
+          ESPEAK="$SRCROOT/../target/espeak"
+          if [ -x "$ESPEAK/bin/sillon-espeak" ]; then
+            HELPERS="$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Helpers"
+            RES="$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH"
+            mkdir -p "$HELPERS" "$RES/espeak-ng"
+            cp "$ESPEAK/bin/sillon-espeak" "$HELPERS/"
+            rm -rf "$RES/espeak-ng-data"
+            cp -R "$ESPEAK/share/espeak-ng-data" "$RES/"
+            # La GPL : licence, adresse des sources et sources de sillon-espeak.
+            cp "$ESPEAK/COPYING" "$ESPEAK/SOURCE.txt" "$ESPEAK/sillon-espeak.c" \
+               "$SRCROOT/../scripts/build-espeak.sh" "$RES/espeak-ng/"
+            codesign --force --sign - "$HELPERS/sillon-espeak"
+          else
+            echo "warning: sillon-espeak absent (./scripts/build-espeak.sh) : Kokoro se repliera"
+          fi
+      - name: Joindre NOTICE et la licence de mlx-swift
+        basedOnDependencyAnalysis: false
+        script: |
+          RES="$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH"
+          mkdir -p "$RES/licences"
+          # install -m 644 : les fichiers des paquets sont en lecture seule.
+          install -m 644 "$SRCROOT/../NOTICE" "$RES/licences/NOTICE"
+          install -m 644 "$SRCROOT/Vendor/KokoroMLX/LICENSE" "$RES/licences/mlx-audio-swift-LICENSE"
+          MLX_LICENSE="$BUILD_DIR/../../SourcePackages/checkouts/mlx-swift/LICENSE"
+          if [ -f "$MLX_LICENSE" ]; then
+            install -m 644 "$MLX_LICENSE" "$RES/licences/mlx-swift-LICENSE"
+          else
+            echo "warning: licence de mlx-swift introuvable ($MLX_LICENSE)"
           fi
   SillonTests:
     type: bundle.unit-test

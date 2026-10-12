@@ -36,8 +36,20 @@ impl From<uniffi::UnexpectedUniFFICallbackError> for SillonError {
 }
 
 /// Le calcul de Kokoro, fourni par l'app (MLX). Le moteur Rust garde
-/// phonétisation, découpage, voix, minutage, Sonic et lecteur ; ces appels
-/// arrivent sur le fil de synthèse et bloquent jusqu'au résultat.
+/// phonétisation, découpage, voix, minutage, Sonic et lecteur.
+///
+/// Contrat pour l'implémentation étrangère :
+/// - les appels arrivent de fils d'arrière-plan du moteur (synthèse,
+///   chargement), jamais du fil principal, et bloquent jusqu'au résultat ;
+/// - ils peuvent être **simultanés** : un ancien moteur finit une synthèse
+///   pendant qu'un nouveau se charge et se prépare, et `SharedCompute` ne
+///   sérialise ni `synthesize` ni `warm_up`. L'implémentation sérialise
+///   elle-même son calcul (un verrou ou une file) ;
+/// - elle n'attend jamais le fil principal (ni `DispatchQueue.main.sync`, ni
+///   `MainActor`) : il peut lui-même attendre le moteur ;
+/// - `load` et `release` vont par paires, éventuellement de plusieurs
+///   détenteurs (la préparation des noyaux de l'app en est un) : les poids
+///   ne partent qu'au dernier `release`.
 #[uniffi::export(with_foreign)]
 pub trait KokoroCompute: Send + Sync {
     fn load(&self, model_dir: String) -> Result<(), SillonError>;

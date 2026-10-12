@@ -32,6 +32,10 @@ final class ReaderModel {
     /// d'avancement, à l'état) — jamais à chaque image : « À l'écoute » suit
     /// l'état sans minuterie à lui.
     @ObservationIgnored var onChange: (@MainActor (Snapshot, DocView) -> Void)?
+    /// Prévenu quand la voix active a pu changer : voix choisie, proposition
+    /// acceptée, téléchargement fini (le passage à Kokoro accepté attend sa
+    /// fin). L'app y prépare les noyaux Metal de Kokoro.
+    @ObservationIgnored var onVoiceMayHaveChanged: (@MainActor () -> Void)?
 
     init(reader: SillonReader, now: @escaping () -> Date = Date.init,
          frames: FrameSource? = nil) {
@@ -98,6 +102,10 @@ final class ReaderModel {
 
     /// Un téléchargement est en cours (un échec resté là ne compte pas).
     static func isDownloading(_ d: DownloadView?) -> Bool { d.map { $0.failed == nil } ?? false }
+    /// Un téléchargement en cours vient de finir (réussi ou non).
+    static func downloadEnded(from old: DownloadView?, to new: DownloadView?) -> Bool {
+        isDownloading(old) && !isDownloading(new)
+    }
 
     /// La décision de suivi, sans état : testable. Quelque chose avance
     /// (lecture, commande récente, voix qui se charge, téléchargement) : à
@@ -215,6 +223,7 @@ final class ReaderModel {
         let changed = next != snapshot
         let newDocument = next.revision != snapshot.revision
         let newSection = next.section != snapshot.section
+        let downloadEnded = Self.downloadEnded(from: snapshot.download, to: next.download)
         // Ne publier qu'un changement réel : SwiftUI ne redessine pas pour rien.
         if changed {
             snapshot = next
@@ -225,6 +234,7 @@ final class ReaderModel {
             breadcrumb = SectionMarkers.breadcrumb(document, section: snapshot.section)
         }
         if changed { onChange?(snapshot, document) }
+        if downloadEnded { onVoiceMayHaveChanged?() }
         updateTicking()
     }
 
@@ -307,6 +317,7 @@ final class ReaderModel {
         let reader = reader
         try await Task.detached { try reader.useVoice(id: id) }.value
         wake()
+        onVoiceMayHaveChanged?()
     }
     func cancelDownloadAsync() async throws {
         let reader = reader
@@ -356,6 +367,7 @@ final class ReaderModel {
         let reader = reader
         try await Task.detached { try reader.acceptVoiceOffer() }.value
         wake()
+        onVoiceMayHaveChanged?()
     }
     /// « Plus tard » : le refus est retenu.
     func dismissVoiceOffer() {
