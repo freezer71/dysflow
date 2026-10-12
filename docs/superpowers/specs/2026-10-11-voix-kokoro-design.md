@@ -206,8 +206,10 @@ aujourd'hui un modèle ; elle passe donc à Kokoro.
   Ses réglages propres (voix, échantillonnage) restent dans `config.toml`.
 - **Un court avis le dit :** « Nouvelle voix : Kokoro remplace Supertonic 3 ·
   F16. L'ancien modèle reste installé : Réglages › Voix pour y revenir. »
-  La proposition : « Nouvelle voix disponible (326,4 Mo) — Passer à
-  Kokoro ? » (taille écrite comme dans l'onglet Modèles), avec les boutons
+  La proposition : « Nouvelle voix disponible (342 Mo) — Passer à
+  Kokoro ? » dans l'app (taille en base 1000, écrite comme partout dans
+  l'app par `SizeFormat`) ; le terminal garde `human_size` (« 326,4 Mo »,
+  comme son onglet Modèles). Avec les boutons
   « Passer à Kokoro » et « Plus tard ». L'app affiche avis et proposition
   dans le panneau et l'onglet Voix, et les annonce à VoiceOver.
 - **Au terminal :** un Kokoro installé est adopté de la même façon, avec le
@@ -251,13 +253,20 @@ aujourd'hui un modèle ; elle passe donc à Kokoro.
     `min(engine.threads, 4)`. L'allocateur est réglé : arène réduite,
     `memory_pattern` coupé, réglage final fixé par mesure.
   - `phonemes.rs` : le trait `Phonemizer`, avec un `EspeakProcess` persistant
-    (`espeak-ng -q --ipa -v fr-fr` ou `en-us`, un processus par langue lancé à
-    la demande). Le protocole est ligne à ligne, avec une phrase sentinelle pour
-    reconnaître la fin d'une réponse. Le traitement de misaki
+    qui lance `sillon-espeak` (un petit programme de Sillon,
+    `scripts/sillon-espeak.c`, lié à libespeak-ng ; un processus par langue,
+    `fr-fr` ou `en-us`, lancé à la demande). Le protocole est binaire, à
+    trames préfixées par leur longueur (u32 petit-boutiste puis octets) : la
+    voix au lancement, puis pour chaque lot le nombre d'entrées et une trame
+    par entrée ; la réponse donne une trame de phonèmes IPA par entrée, puis
+    « ok ». Le découpage ne dépend que des longueurs : aucun texte ne peut le
+    déplacer (pas de phrase sentinelle ni de protocole ligne à ligne). Le
+    traitement de misaki
     (`EspeakG2P` : ponctuation gardée, accents toniques, table de
     remplacements) est porté pour obtenir les mêmes phonèmes que la référence.
     Les mots seuls, pour l'alignement, partent dans la même requête que la
-    phrase : un seul aller-retour. Budget : ≤ 5 ms par phrase.
+    phrase : un seul aller-retour. Budget : ≤ 5 ms par phrase (mesuré :
+    0,2 ms par phrase, contre 3,9 ms avec l'ancien protocole ligne à ligne).
   - `voices.rs` : lit les tenseurs 510 × 256 (`safetensors`, Apache-2.0).
     `p-fenrir60` est incluse dans le binaire (`assets/voices/p-fenrir60.safetensors`,
     avec `p-fenrir60.json`).
@@ -372,16 +381,30 @@ pub struct KokoroOutput { pub samples: Vec<f32>, pub durations: Vec<u32> }
 - **`KokoroWarmUp`** : la préparation au lancement, une fois par version de
   l'app (suite de préférences isolée en test).
 - **Construction de l'app :**
-  - `build-macos.sh` vérifie la présence du Metal Toolchain
-    (`xcodebuild -downloadComponent MetalToolchain`). Sans lui, il embarque le
-    `mlx.metallib` de la version de MLX figée.
-  - Le metallib mesuré au spike pèse 190 Mo : à vérifier sur l'app construite.
+  - `build-macos.sh` exige le Metal Toolchain
+    (`xcodebuild -downloadComponent MetalToolchain`) et s'arrête sans lui.
+    mlx-swift compile ses noyaux à l'exécution (JIT) : le metallib embarqué
+    pèse 2,3 Mo, l'app 68 Mo environ (12 oct. 2026). La question des
+    « 190 Mo de metallib » du spike est close.
+  - Licences : `build-macos.sh` refuse une app sans les textes de
+    `Contents/Resources/licences` (NOTICE, bibliothèques Swift et C++,
+    `THIRD-PARTY-RUST.txt` généré par `scripts/third-party-rust.py`,
+    Tesseract, Leptonica, et audio.cpp avec ce qu'il compile quand le shim
+    est joint).
+  - Liste de contrôle d'une version : garder `target/espeak/*.tar.gz` (les
+    sources exactes d'espeak-ng, offertes au titre de la GPL) avec chaque
+    version publiée ; monter `CFBundleVersion` à chaque version (la
+    préparation Metal est faite une fois par numéro).
 - **espeak-ng dans l'app :**
-  - `scripts/build-espeak.sh` construit un binaire à partir d'une version
-    figée. Il va dans `Contents/Helpers/espeak-ng`, avec ses données réduites à
-    `fr` et `en` (`Contents/Resources/espeak-ng-data/`), sa licence et l'adresse
-    exacte des sources.
-  - L'app passe le chemin au moteur par `SILLON_ESPEAK`.
+  - `scripts/build-espeak.sh` construit `sillon-espeak` à partir d'une
+    version figée d'espeak-ng (archive vérifiée par SHA-256). Il va dans
+    `Contents/Helpers/sillon-espeak`, avec ses données réduites à `fr` et `en`
+    (`Contents/Resources/espeak-ng-data/`), sa licence, l'adresse exacte des
+    sources et ses propres sources (`Contents/Resources/espeak-ng/`).
+  - L'app passe le chemin au moteur par `SILLON_ESPEAK` (et ses données par
+    `SILLON_ESPEAK_DATA`).
+  - Au terminal, `scripts/package.sh` joint `sillon-espeak`, ses données et
+    ses sources à côté du binaire.
   - Au terminal, le moteur cherche dans cet ordre : `SILLON_ESPEAK`, à côté du
     binaire, puis `PATH`.
 - **Onglet Voix** (famille `kokoro`) :
@@ -400,7 +423,7 @@ pub struct KokoroOutput { pub samples: Vec<f32>, pub durations: Vec<u32> }
 | Situation | Réaction |
 |---|---|
 | Modèle Kokoro absent ou incomplet | Repli (audio.cpp installé, sinon système). Message « Kokoro n'est pas installé » avec lien vers l'onglet Modèles |
-| espeak-ng introuvable | Kokoro ne se charge pas : repli. Linux : « espeak-ng introuvable — installez le paquet `espeak-ng` ». App : « Installation de Sillon incomplète (espeak-ng) » |
+| sillon-espeak introuvable | Kokoro ne se charge pas : repli, avec le même message dans l'app et au terminal : « Installation de Sillon incomplète (sillon-espeak introuvable) ». Le paquet Linux livre le programme (`package.sh`) : il ne dépend pas du paquet `espeak-ng` du système |
 | espeak-ng s'arrête en cours de lecture | Relancé une fois. S'il échoue encore, la phrase est sautée (comportement du pool) et la voix passe en repli, avec message |
 | MLX indisponible (pas de GPU Metal, metallib illisible) | Sans ORT dans l'app : repli, message « Calcul Metal indisponible » |
 | Compilation Metal (premier lancement) | « Voix en préparation (première fois)… » ; la lecture part ensuite seule |
@@ -418,8 +441,10 @@ pub struct KokoroOutput { pub samples: Vec<f32>, pub durations: Vec<u32> }
     de style `len − 1` ; jetons de bord ; coupe au-delà de 510 ; coupe en tête et
     suite pour la seule phrase du curseur ; minutage bout à bout ; `release()`
     appelé au repos ; NaN refusé.
-  - Un `FakePhonemizer` remplace espeak-ng ; le protocole à sentinelle est testé
-    contre un faux processus (script) qui répond en plusieurs lignes.
+  - Un `FakePhonemizer` remplace espeak-ng ; le protocole à trames est testé
+    contre un faux `sillon-espeak` qui tourne dans un fil et parle le vrai
+    protocole : programme mort relancé une fois, programme muet en échec
+    rapide, programme qui cesse de lire sans bloquer une grosse requête.
   - Langue : paragraphes français et anglais, texte court (langue par défaut),
     document mêlé (langue majoritaire, part), blocs de code ignorés.
   - Réglages : aller-retour de `voice_for_language` ; changement de langue →
@@ -445,7 +470,7 @@ pub struct KokoroOutput { pub samples: Vec<f32>, pub durations: Vec<u32> }
 - **Avec espeak-ng installé** (`#[ignore]`, lancés à la main) :
   - parité des phonèmes Rust avec `ref/phonemes.json` (misaki) sur le jeu v1
     français et anglais ;
-  - budget ≤ 5 ms par phrase.
+  - budget ≤ 5 ms par phrase (mesuré : 0,2 ms).
   - Avec les voix téléchargées : `p-fenrir60` livrée égale la recette recalculée
     à partir de `ff_siwis` et `am_fenrir` (écart ≤ 1e-6).
 - **Swift :**
@@ -473,7 +498,8 @@ pub struct KokoroOutput { pub samples: Vec<f32>, pub durations: Vec<u32> }
   phonétiseur permissif reste possible (lexique, règles de liaison, G2P
   neuronal), mais il coûte au moins 1,6 point de WER tant que les liaisons ne
   sont pas écrites.
-- **Taille de l'app :** jusqu'à 190 Mo de metallib, à mesurer.
+- ~~**Taille de l'app :** jusqu'à 190 Mo de metallib, à mesurer.~~ Close :
+  noyaux compilés à l'exécution, metallib de 2,3 Mo, app de 68 Mo environ.
 - **Intonation à la coupure de la première phrase :** à vérifier à l'écoute.
 
 ## Hors périmètre
