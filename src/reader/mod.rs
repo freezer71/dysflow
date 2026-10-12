@@ -68,6 +68,9 @@ pub struct Reader {
     language: Option<language::DocumentLanguage>,
     /// L'app fournit le calcul MLX : le paquet Kokoro MLX est proposé.
     mlx: bool,
+    /// `config.toml` existe mais n'a pu être lu : le lecteur tourne sur les
+    /// défauts, et le passage à Kokoro ne l'écrase pas.
+    config_unreadable: bool,
     /// L'avis du passage à Kokoro, jusqu'à ce que l'interface le ferme.
     notice: Option<String>,
     /// La proposition de passer à Kokoro, en attente d'une réponse.
@@ -100,6 +103,7 @@ impl Reader {
             choices_path: language::LanguageChoices::path(),
             language: None,
             mlx: false,
+            config_unreadable: false,
             notice: None,
             offer: None,
             switch_when_downloaded: None,
@@ -110,6 +114,16 @@ impl Reader {
     /// L'app fournit le calcul MLX : le paquet Kokoro MLX est proposé.
     pub fn set_mlx_compute(&mut self, available: bool) {
         self.mlx = available;
+    }
+
+    /// `config.toml` n'a pu être lu (`Config::load` l'a signalé) : la
+    /// migration de la voix ne l'écrira pas.
+    pub fn set_config_unreadable(&mut self, unreadable: bool) {
+        self.config_unreadable = unreadable;
+    }
+
+    pub fn config_unreadable(&self) -> bool {
+        self.config_unreadable
     }
 
     /// Un paquet du catalogue que ce lecteur sait charger.

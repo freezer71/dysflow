@@ -85,9 +85,11 @@ fn offered(package: &ModelPackage) -> String {
 impl Reader {
     /// Le passage à Kokoro, appelé une fois au lancement de l'app. Rend
     /// l'avis à montrer, s'il y en a un : le passage fait, ou la proposition
-    /// (alors aussi dans `offer()`). Un lecteur hors disque ne bouge pas.
+    /// (alors aussi dans `offer()`). Un lecteur hors disque ne bouge pas, ni
+    /// un lecteur dont le `config.toml` n'a pu être lu : ses défauts
+    /// écraseraient le fichier de l'utilisateur.
     pub fn migrate_voice(&mut self, now: Instant) -> Option<String> {
-        if !self.persist {
+        if !self.persist || self.config_unreadable {
             return None;
         }
         let config = self.current_config().clone();
@@ -129,6 +131,9 @@ impl Reader {
     /// voix active à sa fin — la migration n'est retenue qu'alors. Déjà
     /// installé entre-temps (onglet Modèles), il le devient tout de suite.
     pub fn accept_offer(&mut self, now: Instant) -> Result<()> {
+        if self.config_unreadable {
+            return Err(anyhow!("configuration illisible : le passage à Kokoro attend qu'elle soit corrigée"));
+        }
         let offer = self.offer.clone().ok_or_else(|| anyhow!("aucune proposition en attente"))?;
         let package = self.package(&offer.id)?;
         if models::is_installed(package) {
@@ -159,7 +164,12 @@ impl Reader {
         }
     }
 
+    /// Jamais sur une configuration illisible : elle serait réécrite avec
+    /// les défauts.
     fn record_migration(&mut self) {
+        if self.config_unreadable {
+            return;
+        }
         self.sync_config();
         self.config.app.voice_migration = KOKORO_MIGRATION;
         if let Some(app) = self.session.as_mut() {
@@ -514,6 +524,37 @@ mod tests {
         assert_eq!(r.migrate_voice(Instant::now()), None);
         let mut again = offline_reader(relaunched(r.config()));
         assert_eq!(again.migrate_voice(Instant::now()), None, "ni au lancement suivant");
+    }
+
+    /// Un `config.toml` illisible (abîmé, écrit à la main) : le lecteur
+    /// tourne sur les défauts, et le passage à Kokoro ne doit pas les écrire
+    /// par-dessus le fichier de l'utilisateur.
+    #[test]
+    fn an_unreadable_config_is_never_migrated_over() {
+        let _guard = models_lock();
+        let mlx = by_id("kokoro_82m_mlx");
+        install_hollow(mlx);
+        let mut r = offline_reader(on_supertonic());
+        r.set_config_unreadable(true);
+        assert!(r.config_unreadable());
+        assert_eq!(r.migrate_voice(Instant::now()), None, "rien ne bouge");
+        assert_eq!(r.config().engine.family, "supertonic");
+        assert_eq!(r.config().app.voice_migration, 0);
+        assert_eq!(r.notice(), None);
+        assert_eq!(r.offer(), None);
+        models::remove(mlx).unwrap();
+
+        // Une proposition déjà là (avant que la lecture n'échoue) : ni
+        // l'accord ni le refus n'écrivent.
+        let offer = Offer { id: mlx.id.into(), bytes: mlx.total_bytes(), former: "F2".into(), message: String::new() };
+        r.offer = Some(offer.clone());
+        assert!(r.accept_offer(Instant::now()).is_err());
+        assert!(r.download().is_none(), "rien de téléchargé");
+        assert_eq!(r.config().app.voice_migration, 0);
+        r.offer = Some(offer);
+        r.dismiss_offer();
+        assert_eq!(r.offer(), None);
+        assert_eq!(r.config().app.voice_migration, 0, "le refus n'est pas retenu");
     }
 
     #[test]
