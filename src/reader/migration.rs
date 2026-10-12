@@ -175,9 +175,7 @@ impl Reader {
         if let Some(app) = self.session.as_mut() {
             app.config.app.voice_migration = KOKORO_MIGRATION;
         }
-        if self.persist {
-            let _ = self.config.save();
-        }
+        let _ = self.save_config();
     }
 
     /// L'avis en attente (passage à Kokoro).
@@ -232,6 +230,7 @@ impl Reader {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::reader::settings::SettingsPatch;
     use crate::audio::Player;
     use crate::models::{self, Download, Progress, CATALOG};
     use crate::tts::silent::SilentEngine;
@@ -524,6 +523,56 @@ mod tests {
         assert_eq!(r.migrate_voice(Instant::now()), None);
         let mut again = offline_reader(relaunched(r.config()));
         assert_eq!(again.migrate_voice(Instant::now()), None, "ni au lancement suivant");
+    }
+
+    /// Un `config.toml` illisible : aucun chemin d'écriture du lecteur n'y
+    /// touche — réglage, voix choisie, refus, fin d'un passage accepté,
+    /// configuration du texte ouvert à la mise au repos ou à la fermeture.
+    #[test]
+    fn nothing_writes_over_an_unreadable_config() {
+        let _guard = models_lock();
+        let mlx = by_id("kokoro_82m_mlx");
+        install_hollow(mlx);
+        let dir = std::env::temp_dir().join(format!("sillon-temoin-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        let witness = b"[voice\nvoice = \"F2\" # \xc3\xa9crit \xc3\xa0 la main".to_vec();
+        std::fs::write(&path, &witness).unwrap();
+        let mut r = offline_reader(on_supertonic());
+        r.set_config_path(Some(path.clone()));
+        r.set_config_unreadable(true);
+        let t0 = Instant::now();
+        r.update_settings(&SettingsPatch { keep_voice_minutes: Some(3), ..Default::default() }, t0).unwrap();
+        r.use_voice(mlx.id, t0).unwrap();
+        r.offer = Some(Offer { id: mlx.id.into(), bytes: 1, former: "F2".into(), message: String::new() });
+        r.dismiss_offer();
+        r.switch_when_downloaded = Some((mlx.id.into(), "F2".into()));
+        r.finish_migration(mlx.id, t0);
+        r.open_text("Un texte.", "a", t0);
+        r.with_session(t0, |app| app.mark_config_dirty());
+        r.close();
+        r.rest();
+        let after = std::fs::read(&path).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+        models::remove(mlx).unwrap();
+        assert_eq!(after, witness, "le fichier de l'utilisateur est intact");
+    }
+
+    /// Lisible, la configuration s'écrit bien au chemin donné (le témoin
+    /// ci-dessus prouve donc quelque chose).
+    #[test]
+    fn a_readable_config_is_written_where_it_lives() {
+        let dir = std::env::temp_dir().join(format!("sillon-lisible-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        std::fs::write(&path, "ancien").unwrap();
+        let mut r = offline_reader(on_supertonic());
+        r.set_config_path(Some(path.clone()));
+        r.update_settings(&SettingsPatch { keep_voice_minutes: Some(3), ..Default::default() }, Instant::now())
+            .unwrap();
+        let after = std::fs::read_to_string(&path).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(after.contains("keep_voice_minutes = 3"), "{after}");
     }
 
     /// Un `config.toml` illisible (abîmé, écrit à la main) : le lecteur

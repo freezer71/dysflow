@@ -71,6 +71,8 @@ pub struct Reader {
     /// `config.toml` existe mais n'a pu être lu : le lecteur tourne sur les
     /// défauts, et le passage à Kokoro ne l'écrase pas.
     config_unreadable: bool,
+    /// Où `config.toml` s'écrit (`Config::path`, sauf test).
+    config_path: Option<std::path::PathBuf>,
     /// L'avis du passage à Kokoro, jusqu'à ce que l'interface le ferme.
     notice: Option<String>,
     /// La proposition de passer à Kokoro, en attente d'une réponse.
@@ -104,6 +106,7 @@ impl Reader {
             language: None,
             mlx: false,
             config_unreadable: false,
+            config_path: Config::path(),
             notice: None,
             offer: None,
             switch_when_downloaded: None,
@@ -134,26 +137,59 @@ impl Reader {
         self.persist && !self.config_unreadable
     }
 
-    /// « Remplacer » : la copie illisible est gardée à côté
-    /// (`config.toml.illisible`), puis les réglages en cours sont écrits ;
-    /// les écritures reprennent.
-    pub fn replace_unreadable_config(&mut self) -> anyhow::Result<()> {
-        let path = Config::path().ok_or_else(|| anyhow::anyhow!("répertoire de configuration introuvable"))?;
-        self.replace_unreadable_config_at(&path)
+    /// Où `config.toml` s'écrit (un fichier temporaire sous test).
+    pub fn set_config_path(&mut self, path: Option<std::path::PathBuf>) {
+        self.config_path = path;
     }
 
-    pub(crate) fn replace_unreadable_config_at(&mut self, path: &std::path::Path) -> anyhow::Result<()> {
+    /// Écrit la configuration, si `writes_config` le permet ; sinon rien.
+    pub(super) fn save_config(&self) -> anyhow::Result<()> {
+        if !self.writes_config() {
+            return Ok(());
+        }
+        let path = self.config_path.as_deref().ok_or_else(|| anyhow::anyhow!("répertoire de configuration introuvable"))?;
+        self.config.save_to(path)
+    }
+
+    /// Le choix fait dans le texte ouvert (modèle pris au terminal) s'écrit
+    /// à la mise au repos et à la fermeture — jamais par-dessus un fichier
+    /// illisible.
+    fn flush_session_config(app: &mut App, unreadable: bool, path: Option<&Path>) {
+        if unreadable || !app.config_needs_saving() {
+            return;
+        }
+        if let Some(path) = path {
+            if app.config.save_to(path).is_ok() {
+                app.config_saved();
+            }
+        }
+    }
+
+    /// « Remplacer » : la copie illisible est gardée à côté
+    /// (`config.toml.illisible`, puis `-2`, `-3`… : jamais une copie écrasée),
+    /// puis les réglages en cours sont écrits ; les écritures reprennent.
+    pub fn replace_unreadable_config(&mut self) -> anyhow::Result<()> {
         use anyhow::Context;
         if !self.persist {
             return Err(anyhow::anyhow!(data::TRIAL));
         }
+        if !self.config_unreadable {
+            return Err(anyhow::anyhow!("la configuration est lisible : rien à remplacer"));
+        }
+        let path = self.config_path.clone().ok_or_else(|| anyhow::anyhow!("répertoire de configuration introuvable"))?;
         if path.exists() {
-            let mut kept = path.as_os_str().to_owned();
-            kept.push(".illisible");
-            std::fs::copy(path, &kept).with_context(|| format!("copie de {}", path.display()))?;
+            let kept = (1..)
+                .map(|n| {
+                    let mut name = path.as_os_str().to_owned();
+                    name.push(if n == 1 { ".illisible".to_string() } else { format!(".illisible-{n}") });
+                    std::path::PathBuf::from(name)
+                })
+                .find(|p| !p.exists())
+                .expect("un nom libre");
+            std::fs::copy(&path, &kept).with_context(|| format!("copie de {}", path.display()))?;
         }
         self.sync_config();
-        self.config.save_to(path)?;
+        self.config.save_to(&path)?;
         self.config_unreadable = false;
         Ok(())
     }
@@ -323,7 +359,7 @@ impl Reader {
             return;
         };
         app.remember_position();
-        app.flush_config();
+        Self::flush_session_config(&mut app, self.config_unreadable, self.config_path.as_deref());
         self.config = app.config.clone();
         self.resting_at = Some(app.current_sentence());
         drop(app);
@@ -336,9 +372,10 @@ impl Reader {
 
     /// Fermeture de l'app : rien de ce qui a été lu ou réglé ne se perd.
     pub fn close(&mut self) {
+        let (unreadable, path) = (self.config_unreadable, self.config_path.clone());
         if let Some(app) = self.session.as_mut() {
             app.remember_position();
-            app.flush_config();
+            Self::flush_session_config(app, unreadable, path.as_deref());
         }
     }
 

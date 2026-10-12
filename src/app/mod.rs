@@ -1596,6 +1596,17 @@ impl App {
         self.config_dirty
     }
 
+    /// La configuration vient d'être écrite ailleurs (le lecteur de l'app,
+    /// à son chemin).
+    pub fn config_saved(&mut self) {
+        self.config_dirty = false;
+    }
+
+    #[cfg(test)]
+    pub(crate) fn mark_config_dirty(&mut self) {
+        self.config_dirty = true;
+    }
+
     /// Écrit la configuration si un choix l'attend, sans rien dire.
     pub fn flush_config(&mut self) {
         if self.config_dirty && self.config.save().is_ok() {

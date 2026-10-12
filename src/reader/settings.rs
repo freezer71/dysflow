@@ -363,9 +363,7 @@ impl Reader {
     /// fichier illisible, voir `writes_config`). Une écriture impossible laisse le réglage appliqué : l'erreur le dit.
     pub fn update_settings(&mut self, patch: &SettingsPatch, now: Instant) -> Result<SettingsView> {
         let applied = self.apply_patch(patch, now);
-        if self.writes_config() {
-            self.config.save()?;
-        }
+        self.save_config()?;
         Ok(applied)
     }
 
@@ -484,9 +482,7 @@ impl Reader {
             app.config = self.config.clone();
         }
         self.reload_voice(now);
-        if self.writes_config() {
-            self.config.save()?;
-        }
+        self.save_config()?;
         Ok(())
     }
 
@@ -1117,25 +1113,39 @@ mod tests {
     }
 
     /// « Remplacer » : la copie illisible est gardée à côté, puis les
-    /// réglages en cours sont écrits, et les écritures reprennent.
+    /// réglages en cours sont écrits, et les écritures reprennent. Une copie
+    /// déjà là n'est jamais écrasée : la suivante prend un numéro.
     #[test]
     fn replacing_an_unreadable_config_keeps_a_copy() {
         let dir = std::env::temp_dir().join(format!("sillon-illisible-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("config.toml");
+        std::fs::write(dir.join("config.toml.illisible"), "plus ancienne").unwrap();
         std::fs::write(&path, "[voice\nspeed = 1.4").unwrap();
         let mut r = reader();
+        r.set_config_path(Some(path.clone()));
         r.set_config_unreadable(true);
         r.update_settings(&SettingsPatch { keep_voice_minutes: Some(9), ..Default::default() }, Instant::now())
             .unwrap();
-        r.replace_unreadable_config_at(&path).expect("remplacé");
-        let kept = std::fs::read_to_string(dir.join("config.toml.illisible")).unwrap();
+        r.replace_unreadable_config().expect("remplacé");
+        let older = std::fs::read_to_string(dir.join("config.toml.illisible")).unwrap();
+        let kept = std::fs::read_to_string(dir.join("config.toml.illisible-2")).unwrap();
         let written = std::fs::read_to_string(&path).unwrap();
         let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(older, "plus ancienne", "la copie précédente reste");
         assert_eq!(kept, "[voice\nspeed = 1.4", "l'original est gardé tel quel");
         assert!(written.contains("keep_voice_minutes = 9"), "{written}");
         assert!(!r.config_unreadable());
         assert!(r.writes_config());
+    }
+
+    /// Une configuration lisible ne se « remplace » pas : rien à réparer.
+    #[test]
+    fn a_readable_config_is_not_replaced() {
+        let mut r = reader();
+        let err = r.replace_unreadable_config().unwrap_err().to_string();
+        assert!(err.contains("lisible"), "{err}");
     }
 
     #[test]
