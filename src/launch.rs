@@ -320,11 +320,6 @@ fn read_clipboard() -> Result<String> {
     }
 }
 
-/// Adopte un modèle installé si la configuration n'en désigne aucun.
-///
-/// Le lecteur ne télécharge jamais de lui-même : quand rien n'est installé, il
-/// se contente de dire où aller le chercher, et lit avec la voix du système en
-/// attendant.
 /// Fait suivre la voix de la famille, et le dit si la voix configurée lui
 /// était inconnue. Kokoro, qui choisit sa voix par langue, remplit les
 /// langues sans voix en silence : rien n'y était inconnu.
@@ -334,6 +329,11 @@ fn aligned_voice_notice(config: &mut Config) -> Option<String> {
     (changed && !follows).then(|| format!("voix inconnue de {} — repli sur sa voix par défaut", config.engine.family))
 }
 
+/// Adopte un modèle installé si la configuration n'en désigne aucun.
+///
+/// Le lecteur ne télécharge jamais de lui-même : quand rien n'est installé, il
+/// se contente de dire où aller le chercher, et lit avec la voix du système en
+/// attendant.
 fn adopt_installed_model(config: &mut Config, notices: &mut Vec<String>) {
     let configured = config.engine.model_path.trim();
     if !configured.is_empty() {

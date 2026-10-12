@@ -6,11 +6,12 @@ pub mod backend;
 pub mod phonemes;
 pub mod voices;
 
-pub use backend::{check, KokoroBackend, KokoroRaw};
+pub use backend::{check, KokoroBackend, KokoroRaw, SharedCompute};
 
 use anyhow::{bail, Context, Result};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use self::phonemes::Phonemizer;
@@ -23,6 +24,8 @@ pub const SAMPLE_RATE: u32 = 24_000;
 pub const FRAME: usize = 600;
 /// Au-delà, la phrase est coupée à une proposition.
 pub const MAX_PHONEMES: usize = 510;
+/// Échecs du calcul d'affilée avant que la voix passe en repli.
+const MAX_COMPUTE_FAILURES: usize = 3;
 
 /// Le vocabulaire des phonèmes, tiré de `config.json` : un symbole (point de
 /// code) par identifiant. Un symbole inconnu est écarté.
@@ -55,7 +58,9 @@ impl Vocab {
 }
 
 /// Coupe une suite de phonèmes trop longue : à la dernière fin de
-/// proposition avant la limite, sinon au dernier espace, sinon à la limite.
+/// proposition avant la limite (pas avant le quart, pour ne jamais laisser
+/// un éclat de quelques symboles), sinon au dernier espace, sinon à la
+/// limite.
 fn split_phonemes(ps: &str, max: usize) -> Vec<String> {
     let mut rest: Vec<char> = ps.chars().collect();
     let mut parts = Vec::new();
@@ -65,6 +70,7 @@ fn split_phonemes(ps: &str, max: usize) -> Vec<String> {
             .iter()
             .rposition(|c| matches!(c, '.' | '!' | '?' | ';' | ':' | ',' | '—' | '…'))
             .map(|i| i + 1)
+            .filter(|&i| i >= max / 4)
             .or_else(|| window.iter().rposition(|c| *c == ' '))
             .filter(|&i| i > 0)
             .unwrap_or(max);
@@ -87,6 +93,10 @@ struct Inner {
     /// Pourquoi la voix est passée en repli, si elle l'est.
     broken: Mutex<Option<String>>,
     fallback: Arc<dyn TtsEngine>,
+    /// Échecs du calcul d'affilée.
+    failures: AtomicUsize,
+    /// La part du calcul est rendue (repli, ou moteur relâché) : une fois.
+    released: AtomicBool,
 }
 
 impl Inner {
@@ -103,12 +113,34 @@ impl Inner {
     fn broken(&self) -> Option<String> {
         self.broken.lock().unwrap().clone()
     }
+
+    /// Rend la part du calcul, une seule fois.
+    fn release_compute(&self) {
+        if !self.released.swap(true, Ordering::SeqCst) {
+            self.backend.release();
+        }
+    }
+
+    /// La voix passe en repli : le calcul n'a plus d'usage.
+    fn break_down(&self, reason: String) {
+        *self.broken.lock().unwrap() = Some(reason);
+        self.release_compute();
+    }
+
+    /// Compte un échec du calcul ; au troisième d'affilée, le repli.
+    fn compute_failed(&self) {
+        let failures = self.failures.fetch_add(1, Ordering::SeqCst) + 1;
+        if failures >= MAX_COMPUTE_FAILURES {
+            eprintln!("kokoro : {failures} échecs du calcul d'affilée, passage en repli");
+            self.break_down("calcul Kokoro en échec".to_string());
+        }
+    }
 }
 
 impl Drop for Inner {
     /// Au repos : poids et caches du calcul libérés, espeak-ng arrêté.
     fn drop(&mut self) {
-        self.backend.release();
+        self.release_compute();
         if let Ok(mut phonemizer) = self.phonemizer.lock() {
             phonemizer.stop();
         }
@@ -150,6 +182,8 @@ impl KokoroEngine {
                 voices: Mutex::new(HashMap::new()),
                 broken: Mutex::new(None),
                 fallback,
+                failures: AtomicUsize::new(0),
+                released: AtomicBool::new(false),
             }),
         }
     }
@@ -178,8 +212,9 @@ impl TtsEngine for KokoroEngine {
         }
     }
 
+    /// En repli, c'est la voix de repli qui parle, d'un seul tenant.
     fn splits_first_clause(&self) -> bool {
-        true
+        self.inner.broken().is_none()
     }
 }
 
@@ -221,7 +256,7 @@ impl TtsSession for KokoroSession {
         let phonemes = match self.inner.phonemizer.lock().unwrap().phonemize(language, &items) {
             Ok(p) => p,
             Err(err) => {
-                *self.inner.broken.lock().unwrap() = Some(format!("espeak-ng s'est arrêté ({err})"));
+                self.inner.break_down(format!("espeak-ng s'est arrêté ({err})"));
                 bail!("phonétisation impossible : {err}");
             }
         };
@@ -239,14 +274,25 @@ impl TtsSession for KokoroSession {
             tokens.push(0);
             tokens.extend(ids);
             tokens.push(0);
-            let raw = self.inner.backend.infer(&tokens, voice.row(part.chars().count()))?;
-            check(&raw, tokens.len())?;
+            let raw = self
+                .inner
+                .backend
+                .infer(&tokens, voice.row(part.chars().count()))
+                .and_then(|raw| check(&raw, tokens.len()).map(|()| raw));
+            let raw = match raw {
+                Ok(raw) => raw,
+                Err(err) => {
+                    self.inner.compute_failed();
+                    return Err(err);
+                }
+            };
             samples.extend_from_slice(&raw.samples);
             chunks.push((kept, raw.durations));
         }
         if samples.is_empty() {
             bail!("phrase sans phonème connu");
         }
+        self.inner.failures.store(0, Ordering::SeqCst);
         let timing = if words.is_empty() {
             None
         } else {
@@ -276,6 +322,9 @@ mod tests {
         Good,
         Short,
         Nan,
+        Fail,
+        /// Un appel sur deux échoue.
+        Flaky,
     }
 
     /// Deux trames par jeton, du silence de la bonne longueur ; retient les
@@ -303,7 +352,12 @@ mod tests {
             Ok(())
         }
         fn infer(&self, ids: &[i64], style: &[f32]) -> Result<KokoroRaw> {
-            self.calls.lock().unwrap().push((ids.to_vec(), style[0]));
+            let mut calls = self.calls.lock().unwrap();
+            calls.push((ids.to_vec(), style[0]));
+            if self.mode == Mode::Flaky && calls.len() % 2 == 1 {
+                anyhow::bail!("calcul perdu une fois");
+            }
+            drop(calls);
             let durations = vec![2u32; ids.len()];
             let mut samples = vec![0.0; ids.len() * 2 * FRAME];
             match self.mode {
@@ -312,6 +366,8 @@ mod tests {
                     samples.pop();
                 }
                 Mode::Nan => samples[0] = f32::NAN,
+                Mode::Fail => anyhow::bail!("calcul perdu"),
+                Mode::Flaky => {}
             }
             Ok(KokoroRaw { samples, durations })
         }
@@ -457,6 +513,57 @@ mod tests {
         assert!(matches!(engine.readiness(), Readiness::Fallback(_)));
         assert!(engine.name().contains("repli"));
         assert!(session.synthesize("trois", &params("rampe")).is_ok(), "la voix de repli parle");
+        assert!(!engine.splits_first_clause(), "le repli ne coupe pas");
+    }
+
+    #[test]
+    fn switching_to_the_fallback_releases_the_compute_once() {
+        let backend = FakeBackend::new(Mode::Good);
+        let (engine, _) = engine(Arc::clone(&backend), true, "repli-libere");
+        let mut session = engine.open_session().unwrap();
+        assert!(session.synthesize("un", &params("rampe")).is_err());
+        assert_eq!(backend.released.load(Ordering::SeqCst), 1, "les poids partent avec la voix");
+        drop(session);
+        drop(engine);
+        assert_eq!(backend.released.load(Ordering::SeqCst), 1, "pas une seconde fois");
+    }
+
+    #[test]
+    fn a_compute_that_keeps_failing_hands_over_to_the_fallback() {
+        for mode in [Mode::Fail, Mode::Nan] {
+            let backend = FakeBackend::new(mode);
+            let (engine, _) = engine(Arc::clone(&backend), false, "calcul-perdu");
+            let mut session = engine.open_session().unwrap();
+            for _ in 0..MAX_COMPUTE_FAILURES {
+                assert!(session.synthesize("un deux", &params("rampe")).is_err());
+            }
+            assert_eq!(engine.readiness(), Readiness::Fallback("calcul Kokoro en échec".into()));
+            assert_eq!(backend.released.load(Ordering::SeqCst), 1);
+            assert!(session.synthesize("trois", &params("rampe")).is_ok(), "la voix de repli parle");
+        }
+    }
+
+    #[test]
+    fn one_failure_between_successes_is_forgiven() {
+        let backend = FakeBackend::new(Mode::Flaky);
+        let (engine, _) = engine(Arc::clone(&backend), false, "pardon");
+        let mut session = engine.open_session().unwrap();
+        for _ in 0..5 {
+            assert!(session.synthesize("un", &params("rampe")).is_err());
+            assert!(session.synthesize("un", &params("rampe")).is_ok());
+        }
+        assert_eq!(engine.readiness(), Readiness::Ready);
+        assert_eq!(backend.released.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn a_cut_never_leaves_a_sliver() {
+        // Une virgule tout au début ne fait pas un morceau d'un symbole.
+        let text = format!("a, {}", "bcde ".repeat(150));
+        let parts = split_phonemes(&text, MAX_PHONEMES);
+        assert!(parts.iter().all(|p| p.chars().count() >= MAX_PHONEMES / 4 || p == parts.last().unwrap()), "{:?}", parts.iter().map(|p| p.len()).collect::<Vec<_>>());
+        assert!(parts.iter().all(|p| p.chars().count() <= MAX_PHONEMES));
+        assert!(parts[0].starts_with("a, b"));
     }
 
     #[test]

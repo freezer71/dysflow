@@ -251,10 +251,14 @@ pub fn build_engine(
 }
 
 /// `build_engine`, avec le calcul MLX de Kokoro quand l'app le fournit.
+///
+/// `mlx` est un calcul partagé (`SharedCompute`) : l'app l'enveloppe une
+/// fois et passe le même `Arc` à chaque construction, pour qu'un moteur
+/// relâché après le chargement du suivant ne vide pas ses poids.
 pub fn build_engine_with(
     preference: EnginePreference,
     settings: &EngineSettings,
-    mlx: Option<Arc<dyn kokoro::KokoroBackend>>,
+    mlx: Option<Arc<kokoro::SharedCompute>>,
 ) -> (Arc<dyn TtsEngine>, Option<String>) {
     if preference == EnginePreference::System {
         return (Arc::new(system::SystemEngine::new()), None);
@@ -280,7 +284,7 @@ pub fn build_engine_with(
 /// MLX, fourni par l'app), espeak-ng cherché au chargement.
 fn build_kokoro(
     settings: &EngineSettings,
-    mlx: Option<Arc<dyn kokoro::KokoroBackend>>,
+    mlx: Option<Arc<kokoro::SharedCompute>>,
 ) -> (Arc<dyn TtsEngine>, Option<String>) {
     let fallback = fallback::fallback_engine(settings);
     let Some(dir) = crate::models::kokoro_dir(&settings.model_path) else {
@@ -302,18 +306,20 @@ fn build_kokoro(
 
 fn kokoro_backend(
     settings: &EngineSettings,
-    mlx: Option<Arc<dyn kokoro::KokoroBackend>>,
+    mlx: Option<Arc<kokoro::SharedCompute>>,
 ) -> Result<Arc<dyn kokoro::KokoroBackend>, String> {
     if settings.model_path.ends_with(".onnx") {
         // Le calcul ONNX Runtime (`kokoro::onnx::OrtBackend`) arrive avec la
-        // Tâche 10 ; d'ici là la feature, encore vide, ne charge rien.
+        // Tâche 10 ; d'ici là la feature, encore vide, ne charge rien. Un
+        // calcul propre à chaque construction : l'envelopper dans un
+        // `SharedCompute` neuf garde le même contrat que MLX.
         #[cfg(feature = "kokoro-onnx")]
         return Err("Kokoro int8 : calcul ONNX Runtime pas encore livré".to_string());
         #[cfg(not(feature = "kokoro-onnx"))]
         return Err("Kokoro int8 : binaire compilé sans `kokoro-onnx`".to_string());
     }
     match mlx {
-        Some(backend) if settings.backend != "cpu" => Ok(backend),
+        Some(backend) if settings.backend != "cpu" => Ok(backend as Arc<dyn kokoro::KokoroBackend>),
         _ => Err("Calcul Metal indisponible — Kokoro MLX ne tourne que dans l'app, sur la puce graphique".to_string()),
     }
 }
@@ -477,7 +483,11 @@ mod tests {
         }
         let path = kokoro_files("charge", "kokoro-v1_0.safetensors");
         let (engine, note) =
-            build_engine_with(EnginePreference::Auto, &kokoro_settings(&path.to_string_lossy(), "metal"), Some(Arc::new(Idle)));
+            build_engine_with(
+            EnginePreference::Auto,
+            &kokoro_settings(&path.to_string_lossy(), "metal"),
+            Some(Arc::new(kokoro::SharedCompute::new(Arc::new(Idle)))),
+        );
         assert_eq!(note, None, "rien à dire d'avance : le chargement part en arrière-plan");
         // Le nom dépend de l'issue du chargement (espeak-ng présent ou non
         // sur la machine de test) : seule la coupe, annoncée d'avance, est sûre.
