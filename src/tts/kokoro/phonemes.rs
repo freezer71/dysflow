@@ -13,7 +13,7 @@
 use anyhow::{anyhow, bail, Context, Result};
 use std::collections::HashMap;
 use std::io::{BufReader, Read, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc::{self, Receiver};
 use std::sync::LazyLock;
@@ -78,9 +78,18 @@ fn is_executable(path: &std::path::Path) -> bool {
 }
 
 /// Le dossier qui contient `espeak-ng-data`, quand il n'est pas celui du
-/// système (l'app : `Contents/Resources`).
+/// système : `SILLON_ESPEAK_DATA` (l'app : `Contents/Resources`), sinon le
+/// dossier du binaire s'il le porte (paquet terminal de `package.sh`).
 pub fn data_dir() -> Option<PathBuf> {
-    std::env::var_os("SILLON_ESPEAK_DATA").map(PathBuf::from)
+    let exe_dir = std::env::current_exe().ok().and_then(|e| e.parent().map(Path::to_path_buf));
+    data_dir_from(std::env::var_os("SILLON_ESPEAK_DATA"), exe_dir.as_deref())
+}
+
+fn data_dir_from(variable: Option<std::ffi::OsString>, exe_dir: Option<&Path>) -> Option<PathBuf> {
+    if let Some(dir) = variable {
+        return Some(PathBuf::from(dir));
+    }
+    exe_dir.filter(|d| d.join("espeak-ng-data").is_dir()).map(Path::to_path_buf)
 }
 
 /// Un morceau de texte entre deux ponctuations, ou la ponctuation elle-même
@@ -477,6 +486,19 @@ mod tests {
     use std::os::unix::fs::PermissionsExt;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
+
+    #[test]
+    fn the_espeak_data_shipped_beside_the_binary_is_found() {
+        let dir = std::env::temp_dir().join(format!("sillon-espeak-data-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("espeak-ng-data")).unwrap();
+        // La variable d'abord ; sinon le dossier du binaire, s'il porte les
+        // données (paquet terminal) ; sinon celles du système.
+        assert_eq!(data_dir_from(Some("/ailleurs".into()), Some(&dir)), Some(PathBuf::from("/ailleurs")));
+        assert_eq!(data_dir_from(None, Some(&dir)), Some(dir.clone()));
+        assert_eq!(data_dir_from(None, Some(Path::new("/nulle/part"))), None);
+        assert_eq!(data_dir_from(None, None), None);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 
     fn read_u32(r: &mut PipeReader) -> Option<u32> {
         let mut b = [0u8; 4];

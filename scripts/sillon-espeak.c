@@ -30,16 +30,23 @@
  */
 
 #include <espeak-ng/speak_lib.h>
+#include <fcntl.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #define MAX_ITEM (64 * 1024)
 #define MAX_COUNT 4096
 #define MAX_CLAUSES 100000
 /* Bit 1 : IPA ; bit 7 : bits 8-23 (U+0361) comme lien. */
 #define MODE (0x02 | 0x80 | (0x0361 << 8))
+
+/* Les trames sortent par un double privé de la sortie standard : libespeak-ng
+ * peut écrire sur fd 1 (« Invalid phoneme code »), qui pointe sur /dev/null,
+ * et rien ne se glisse dans le protocole. */
+static FILE *out;
 
 static int read_full(void *buffer, size_t size) {
 	return fread(buffer, 1, size, stdin) == size;
@@ -55,12 +62,12 @@ static int read_u32(uint32_t *value) {
 
 static void write_u32(uint32_t value) {
 	unsigned char b[4] = {value & 0xff, (value >> 8) & 0xff, (value >> 16) & 0xff, value >> 24};
-	fwrite(b, 1, 4, stdout);
+	fwrite(b, 1, 4, out);
 }
 
 static void write_frame(const char *bytes, size_t size) {
 	write_u32((uint32_t)size);
-	fwrite(bytes, 1, size, stdout);
+	fwrite(bytes, 1, size, out);
 }
 
 /* Une trame lue dans un tampon terminé par un zéro ; NULL si trop longue. */
@@ -109,6 +116,14 @@ static void phonemize(const char *text) {
 
 int main(int argc, char **argv) {
 	const char *path = argc > 1 ? argv[1] : NULL;
+	int private_fd = dup(STDOUT_FILENO);
+	int null_fd = open("/dev/null", O_WRONLY);
+	if (private_fd < 0 || null_fd < 0 || dup2(null_fd, STDOUT_FILENO) < 0)
+		return 2;
+	close(null_fd);
+	out = fdopen(private_fd, "wb");
+	if (out == NULL)
+		return 2;
 	if (espeak_Initialize(AUDIO_OUTPUT_SYNCHRONOUS, 0, path, espeakINITIALIZE_DONT_EXIT) < 0)
 		return 2;
 	char *voice = read_frame();
@@ -124,7 +139,7 @@ int main(int argc, char **argv) {
 	}
 	free(voice);
 	write_frame("ok", 2);
-	fflush(stdout);
+	fflush(out);
 	uint32_t count;
 	while (read_u32(&count)) {
 		if (count > MAX_COUNT)
@@ -137,7 +152,7 @@ int main(int argc, char **argv) {
 			free(text);
 		}
 		write_frame("ok", 2);
-		fflush(stdout);
+		fflush(out);
 	}
 	return 0;
 }

@@ -9,7 +9,9 @@
 #
 # Produit target/espeak/bin/sillon-espeak, target/espeak/share/espeak-ng-data
 # (français et anglais seulement), et, pour la GPL : target/espeak/COPYING,
-# SOURCE.txt (l'adresse exacte des sources d'espeak-ng) et sillon-espeak.c.
+# SOURCE.txt (l'adresse exacte des sources d'espeak-ng, et l'engagement de
+# garder l'archive disponible) et sillon-espeak.c. L'archive téléchargée reste
+# dans target/espeak : c'est elle qu'on fournit si l'adresse disparaît.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -84,7 +86,9 @@ cp "$SRC/COPYING" "$OUT/COPYING"
 cp scripts/sillon-espeak.c "$OUT/sillon-espeak.c"
 {
     echo "espeak-ng $VERSION, sources exactes : $URL (SHA-256 $SHA256)"
-    echo "sillon-espeak : sillon-espeak.c, à côté de ce fichier"
+    echo "sillon-espeak : sillon-espeak.c, à côté de ce fichier ; construit par build-espeak.sh"
+    echo "L'archive ci-dessus (même empreinte) est conservée par le distributeur de Sillon et"
+    echo "fournie sur demande, tant que ce programme est distribué, si l'adresse venait à disparaître."
 } > "$OUT/SOURCE.txt"
 
 # Contrôle : une phrase française, une anglaise (trames : u32 petit-boutiste
