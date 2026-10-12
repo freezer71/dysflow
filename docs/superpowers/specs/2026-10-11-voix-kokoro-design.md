@@ -187,11 +187,17 @@ aujourd'hui un modèle ; elle passe donc à Kokoro.
   - **Installé :** le modèle actif passe à Kokoro tout de suite
     (`engine.model_path`, `engine.family = "kokoro"`, voix `p-fenrir60` et
     `af_bella` dans `[voice.per_language]`).
-  - **Installable :** son téléchargement démarre (annulable dans l'onglet
-    Modèles), et le modèle actif passe à Kokoro à la fin du téléchargement.
+  - **Installable :** Kokoro est **proposé**, rien ne se télécharge sans
+    accord (décision du 2026-10-12). « Passer à Kokoro » lance le
+    téléchargement (annulable dans l'onglet Modèles) ; le modèle actif passe
+    à Kokoro à la fin du téléchargement. « Plus tard » ferme la proposition ;
+    Kokoro reste installable depuis l'onglet Modèles.
 - **Une seule fois :** la migration est retenue dans `config.toml`
-  (`app.voice_migration`) au moment où elle agit. Elle ne se refait jamais,
-  même si l'utilisateur revient à l'ancien modèle ou annule le téléchargement.
+  (`app.voice_migration`) quand elle agit : passage fait (tout de suite, ou à
+  la fin du téléchargement accepté), ou proposition refusée. Elle ne se refait
+  jamais, même si l'utilisateur revient ensuite à l'ancien modèle. Une
+  proposition laissée sans réponse, ou un téléchargement accepté puis échoué
+  ou annulé, ne retient rien : la proposition revient au lancement suivant.
   Sans Kokoro possible dans ce binaire, rien n'est retenu : une version qui
   l'apporte fera la migration.
 - **Rien n'est perdu :** l'ancien modèle reste installé et sélectionnable
@@ -199,12 +205,13 @@ aujourd'hui un modèle ; elle passe donc à Kokoro.
   Ses réglages propres (voix, échantillonnage) restent dans `config.toml`.
 - **Un court avis le dit :** « Nouvelle voix : Kokoro remplace Supertonic 3 ·
   F16. L'ancien modèle reste installé : Réglages › Voix pour y revenir. »
-  Pendant le téléchargement : « Nouvelle voix Kokoro en téléchargement
-  (342 Mo) : elle remplacera Supertonic 3 · F16 à la fin. » L'app l'affiche
-  dans le panneau et l'onglet Voix, et l'annonce à VoiceOver.
+  La proposition : « Nouvelle voix disponible (326.4 Mo) — Passer à
+  Kokoro ? » (taille écrite comme dans l'onglet Modèles), avec les boutons
+  « Passer à Kokoro » et « Plus tard ». L'app affiche avis et proposition
+  dans le panneau et l'onglet Voix, et les annonce à VoiceOver.
 - **Au terminal :** un Kokoro installé est adopté de la même façon, avec le
-  même avis dans la barre d'état. Le téléchargement automatique est réservé à
-  l'app ; le terminal indique `s` pour installer, sans rien retenir.
+  même avis dans la barre d'état. Installable seulement, le terminal le
+  signale (`s` pour installer), sans rien télécharger ni retenir.
 
 ## Architecture
 
@@ -282,9 +289,12 @@ aujourd'hui un modèle ; elle passe donc à Kokoro.
   - L'instantané gagne `document_language { détectée, choisie, part }`.
   - `ModelCapabilities.voices` porte la langue de chaque voix.
   - `SettingsEffect::between` traite un changement de langue comme `Reparse`.
-  - Passage à Kokoro : `Reader::migrate_voice() -> Option<String>` (l'avis),
-    appelé une fois au lancement de l'app ; `app.voice_migration` (entier, 0
-    par défaut) retient qu'il a eu lieu.
+  - Passage à Kokoro : `Reader::migrate_voice() -> Option<String>` (l'avis,
+    ou le texte de la proposition), appelé une fois au lancement de l'app ;
+    `Reader::accept_offer()` (téléchargement, passage à la fin) et
+    `Reader::dismiss_offer()` (refus retenu) ; l'instantané gagne `notice` et
+    `offer` ; `app.voice_migration` (entier, 0 par défaut) retient que le
+    passage a eu lieu ou a été refusé.
 
 ### Minutage des mots (`align.rs`)
 
@@ -414,11 +424,13 @@ pub struct KokoroOutput { pub samples: Vec<f32>, pub durations: Vec<u32> }
   - Réglages : aller-retour de `voice_for_language` ; changement de langue →
     `Reparse` ; voix de l'autre langue → aucune resynthèse ; capacités de
     `kokoro` (voix par langue, réglages masqués).
-  - Passage à Kokoro : configuration existante → Kokoro installé adopté,
-    Kokoro installable téléchargé puis adopté à la fin ; retenu une fois (un
-    second lancement ne refait rien, un retour à l'ancien modèle tient) ;
-    rien de retenu sans Kokoro possible ; ancien modèle toujours installé ;
-    lecteur hors disque : rien ne bouge.
+  - Passage à Kokoro : configuration existante → Kokoro installé adopté ;
+    Kokoro installable seulement proposé (ni téléchargement ni retenue),
+    accepté → téléchargé puis adopté à la fin, retenu alors ; échec ou
+    annulation → rien d'adopté ni de retenu ; refus retenu ; retenu une fois
+    (un second lancement ne refait rien, un retour à l'ancien modèle tient
+    après relance) ; rien de retenu sans Kokoro possible ; ancien modèle
+    toujours installé ; lecteur hors disque : rien ne bouge.
   - Catalogue : paquet multi-fichiers installé seulement complet ; voix
     partagées ; MLX absent du catalogue sans calcul fourni.
 - **Alignement, sur des phrases françaises :**

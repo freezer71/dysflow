@@ -126,6 +126,8 @@ pub struct Prepared {
 
 pub fn prepare(args: &Args) -> Result<Launch> {
     let (mut config, config_notice) = Config::load();
+    // Une configuration illisible n'est jamais réécrite.
+    let config_notice_is_none = config_notice.is_none();
     let mut notices: Vec<String> = config_notice.into_iter().collect();
 
     apply_overrides(&mut config, args, &mut notices)?;
@@ -146,6 +148,26 @@ pub fn prepare(args: &Args) -> Result<Launch> {
         if let Some(text) = extracted(args)? {
             print!("{text}");
             return Ok(Launch::Done);
+        }
+    }
+
+    // Le passage à Kokoro s'écrit sur la configuration du disque, jamais sur
+    // celle que les options de la ligne de commande ont modifiée.
+    if config_notice_is_none {
+        let (mut on_disk, _) = Config::load();
+        if let Some(notice) = migrate_terminal(&mut on_disk) {
+            notices.push(notice);
+            if on_disk.app.voice_migration != config.app.voice_migration {
+                let _ = on_disk.save();
+                config.engine.model_path = on_disk.engine.model_path.clone();
+                config.engine.family = on_disk.engine.family.clone();
+                config.engine.engine = on_disk.engine.engine.clone();
+                config.voice.per_language = on_disk.voice.per_language.clone();
+                config.app.voice_migration = on_disk.app.voice_migration;
+            }
+        } else if on_disk.app.voice_migration != config.app.voice_migration {
+            let _ = on_disk.save();
+            config.app.voice_migration = on_disk.app.voice_migration;
         }
     }
 
@@ -329,6 +351,41 @@ fn aligned_voice_notice(config: &mut Config) -> Option<String> {
     (changed && !follows).then(|| format!("voix inconnue de {} — repli sur sa voix par défaut", config.engine.family))
 }
 
+/// Le passage à Kokoro au terminal : un Kokoro installé est adopté, une
+/// seule fois ; installable seulement, il est signalé sans rien retenir
+/// (le terminal ne télécharge rien de lui-même). Rend l'avis.
+pub fn migrate_terminal(config: &mut Config) -> Option<String> {
+    migrate_terminal_in(config, &crate::models::available(), crate::models::is_installed)
+}
+
+fn migrate_terminal_in(
+    config: &mut Config,
+    available: &[&'static crate::models::ModelPackage],
+    installed: impl Fn(&crate::models::ModelPackage) -> bool,
+) -> Option<String> {
+    use crate::reader::migration::{former_voice, plan, Step, KOKORO_MIGRATION};
+    let former = former_voice(config);
+    match plan(config, available, installed) {
+        Step::Switch(package) => {
+            let path = crate::models::install_path(package)?;
+            config.engine.model_path = path.to_string_lossy().into_owned();
+            config.engine.family = package.family.to_string();
+            if config.engine.engine == "auto" {
+                config.engine.engine = "audio_cpp".to_string();
+            }
+            config.align_voice_with_family();
+            config.app.voice_migration = KOKORO_MIGRATION;
+            Some(format!("Nouvelle voix : Kokoro remplace {former}. L'ancien modèle reste installé (`s` pour y revenir)."))
+        }
+        Step::Record => {
+            config.app.voice_migration = KOKORO_MIGRATION;
+            None
+        }
+        Step::Offer(_) => Some("Nouvelle voix Kokoro disponible : `s` pour l'installer.".to_string()),
+        Step::Nothing => None,
+    }
+}
+
 /// Adopte un modèle installé si la configuration n'en désigne aucun.
 ///
 /// Le lecteur ne télécharge jamais de lui-même : quand rien n'est installé, il
@@ -431,6 +488,45 @@ fn apply_overrides(config: &mut Config, args: &Args, notices: &mut Vec<String>) 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn kokoro_int8() -> &'static crate::models::ModelPackage {
+        crate::models::CATALOG.iter().find(|p| p.id == "kokoro_82m_int8").unwrap()
+    }
+
+    fn on_supertonic() -> Config {
+        let mut config = Config::default();
+        config.engine.family = "supertonic".into();
+        config.engine.model_path = "/m/supertonic/supertonic-3-f16.gguf".into();
+        config
+    }
+
+    #[test]
+    fn the_terminal_never_downloads_and_records_nothing_then() {
+        let mut config = on_supertonic();
+        let notice = migrate_terminal_in(&mut config, &[kokoro_int8()], |_| false);
+        assert!(notice.is_some_and(|n| n.contains("`s`")));
+        assert_eq!(config.app.voice_migration, 0, "rien de retenu sans adoption");
+        assert_eq!(config.engine.family, "supertonic");
+    }
+
+    #[test]
+    fn the_terminal_adopts_an_installed_kokoro_once() {
+        let mut config = on_supertonic();
+        let notice = migrate_terminal_in(&mut config, &[kokoro_int8()], |_| true).expect("un avis");
+        assert!(notice.starts_with("Nouvelle voix : Kokoro remplace supertonic."), "{notice}");
+        assert_eq!(config.engine.family, "kokoro");
+        assert!(config.engine.model_path.ends_with("kokoro/model_quantized.onnx"), "{}", config.engine.model_path);
+        assert_eq!(config.voice.per_language["fr"], "p-fenrir60");
+        assert_eq!(config.app.voice_migration, crate::reader::migration::KOKORO_MIGRATION);
+        assert_eq!(migrate_terminal_in(&mut config, &[kokoro_int8()], |_| true), None, "une seule fois");
+    }
+
+    #[test]
+    fn the_terminal_without_kokoro_records_nothing() {
+        let mut config = on_supertonic();
+        assert_eq!(migrate_terminal_in(&mut config, &[], |_| true), None);
+        assert_eq!(config.app.voice_migration, 0);
+    }
 
     fn scratch(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("sillon-launch-{}-{name}", std::process::id()));

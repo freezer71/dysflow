@@ -35,11 +35,13 @@ pub struct AppConfig {
     /// Minutes pendant lesquelles la voix reste chargée après la dernière
     /// lecture. `-1` : toujours ; `0` : relâchée dès l'arrêt.
     pub keep_voice_minutes: i64,
+    /// Migrations de voix déjà faites ou refusées (1 : le passage à Kokoro).
+    pub voice_migration: u32,
 }
 
 impl Default for AppConfig {
     fn default() -> Self {
-        Self { keep_voice_minutes: 10 }
+        Self { keep_voice_minutes: 10, voice_migration: 0 }
     }
 }
 

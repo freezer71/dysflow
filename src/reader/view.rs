@@ -71,6 +71,10 @@ pub struct Snapshot {
     pub preview: super::preview::PreviewView,
     /// Langue du document gardé : détectée, choisie, part de l'autre langue.
     pub document_language: Option<super::language::DocumentLanguage>,
+    /// L'avis du passage à Kokoro, à montrer jusqu'à sa fermeture.
+    pub notice: Option<String>,
+    /// La proposition de passer à Kokoro, en attente d'une réponse.
+    pub offer: Option<super::migration::Offer>,
 }
 
 /// Un mot, avec sa mise en valeur.
@@ -171,6 +175,8 @@ pub fn snapshot(reader: &Reader) -> Snapshot {
             download: reader.download(),
             preview: reader.preview_view(),
             document_language: reader.document_language().cloned(),
+            notice: reader.notice().map(str::to_string),
+            offer: reader.offer().cloned(),
             ..Snapshot::default()
         };
     };
@@ -209,6 +215,8 @@ pub fn snapshot(reader: &Reader) -> Snapshot {
         download: reader.download(),
         preview: reader.preview_view(),
         document_language: reader.document_language().cloned(),
+        notice: reader.notice().map(str::to_string),
+        offer: reader.offer().cloned(),
     }
 }
 

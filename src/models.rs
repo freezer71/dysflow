@@ -630,6 +630,15 @@ impl Download {
         }
     }
 
+    /// Un téléchargement fini sur cette issue (échec, annulation…), pour les
+    /// tests.
+    #[cfg(test)]
+    pub(crate) fn fake_ended(package: &'static ModelPackage, ending: Progress) -> Self {
+        let download = Self::fake(package, false);
+        *download.outcome.lock().unwrap() = Some(ending);
+        download
+    }
+
     /// Vrai si l'arrêt a été demandé.
     #[cfg(test)]
     pub(crate) fn cancel_requested(&self) -> bool {

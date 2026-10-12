@@ -19,6 +19,7 @@ pub mod command;
 pub mod data;
 pub mod handle;
 pub mod language;
+pub mod migration;
 pub mod preview;
 pub mod settings;
 pub mod view;
@@ -67,6 +68,15 @@ pub struct Reader {
     language: Option<language::DocumentLanguage>,
     /// L'app fournit le calcul MLX : le paquet Kokoro MLX est proposé.
     mlx: bool,
+    /// L'avis du passage à Kokoro, jusqu'à ce que l'interface le ferme.
+    notice: Option<String>,
+    /// La proposition de passer à Kokoro, en attente d'une réponse.
+    offer: Option<migration::Offer>,
+    /// Paquet accepté en téléchargement, et la voix qu'il remplacera : il
+    /// devient actif à la fin du téléchargement.
+    switch_when_downloaded: Option<(String, String)>,
+    /// Lance un téléchargement (jamais le réseau sous test).
+    start_download: fn(&'static crate::models::ModelPackage) -> anyhow::Result<crate::models::Download>,
 }
 
 impl Reader {
@@ -90,6 +100,10 @@ impl Reader {
             choices_path: language::LanguageChoices::path(),
             language: None,
             mlx: false,
+            notice: None,
+            offer: None,
+            switch_when_downloaded: None,
+            start_download: crate::models::Download::start,
         }
     }
 

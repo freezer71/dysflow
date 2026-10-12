@@ -13,7 +13,7 @@ use std::time::Instant;
 use crate::app::config::Effect;
 use crate::config::Config;
 use crate::doc::{BlockKind, Document};
-use crate::models::{self, Download, Progress};
+use crate::models::{self, Progress};
 
 use super::Reader;
 
@@ -461,7 +461,7 @@ impl Reader {
         if self.download.as_ref().is_some_and(|d| !d.is_finished()) {
             return Err(anyhow!("téléchargement déjà en cours"));
         }
-        self.download = Some(Download::start(package)?);
+        self.download = Some((self.start_download)(package)?);
         Ok(())
     }
 
@@ -509,18 +509,26 @@ impl Reader {
     }
 
     /// Appelé à chaque tour : un téléchargement terminé disparaît, et devient
-    /// la voix active s'il n'y en avait aucune.
+    /// la voix active s'il n'y en avait aucune, ou si le passage à Kokoro
+    /// l'attendait. Un échec ou une annulation libère ce passage.
     pub(super) fn poll_download(&mut self, now: Instant) {
-        let done = self
-            .download
-            .as_ref()
-            .is_some_and(|d| matches!(d.progress(), Progress::Done));
-        if !done {
+        let Some(progress) = self.download.as_ref().map(|d| d.progress()) else { return };
+        let id = self.download.as_ref().map(|d| d.package.id.to_string()).unwrap_or_default();
+        match progress {
+            Progress::Done => {}
+            Progress::Failed(_) | Progress::Cancelled => {
+                self.abandon_migration(&id);
+                return;
+            }
+            Progress::Running { .. } => return,
+        }
+        self.download = None;
+        if self.switch_when_downloaded.as_ref().is_some_and(|(pending, _)| *pending == id) {
+            self.finish_migration(&id, now);
             return;
         }
-        let id = self.download.take().map(|d| d.package.id.to_string());
         let none_active = !self.voices().iter().any(|v| v.active);
-        if let (Some(id), true) = (id, none_active) {
+        if none_active {
             let _ = self.use_voice(&id, now);
         }
     }
@@ -530,7 +538,7 @@ impl Reader {
         self.session.as_ref().map(|a| &a.config).unwrap_or(&self.config)
     }
 
-    fn sync_config(&mut self) {
+    pub(super) fn sync_config(&mut self) {
         if let Some(app) = self.session.as_ref() {
             self.config = app.config.clone();
         }
