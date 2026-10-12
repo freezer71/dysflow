@@ -25,17 +25,24 @@ impl OnDemand {
         Self { label, fallback, load: Mutex::new(Some(Box::new(load))), engine: Mutex::new(None) }
     }
 
+    /// Le chargement se fait sous le verrou de `load` seul (il sérialise les
+    /// appels simultanés) : `engine` n'est tenu qu'un instant, et `name`,
+    /// demandé à chaque trame du terminal, n'attend jamais les secondes du
+    /// chargement.
     fn resolve(&self) -> Arc<dyn TtsEngine> {
-        let mut engine = self.engine.lock().unwrap();
-        if let Some(engine) = engine.as_ref() {
+        if let Some(engine) = self.engine.lock().unwrap().as_ref() {
             return Arc::clone(engine);
         }
-        let loaded = self.load.lock().unwrap().take().map(|load| load());
-        let chosen = match loaded {
+        let mut load = self.load.lock().unwrap();
+        // Un autre appel a pu finir le chargement pendant l'attente.
+        if let Some(engine) = self.engine.lock().unwrap().as_ref() {
+            return Arc::clone(engine);
+        }
+        let chosen = match load.take().map(|load| load()) {
             Some(Ok(e)) => e,
             _ => Arc::clone(&self.fallback),
         };
-        *engine = Some(Arc::clone(&chosen));
+        *self.engine.lock().unwrap() = Some(Arc::clone(&chosen));
         chosen
     }
 }
@@ -107,6 +114,31 @@ mod tests {
     fn a_fallback_that_fails_to_load_gives_the_system_voice() {
         let engine = OnDemand::new("audio.cpp".into(), Arc::new(SilentEngine), || anyhow::bail!("fichier manquant"));
         engine.open_session().unwrap();
+        assert_eq!(engine.name(), "silencieux");
+    }
+
+    #[test]
+    fn the_name_does_not_wait_for_a_load_in_progress() {
+        // Le terminal demande le nom à chaque trame : un chargement de
+        // plusieurs secondes ne doit pas figer l'interface.
+        let (started_tx, started_rx) = std::sync::mpsc::channel();
+        let (finish_tx, finish_rx) = std::sync::mpsc::channel::<()>();
+        let engine = Arc::new(OnDemand::new("Supertonic 3 · F16".into(), Arc::new(SilentEngine), move || {
+            started_tx.send(()).unwrap();
+            let _ = finish_rx.recv();
+            Ok(Arc::new(SilentEngine) as Arc<dyn TtsEngine>)
+        }));
+        let loading = Arc::clone(&engine);
+        let loader = std::thread::spawn(move || loading.open_session().map(|_| ()));
+        started_rx.recv().unwrap();
+
+        let (name_tx, name_rx) = std::sync::mpsc::channel();
+        let asking = Arc::clone(&engine);
+        std::thread::spawn(move || name_tx.send(asking.name()).unwrap());
+        let name = name_rx.recv_timeout(std::time::Duration::from_secs(2));
+        finish_tx.send(()).unwrap();
+        loader.join().unwrap().unwrap();
+        assert_eq!(name.expect("le nom a attendu la fin du chargement"), "Supertonic 3 · F16");
         assert_eq!(engine.name(), "silencieux");
     }
 }
