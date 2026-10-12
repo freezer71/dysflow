@@ -1,6 +1,7 @@
 //! Synthèse vocale : contrat commun, moteurs, et ordonnanceur parallèle.
 
 pub mod lazy;
+pub mod kokoro;
 pub mod pool;
 pub mod preview;
 pub mod silent;
