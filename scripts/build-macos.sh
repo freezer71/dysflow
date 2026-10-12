@@ -35,6 +35,10 @@ if [ ! -x target/espeak/bin/sillon-espeak ] || [ scripts/sillon-espeak.c -nt tar
     ./scripts/build-espeak.sh
 fi
 ./scripts/build-ffi.sh
+# Les licences des crates Rust liées : THIRD-PARTY-RUST.txt doit suivre
+# Cargo.lock (python3 scripts/third-party-rust.py pour le régénérer). Le
+# script refuse une licence GPL, AGPL ou inconnue dans le graphe lié.
+python3 -I scripts/third-party-rust.py --check
 cd macos
 xcodegen generate
 xcodebuild -project Sillon.xcodeproj -scheme Sillon -configuration Release \
@@ -54,8 +58,14 @@ for f in COPYING SOURCE.txt sillon-espeak.c build-espeak.sh; do
         exit 1
     fi
 done
-for f in NOTICE sonic-LICENSE mlx-audio-swift-LICENSE mlx-swift-LICENSE mlx-LICENSE mlx-c-LICENSE \
-    metal-cpp-LICENSE nlohmann-json-LICENSE fmt-LICENSE KeyboardShortcuts-LICENSE; do
+licences=(NOTICE sonic-LICENSE mlx-audio-swift-LICENSE mlx-swift-LICENSE mlx-LICENSE mlx-c-LICENSE
+    metal-cpp-LICENSE nlohmann-json-LICENSE fmt-LICENSE KeyboardShortcuts-LICENSE
+    THIRD-PARTY-RUST.txt tesseract-LICENSE leptonica-LICENSE)
+# Le shim audio.cpp joint : sa licence et celles de ce qu'il compile.
+if [ -f "$APP_BUILT/Contents/Frameworks/libaudiocpp_shim.dylib" ]; then
+    licences+=(audiocpp-LICENSE ggml-LICENSE cJSON-LICENSE libyaml-LICENSE)
+fi
+for f in "${licences[@]}"; do
     if [ ! -s "$APP_BUILT/Contents/Resources/licences/$f" ]; then
         echo "Erreur : $f manque dans l'app (Contents/Resources/licences)" >&2
         exit 1

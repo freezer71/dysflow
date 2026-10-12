@@ -31,6 +31,12 @@ sha256_ok() {
 FEATURES="${FEATURES:-audio-cpp,ocr,kokoro-onnx}"
 OUT="${OUT:-dist}"
 
+# Les licences des crates Rust liées : THIRD-PARTY-RUST.txt doit suivre
+# Cargo.lock (python3 scripts/third-party-rust.py pour le régénérer) ; le
+# script refuse une licence GPL, AGPL ou inconnue dans le graphe lié. Il
+# décrit les features par défaut ci-dessous : avec d'autres, le régénérer.
+python3 -I scripts/third-party-rust.py --check
+
 echo "Compilation (features : $FEATURES)…"
 cargo build --release --features "$FEATURES"
 
@@ -115,6 +121,25 @@ case ",$FEATURES," in
     fi
     ;;
 esac
+
+# Les avis : NOTICE, les crates Rust, Sonic, et Tesseract et Leptonica
+# (feature ocr) ; audio.cpp et ce qu'il compile si le shim est joint. ONNX
+# Runtime (LICENSE-onnxruntime, ThirdPartyNotices-onnxruntime.txt) et
+# sillon-espeak (sillon-espeak-source/) ont été joints plus haut.
+cp NOTICE THIRD-PARTY-RUST.txt "$OUT/"
+mkdir -p "$OUT/licences"
+cp third_party/sonic/LICENSE "$OUT/licences/sonic-LICENSE"
+case ",$FEATURES," in
+*,ocr,*)
+    cp third_party/licences/tesseract-LICENSE third_party/licences/leptonica-LICENSE "$OUT/licences/" ;;
+esac
+if [ -n "$shim" ]; then
+    cp vendor/audio.cpp/LICENSE "$OUT/licences/audiocpp-LICENSE"
+    cp vendor/audio.cpp/external/ggml/LICENSE "$OUT/licences/ggml-LICENSE"
+    cp vendor/audio.cpp/external/cJSON/LICENSE "$OUT/licences/cJSON-LICENSE"
+    cp vendor/audio.cpp/external/libyaml/License "$OUT/licences/libyaml-LICENSE"
+fi
+echo "Joint : NOTICE, THIRD-PARTY-RUST.txt et licences/"
 
 echo "Vérification hors de l'arbre de compilation…"
 ( cd "$OUT" && ./sillon --show-config >/dev/null )

@@ -134,6 +134,22 @@ targets:
           joindre "$CMLX/json/LICENSE.MIT" nlohmann-json-LICENSE
           joindre "$CMLX/fmt/LICENSE" fmt-LICENSE
           joindre "$CHECKOUTS/KeyboardShortcuts/license" KeyboardShortcuts-LICENSE
+          # Le moteur Rust (libsillon_ffi.a) : ses crates, et Tesseract et
+          # Leptonica que la crate tesseract-rs compile dedans (feature ocr).
+          joindre "$SRCROOT/../THIRD-PARTY-RUST.txt" THIRD-PARTY-RUST.txt
+          joindre "$SRCROOT/../third_party/licences/tesseract-LICENSE" tesseract-LICENSE
+          joindre "$SRCROOT/../third_party/licences/leptonica-LICENSE" leptonica-LICENSE
+          # Le shim audio.cpp, quand il est joint : audio.cpp (avec un
+          # correctif local) et ce qu'il y compile — ggml, cJSON, libyaml.
+          if [ -f "$SRCROOT/Libraries/libaudiocpp_shim.dylib" ]; then
+            AUDIOCPP="$SRCROOT/../vendor/audio.cpp"
+            joindre "$AUDIOCPP/LICENSE" audiocpp-LICENSE
+            joindre "$AUDIOCPP/external/ggml/LICENSE" ggml-LICENSE
+            joindre "$AUDIOCPP/external/cJSON/LICENSE" cJSON-LICENSE
+            joindre "$AUDIOCPP/external/libyaml/License" libyaml-LICENSE
+          else
+            rm -f "$L/audiocpp-LICENSE" "$L/ggml-LICENSE" "$L/cJSON-LICENSE" "$L/libyaml-LICENSE"
+          fi
   SillonTests:
     type: bundle.unit-test
     platform: macOS
