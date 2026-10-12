@@ -33,13 +33,18 @@ final class FakeKokoroForward: KokoroForward, @unchecked Sendable {
 final class ForwardFactory: @unchecked Sendable {
     private let lock = NSLock()
     private var counts = (loads: 0, clears: 0)
+    private var loaded: [String] = []
     let forward = FakeKokoroForward()
     var loads: Int { lock.withLock { counts.loads } }
+    var directories: [String] { lock.withLock { loaded } }
     var clears: Int { lock.withLock { counts.clears } }
 
     func compute() -> KokoroMLXCompute {
         KokoroMLXCompute(
-            loadForward: { [self] _ in lock.withLock { counts.loads += 1 }; return forward },
+            loadForward: { [self] url in
+                lock.withLock { counts.loads += 1; loaded.append(url.path) }
+                return forward
+            },
             clearCache: { [self] in lock.withLock { counts.clears += 1 } })
     }
 }
@@ -97,10 +102,11 @@ final class KokoroMLXComputeTests: XCTestCase {
                 XCTFail("\(error)")
             }
         }
-        let expected = threads * perThread + threads / 2
+        let syntheses = threads * perThread
         XCTAssertEqual(factory.forward.observedMax, 1, "un passage MLX à la fois")
-        XCTAssertEqual(factory.forward.observedRuns, expected)
-        XCTAssertEqual(compute.calls, expected)
+        // Une préparation venue après une synthèse ne fait rien.
+        XCTAssertEqual(compute.calls, factory.forward.observedRuns)
+        XCTAssertTrue((syntheses...syntheses + threads / 2).contains(compute.calls), "\(compute.calls)")
         XCTAssertEqual(factory.loads, 1)
         XCTAssertEqual(factory.clears, 0, "le lecteur le tient encore")
         compute.release()
@@ -128,5 +134,45 @@ final class KokoroMLXComputeTests: XCTestCase {
         gate.signal()
         wait(for: [done], timeout: 5)
         compute.release()
+    }
+
+    /// Le moteur passe à un autre dossier (`SharedCompute` rend sa part sur
+    /// l'ancien, puis charge le nouveau) pendant que la préparation tient
+    /// encore le modèle : le nouveau dossier est chargé, sans part en trop.
+    func testAnotherDirectoryReplacesTheModelWithoutAnExtraHolder() throws {
+        let factory = ForwardFactory()
+        let compute = factory.compute()
+        try compute.load(modelDir: "/m/a")      // la préparation
+        try compute.load(modelDir: "/m/a")      // le moteur
+        compute.release()                       // le moteur rend /m/a…
+        try compute.load(modelDir: "/m/b")      // … et charge /m/b
+        XCTAssertEqual(factory.directories, ["/m/a", "/m/b"])
+        XCTAssertEqual(factory.clears, 1, "les poids de /m/a partent")
+        compute.release()                       // la préparation finit
+        XCTAssertNoThrow(try compute.synthesize(ids: [0], style: []), "le moteur tient /m/b")
+        compute.release()                       // le moteur rend /m/b
+        XCTAssertEqual(factory.clears, 2)
+        XCTAssertThrowsError(try compute.synthesize(ids: [0], style: []))
+    }
+
+    /// Une synthèse a déjà compilé les noyaux dans ce processus : la
+    /// préparation n'ajoute pas un passage derrière la lecture.
+    func testTheWarmUpIsSkippedOnceASynthesisCompiledTheKernels() throws {
+        let factory = ForwardFactory()
+        let compute = factory.compute()
+        try compute.load(modelDir: "/m/kokoro")
+        _ = try compute.synthesize(ids: [0, 43, 0], style: [])
+        try compute.warmUp()
+        XCTAssertEqual(factory.forward.observedRuns, 1, "aucun passage de plus")
+        XCTAssertEqual(compute.calls, 1)
+        compute.release()
+
+        let fresh = ForwardFactory()
+        let cold = fresh.compute()
+        try cold.load(modelDir: "/m/kokoro")
+        try cold.warmUp()
+        try cold.warmUp()
+        XCTAssertEqual(fresh.forward.observedRuns, 1, "une préparation, la seconde est inutile")
+        cold.release()
     }
 }

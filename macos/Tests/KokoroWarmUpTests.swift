@@ -30,7 +30,11 @@ final class KokoroWarmUpTests: XCTestCase {
         compute.failLoad = true
         await KokoroWarmUp.runIfNeeded(compute: compute, modelDirectory: "/m/kokoro", version: "1", defaults: defaults)?.value
         XCTAssertNil(defaults.string(forKey: KokoroWarmUp.versionKey))
-        XCTAssertNotNil(KokoroWarmUp.runIfNeeded(compute: compute, modelDirectory: "/m/kokoro", version: "1", defaults: defaults))
+        let retry = KokoroWarmUp.runIfNeeded(compute: compute, modelDirectory: "/m/kokoro", version: "1", defaults: defaults)
+        XCTAssertNotNil(retry)
+        // `isRunning` est partagé : la tâche finit ici, pas pendant un autre test.
+        await retry?.value
+        XCTAssertFalse(KokoroWarmUp.isRunning)
     }
 
     func testOnlyTheMLXPackageIsPrepared() {
@@ -65,10 +69,15 @@ final class KokoroWarmUpTests: XCTestCase {
         XCTAssertFalse(ReaderModel.downloadEnded(from: nil, to: going))
     }
 
-    /// La clé change avec l'exécutable : une mise à jour prépare à nouveau.
-    func testTheVersionFollowsTheExecutable() {
-        let version = KokoroWarmUp.version(of: .main)
-        XCTAssertEqual(version, KokoroWarmUp.version(of: .main))
-        XCTAssertFalse(version.hasSuffix("-?"), version)
+    /// En publication, la clé suit les numéros de version ; en
+    /// développement (ou sans numéro de build), l'UUID de l'exécutable.
+    func testTheVersionFollowsTheNumbersOrTheExecutableUUID() {
+        XCTAssertEqual(KokoroWarmUp.version(short: "0.2.0", build: "1", uuid: "U", development: false), "0.2.0(1)")
+        XCTAssertEqual(KokoroWarmUp.version(short: "0.2.0", build: "1", uuid: "U", development: true), "0.2.0(1)-U")
+        XCTAssertEqual(KokoroWarmUp.version(short: nil, build: nil, uuid: "U", development: false), "?(?)-U")
+        let uuid = KokoroWarmUp.executableUUID(of: .main)
+        XCTAssertNotNil(uuid.flatMap(UUID.init(uuidString:)), "LC_UUID de l'app hôte")
+        XCTAssertEqual(KokoroWarmUp.version(of: .main), KokoroWarmUp.version(of: .main))
+        XCTAssertTrue(KokoroWarmUp.version(of: .main).hasPrefix("0.2.0(1)"), KokoroWarmUp.version(of: .main))
     }
 }

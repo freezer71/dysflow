@@ -14,10 +14,18 @@ onnx-community/Kokoro-82M-v1.0-ONNX-timestamped (révision
 dd4401a9add81ac692d20e240d22ec9dda82cc29). La voix p-fenrir60, livrée avec
 Sillon (assets/voices), en est dérivée (Apache 2.0).
 
-L'app macOS contient des fichiers de mlx-audio-swift (macos/Vendor/KokoroMLX,
-licence MIT, Copyright (c) 2025 Prince Canuma) et utilise mlx-swift (licence
-MIT, Apple) ; leurs licences et ce fichier sont joints dans
-Contents/Resources/licences.
+L'app macOS contient, avec le texte de chaque licence dans
+Contents/Resources/licences (ce fichier compris) :
+- des fichiers de mlx-audio-swift (macos/Vendor/KokoroMLX), licence MIT,
+  Copyright (c) 2025 Prince Canuma — mlx-audio-swift-LICENSE ;
+- mlx-swift 0.32.3, licence MIT, ml-explore — mlx-swift-LICENSE ; il
+  embarque MLX (licence MIT, Apple Inc. — mlx-LICENSE), mlx-c (licence MIT,
+  ml-explore — mlx-c-LICENSE), metal-cpp (licence Apache 2.0, Apple Inc. —
+  metal-cpp-LICENSE), nlohmann/json (licence MIT, Niels Lohmann —
+  nlohmann-json-LICENSE) et {fmt} (licence MIT avec exception pour les
+  binaires, Victor Zverovich — fmt-LICENSE) ;
+- KeyboardShortcuts, licence MIT, Sindre Sorhus — KeyboardShortcuts-LICENSE ;
+- Sonic, licence Apache 2.0 (voir plus haut) — sonic-LICENSE.
 
 L'app macOS contient sillon-espeak (Contents/Helpers/sillon-espeak), un petit
 programme de Sillon (scripts/sillon-espeak.c) lié à espeak-ng 1.52.0, avec

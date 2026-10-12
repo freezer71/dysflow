@@ -54,6 +54,13 @@ for f in COPYING SOURCE.txt sillon-espeak.c build-espeak.sh; do
         exit 1
     fi
 done
+for f in NOTICE sonic-LICENSE mlx-audio-swift-LICENSE mlx-swift-LICENSE mlx-LICENSE mlx-c-LICENSE \
+    metal-cpp-LICENSE nlohmann-json-LICENSE fmt-LICENSE KeyboardShortcuts-LICENSE; do
+    if [ ! -s "$APP_BUILT/Contents/Resources/licences/$f" ]; then
+        echo "Erreur : $f manque dans l'app (Contents/Resources/licences)" >&2
+        exit 1
+    fi
+done
 # sillon-espeak embarqué, sur ses données embarquées (trames : u32
 # petit-boutiste puis octets ; la voix, puis un lot d'une entrée).
 phonemes=$(printf '\005\000\000\000fr-fr\001\000\000\000\010\000\000\000Bonjour.' \

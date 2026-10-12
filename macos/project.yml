@@ -19,6 +19,10 @@ settings:
     SWIFT_VERSION: "5.0"
     ARCHS: arm64
     MACOSX_DEPLOYMENT_TARGET: "14.0"
+    # CFBundleShortVersionString et CFBundleVersion (clé de la préparation
+    # des noyaux Metal, une fois par version) : à monter à chaque version.
+    MARKETING_VERSION: 0.2.0
+    CURRENT_PROJECT_VERSION: 1
     CODE_SIGN_IDENTITY: "-"
     ENABLE_HARDENED_RUNTIME: NO
     # Link.xcconfig s'applique à toutes les cibles, tests compris.
@@ -103,20 +107,33 @@ targets:
           else
             echo "warning: sillon-espeak absent (./scripts/build-espeak.sh) : Kokoro se repliera"
           fi
-      - name: Joindre NOTICE et la licence de mlx-swift
+      - name: Joindre NOTICE et les licences des bibliothèques
         basedOnDependencyAnalysis: false
         script: |
-          RES="$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH"
-          mkdir -p "$RES/licences"
-          # install -m 644 : les fichiers des paquets sont en lecture seule.
-          install -m 644 "$SRCROOT/../NOTICE" "$RES/licences/NOTICE"
-          install -m 644 "$SRCROOT/Vendor/KokoroMLX/LICENSE" "$RES/licences/mlx-audio-swift-LICENSE"
-          MLX_LICENSE="$BUILD_DIR/../../SourcePackages/checkouts/mlx-swift/LICENSE"
-          if [ -f "$MLX_LICENSE" ]; then
-            install -m 644 "$MLX_LICENSE" "$RES/licences/mlx-swift-LICENSE"
-          else
-            echo "warning: licence de mlx-swift introuvable ($MLX_LICENSE)"
-          fi
+          # Une licence manquante arrête la construction : l'app ne part
+          # jamais sans le texte des licences de ce qu'elle contient.
+          L="$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/licences"
+          CHECKOUTS="$BUILD_DIR/../../SourcePackages/checkouts"
+          CMLX="$CHECKOUTS/mlx-swift/Source/Cmlx"
+          mkdir -p "$L"
+          joindre() {
+            if [ ! -f "$1" ]; then
+              echo "error: licence introuvable : $1"
+              exit 1
+            fi
+            # install -m 644 : les fichiers des paquets sont en lecture seule.
+            install -m 644 "$1" "$L/$2"
+          }
+          joindre "$SRCROOT/../NOTICE" NOTICE
+          joindre "$SRCROOT/../third_party/sonic/LICENSE" sonic-LICENSE
+          joindre "$SRCROOT/Vendor/KokoroMLX/LICENSE" mlx-audio-swift-LICENSE
+          joindre "$CHECKOUTS/mlx-swift/LICENSE" mlx-swift-LICENSE
+          joindre "$CMLX/mlx/LICENSE" mlx-LICENSE
+          joindre "$CMLX/mlx-c/LICENSE" mlx-c-LICENSE
+          joindre "$CMLX/metal-cpp/LICENSE.txt" metal-cpp-LICENSE
+          joindre "$CMLX/json/LICENSE.MIT" nlohmann-json-LICENSE
+          joindre "$CMLX/fmt/LICENSE" fmt-LICENSE
+          joindre "$CHECKOUTS/KeyboardShortcuts/license" KeyboardShortcuts-LICENSE
   SillonTests:
     type: bundle.unit-test
     platform: macOS

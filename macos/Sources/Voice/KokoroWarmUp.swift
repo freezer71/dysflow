@@ -1,4 +1,5 @@
 import Foundation
+import MachO
 
 /// La première synthèse après une installation ou une mise à jour compile les
 /// noyaux Metal (≈ 9 s), gardés ensuite dans le cache du système. L'app la
@@ -13,17 +14,49 @@ enum KokoroWarmUp {
     /// (première fois)… ».
     private(set) static var isRunning = false
 
-    /// La version de l'app pour la préparation : numéros du paquet et date
-    /// de l'exécutable. Le projet ne pose pas `CFBundleVersion` : sans la
-    /// date, une mise à jour garderait la même clé et ne préparerait rien.
+    /// La version de l'app pour la préparation : `CFBundleShortVersionString`
+    /// et `CFBundleVersion` (MARKETING_VERSION, CURRENT_PROJECT_VERSION). En
+    /// développement, ou sans numéro de build, l'UUID de l'exécutable
+    /// (LC_UUID) s'y ajoute : il change avec chaque binaire différent.
     nonisolated static func version(of bundle: Bundle) -> String {
+        #if DEBUG
+        let development = true
+        #else
+        let development = false
+        #endif
         let info = bundle.infoDictionary ?? [:]
-        let short = info["CFBundleShortVersionString"] as? String ?? "?"
-        let build = info["CFBundleVersion"] as? String ?? "?"
-        let built = bundle.executableURL
-            .flatMap { try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate }
-            .map { String(Int($0.timeIntervalSince1970)) } ?? "?"
-        return "\(short)(\(build))-\(built)"
+        return version(short: info["CFBundleShortVersionString"] as? String,
+                       build: info["CFBundleVersion"] as? String,
+                       uuid: executableUUID(of: bundle), development: development)
+    }
+
+    nonisolated static func version(short: String?, build: String?, uuid: String?,
+                                    development: Bool) -> String {
+        let numbers = "\(short ?? "?")(\(build ?? "?"))"
+        let hasBuild = !(build ?? "").isEmpty
+        guard development || !hasBuild else { return numbers }
+        return "\(numbers)-\(uuid ?? "?")"
+    }
+
+    /// L'UUID (LC_UUID) de l'exécutable du paquet, lu dans l'image chargée.
+    nonisolated static func executableUUID(of bundle: Bundle) -> String? {
+        guard let path = bundle.executableURL?.resolvingSymlinksInPath().path else { return nil }
+        for i in 0..<_dyld_image_count() {
+            guard let name = _dyld_get_image_name(i),
+                  URL(fileURLWithPath: String(cString: name)).resolvingSymlinksInPath().path == path,
+                  let header = _dyld_get_image_header(i),
+                  header.pointee.magic == MH_MAGIC_64 else { continue }
+            var command = UnsafeRawPointer(header).advanced(by: MemoryLayout<mach_header_64>.size)
+            for _ in 0..<header.pointee.ncmds {
+                let load = command.load(as: load_command.self)
+                if load.cmd == UInt32(LC_UUID) {
+                    let uuid = command.load(as: uuid_command.self).uuid
+                    return UUID(uuid: uuid).uuidString
+                }
+                command = command.advanced(by: Int(load.cmdsize))
+            }
+        }
+        return nil
     }
 
     /// Le dossier du paquet MLX actif ; aucun pour un autre modèle.
