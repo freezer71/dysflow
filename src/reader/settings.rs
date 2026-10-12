@@ -359,11 +359,11 @@ impl Reader {
         self.settings()
     }
 
-    /// Applique, puis écrit `config.toml` (sauf lecteur hors disque). Une
-    /// écriture impossible laisse le réglage appliqué : l'erreur le dit.
+    /// Applique, puis écrit `config.toml` (sauf lecteur hors disque ou
+    /// fichier illisible, voir `writes_config`). Une écriture impossible laisse le réglage appliqué : l'erreur le dit.
     pub fn update_settings(&mut self, patch: &SettingsPatch, now: Instant) -> Result<SettingsView> {
         let applied = self.apply_patch(patch, now);
-        if self.persist {
+        if self.writes_config() {
             self.config.save()?;
         }
         Ok(applied)
@@ -484,7 +484,7 @@ impl Reader {
             app.config = self.config.clone();
         }
         self.reload_voice(now);
-        if self.persist {
+        if self.writes_config() {
             self.config.save()?;
         }
         Ok(())
@@ -1093,6 +1093,49 @@ mod tests {
         let id = crate::models::CATALOG[0].id;
         assert_eq!(r.install_voice(id).unwrap_err().to_string(), crate::reader::data::TRIAL);
         assert!(r.download().is_none());
+    }
+
+    /// Un `config.toml` illisible n'est jamais réécrit par un réglage : le
+    /// réglage s'applique, l'écran le dit (`Snapshot::config_unreadable`),
+    /// et rien ne part sur le disque avant l'accord de l'utilisateur.
+    #[test]
+    fn an_unreadable_config_is_applied_but_never_written() {
+        let mut r = reader();
+        r.set_config_unreadable(true);
+        assert!(!r.writes_config(), "rien n'est écrit par-dessus le fichier");
+        let applied = r
+            .update_settings(&SettingsPatch { keep_voice_minutes: Some(7), ..Default::default() }, Instant::now())
+            .expect("appliqué sans écriture");
+        assert_eq!(applied.keep_voice_minutes, 7);
+        assert!(r.config_unreadable(), "toujours signalée");
+        assert!(crate::reader::view::snapshot(&r).config_unreadable);
+        let mut fine = reader();
+        assert!(fine.writes_config());
+        fine.set_persistent(false);
+        assert!(!fine.writes_config());
+        assert!(!crate::reader::view::snapshot(&fine).config_unreadable);
+    }
+
+    /// « Remplacer » : la copie illisible est gardée à côté, puis les
+    /// réglages en cours sont écrits, et les écritures reprennent.
+    #[test]
+    fn replacing_an_unreadable_config_keeps_a_copy() {
+        let dir = std::env::temp_dir().join(format!("sillon-illisible-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        std::fs::write(&path, "[voice\nspeed = 1.4").unwrap();
+        let mut r = reader();
+        r.set_config_unreadable(true);
+        r.update_settings(&SettingsPatch { keep_voice_minutes: Some(9), ..Default::default() }, Instant::now())
+            .unwrap();
+        r.replace_unreadable_config_at(&path).expect("remplacé");
+        let kept = std::fs::read_to_string(dir.join("config.toml.illisible")).unwrap();
+        let written = std::fs::read_to_string(&path).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(kept, "[voice\nspeed = 1.4", "l'original est gardé tel quel");
+        assert!(written.contains("keep_voice_minutes = 9"), "{written}");
+        assert!(!r.config_unreadable());
+        assert!(r.writes_config());
     }
 
     #[test]

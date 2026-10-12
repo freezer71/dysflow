@@ -265,6 +265,9 @@ pub struct Snapshot {
     pub notice: Option<String>,
     /// La proposition de passer à Kokoro, jusqu'à une réponse.
     pub offer: Option<VoiceOfferView>,
+    /// `config.toml` n'a pu être lu : les réglages s'appliquent sans s'écrire
+    /// jusqu'à `replace_unreadable_config`.
+    pub config_unreadable: bool,
 }
 
 #[derive(uniffi::Record)]
@@ -722,6 +725,15 @@ impl SillonReader {
         let _ = self.handle.ask(|reader| reader.dismiss_offer());
     }
 
+    /// « Remplacer » un `config.toml` illisible : une copie est gardée à
+    /// côté (`config.toml.illisible`), puis les réglages en cours sont écrits.
+    pub fn replace_unreadable_config(&self) -> Result<(), SillonError> {
+        self.handle
+            .ask(|reader| reader.replace_unreadable_config().map_err(|e| e.to_string()))
+            .ok_or_else(|| failed("lecteur indisponible"))?
+            .map_err(failed)
+    }
+
     pub fn dismiss_notice(&self) {
         let _ = self.handle.ask(|reader| reader.dismiss_notice());
     }
@@ -962,6 +974,7 @@ fn snapshot_of(s: view::Snapshot) -> Snapshot {
         }),
         notice: s.notice,
         offer: s.offer.map(|o| VoiceOfferView { id: o.id, bytes: o.bytes, former: o.former, message: o.message }),
+        config_unreadable: s.config_unreadable,
     }
 }
 
@@ -1198,5 +1211,15 @@ mod tests {
         assert!(damaged.config_unreadable());
         let fine = app_reader((Config::default(), None), None);
         assert!(!fine.config_unreadable());
+    }
+
+    /// L'app le montre (« Configuration illisible ») : l'instantané le porte.
+    /// Le lecteur muet n'écrit rien : « Remplacer » y est refusé.
+    #[test]
+    fn an_unreadable_config_reaches_the_snapshot() {
+        let reader = SillonReader::silent();
+        assert!(!reader.snapshot().config_unreadable);
+        let err = reader.replace_unreadable_config().unwrap_err().to_string();
+        assert!(err.contains("mode d'essai"), "{err}");
     }
 }

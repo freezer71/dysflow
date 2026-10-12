@@ -75,6 +75,8 @@ pub struct Snapshot {
     pub notice: Option<String>,
     /// La proposition de passer à Kokoro, en attente d'une réponse.
     pub offer: Option<super::migration::Offer>,
+    /// `config.toml` n'a pu être lu : les réglages s'appliquent sans s'écrire.
+    pub config_unreadable: bool,
 }
 
 /// Un mot, avec sa mise en valeur.
@@ -177,6 +179,7 @@ pub fn snapshot(reader: &Reader) -> Snapshot {
             document_language: reader.document_language().cloned(),
             notice: reader.notice().map(str::to_string),
             offer: reader.offer().cloned(),
+            config_unreadable: reader.config_unreadable(),
             ..Snapshot::default()
         };
     };
@@ -217,6 +220,7 @@ pub fn snapshot(reader: &Reader) -> Snapshot {
         document_language: reader.document_language().cloned(),
         notice: reader.notice().map(str::to_string),
         offer: reader.offer().cloned(),
+        config_unreadable: reader.config_unreadable(),
     }
 }
 

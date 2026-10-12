@@ -126,6 +126,38 @@ impl Reader {
         self.config_unreadable
     }
 
+    /// Un réglage ou une voix choisie s'écrit dans `config.toml` : jamais
+    /// hors disque, jamais par-dessus un fichier illisible (il serait
+    /// remplacé par les défauts). L'interface le dit et propose de le
+    /// remplacer (`replace_unreadable_config`).
+    pub fn writes_config(&self) -> bool {
+        self.persist && !self.config_unreadable
+    }
+
+    /// « Remplacer » : la copie illisible est gardée à côté
+    /// (`config.toml.illisible`), puis les réglages en cours sont écrits ;
+    /// les écritures reprennent.
+    pub fn replace_unreadable_config(&mut self) -> anyhow::Result<()> {
+        let path = Config::path().ok_or_else(|| anyhow::anyhow!("répertoire de configuration introuvable"))?;
+        self.replace_unreadable_config_at(&path)
+    }
+
+    pub(crate) fn replace_unreadable_config_at(&mut self, path: &std::path::Path) -> anyhow::Result<()> {
+        use anyhow::Context;
+        if !self.persist {
+            return Err(anyhow::anyhow!(data::TRIAL));
+        }
+        if path.exists() {
+            let mut kept = path.as_os_str().to_owned();
+            kept.push(".illisible");
+            std::fs::copy(path, &kept).with_context(|| format!("copie de {}", path.display()))?;
+        }
+        self.sync_config();
+        self.config.save_to(path)?;
+        self.config_unreadable = false;
+        Ok(())
+    }
+
     /// Un paquet du catalogue que ce lecteur sait charger.
     pub fn package(&self, id: &str) -> anyhow::Result<&'static crate::models::ModelPackage> {
         crate::models::available_with(self.mlx)
