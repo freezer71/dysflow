@@ -85,6 +85,13 @@ pub(crate) fn split_sentence(text: &str, words: &[String]) -> Option<Split> {
     if head.is_empty() || tail.is_empty() {
         return None;
     }
+    // La forme parlée peut ajouter des virgules que les mots n'ont pas (un
+    // numéro dicté par groupes : « zéro six, douze, … ») : la coupe trouvée
+    // dans le texte n'est sûre que si la tête finit par le dernier mot de la
+    // tête. Sinon la phrase reste entière plutôt que coupée en plein nombre.
+    if !split.head_words.last().is_some_and(|last| head.ends_with(last.as_str())) {
+        return None;
+    }
     Some(Split { head_text: head.to_string(), tail_text: tail.to_string(), ..split })
 }
 
@@ -1152,6 +1159,23 @@ mod tests {
         assert_eq!(said.len(), 2, "{said:?}");
         assert!(said[0].ends_with(','), "{said:?}");
         assert_eq!(format!("{} {}", said[0], said[1]), sentence.text);
+    }
+
+    #[test]
+    fn a_comma_said_inside_a_number_does_not_cut_it() {
+        // Un numéro se dicte par groupes, séparés à l'oral par des virgules
+        // que les mots, eux, n'ont pas : la coupe tomberait en plein numéro.
+        let mut builder = crate::doc::DocumentBuilder::new(crate::doc::builder::CodePolicy::Announce);
+        builder.push_block("Appelez le 06 12 34 56 78, puis attendez la tonalité.");
+        let sentence = builder.document().sentences[0].clone();
+        assert!(sentence.text.contains("six, douze,"), "l'essai suppose des groupes dictés : {}", sentence.text);
+        let texts = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let synth = Synthesizer::new(Arc::new(SplittingEngine::new(&texts)), TtsParams::default(), 1, 4);
+        synth.push_with_words(sentence.text.clone(), sentence.spoken_words(), 0);
+        let rendered = wait_ready(&synth, 0);
+        assert_eq!(rendered.part, Part::Whole, "la phrase reste entière");
+        assert_eq!(*texts.lock().unwrap(), std::slice::from_ref(&sentence.text));
+        assert_eq!(rendered.words.map(|w| w.len()), Some(sentence.words.len()));
     }
 
     #[test]

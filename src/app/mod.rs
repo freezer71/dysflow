@@ -84,6 +84,8 @@ pub struct App {
     /// Minutage des mots des phrases en file, par phrase.
     timings: std::collections::HashMap<usize, Arc<[crate::doc::WordSpan]>>,
     awaiting_tail: Option<AwaitingTail>,
+    /// Phrases coupées en file, par phrase.
+    split_parts: std::collections::HashMap<usize, SplitParts>,
     /// Coupures : la sortie s'est vidée en pleine lecture faute de son prêt.
     stalls: usize,
     /// La sortie est déjà vide : une coupure ne compte qu'une fois.
@@ -134,6 +136,20 @@ struct AwaitingTail {
     /// Parole de la tête : là où la suite reprend le chronomètre.
     base: Duration,
     head_words: usize,
+}
+
+/// Les deux parties d'une phrase coupée, telles qu'elles sont en file : le
+/// surlignage suit la partie qui sonne, avec ses mots et son minutage.
+/// Retenues jusqu'à la fin de la phrase, pas seulement pendant l'attente de
+/// la suite : la tête sonne souvent encore quand la suite entre en file.
+#[derive(Debug, Clone)]
+struct SplitParts {
+    head_words: usize,
+    /// Parole de la tête, qui est aussi le départ de la suite.
+    head_speech: Duration,
+    head_spans: Option<Arc<[crate::doc::WordSpan]>>,
+    /// Minutage de la suite, depuis son propre début.
+    tail_spans: Option<Arc<[crate::doc::WordSpan]>>,
 }
 
 /// Le relais d'un saut peut tomber : le lecteur donne enfin une position pour
@@ -220,6 +236,7 @@ impl App {
             start_at: None,
             timings: std::collections::HashMap::new(),
             awaiting_tail: None,
+            split_parts: std::collections::HashMap::new(),
             stalls: 0,
             // Rien n'a encore joué : le premier son n'est pas une reprise.
             starved: true,
@@ -339,19 +356,19 @@ impl App {
         let position = self.player.position()?;
         let sentence = self.doc().sentence(position.sentence_id)?;
         let elapsed = position.elapsed.as_secs_f32();
-        // La tête d'une phrase coupée sonne seule : le surlignage reste dans
-        // ses mots, et attend la suite sur le dernier. Un minutage plus
-        // court que la phrase est celui d'une tête (le pool écarte tout
-        // minutage qui ne couvre pas sa partie) : il le reste quand la
-        // suite a été refusée pendant que la tête sonnait.
-        let spans = self.timings.get(&position.sentence_id).map(|s| &s[..]);
-        let head_words = self
-            .awaiting_tail
-            .filter(|w| w.sentence == position.sentence_id)
-            .map(|w| w.head_words)
-            .or_else(|| spans.map(<[_]>::len).filter(|&n| n < sentence.words.len()));
-        if let Some(count) = head_words {
-            return sentence.word_fraction_head(count, elapsed, position.speech.as_secs_f32(), spans);
+        // Une phrase coupée : le surlignage reste dans les mots de la partie
+        // qui sonne. La tête se reconnaît à sa parole, qui finit avec elle ;
+        // celle de la suite compte la tête en plus.
+        if let Some(parts) = self.split_parts.get(&position.sentence_id) {
+            let count = sentence.words.len();
+            let cut = parts.head_words.min(count);
+            if position.speech <= parts.head_speech {
+                let total = parts.head_speech.as_secs_f32();
+                return sentence.word_fraction_range(0..cut, elapsed, total, parts.head_spans.as_deref());
+            }
+            let base = parts.head_speech.as_secs_f32();
+            let total = position.speech.as_secs_f32() - base;
+            return sentence.word_fraction_range(cut..count, elapsed - base, total, parts.tail_spans.as_deref());
         }
         if let Some(found) = self
             .timings
@@ -459,6 +476,7 @@ impl App {
         finished.retain(|&id| Some(id) != waiting);
         for id in &finished {
             self.timings.remove(id);
+            self.split_parts.remove(id);
         }
         if let Some(last) = finished.last() {
             self.last_known = last.saturating_add(1);
@@ -497,6 +515,7 @@ impl App {
                     self.queue_head = id + 1;
                     if self.player.position().is_none() {
                         self.timings.remove(&id);
+                        self.split_parts.remove(&id);
                         self.last_known = id + 1;
                     }
                     continue;
@@ -556,6 +575,10 @@ impl App {
         if let Some(spans) = &head.words {
             self.timings.insert(id, Arc::clone(spans));
         }
+        self.split_parts.insert(
+            id,
+            SplitParts { head_words, head_speech: head.speech, head_spans: head.words.clone(), tail_spans: None },
+        );
         let start = self.start_at.filter(|s| s.sentence == id && !s.consumed);
         match start {
             Some(s) if s.word >= head_words => {}
@@ -578,6 +601,9 @@ impl App {
     /// minutage est mis bout à bout avec celui de la tête.
     fn enqueue_tail(&mut self, waiting: AwaitingTail, tail: &crate::tts::pool::Rendered) {
         let id = waiting.sentence;
+        if let Some(parts) = self.split_parts.get_mut(&id) {
+            parts.tail_spans = tail.words.clone();
+        }
         let shift = waiting.base.as_secs_f32();
         let head = self.timings.remove(&id);
         if let (Some(head), Some(rest)) = (head, &tail.words) {
@@ -732,6 +758,7 @@ impl App {
         let target = target.min(total - 1);
         self.player.flush();
         self.timings.clear();
+        self.split_parts.clear();
         self.awaiting_tail = None;
         // La sortie vidée par un saut n'est pas une coupure.
         self.starved = true;
@@ -1543,6 +1570,7 @@ impl App {
 
         self.player.flush();
         self.timings.clear();
+        self.split_parts.clear();
         self.awaiting_tail = None;
         self.starved = true;
         let current = self.current_sentence();
@@ -2315,6 +2343,8 @@ pub(crate) mod tests {
         gate: Option<Arc<std::sync::Mutex<std::sync::mpsc::Receiver<()>>>>,
         /// Ne donne pas le minutage des mots.
         untimed: bool,
+        /// Ne donne pas le minutage de la suite « Camille… ».
+        untimed_tail: bool,
         /// Refuse la suite « Camille… ».
         refuse_tail: bool,
     }
@@ -2360,7 +2390,8 @@ pub(crate) mod tests {
             let spans = (0..words.len())
                 .map(|i| crate::doc::WordSpan { start: i as f32, end: (i + 1) as f32 })
                 .collect();
-            Ok(crate::tts::Synthesis { pcm, words: (!self.untimed).then_some(spans) })
+            let untimed = self.untimed || (self.untimed_tail && text.starts_with("Camille"));
+            Ok(crate::tts::Synthesis { pcm, words: (!untimed).then_some(spans) })
         }
     }
 
@@ -2507,6 +2538,43 @@ pub(crate) mod tests {
         assert!(app.timings.contains_key(&0), "son minutage la suit jusqu'au bout");
         app.player.simulate(0, Duration::from_millis(1500), Duration::from_secs(3));
         assert_eq!(app.current_word(), Some(1));
+    }
+
+    /// Tête et suite en file, la suite arrivée pendant la tête : le
+    /// surlignage reste dans la tête jusqu'à sa fin, puis reprend dans la
+    /// suite sans revenir en arrière.
+    fn assert_highlight_follows_the_parts(engine: Cutting, expected: [usize; 8]) {
+        let (mut app, _output) = cutting_app_with("Le quatorze juillet, Camille harangua la foule.", engine);
+        tick_until(&mut app, |a| a.queue_head >= 1);
+        assert!(app.awaiting_tail.is_none(), "la suite est en file");
+        let head = Duration::from_secs(3);
+        let mut seen = Vec::new();
+        for ms in [100, 1500, 2900, 3000] {
+            app.player.simulate(0, Duration::from_millis(ms), head);
+            seen.push(app.current_word().unwrap());
+        }
+        for ms in [3000, 3100, 6900, 7000] {
+            app.player.simulate(0, Duration::from_millis(ms), Duration::from_secs(7));
+            seen.push(app.current_word().unwrap());
+        }
+        assert_eq!(seen, expected);
+    }
+
+    #[test]
+    fn an_untimed_head_keeps_the_highlight_once_its_tail_is_queued() {
+        // Sans minutage, les poids : « juillet, » porte la pause de sa
+        // virgule, et prend la mi-tête.
+        assert_highlight_follows_the_parts(Cutting { untimed: true, ..Cutting::default() }, [0, 2, 2, 2, 3, 3, 6, 6]);
+    }
+
+    #[test]
+    fn a_timed_head_with_an_untimed_tail_keeps_the_highlight() {
+        assert_highlight_follows_the_parts(Cutting { untimed_tail: true, ..Cutting::default() }, [0, 1, 2, 2, 3, 3, 6, 6]);
+    }
+
+    #[test]
+    fn a_timed_head_and_tail_keep_the_highlight() {
+        assert_highlight_follows_the_parts(Cutting::default(), [0, 1, 2, 2, 3, 3, 6, 6]);
     }
 
     #[test]

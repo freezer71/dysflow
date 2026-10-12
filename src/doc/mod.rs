@@ -202,23 +202,27 @@ impl Sentence {
         fraction_by_weight(&self.words, elapsed, total)
     }
 
-    /// Le mot prononcé quand seuls les `count` premiers mots sonnent — la
-    /// tête d'une phrase coupée, dont la suite n'est pas encore là. Le
-    /// minutage de la tête sert s'il les couvre exactement, sinon la parole
-    /// `total` se répartit sur ces mots seuls ; au-delà, le surlignage
-    /// attend sur le dernier.
-    pub fn word_fraction_head(
+    /// Le mot prononcé quand seuls les mots `range` sonnent — la tête ou la
+    /// suite d'une phrase coupée, chacune jouée à part. `elapsed` et `total`
+    /// comptent depuis le début de cette partie. Le minutage de la partie
+    /// sert s'il couvre exactement ses mots, sinon la parole se répartit sur
+    /// ces mots seuls ; au-delà, le surlignage attend sur le dernier.
+    /// L'index rendu est celui du mot dans la phrase.
+    pub fn word_fraction_range(
         &self,
-        count: usize,
+        range: std::ops::Range<usize>,
         elapsed: f32,
         total: f32,
         spans: Option<&[WordSpan]>,
     ) -> Option<(usize, f32)> {
-        let words = &self.words[..count.min(self.words.len())];
-        match spans {
+        let end = range.end.min(self.words.len());
+        let start = range.start.min(end);
+        let words = &self.words[start..end];
+        let found = match spans {
             Some(spans) if !spans.is_empty() && spans.len() == words.len() => fraction_by_spans(elapsed, spans),
             _ => fraction_by_weight(words, elapsed, total),
-        }
+        };
+        found.map(|(i, fraction)| (start + i, fraction))
     }
 
     /// Instant où commence le mot `word`, en fraction de la parole.
