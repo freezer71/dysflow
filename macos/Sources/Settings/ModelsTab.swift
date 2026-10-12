@@ -22,7 +22,7 @@ struct ModelsTab: View {
                 ForEach(store.catalogue, id: \.id) { m in row(m) }
             }
             if let free = store.freeSpace {
-                Text("Espace libre : \(ByteCountFormatter.string(fromByteCount: Int64(free), countStyle: .file))")
+                Text("Espace libre : \(SizeFormat.bytes(free))")
                     .accessibilityIdentifier("espace-libre")
             }
         }
@@ -48,7 +48,7 @@ struct ModelsTab: View {
                 }
                 Text(m.summary)
                 if !m.voicesLabel.isEmpty { Text(m.voicesLabel) }
-                Text("\(m.languagesLabel) · \(ByteCountFormatter.string(fromByteCount: Int64(m.bytes), countStyle: .file)) · \(m.precision.uppercased())")
+                Text("\(m.languagesLabel) · \(SizeFormat.bytes(m.bytes)) · \(m.precision.uppercased())")
                 Text(m.pace)
                 if !m.licenses.isEmpty { Text(m.licenses) }
                 if let d = download, d.id == m.id, let failed = d.failed {

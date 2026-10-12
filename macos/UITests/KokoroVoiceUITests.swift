@@ -33,3 +33,40 @@ private extension XCUIElement {
         return false
     }
 }
+
+/// L'offre, l'avis et le bandeau « Configuration illisible », posés par les
+/// arguments de test (`UITestStaging`) : atteints au clavier, puis audités.
+/// Lancé à la main, avec l'accord de l'utilisateur :
+/// `-only-testing:SillonUITests/KokoroNoticesUITests`.
+final class KokoroNoticesUITests: XCTestCase {
+    func testTheOfferNoticeAndBannerAreReachableAndAudited() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--show-settings", "--ui-testing-offre",
+                               "--ui-testing-avis", "--ui-testing-config-illisible"]
+        app.launch()
+        let window = app.windows["Réglages"]
+        XCTAssertTrue(window.waitForExistence(timeout: 5))
+        window.toolbars.buttons["Voix"].click()
+        let any = window.descendants(matching: .any)
+        XCTAssertTrue(any["configuration-illisible"].waitForExistence(timeout: 3), "bandeau absent")
+        XCTAssertTrue(any["avis-voix"].exists, "avis absent")
+        let accept = window.buttons["passer-nouvelle-voix"]
+        XCTAssertTrue(accept.exists, "offre absente")
+        XCTAssertEqual(accept.title, "Passer à la nouvelle voix (342 Mo)")
+        XCTAssertTrue(window.buttons["plus-tard"].exists)
+        XCTAssertTrue(window.buttons["remplacer-configuration"].exists)
+        // Au clavier : Tab finit par donner le focus au bouton de l'offre
+        // (exige « Navigation au clavier », comme SettingsUITests).
+        let mode = UserDefaults.standard.persistentDomain(forName: UserDefaults.globalDomain)?["AppleKeyboardUIMode"] as? Int ?? 0
+        if mode & 2 != 0 {
+            var reached = false
+            for _ in 0..<30 where !reached {
+                window.typeKey(.tab, modifierFlags: [])
+                reached = (accept.value(forKey: "hasKeyboardFocus") as? Bool) == true
+            }
+            XCTAssertTrue(reached, "l'offre n'est pas atteinte au clavier")
+        }
+        try app.performAccessibilityAuditOutsideTouchBar(visibleIn: window)
+    }
+}

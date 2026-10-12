@@ -39,6 +39,9 @@ final class ReaderModel {
     /// La préparation des noyaux Metal de Kokoro (`KokoroWarmUp`), observée
     /// par l'onglet Voix.
     @ObservationIgnored let voicePreparation = VoicePreparation()
+    /// Tests d'interface seulement (`UITestStaging`) : ce qui est posé
+    /// sur chaque instantané publié.
+    @ObservationIgnored var staged: ((inout Snapshot) -> Void)?
 
     init(reader: SillonReader, now: @escaping () -> Date = Date.init,
          frames: FrameSource? = nil) {
@@ -222,7 +225,8 @@ final class ReaderModel {
     }
 
     func refresh() {
-        let next = Self.published(reader.snapshot())
+        var next = Self.published(reader.snapshot())
+        staged?(&next)
         let changed = next != snapshot
         let newDocument = next.revision != snapshot.revision
         let newSection = next.section != snapshot.section

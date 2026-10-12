@@ -157,7 +157,7 @@ enum BookmarkGroups {
 enum CacheReport {
     static func text(freed bytes: UInt64) -> String {
         guard bytes > 0 else { return "Le cache était déjà vide" }
-        return "\(ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)) libérés"
+        return "\(SizeFormat.bytes(bytes)) libérés"
     }
 }
 

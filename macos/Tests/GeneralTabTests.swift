@@ -28,7 +28,7 @@ final class GeneralTabTests: XCTestCase {
 
     func testTheCacheReportSaysWhatWasFreed() {
         XCTAssertEqual(CacheReport.text(freed: 0), "Le cache était déjà vide")
-        XCTAssertTrue(CacheReport.text(freed: 12_000_000).hasSuffix("libérés"))
+        XCTAssertEqual(CacheReport.text(freed: 12_000_000), "12 Mo libérés")
     }
 
     func testTheRemovalQuestionNamesTheBookmarkAndItsDocument() {

@@ -66,7 +66,7 @@ final class ModelsStore {
         if model.active {
             return .refuse("\(model.name) est le modèle actif : choisissez-en un autre avant de le supprimer.")
         }
-        let size = ByteCountFormatter.string(fromByteCount: Int64(model.bytes), countStyle: .file)
+        let size = SizeFormat.bytes(model.bytes)
         return .confirm(title: "Supprimer \(model.name) ?",
                         message: "\(size) seront libérés. Il faudra le télécharger à nouveau pour l'utiliser.")
     }

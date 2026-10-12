@@ -15,6 +15,24 @@ enum Announcement {
     }
 }
 
+/// Ce qui a déjà été dit à VoiceOver : un avis qui reste affiché ne se
+/// redit pas à chaque retour sur l'onglet.
+struct AnnounceOnce {
+    private var said: Set<String> = []
+
+    mutating func shouldSay(_ text: String) -> Bool {
+        said.insert(text).inserted
+    }
+
+    /// Le registre de l'app : il vit autant qu'elle.
+    @MainActor static var shared = AnnounceOnce()
+
+    /// Dit `text` à VoiceOver, la première fois seulement.
+    @MainActor static func post(_ text: String) {
+        if shared.shouldSay(text) { Announcement.post(text) }
+    }
+}
+
 /// Le rouge des erreurs : 4,5:1 au moins sur le fond de la fenêtre et des
 /// lignes de formulaire, en clair (rouge sombre) comme en sombre (rouge clair).
 /// `.red` et `systemRed` n'y arrivent pas.

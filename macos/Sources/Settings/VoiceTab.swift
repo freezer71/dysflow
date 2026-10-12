@@ -100,11 +100,15 @@ struct VoiceTab: View {
             if let error { Announcement.post(error) }
         }
         // L'avis et l'offre du passage à Kokoro se disent à VoiceOver.
+        // Une fois par valeur : pas à chaque retour sur l'onglet.
         .onChange(of: model.snapshot.notice, initial: true) { _, notice in
-            if let notice { Announcement.post(notice) }
+            if let notice { AnnounceOnce.post(notice) }
         }
         .onChange(of: model.snapshot.offer, initial: true) { _, offer in
-            if let offer { Announcement.post("Nouvelle voix disponible. \(Self.offerTitle(offer)) ?") }
+            if let offer { AnnounceOnce.post("Nouvelle voix disponible. \(Self.offerTitle(offer)) ?") }
+        }
+        .onChange(of: Self.acceptedDownloadFailure(accepted: acceptedOffer, download: model.snapshot.download)) { _, failure in
+            if let failure { Announcement.post(failure) }
         }
         .onChange(of: model.voicePreparation.isRunning) { _, running in
             if running { Announcement.post("Voix en préparation, la première fois") }
@@ -115,6 +119,9 @@ struct VoiceTab: View {
     /// (Kokoro reste installable depuis l'onglet Modèles). Après l'accord,
     /// le téléchargement avance ici.
     @ViewBuilder private var offer: some View {
+        if let failure = Self.acceptedDownloadFailure(accepted: acceptedOffer, download: model.snapshot.download) {
+            ErrorText(failure, identifier: "erreur-nouvelle-voix")
+        }
         if let offer = model.snapshot.offer {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Nouvelle voix disponible : Kokoro, plus naturelle, en français et en anglais.")
@@ -357,11 +364,24 @@ struct VoiceTab: View {
         return "Document mêlé : \(majority) % en \(LanguageName.display(d.detected ?? d.effective).lowercased())"
     }
 
-    /// Le bouton de l'offre, avec la taille écrite comme dans l'onglet
-    /// Modèles (`ByteCountFormatter`, base 1000) : « Passer à la nouvelle
-    /// voix (342 Mo) ».
+    /// Le bouton de l'offre, avec la taille écrite comme partout dans l'app
+    /// (`SizeFormat`) : « Passer à la nouvelle voix (342 Mo) ».
     static func offerTitle(_ offer: VoiceOfferView) -> String {
-        "Passer à la nouvelle voix (\(ByteCountFormatter.string(fromByteCount: Int64(offer.bytes), countStyle: .file)))"
+        "Passer à la nouvelle voix (\(SizeFormat.bytes(offer.bytes)))"
+    }
+
+    /// L'avis du lancement quand une offre attend : où y répondre. La
+    /// phrase du moteur (taille en base 1024, question sans bouton) n'est
+    /// pas montrée.
+    static func launchNotice(_ offer: VoiceOfferView) -> String {
+        "Nouvelle voix disponible (\(SizeFormat.bytes(offer.bytes))) : Réglages › Voix"
+    }
+
+    /// Le téléchargement accepté depuis cet onglet a échoué : l'offre est
+    /// revenue, l'échec se dit au-dessus.
+    static func acceptedDownloadFailure(accepted: String?, download: DownloadView?) -> String? {
+        guard let accepted, let d = download, d.id == accepted, let failed = d.failed else { return nil }
+        return "Téléchargement interrompu : \(failed)"
     }
 
     /// L'état de la voix, une seule ligne : la voix du système en repli avec

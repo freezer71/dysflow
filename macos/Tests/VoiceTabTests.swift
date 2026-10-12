@@ -56,13 +56,72 @@ final class VoiceTabTests: XCTestCase {
         XCTAssertEqual(VoiceTab.voiceLine(.resting, preparing: true), "Voix en préparation (première fois)…")
     }
 
-    /// M1 : l'offre en un clic, avec sa taille écrite comme l'onglet Modèles
-    /// (`ByteCountFormatter`, base 1000).
-    func testTheOfferSaysItsSizeLikeTheModelsTab() {
-        let offer = VoiceOfferView(id: "kokoro_82m_mlx", bytes: 342_000_000, former: "F2", message: "")
-        let size = ByteCountFormatter.string(fromByteCount: 342_000_000, countStyle: .file)
-        XCTAssertTrue(size.hasPrefix("342"), size)
-        XCTAssertEqual(VoiceTab.offerTitle(offer), "Passer à la nouvelle voix (\(size))")
+    /// M1 : l'offre en un clic, avec sa taille écrite comme partout dans
+    /// l'app (`SizeFormat.bytes`, base 1000, unités françaises).
+    func testTheOfferSaysItsSizeTheFrenchWay() {
+        let offer = VoiceOfferView(id: "kokoro_82m_mlx", bytes: 342_264_783, former: "F2", message: "")
+        XCTAssertEqual(VoiceTab.offerTitle(offer), "Passer à la nouvelle voix (342 Mo)")
+        XCTAssertEqual(VoiceTab.launchNotice(offer), "Nouvelle voix disponible (342 Mo) : Réglages › Voix")
+    }
+
+    /// Au lancement, une offre se dit à la façon de l'app, jamais avec la
+    /// phrase du moteur (base 1024, question sans bouton).
+    @MainActor
+    func testTheLaunchNoticeOfAnOfferIsTheApps() {
+        let offer = VoiceOfferView(id: "kokoro_82m_mlx", bytes: 342_264_783, former: "F2",
+                                   message: "Nouvelle voix disponible (326,4 Mo) — Passer à Kokoro ?")
+        XCTAssertEqual(AppDelegate.launchNotice(engine: offer.message, offer: offer),
+                       "Nouvelle voix disponible (342 Mo) : Réglages › Voix")
+        XCTAssertEqual(AppDelegate.launchNotice(engine: "Nouvelle voix : Kokoro remplace F2.", offer: nil),
+                       "Nouvelle voix : Kokoro remplace F2.")
+        XCTAssertNil(AppDelegate.launchNotice(engine: nil, offer: nil))
+    }
+
+    /// Le téléchargement accepté échoue : l'offre revient, et l'échec se dit.
+    func testAFailedAcceptedDownloadIsSaid() {
+        let failed = DownloadView(id: "kokoro_82m_mlx", received: 1, total: 2, failed: "réseau coupé")
+        XCTAssertEqual(VoiceTab.acceptedDownloadFailure(accepted: "kokoro_82m_mlx", download: failed),
+                       "Téléchargement interrompu : réseau coupé")
+        XCTAssertNil(VoiceTab.acceptedDownloadFailure(accepted: nil, download: failed), "rien d'accepté ici")
+        XCTAssertNil(VoiceTab.acceptedDownloadFailure(accepted: "autre", download: failed))
+        let going = DownloadView(id: "kokoro_82m_mlx", received: 1, total: 2, failed: nil)
+        XCTAssertNil(VoiceTab.acceptedDownloadFailure(accepted: "kokoro_82m_mlx", download: going))
+    }
+
+    func testSizesAreWrittenTheFrenchWayInBase1000() {
+        XCTAssertEqual(SizeFormat.bytes(342_264_783), "342 Mo")
+        XCTAssertEqual(SizeFormat.bytes(92_361_055), "92,4 Mo")
+        XCTAssertEqual(SizeFormat.bytes(522_320), "522 Ko")
+        XCTAssertEqual(SizeFormat.bytes(1_500_000_000), "1,5 Go")
+        XCTAssertEqual(SizeFormat.bytes(5_000_000), "5 Mo")
+        XCTAssertEqual(SizeFormat.bytes(999_700), "1 Mo", "jamais « 1 000 Ko »")
+        XCTAssertEqual(SizeFormat.bytes(999), "999 octets")
+        XCTAssertEqual(SizeFormat.bytes(1), "1 octet")
+    }
+
+    /// L'avis et l'offre se disent une fois par valeur, pas à chaque retour
+    /// sur l'onglet.
+    @MainActor
+    func testAnAnnouncementIsMadeOncePerValue() {
+        var once = AnnounceOnce()
+        XCTAssertTrue(once.shouldSay("Nouvelle voix"))
+        XCTAssertFalse(once.shouldSay("Nouvelle voix"))
+        XCTAssertTrue(once.shouldSay("Autre avis"))
+    }
+
+    /// Les tests d'interface (compilés seulement) atteignent l'offre, l'avis
+    /// et le bandeau sous le lecteur muet.
+    func testUITestArgumentsStageTheOfferNoticeAndUnreadableConfig() {
+        XCTAssertNil(UITestStaging.staging(for: ["--ui-testing"]))
+        var s = Snapshot.sample()
+        UITestStaging.staging(for: ["--ui-testing", "--ui-testing-offre", "--ui-testing-config-illisible"])?(&s)
+        XCTAssertEqual(s.offer?.bytes, 342_264_783)
+        XCTAssertTrue(s.configUnreadable)
+        XCTAssertNil(s.notice)
+        var n = Snapshot.sample()
+        UITestStaging.staging(for: ["--ui-testing-avis"])?(&n)
+        XCTAssertNotNil(n.notice)
+        XCTAssertNil(n.offer)
     }
 
     func testTheVoiceStateLine() {

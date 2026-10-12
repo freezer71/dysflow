@@ -81,6 +81,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         model = ReaderModel(reader: reader)
+        if isUITesting { model.staged = UITestStaging.staging(for: ProcessInfo.processInfo.arguments) }
         model.refresh()
         panel = PanelController(model: model)
         transport = Transport(model: model)
@@ -122,14 +123,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model.onVoiceMayHaveChanged = { [weak self] in self?.kokoroBecameActive() }
         // Le passage écrit `config.toml` : hors du fil principal, puis la
         // préparation, sur la voix qui en sort.
-        Task { @MainActor [weak self] in
+        migration = Task { @MainActor [weak self] in
             guard let self, let model = self.model else { return }
-            if let notice = await model.migrateVoice() {
+            if let notice = Self.launchNotice(engine: await model.migrateVoice(), offer: model.snapshot.offer) {
                 model.message = notice
                 self.panel.post(notice)
             }
             self.kokoroBecameActive()
         }
+    }
+
+    /// Le passage au lancement, gardé : une lecture l'attend après la
+    /// capture (le ⌘C simulé ne patiente pas), pour partir sur la bonne voix.
+    private var migration: Task<Void, Never>?
+
+    /// L'avis du lancement : une offre en attente se dit à la façon de
+    /// l'app (taille comprise, où y répondre) ; sinon l'avis du moteur
+    /// (passage fait).
+    static func launchNotice(engine: String?, offer: VoiceOfferView?) -> String? {
+        if let offer { return VoiceTab.launchNotice(offer) }
+        return engine
     }
 
     /// Kokoro est peut-être devenu la voix active (lancement, voix choisie,
@@ -162,7 +175,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         await readGate.run {
             await ReadFlow(
                 prepare: { model.prepareVoice() },
-                capture: { await capture?() ?? .unsupported },
+                capture: { [migration] in
+                    let outcome = await capture?() ?? .unsupported
+                    await migration?.value
+                    return outcome
+                },
                 open: { model.open(text: $0, source: $1) },
                 readClipboard: { ClipboardSnapshot(pasteboard: pasteboard).read() },
                 openImage: { try await model.openImage($0) },

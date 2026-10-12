@@ -22,7 +22,7 @@ final class ModelsStoreTests: XCTestCase {
             return XCTFail("confirmation attendue")
         }
         XCTAssertEqual(title, "Supprimer MagpieTTS ?")
-        XCTAssertTrue(message.contains(ByteCountFormatter.string(fromByteCount: 1_562_142_912, countStyle: .file)))
+        XCTAssertTrue(message.hasPrefix("1,6 Go seront libérés"), message)
         store.askDeletion(model)
         XCTAssertEqual(store.pendingDeletion?.id, "b")
     }

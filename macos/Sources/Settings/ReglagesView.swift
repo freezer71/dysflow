@@ -98,7 +98,7 @@ struct ConfigUnreadableBanner: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(.quaternary)
             .accessibilityElement(children: .contain)
-            .onAppear { Announcement.post(line) }
+            .onAppear { AnnounceOnce.post(line) }
             .alert("Remplacer config.toml ?", isPresented: $confirming) {
                 // Annuler par défaut : Retour et Échap ne remplacent rien.
                 Button("Annuler", role: .cancel) {}
