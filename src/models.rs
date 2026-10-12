@@ -393,9 +393,11 @@ fn size_of(path: &Path) -> Option<u64> {
     std::fs::metadata(path).ok().map(|m| m.len())
 }
 
-/// Installé : le fichier principal est là, et chaque compagnon a sa taille.
+/// Installé : chaque fichier, le principal comme ses compagnons, a sa taille
+/// attendue. Un principal tronqué n'est pas installé : la migration ne doit
+/// pas basculer dessus.
 pub fn is_installed_in(root: &Path, package: &ModelPackage) -> bool {
-    size_of(&main_path_in(root, package)).is_some()
+    size_of(&main_path_in(root, package)) == Some(package.bytes)
         && package
             .companions
             .iter()
@@ -1216,6 +1218,22 @@ mod tests {
         std::fs::File::create(&voice).unwrap().set_len(10).unwrap();
         assert!(!is_installed_in(&root, mlx), "une voix tronquée");
         assert!(is_truncated_in(&root, mlx));
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn a_truncated_main_file_is_not_installed_and_the_migration_does_not_switch() {
+        use crate::reader::migration::{plan, Step};
+        let root = scratch("principal-tronque");
+        let mlx = package("kokoro_82m_mlx");
+        sparse(&root, mlx, true);
+        std::fs::File::create(main_path_in(&root, mlx)).unwrap().set_len(1_000).unwrap();
+        assert!(!is_installed_in(&root, mlx), "le modèle principal est tronqué");
+        assert!(is_truncated_in(&root, mlx));
+        let mut config = crate::config::Config::default();
+        config.engine.family = "supertonic".into();
+        let step = plan(&config, &[mlx], |p| is_installed_in(&root, p));
+        assert_eq!(step, Step::Offer(mlx), "proposé, pas basculé sur un fichier tronqué");
         std::fs::remove_dir_all(&root).ok();
     }
 

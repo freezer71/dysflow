@@ -1540,6 +1540,10 @@ impl App {
     /// L'ancien ordonnanceur est libéré hors du thread d'interface : sa
     /// destruction attend la fin des synthèses en cours, ce qui figerait
     /// l'affichage pendant une seconde ou deux.
+    ///
+    /// Terminal seulement : `tts::build_engine` ne reçoit pas de calcul MLX,
+    /// Kokoro y passe par ONNX ou se replie. L'app recharge par le lecteur
+    /// (`Reader::reload_voice`), qui transmet le calcul MLX.
     pub fn reload_engine(&mut self) {
         let (engine, notice) =
             tts::build_engine(self.config.engine_preference(), &self.config.engine_settings());

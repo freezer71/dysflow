@@ -19,8 +19,15 @@ case ",$FEATURES," in
     ;;
 esac
 # Ni par une option du crate ni par une dépendance : `ort` absent du graphe.
-if cargo tree -p sillon-ffi ${FEATURES:+--features "$FEATURES"} -e normal -i ort 2>/dev/null | grep -q '^ort '; then
-    echo "Erreur : ONNX Runtime (ort) entrerait dans l'app" >&2
+# La garde échoue fermée : seule l'erreur exacte « did not match any packages »
+# prouve l'absence ; tout autre échec de cargo tree refuse la construction.
+if ort_tree=$(cargo tree -p sillon-ffi ${FEATURES:+--features "$FEATURES"} -e normal -i ort 2>&1); then
+    echo "Erreur : ONNX Runtime (ort) entrerait dans l'app :" >&2
+    echo "$ort_tree" >&2
+    exit 1
+elif ! grep -q 'package ID specification `ort` did not match any packages' <<<"$ort_tree"; then
+    echo "Erreur : impossible de vérifier l'absence d'ONNX Runtime (cargo tree a échoué) :" >&2
+    echo "$ort_tree" >&2
     exit 1
 fi
 

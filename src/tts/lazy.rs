@@ -150,14 +150,15 @@ impl TtsEngine for LazyEngine {
         }
     }
 
-    /// L'annonce vaut pendant le chargement ; une fois chargé, le moteur
-    /// réel peut aussi le demander de lui-même, comme pour
-    /// `requires_reference`. Après un échec, c'est le repli qui parle : il
-    /// répond pour lui. Le pool le redemande à chaque phrase.
+    /// L'annonce ne vaut que pendant le chargement ; une fois chargé, seul le
+    /// moteur réel en décide, comme pour `requires_reference` — tombé sur sa
+    /// voix de repli, il ne coupe plus, et l'annonce ne doit pas le contredire.
+    /// Après un échec, c'est le repli qui parle : il répond pour lui. Le pool
+    /// le redemande à chaque phrase.
     fn splits_first_clause(&self) -> bool {
         match &*self.shared.state.lock().unwrap() {
             State::Loading => self.splits,
-            State::Ready(engine) => self.splits || engine.splits_first_clause(),
+            State::Ready(engine) => engine.splits_first_clause(),
             State::Failed(_) => self.shared.fallback.splits_first_clause(),
         }
     }
@@ -257,6 +258,39 @@ mod tests {
         });
         engine.open_session().unwrap();
         assert!(engine.splits_first_clause());
+    }
+
+    #[test]
+    fn a_loaded_engine_that_breaks_down_stops_the_cut() {
+        // Kokoro chargé coupe ; tombé sur son repli, il ne coupe plus. L'annonce
+        // faite pendant le chargement ne doit pas le contredire (correctif T9).
+        use std::sync::atomic::AtomicBool;
+        struct Breaking(Arc<AtomicBool>);
+        impl TtsEngine for Breaking {
+            fn name(&self) -> String {
+                "kokoro".into()
+            }
+            fn open_session(&self) -> Result<Box<dyn TtsSession>> {
+                Ok(Box::new(StubSession))
+            }
+            fn max_sessions(&self) -> usize {
+                1
+            }
+            fn splits_first_clause(&self) -> bool {
+                !self.0.load(Ordering::SeqCst)
+            }
+        }
+        let broken = Arc::new(AtomicBool::new(false));
+        let flag = Arc::clone(&broken);
+        let counter = Arc::new(AtomicUsize::new(0));
+        let engine = LazyEngine::spawn("Kokoro".into(), 1, fallback(&counter), move || {
+            Ok(Arc::new(Breaking(flag)) as Arc<dyn TtsEngine>)
+        })
+        .splitting_first_clause();
+        engine.open_session().unwrap();
+        assert!(engine.splits_first_clause(), "chargé et en état : coupe");
+        broken.store(true, Ordering::SeqCst);
+        assert!(!engine.splits_first_clause(), "tombé sur son repli : plus de coupe");
     }
 
     #[test]

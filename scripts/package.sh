@@ -11,7 +11,16 @@ cd "$(dirname "$0")/.."
 
 # Vrai si le fichier $2 a l'empreinte SHA-256 $1 : sha256sum (GNU, ou BSD
 # sous macOS, d'où `-c -` sans `--status`), sinon shasum (Perl).
+# L'empreinte épinglée doit faire exactement 64 chiffres hexadécimaux : le
+# sha256sum BSD accepte une ligne mal formée (code 0), qui ne vérifierait rien.
 sha256_ok() {
+    case "$1" in
+    *[!0-9a-f]*) echo "Erreur : empreinte épinglée mal formée : $1" >&2; exit 1 ;;
+    esac
+    if [ "${#1}" -ne 64 ]; then
+        echo "Erreur : empreinte épinglée mal formée (${#1} caractères au lieu de 64) : $1" >&2
+        exit 1
+    fi
     if command -v sha256sum >/dev/null 2>&1; then
         echo "$1  $2" | sha256sum -c - >/dev/null 2>&1
     else

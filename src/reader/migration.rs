@@ -102,8 +102,7 @@ impl Reader {
                 None
             }
             Step::Switch(package) => {
-                self.leave_system_engine();
-                self.use_voice(package.id, now).ok()?;
+                self.switch_to(package.id, now).ok()?;
                 self.record_migration();
                 let notice = switched(&former);
                 self.notice = Some(notice.clone());
@@ -137,8 +136,7 @@ impl Reader {
         let offer = self.offer.clone().ok_or_else(|| anyhow!("aucune proposition en attente"))?;
         let package = self.package(&offer.id)?;
         if models::is_installed(package) {
-            self.leave_system_engine();
-            self.use_voice(package.id, now)?;
+            self.switch_to(package.id, now)?;
             self.offer = None;
             self.record_migration();
             self.notice = Some(switched(&offer.former));
@@ -195,8 +193,7 @@ impl Reader {
             self.switch_when_downloaded = Some((id, former));
             return;
         }
-        self.leave_system_engine();
-        if self.use_voice(&id, now).is_ok() {
+        if self.switch_to(&id, now).is_ok() {
             self.record_migration();
             self.notice = Some(switched(&former));
         }
@@ -214,16 +211,32 @@ impl Reader {
         }
     }
 
-    /// « system » ferait parler la voix du système après le passage : l'avis
-    /// mentirait. Le moteur repasse en « auto », qui suit la famille.
-    fn leave_system_engine(&mut self) {
-        self.sync_config();
-        if self.config.engine.engine == "system" {
-            self.config.engine.engine = "auto".to_string();
-            if let Some(app) = self.session.as_mut() {
-                app.config.engine.engine = "auto".to_string();
-            }
+    /// Kokoro devient la voix active. « system » ferait parler la voix du
+    /// système après le passage : l'avis mentirait. Le moteur repasse donc en
+    /// « auto », qui suit la famille — et revient à « system » si la voix n'a
+    /// pas pu changer, pour ne rien basculer en silence.
+    fn switch_to(&mut self, id: &str, now: Instant) -> Result<()> {
+        let left = self.set_engine_if("system", "auto");
+        let before = self.config.engine.model_path.clone();
+        let outcome = self.use_voice(id, now);
+        if outcome.is_err() && left && self.config.engine.model_path == before {
+            self.set_engine_if("auto", "system");
         }
+        outcome
+    }
+
+    /// Remplace le moteur `from` par `to`, dans la configuration et le texte
+    /// ouvert ; vrai si c'était `from`.
+    fn set_engine_if(&mut self, from: &str, to: &str) -> bool {
+        self.sync_config();
+        if self.config.engine.engine != from {
+            return false;
+        }
+        self.config.engine.engine = to.to_string();
+        if let Some(app) = self.session.as_mut() {
+            app.config.engine.engine = to.to_string();
+        }
+        true
     }
 }
 
@@ -509,6 +522,23 @@ mod tests {
         assert!(r.migrate_voice(Instant::now()).is_some());
         assert_ne!(r.config().engine.engine, "system", "l'avis dit vrai : Kokoro parle");
         models::remove(mlx).unwrap();
+    }
+
+    #[test]
+    fn a_failed_switch_keeps_the_system_engine() {
+        let _guard = models_lock();
+        let mlx = by_id("kokoro_82m_mlx");
+        let _ = models::remove(mlx);
+        let mut c = on_supertonic();
+        c.engine.engine = "system".into();
+        let mut r = offline_reader(c);
+        // Le téléchargement s'est dit fini, mais le paquet n'est pas là :
+        // use_voice échoue, et « system » ne doit pas être devenu « auto ».
+        r.switch_when_downloaded = Some((mlx.id.to_string(), "supertonic".into()));
+        r.finish_migration(mlx.id, Instant::now());
+        assert_eq!(r.config().engine.engine, "system", "rien n'a basculé : le moteur reste celui choisi");
+        assert_eq!(r.config().engine.family, "supertonic");
+        assert_eq!(r.notice(), None);
     }
 
     #[test]

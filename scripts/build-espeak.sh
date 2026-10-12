@@ -27,7 +27,16 @@ mkdir -p "$OUT"
 
 # sha256sum (GNU, ou BSD sous macOS : ni l'un ni l'autre ne lisent `--status`
 # de la même façon, d'où `-c -` et la sortie jetée), sinon shasum (Perl).
+# L'empreinte épinglée doit faire exactement 64 chiffres hexadécimaux : le
+# sha256sum BSD accepte une ligne mal formée (code 0), qui ne vérifierait rien.
 verify() {
+    case "$SHA256" in
+    *[!0-9a-f]*) echo "Erreur : empreinte épinglée mal formée : $SHA256" >&2; exit 1 ;;
+    esac
+    if [ "${#SHA256}" -ne 64 ]; then
+        echo "Erreur : empreinte épinglée mal formée (${#SHA256} caractères au lieu de 64) : $SHA256" >&2
+        exit 1
+    fi
     if command -v sha256sum >/dev/null 2>&1; then
         echo "$SHA256  $1" | sha256sum -c - >/dev/null 2>&1
     else
