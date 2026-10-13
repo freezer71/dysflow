@@ -29,7 +29,7 @@ public class AdainResBlock1d: Module {
             conv1x1 = WeightNormedConv(inChannels: dimIn, outChannels: dimOut, kernelSize: 1, padding: 0, bias: false)
         }
         if upsample {
-            pool = WeightNormedConv(inChannels: 1, outChannels: dimIn, kernelSize: 3, stride: 2, padding: 1, groups: dimIn)
+            pool = WeightNormedConv(inChannels: 1, outChannels: dimIn, kernelSize: 3, stride: 2, padding: 0, groups: dimIn)
         }
     }
 
@@ -48,8 +48,12 @@ public class AdainResBlock1d: Module {
         h = leakyRelu(h, negativeSlope: 0.2)
 
         if upsampleType != "none", let pool {
-            h = pool(h.swappedAxes(2, 1), op: .convTranspose1d)
-            h = MLX.padded(h, widths: [.init((0, 0)), .init((0, 1)), .init((0, 0))])
+            // torch ConvTranspose1d(k=3, stride=2, padding=1, output_padding=1) :
+            // T → 2T en ôtant un échantillon à GAUCHE de la sortie sans
+            // marge (2T + 1). Une marge de 1 complétée d'un zéro à droite
+            // remplaçait la dernière trame calculée par 0 et faussait la
+            // normalisation du bloc (mlx-audio Python, même correction).
+            h = pool(h.swappedAxes(2, 1), op: .convTranspose1d)[0..., 1..., 0...]
             h = h.swappedAxes(2, 1)
         }
 

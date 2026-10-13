@@ -16,4 +16,14 @@ chaque étage d'upsampling de `KokoroGenerator` (fonction `stopsHere` : MLX
 étant paresseux, l'intermédiaire est évalué puis `shouldStop` consulté).
 S'il dit vrai, le passage rend `nil`. Sans `shouldStop`, ni évaluation ni
 test : le chemin d'origine. `KokoroRunner.swift` est un ajout de
-Sillon. Seule dépendance : mlx-swift 0.32.3.
+Sillon.
+
+Corrections reprises de mlx-audio Python 0.5.8 (la chaîne du banc
+d'écoute) : le bloc upsample de `AdainResBlock1d` ôte la première trame de
+la convolution transposée sans marge, au lieu de remplacer la dernière par
+un zéro (qui faussait la normalisation du bloc, dans le décodeur et dans le
+prédicteur de hauteur) ; les phases initiales des harmoniques de
+`SineGenerator` sont uniformes sur [0, 1), non normales. Parité vérifiée
+par `KokoroParityTests` (référence : `scripts/kokoro-parite.py`).
+
+Seule dépendance : mlx-swift 0.32.3.

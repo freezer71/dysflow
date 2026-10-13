@@ -29,7 +29,9 @@ public class SineGenerator {
 
         let radValues = (fn / Float(samplingRate)) % MLXArray(Float(1))
 
-        let randIni = MLXRandom.normal([f0.shape[0], harmonicNum + 1])
+        // Décalages de phase des harmoniques : uniformes sur [0, 1) comme
+        // `torch.rand` de la référence (mlx-audio Python, même correction).
+        let randIni = MLXRandom.uniform(low: Float(0), high: Float(1), [f0.shape[0], harmonicNum + 1])
         randIni[0..., 0] = MLXArray(Float(0))
         radValues[0..., 0, 0...] = radValues[0..., 0, 0...] + randIni
 
