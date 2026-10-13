@@ -2,6 +2,8 @@ import KeyboardShortcuts
 import SwiftUI
 
 struct MenuContent: View {
+    /// En mode mesure (`--measure`, `--measure-charge`), ni modèle, ni
+    /// panneau, ni transport : chaque action passe par `?` et ne fait rien.
     private var app: AppDelegate? { AppDelegate.shared }
     private var model: ReaderModel? { AppDelegate.shared?.model }
 
@@ -16,23 +18,23 @@ struct MenuContent: View {
             Task { @MainActor in await AppDelegate.shared?.read() }
         }
         // Toujours là, même relancée en arrière-plan : de quoi revenir.
-        Button("Afficher sillon") { app?.panel.show() }
+        Button("Afficher sillon") { app?.panel?.show() }
         Menu("Taille") {
-            Button("Petit") { app?.panel.apply(.choose(.small)) }
+            Button("Petit") { app?.panel?.apply(.choose(.small)) }
                 .keyboardShortcut("1", modifiers: .command)
-            Button("Moyen") { app?.panel.apply(.choose(.medium)) }
+            Button("Moyen") { app?.panel?.apply(.choose(.medium)) }
                 .keyboardShortcut("2", modifiers: .command)
-            Button("Grand") { app?.panel.apply(.choose(.large)) }
+            Button("Grand") { app?.panel?.apply(.choose(.large)) }
                 .keyboardShortcut("3", modifiers: .command)
         }
         Divider()
-        Button(s?.playing == true ? "Pause" : "Lecture") { _ = app?.transport.perform(.toggle) }
+        Button(s?.playing == true ? "Pause" : "Lecture") { _ = app?.transport?.perform(.toggle) }
             .globalKeyboardShortcut(.playPause)
             .disabled(!hasDocument)
-        Button("Phrase précédente") { _ = app?.transport.perform(.previous) }
+        Button("Phrase précédente") { _ = app?.transport?.perform(.previous) }
             .globalKeyboardShortcut(.previousSentence)
             .disabled(!hasDocument)
-        Button("Phrase suivante") { _ = app?.transport.perform(.next) }
+        Button("Phrase suivante") { _ = app?.transport?.perform(.next) }
             .globalKeyboardShortcut(.nextSentence)
             .disabled(!hasDocument)
         if hasDocument, let line = PlaybackTime.menuLine(elapsed: s?.elapsed, total: s?.total) {
@@ -60,6 +62,7 @@ struct MenuContent: View {
         case .ready: "Voix prête"
         case .loading: "Voix en chargement…"
         case .fallback(let reason): "Voix du système (\(reason))"
+        case .unavailable(let reason): "Voix indisponible (\(reason))"
         default: "Voix au repos"
         }
     }

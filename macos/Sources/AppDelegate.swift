@@ -175,10 +175,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// « Lire » : la capture d'abord (l'application au premier plan garde le
     /// clavier pour le ⌘C simulé), puis le panneau, sans activer sillon.
-    /// `capture` nil : le presse-papiers seul (depuis le menu).
+    /// `capture` nil : le presse-papiers seul (depuis le menu). En mode
+    /// mesure, ni modèle ni panneau : rien à faire (le menu plantait).
     func read(capture: (() async -> CaptureOutcome)? = nil) async {
+        guard let model, let panel else { return }
         let pasteboard = SystemPasteboard()
-        let model = model!, panel = panel!
         await readGate.run {
             await ReadFlow(
                 prepare: { model.prepareVoice() },

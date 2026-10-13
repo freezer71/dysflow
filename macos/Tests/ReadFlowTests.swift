@@ -182,6 +182,19 @@ final class ReadGateTests: XCTestCase {
     }
 }
 
+/// En mode mesure (`--measure`, `--measure-charge`), le modèle et le panneau
+/// ne sont jamais créés : « Lire le presse-papiers » plantait (déballage forcé).
+@MainActor
+final class ReadWithoutModelTests: XCTestCase {
+    func testReadingWithoutAModelDoesNothing() async {
+        let delegate = AppDelegate()
+        XCTAssertNil(delegate.model)
+        XCTAssertNil(delegate.panel)
+        await delegate.read()
+        await delegate.read(capture: { .unsupported })
+    }
+}
+
 final class LoginItemTests: XCTestCase {
     func testOnlyAnInstalledReleaseIsEnabledAtFirstLaunch() {
         XCTAssertTrue(LoginItem.eligible(bundlePath: "/Applications/Sillon.app", debug: false))
