@@ -136,7 +136,7 @@ pub struct SettingsPatch {
     pub extra_set: Vec<(String, String)>,
     /// Options libres retirées.
     pub extra_remove: Vec<String>,
-    /// La voix d'une langue : `("en", "af_sky")`.
+    /// La voix d'une langue : `("en", "am_fenrir")`.
     pub voice_for_language: Option<(String, String)>,
 }
 
@@ -627,20 +627,19 @@ mod tests {
 
     #[test]
     fn capabilities_follow_the_active_family() {
+        // Supertonic, retiré du catalogue : plus de voix nommées ni de langues
+        // propres, mais ce que le moteur lit reste dit (`model_path` à la main).
         let supertonic = reader_on("supertonic").capabilities();
         assert_eq!(supertonic.family, "supertonic");
-        assert_eq!(supertonic.voices.len(), 10);
-        assert_eq!(supertonic.voices[0], VoiceChoice { id: "M1".into(), label: "M1 · masculine 1".into(), language: String::new() });
-        assert_eq!(supertonic.languages.len(), 31);
+        assert!(supertonic.voices.is_empty());
+        assert_eq!(supertonic.languages.len(), 7);
         assert!(supertonic.honoured.contains(&"speaking_rate".to_string()));
         assert!(!supertonic.honoured.contains(&"temperature".to_string()));
         assert!(!supertonic.requires_reference);
 
-        // MagpieTTS : température, top-k et guidage apparaissent, le débit du modèle
-        // disparaît (la vitesse de lecture, appliquée au son, vaut partout).
+        // MagpieTTS : température, top-k et guidage restent honorés.
         let magpie = reader_on("magpie_tts").capabilities();
-        assert_eq!(magpie.voices.len(), 5);
-        assert_eq!(magpie.languages.len(), 11);
+        assert!(magpie.voices.is_empty());
         for key in ["temperature", "top_k", "guidance_scale"] {
             assert!(magpie.honoured.contains(&key.to_string()), "{key}");
         }
@@ -656,7 +655,7 @@ mod tests {
     #[test]
     fn kokoro_lists_its_voices_with_their_language() {
         let caps = reader_on("kokoro").capabilities();
-        assert_eq!(caps.voices.len(), 30);
+        assert_eq!(caps.voices.len(), 4);
         assert_eq!(caps.voices[0], VoiceChoice {
             id: "p-fenrir60".into(),
             label: "p-fenrir60 · française, recommandée".into(),
@@ -783,7 +782,7 @@ mod tests {
             keep_voice_minutes: Some(30),
             extra_set: vec![("cfg_scale".into(), "3".into())],
             extra_remove: vec![],
-            voice_for_language: Some(("en".into(), "af_sky".into())),
+            voice_for_language: Some(("en".into(), "am_fenrir".into())),
         };
         let expected = SettingsView {
             voice: "F2".into(),
@@ -816,7 +815,7 @@ mod tests {
             reading_ruler: false,
             keep_voice_minutes: 30,
             extra: BTreeMap::from([("cfg_scale".to_string(), "3".to_string())]),
-            voices_by_language: BTreeMap::from([("en".to_string(), "af_sky".to_string())]),
+            voices_by_language: BTreeMap::from([("en".to_string(), "am_fenrir".to_string())]),
         };
         assert_eq!(r.apply_patch(&patch, Instant::now()), expected);
         assert_eq!(r.settings(), expected);

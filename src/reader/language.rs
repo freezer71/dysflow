@@ -367,7 +367,7 @@ mod tests {
         after.voice.language = "en".into();
         assert_eq!(SettingsEffect::between_in(&before, &after, "fr"), Reparse);
         let mut other = before.clone();
-        other.voice.per_language.insert("en".into(), "af_sky".into());
+        other.voice.per_language.insert("en".into(), "am_fenrir".into());
         assert_eq!(SettingsEffect::between_in(&before, &other, "fr"), Display, "voix de l'autre langue : rien à resynthétiser");
         assert_eq!(SettingsEffect::between_in(&before, &other, "en"), Resynthesize);
     }
@@ -375,9 +375,9 @@ mod tests {
     #[test]
     fn a_voice_per_language_round_trips_through_a_patch() {
         let mut r = reader();
-        let patch = SettingsPatch { voice_for_language: Some(("en".into(), "af_sky".into())), ..Default::default() };
+        let patch = SettingsPatch { voice_for_language: Some(("en".into(), "am_fenrir".into())), ..Default::default() };
         let applied = r.apply_patch(&patch, Instant::now());
-        assert_eq!(applied.voices_by_language.get("en").map(String::as_str), Some("af_sky"));
+        assert_eq!(applied.voices_by_language.get("en").map(String::as_str), Some("am_fenrir"));
         assert_eq!(r.settings().voices_by_language.len(), 1);
     }
 }

@@ -295,29 +295,26 @@ impl Config {
 
     /// Fait suivre la voix quand la famille change.
     ///
-    /// Les préréglages sont propres à chaque modèle : garder celui du
-    /// précédent afficherait un nom que le nouveau ne saurait pas honorer.
-    /// Kokoro choisit sa voix par langue : `voice.voice` reste alors celle de
-    /// l'ancien modèle, pour qui voudra y revenir, et seules les langues sans
-    /// voix reçoivent la leur. Renvoie vrai si quelque chose a changé.
+    /// Seul Kokoro nomme ses voix, une par langue : `voice.voice` reste celle
+    /// de l'ancien modèle, pour qui voudra y revenir, et seules les langues
+    /// sans voix reçoivent la leur. Une voix retirée du catalogue n'est pas
+    /// réécrite : `tts_params_in` la remplace par la voix recommandée de sa
+    /// langue (règle des valeurs non listées). Les autres familles ne nomment
+    /// aucune voix : rien à aligner. Renvoie vrai si quelque chose a changé.
     pub fn align_voice_with_family(&mut self) -> bool {
         let family = self.engine.family.clone();
-        if crate::models::voices_follow_language(&family) {
-            let mut changed = false;
-            for language in ["fr", "en"] {
-                if !self.voice.per_language.contains_key(language) {
-                    let voice = crate::models::default_voice_for_language(&family, language);
-                    self.voice.per_language.insert(language.to_string(), voice.to_string());
-                    changed = true;
-                }
-            }
-            return changed;
-        }
-        if crate::models::knows_voice(&family, &self.voice.voice) {
+        if !crate::models::voices_follow_language(&family) {
             return false;
         }
-        self.voice.voice = crate::models::default_voice(&family).to_string();
-        true
+        let mut changed = false;
+        for language in ["fr", "en"] {
+            if !self.voice.per_language.contains_key(language) {
+                let voice = crate::models::default_voice_for_language(&family, language);
+                self.voice.per_language.insert(language.to_string(), voice.to_string());
+                changed = true;
+            }
+        }
+        changed
     }
 
     pub fn engine_preference(&self) -> EnginePreference {
@@ -449,28 +446,17 @@ mod tests {
     }
 
     #[test]
-    fn the_voice_follows_the_family_it_belongs_to() {
-        let mut config = Config::default();
-        config.engine.family = "supertonic".into();
-        config.voice.voice = "F1".into();
-        // Tant qu'on reste chez Supertonic, rien ne bouge.
-        assert!(!config.align_voice_with_family());
-
-        // En changeant de modèle, le préréglage n'a plus cours.
-        config.engine.family = "magpie_tts".into();
-        assert!(config.align_voice_with_family());
-        assert_eq!(config.voice.voice, "Aria");
-        // Et il ne se réaligne pas deux fois.
-        assert!(!config.align_voice_with_family());
-    }
-
-    #[test]
     fn a_stale_voice_never_reaches_the_engine() {
-        // Défense de dernier recours, si la configuration n'a pas été alignée.
+        // Le préréglage d'un ancien modèle reste dans `voice.voice` : Kokoro
+        // prend la voix de sa langue, jamais celui-là.
         let mut config = Config::default();
-        config.engine.family = "magpie_tts".into();
+        config.engine.family = "kokoro".into();
         config.voice.voice = "F1".into();
-        assert_eq!(config.tts_params().voice, "");
+        assert_eq!(config.tts_params().voice, "p-fenrir60");
+        // Une famille hors catalogue ne nomme aucune voix : rien à aligner.
+        config.engine.family = "supertonic".into();
+        assert!(!config.align_voice_with_family());
+        assert_eq!(config.voice.voice, "F1");
     }
 
     #[test]
@@ -617,12 +603,27 @@ mod tests {
     fn kokoro_takes_its_voice_from_the_document_language() {
         let mut config = Config::default();
         config.engine.family = "kokoro".into();
-        config.voice.per_language.insert("en".into(), "af_sky".into());
+        config.voice.per_language.insert("en".into(), "am_fenrir".into());
         config.voice.per_language.insert("fr".into(), "F1".into());
-        assert_eq!(config.tts_params_in("en").voice, "af_sky");
+        assert_eq!(config.tts_params_in("en").voice, "am_fenrir");
         // Inconnue : la voix par défaut de la langue, sans réécrire la valeur.
         assert_eq!(config.tts_params_in("fr").voice, "p-fenrir60");
         assert_eq!(config.voice.per_language["fr"], "F1");
+    }
+
+    /// Les voix Kokoro retirées du catalogue le 14 oct. 2026 (`ff_siwis`,
+    /// `bf_emma`…) parlent avec la voix recommandée de leur langue. Le
+    /// fichier n'est pas réécrit, et le passage à Kokoro ne les remplace pas.
+    #[test]
+    fn a_retired_kokoro_voice_speaks_with_the_recommended_one() {
+        let mut config = Config::default();
+        config.engine.family = "kokoro".into();
+        config.voice.per_language.insert("fr".into(), "ff_siwis".into());
+        config.voice.per_language.insert("en".into(), "bf_emma".into());
+        assert!(!config.align_voice_with_family(), "rien à réécrire");
+        assert_eq!(config.tts_params_in("fr").voice, "p-fenrir60");
+        assert_eq!(config.tts_params_in("en").voice, "af_bella");
+        assert_eq!(config.voice.per_language["en"], "bf_emma", "la valeur reste dans le fichier");
     }
 
     #[test]

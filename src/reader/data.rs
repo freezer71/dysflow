@@ -284,9 +284,19 @@ mod tests {
         panic!("installation du faux modèle impossible : {} ({last_error:?})", path.display());
     }
 
+    /// Un paquet à part, dans sa propre famille : aucun autre test ne
+    /// l'installe, le supprimer ne dérange personne (le catalogue n'a plus que
+    /// les deux Kokoro, que d'autres tests installent).
+    static DISPOSABLE: ModelPackage = ModelPackage {
+        id: "essai_suppression",
+        family: "essai_suppression",
+        companions: &[],
+        ..models::CATALOG[0]
+    };
+
     #[test]
     fn an_installed_model_is_really_deleted() {
-        let package = &models::CATALOG[2];
+        let package = &DISPOSABLE;
         let path = install_fake(package);
         let mut r = reader_with(quiet());
         r.remove_package(package).unwrap();

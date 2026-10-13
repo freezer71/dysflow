@@ -166,9 +166,9 @@ pub fn prepare(args: &Args) -> Result<Launch> {
     // Un modèle déjà installé devient le défaut, sans rien demander.
     adopt_installed_model(&mut config, &mut notices);
 
-    // Une configuration écrite pour un autre modèle peut nommer une voix que
-    // celui-ci ne connaît pas ; le moteur la rejetterait sans rien expliquer.
-    notices.extend(aligned_voice_notice(&mut config));
+    // Kokoro remplit en silence ses voix par langue manquantes. Seul Kokoro
+    // nomme ses voix : aucune autre famille n'a de voix à réaligner.
+    config.align_voice_with_family();
 
     // La redirection couvre le chargement du modèle, qui est déjà bavard, et
     // tout ce qui suit : le chargement se poursuit en fond pendant la lecture
@@ -337,12 +337,6 @@ fn read_clipboard() -> Result<String> {
 /// Fait suivre la voix de la famille, et le dit si la voix configurée lui
 /// était inconnue. Kokoro, qui choisit sa voix par langue, remplit les
 /// langues sans voix en silence : rien n'y était inconnu.
-fn aligned_voice_notice(config: &mut Config) -> Option<String> {
-    let changed = config.align_voice_with_family();
-    let follows = crate::models::voices_follow_language(&config.engine.family);
-    (changed && !follows).then(|| format!("voix inconnue de {} — repli sur sa voix par défaut", config.engine.family))
-}
-
 /// Le passage à Kokoro au terminal : un Kokoro installé est adopté, une
 /// seule fois ; installable seulement, il est signalé sans rien retenir
 /// (le terminal ne télécharge rien de lui-même). Rend l'avis.
@@ -646,13 +640,14 @@ mod tests {
         let mut config = Config::default();
         config.engine.family = "kokoro".into();
         config.voice.per_language.clear();
-        assert_eq!(aligned_voice_notice(&mut config), None);
+        assert!(config.align_voice_with_family());
         assert!(config.voice.per_language.contains_key("fr"), "rempli quand même");
 
-        // Une autre famille qui ne connaît pas la voix configurée le dit.
+        // Une famille hors catalogue ne nomme aucune voix : rien à réaligner.
         let mut config = Config::default();
         config.engine.family = "supertonic".into();
         config.voice.voice = "voix-qui-n-existe-pas".into();
-        assert!(aligned_voice_notice(&mut config).is_some_and(|n| n.contains("voix inconnue de supertonic")));
+        assert!(!config.align_voice_with_family());
+        assert_eq!(config.voice.voice, "voix-qui-n-existe-pas");
     }
 }

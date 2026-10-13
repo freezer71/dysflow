@@ -102,20 +102,6 @@ impl ModelPackage {
     }
 }
 
-/// Langues de Supertonic 3, telles que déclarées par sa spécification.
-const SUPERTONIC_LANGUAGES: &[&str] = &[
-    "en", "ko", "ja", "ar", "bg", "cs", "da", "de", "el", "es", "et", "fi", "fr", "hi", "hr",
-    "hu", "id", "it", "lt", "lv", "nl", "pl", "pt", "ro", "ru", "sk", "sl", "sv", "tr", "uk",
-    "vi",
-];
-
-/// Langues de MagpieTTS exposées par l'intégration audio.cpp.
-///
-/// Le japonais du modèle amont n'y est pas : son tokeniseur n'a pas été porté.
-const MAGPIE_LANGUAGES: &[&str] = &[
-    "ar", "de", "en", "es", "fr", "hi", "it", "ko", "pt", "vi", "zh",
-];
-
 const KOKORO_MLX_REPO: &str = "mlx-community/Kokoro-82M-bf16";
 const KOKORO_MLX_REVISION: &str = "a71e4d38b236d968966a2002c4c895dbd12b1c3c";
 const KOKORO_ONNX_REPO: &str = "onnx-community/Kokoro-82M-v1.0-ONNX-timestamped";
@@ -139,6 +125,12 @@ macro_rules! kokoro_voice {
 /// Ce que les deux paquets Kokoro partagent : la configuration (elle porte
 /// le vocabulaire des phonèmes) et les voix. `p-fenrir60` n'y est pas : elle
 /// est livrée avec Sillon.
+///
+/// Les 29 voix du paquet restent téléchargées alors que quatre seulement
+/// sont proposées (`KOKORO_VOICES`) : `ff_siwis` et `am_fenrir` refont
+/// `p-fenrir60` (`examples/kokoro_blend.rs`), et une installation déjà faite
+/// garde le même jeu de fichiers — rien à migrer, rien d'orphelin à la
+/// suppression.
 const KOKORO_SHARED: &[Companion] = &[
     Companion {
         repo: KOKORO_MLX_REPO,
@@ -178,21 +170,14 @@ const KOKORO_SHARED: &[Companion] = &[
     kokoro_voice!("bm_lewis"),
 ];
 
-const KOKORO_VOICES_LABEL: &str = "Française : p-fenrir60, ff_siwis · Anglaise : 28 voix";
+const KOKORO_VOICES_LABEL: &str = "Française : p-fenrir60 · Anglaise : af_bella, am_fenrir, af_heart";
 
-/// Modèles proposés à l'installation.
+/// Modèles proposés à l'installation : Kokoro seul, en MLX (l'app) ou en
+/// int8 par ONNX Runtime (le terminal). Sans lui, la voix du système lit.
 ///
-/// La variante MagpieTTS en précision d'origine n'y figure pas : sa
-/// spécification embarquée nomme l'option de voix `speaker`, alors que le code
-/// d'audio.cpp ne lit que `voice_id`. Le paquet se charge et parle, mais ses
-/// cinq locuteurs rendent un signal identique au bit près, sans le moindre
-/// message. Un modèle dont le sélecteur de voix ne fait rien n'a pas sa place
-/// dans un catalogue qui promet des voix nommées.
-///
-/// La variante Supertonic « origine » n'y figure pas non plus : sur le dépôt,
-/// `supertonic-3-orig.gguf` et `supertonic-3-q8_0.gguf` sont le même fichier,
-/// à l'octet près — même taille, même empreinte. Deux entrées feraient
-/// télécharger 454 Mo deux fois pour rien.
+/// Supertonic et MagpieTTS n'y sont plus (14 oct. 2026) : un seul modèle,
+/// c'est un choix de moins à faire. Le moteur audio.cpp reste compilable, et
+/// un `model_path` posé à la main le charge encore.
 ///
 /// Restreint aux familles réellement compilées dans le binaire : proposer un
 /// modèle que le moteur ne saurait pas charger n'aiderait personne.
@@ -234,64 +219,6 @@ pub const CATALOG: &[ModelPackage] = &[
         runtime: Runtime::KokoroOnnx,
         voices_label: KOKORO_VOICES_LABEL,
         licenses: "Poids et voix Apache-2.0 · ONNX Runtime MIT · espeak-ng GPL-3.0 (programme séparé)",
-    },
-    ModelPackage {
-        id: "magpie_tts_q8_0",
-        family: "magpie_tts",
-        display_name: "MagpieTTS Multilingual · Q8_0",
-        description: "Locuteurs nommés, cuits dans le paquet. Rien à configurer.",
-        precision: "q8_0",
-        languages: MAGPIE_LANGUAGES,
-        repo: "audio-cpp/audio.cpp-gguf",
-        revision: "main",
-        file: "MagpieTTS-Multilingual-357M-GGUF/magpie-tts-multilingual-357m-q8_0.gguf",
-        languages_label: "11 langues, dont le français",
-        bytes: 1_562_142_912,
-        recommended: false,
-        pace: "Plus lent que la parole sur Apple Silicon — 1,4 fois le temps réel mesuré sur M5 : \
-               la voix marque des silences entre les phrases.",
-        companions: &[],
-        runtime: Runtime::AudioCpp,
-        voices_label: "",
-        licenses: "",
-    },
-    ModelPackage {
-        id: "supertonic_3_f16",
-        family: "supertonic",
-        display_name: "Supertonic 3 · F16",
-        description: "Rapide et léger. Environ 6× le temps réel sur CPU.",
-        precision: "f16",
-        languages: SUPERTONIC_LANGUAGES,
-        repo: "audio-cpp/audio.cpp-gguf",
-        revision: "main",
-        file: "Supertonic-3-GGUF/supertonic-3-f16.gguf",
-        languages_label: "31 langues, dont le français",
-        bytes: 312_784_196,
-        recommended: false,
-        pace: "Vingt fois plus vite que la parole : lecture fluide, sauts immédiats.",
-        companions: &[],
-        runtime: Runtime::AudioCpp,
-        voices_label: "",
-        licenses: "",
-    },
-    ModelPackage {
-        id: "supertonic_3_q8_0",
-        family: "supertonic",
-        display_name: "Supertonic 3 · Q8_0",
-        description: "Quantifié 8 bits. Plus volumineux ici, qualité équivalente.",
-        precision: "q8_0",
-        languages: SUPERTONIC_LANGUAGES,
-        repo: "audio-cpp/audio.cpp-gguf",
-        revision: "main",
-        file: "Supertonic-3-GGUF/supertonic-3-q8_0.gguf",
-        languages_label: "31 langues, dont le français",
-        bytes: 454_072_836,
-        recommended: false,
-        pace: "Vingt fois plus vite que la parole : lecture fluide, sauts immédiats.",
-        companions: &[],
-        runtime: Runtime::AudioCpp,
-        voices_label: "",
-        licenses: "",
     },
 ];
 
@@ -832,84 +759,30 @@ pub struct VoiceOption {
     pub language: &'static str,
 }
 
-/// Voix de Supertonic 3 : cinq masculines, cinq féminines.
-///
-/// Le modèle n'accepte pas de référence externe — pas de clonage : seuls ces
-/// identifiants ont un effet.
-const SUPERTONIC_VOICES: &[VoiceOption] = &[
-    VoiceOption { id: "M1", label: "M1 · masculine 1", language: "" },
-    VoiceOption { id: "M2", label: "M2 · masculine 2", language: "" },
-    VoiceOption { id: "M3", label: "M3 · masculine 3", language: "" },
-    VoiceOption { id: "M4", label: "M4 · masculine 4", language: "" },
-    VoiceOption { id: "M5", label: "M5 · masculine 5", language: "" },
-    VoiceOption { id: "F1", label: "F1 · féminine 1", language: "" },
-    VoiceOption { id: "F2", label: "F2 · féminine 2", language: "" },
-    VoiceOption { id: "F3", label: "F3 · féminine 3", language: "" },
-    VoiceOption { id: "F4", label: "F4 · féminine 4", language: "" },
-    VoiceOption { id: "F5", label: "F5 · féminine 5", language: "" },
-];
-
 /// Voix proposées pour une famille donnée.
 ///
 /// Vide quand la famille n'expose pas de voix nommées : le champ redevient
 /// alors libre, pour y mettre un chemin de WAV à cloner.
 pub fn voices_for_family(family: &str) -> &'static [VoiceOption] {
     match family {
-        "supertonic" => SUPERTONIC_VOICES,
-        "magpie_tts" => MAGPIE_VOICES,
         "kokoro" => KOKORO_VOICES,
         _ => &[],
     }
 }
 
-/// Locuteurs de MagpieTTS, relevés dans le `speakers.json` embarqué du paquet.
-///
-/// Le modèle les accepte par nom ou par index ; le nom est plus lisible et
-/// survivrait à un réordonnancement du paquet. Aucun timbre n'est décrit ici :
-/// je ne les ai pas écoutés, et `t` le fait mieux qu'une étiquette.
-const MAGPIE_VOICES: &[VoiceOption] = &[
-    VoiceOption { id: "Aria", label: "Aria", language: "" },
-    VoiceOption { id: "Jason", label: "Jason", language: "" },
-    VoiceOption { id: "John", label: "John", language: "" },
-    VoiceOption { id: "Leo", label: "Leo", language: "" },
-    VoiceOption { id: "Sofia", label: "Sofia", language: "" },
-];
-
-/// Voix de Kokoro : deux françaises, les 28 anglaises officielles (US, GB).
+/// Voix de Kokoro : une française, trois anglaises (14 oct. 2026 : seules
+/// les voix retenues à l'écoute ; les autres restent dans le paquet, sans
+/// être proposées).
 ///
 /// `p-fenrir60` est livrée avec Sillon (timbre de `ff_siwis`, prosodie mêlée à
-/// celle d'`am_fenrir`, §11 du rapport) ; les autres viennent du paquet.
+/// celle d'`am_fenrir`, §11 du rapport) ; les autres viennent du paquet. La
+/// première de chaque langue est sa voix par défaut : une voix configurée qui
+/// n'est plus listée retombe sur elle.
 const KOKORO_VOICES: &[VoiceOption] = &[
     VoiceOption { id: "p-fenrir60", label: "p-fenrir60 · française, recommandée", language: "fr" },
-    VoiceOption { id: "ff_siwis", label: "ff_siwis · française", language: "fr" },
     VoiceOption { id: "af_bella", label: "af_bella · américaine, femme, recommandée", language: "en" },
-    VoiceOption { id: "af_alloy", label: "af_alloy · américaine, femme", language: "en" },
-    VoiceOption { id: "af_aoede", label: "af_aoede · américaine, femme", language: "en" },
-    VoiceOption { id: "af_heart", label: "af_heart · américaine, femme", language: "en" },
-    VoiceOption { id: "af_jessica", label: "af_jessica · américaine, femme", language: "en" },
-    VoiceOption { id: "af_kore", label: "af_kore · américaine, femme", language: "en" },
-    VoiceOption { id: "af_nicole", label: "af_nicole · américaine, femme, chuchotée", language: "en" },
-    VoiceOption { id: "af_nova", label: "af_nova · américaine, femme", language: "en" },
-    VoiceOption { id: "af_river", label: "af_river · américaine, femme", language: "en" },
-    VoiceOption { id: "af_sarah", label: "af_sarah · américaine, femme", language: "en" },
-    VoiceOption { id: "af_sky", label: "af_sky · américaine, femme", language: "en" },
-    VoiceOption { id: "am_adam", label: "am_adam · américaine, homme", language: "en" },
-    VoiceOption { id: "am_echo", label: "am_echo · américaine, homme", language: "en" },
-    VoiceOption { id: "am_eric", label: "am_eric · américaine, homme", language: "en" },
     VoiceOption { id: "am_fenrir", label: "am_fenrir · américaine, homme", language: "en" },
-    VoiceOption { id: "am_liam", label: "am_liam · américaine, homme", language: "en" },
-    VoiceOption { id: "am_michael", label: "am_michael · américaine, homme", language: "en" },
-    VoiceOption { id: "am_onyx", label: "am_onyx · américaine, homme", language: "en" },
-    VoiceOption { id: "am_puck", label: "am_puck · américaine, homme", language: "en" },
-    VoiceOption { id: "am_santa", label: "am_santa · américaine, homme", language: "en" },
-    VoiceOption { id: "bf_alice", label: "bf_alice · britannique, femme", language: "en" },
-    VoiceOption { id: "bf_emma", label: "bf_emma · britannique, femme", language: "en" },
-    VoiceOption { id: "bf_isabella", label: "bf_isabella · britannique, femme", language: "en" },
-    VoiceOption { id: "bf_lily", label: "bf_lily · britannique, femme", language: "en" },
-    VoiceOption { id: "bm_daniel", label: "bm_daniel · britannique, homme", language: "en" },
-    VoiceOption { id: "bm_fable", label: "bm_fable · britannique, homme", language: "en" },
-    VoiceOption { id: "bm_george", label: "bm_george · britannique, homme", language: "en" },
-    VoiceOption { id: "bm_lewis", label: "bm_lewis · britannique, homme", language: "en" },
+    VoiceOption { id: "af_heart", label: "af_heart · américaine, femme", language: "en" },
 ];
 
 /// Sessions de synthèse qu'une famille demande pour lire d'un trait.
@@ -1087,9 +960,9 @@ mod tests {
 
     #[test]
     fn languages_follow_the_family() {
-        assert_eq!(languages_for_family("supertonic").len(), 31);
-        assert_eq!(languages_for_family("magpie_tts").len(), 11);
-        assert!(languages_for_family("magpie_tts").contains(&"zh"));
+        assert_eq!(languages_for_family("kokoro"), ["fr", "en"]);
+        // Une famille retirée du catalogue est une famille inconnue.
+        assert_eq!(languages_for_family("supertonic"), FALLBACK_LANGUAGES.to_vec());
         // Famille inconnue : les sept que le terminal proposait.
         assert_eq!(languages_for_family(""), FALLBACK_LANGUAGES.to_vec());
     }
@@ -1113,19 +986,19 @@ mod tests {
     #[test]
     fn urls_follow_the_huggingface_layout() {
         assert_eq!(
-            package("supertonic_3_f16").url(),
-            "https://huggingface.co/audio-cpp/audio.cpp-gguf/resolve/main/Supertonic-3-GGUF/supertonic-3-f16.gguf"
+            package("kokoro_82m_mlx").url(),
+            "https://huggingface.co/mlx-community/Kokoro-82M-bf16/resolve/a71e4d38b236d968966a2002c4c895dbd12b1c3c/kokoro-v1_0.safetensors"
         );
         assert_eq!(
-            package("magpie_tts_q8_0").url(),
-            "https://huggingface.co/audio-cpp/audio.cpp-gguf/resolve/main/MagpieTTS-Multilingual-357M-GGUF/magpie-tts-multilingual-357m-q8_0.gguf"
+            package("kokoro_82m_int8").url(),
+            "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX-timestamped/resolve/dd4401a9add81ac692d20e240d22ec9dda82cc29/onnx/model_quantized.onnx"
         );
     }
 
     #[test]
     fn file_name_is_extracted_from_the_repo_path() {
-        assert_eq!(package("supertonic_3_f16").file_name(), "supertonic-3-f16.gguf");
-        assert_eq!(package("magpie_tts_q8_0").file_name(), "magpie-tts-multilingual-357m-q8_0.gguf");
+        assert_eq!(package("kokoro_82m_mlx").file_name(), "kokoro-v1_0.safetensors");
+        assert_eq!(package("kokoro_82m_int8").file_name(), "model_quantized.onnx");
     }
 
     #[test]
@@ -1146,10 +1019,13 @@ mod tests {
         }
     }
 
+    /// Un seul modèle au catalogue : Kokoro, en MLX ou en int8. Supertonic et
+    /// MagpieTTS n'y sont plus, même compilés.
     #[test]
-    fn audio_cpp_packages_need_a_compiled_family() {
-        let audio_cpp: Vec<_> = available().into_iter().filter(|p| p.runtime == Runtime::AudioCpp).collect();
-        assert_eq!(audio_cpp.is_empty(), compiled_families().is_empty());
+    fn kokoro_is_the_only_catalogued_model() {
+        let ids: Vec<&str> = CATALOG.iter().map(|p| p.id).collect();
+        assert_eq!(ids, ["kokoro_82m_mlx", "kokoro_82m_int8"]);
+        assert!(available().iter().chain(available_with(true).iter()).all(|p| p.family == "kokoro"));
     }
 
     #[test]
@@ -1268,13 +1144,10 @@ mod tests {
     fn install_paths_are_scoped_by_family() {
         // Deux familles peuvent nommer leur fichier pareil : le répertoire les
         // sépare.
-        let Some(path) = install_path(package("supertonic_3_f16")) else { return };
-        assert!(path.ends_with("supertonic/supertonic-3-f16.gguf"), "{path:?}");
-        let Some(path) = install_path(package("magpie_tts_q8_0")) else { return };
-        assert!(
-            path.ends_with("magpie_tts/magpie-tts-multilingual-357m-q8_0.gguf"),
-            "{path:?}"
-        );
+        let Some(path) = install_path(package("kokoro_82m_mlx")) else { return };
+        assert!(path.ends_with("kokoro/kokoro-v1_0.safetensors"), "{path:?}");
+        let Some(path) = install_path(package("kokoro_82m_int8")) else { return };
+        assert!(path.ends_with("kokoro/model_quantized.onnx"), "{path:?}");
     }
 
     #[test]
@@ -1292,29 +1165,21 @@ mod tests {
 
     #[test]
     fn a_preset_from_another_model_is_never_forwarded() {
-        // « F1 » n'est pour MagpieTTS ni un locuteur ni un index : le modèle le
-        // laisse descendre jusqu'à std::stoll, qui répond « no conversion ».
-        assert!(!knows_voice("magpie_tts", "F1"));
-        assert_eq!(sanitised_voice("magpie_tts", "F1"), "");
-        assert_eq!(default_voice("magpie_tts"), "Aria");
+        // « F1 », préréglage d'un ancien modèle, n'est pas une voix Kokoro.
+        assert!(!knows_voice("kokoro", "F1"));
+        assert_eq!(sanitised_voice("kokoro", "F1"), "");
+        assert_eq!(default_voice("kokoro"), "p-fenrir60");
 
         // Ce que la famille connaît passe intact, vide compris.
-        assert!(knows_voice("magpie_tts", "Leo"));
-        assert_eq!(sanitised_voice("magpie_tts", "Leo"), "Leo");
-        assert!(knows_voice("magpie_tts", ""));
+        assert!(knows_voice("kokoro", "af_heart"));
+        assert_eq!(sanitised_voice("kokoro", "af_heart"), "af_heart");
+        assert!(knows_voice("kokoro", ""));
 
         // Une famille sans voix nommées ne se prononce pas : le champ y porte
         // un chemin de WAV ou un préréglage qui lui est propre.
         assert!(knows_voice("inconnue", "n'importe quoi"));
         assert_eq!(sanitised_voice("inconnue", "/tmp/a.wav"), "/tmp/a.wav");
         assert_eq!(default_voice("inconnue"), "");
-    }
-
-    #[test]
-    fn magpie_speakers_match_the_package() {
-        // Relevés dans le `speakers.json` embarqué du GGUF.
-        let ids: Vec<&str> = voices_for_family("magpie_tts").iter().map(|v| v.id).collect();
-        assert_eq!(ids, ["Aria", "Jason", "John", "Leo", "Sofia"]);
     }
 
     #[test]
@@ -1343,18 +1208,11 @@ mod tests {
     }
 
     #[test]
-    fn supertonic_exposes_its_ten_built_in_voices() {
-        let voices = voices_for_family("supertonic");
-        assert_eq!(voices.len(), 10);
-        assert_eq!(voices[0].id, "M1");
-        assert_eq!(voices[5].id, "F1");
-        // Chaque voix porte un libellé lisible, pas seulement un code.
-        assert!(voices.iter().all(|v| v.label.contains('·')));
-    }
-
-    #[test]
     fn unknown_families_offer_no_named_voice() {
         assert!(voices_for_family("inconnue").is_empty());
+        // Retirées du catalogue, Supertonic et MagpieTTS n'en nomment plus.
+        assert!(voices_for_family("supertonic").is_empty());
+        assert!(voices_for_family("magpie_tts").is_empty());
     }
 
     #[test]
@@ -1703,17 +1561,24 @@ mod tests {
     fn kokoro_names_its_voices_by_language() {
         assert!(voices_follow_language("kokoro"));
         assert!(!voices_follow_language("supertonic"));
-        let voices = voices_for_family("kokoro");
-        assert_eq!(voices.iter().filter(|v| v.language == "fr").count(), 2);
-        assert_eq!(voices.iter().filter(|v| v.language == "en").count(), 28);
+        // Une française, trois anglaises : les voix retenues, rien d'autre.
+        let ids = |language: &str| -> Vec<&str> {
+            voices_for_family("kokoro").iter().filter(|v| v.language == language).map(|v| v.id).collect()
+        };
+        assert_eq!(ids("fr"), ["p-fenrir60"]);
+        assert_eq!(ids("en"), ["af_bella", "am_fenrir", "af_heart"]);
+        assert_eq!(voices_for_family("kokoro").len(), 4);
         assert_eq!(default_voice_for_language("kokoro", "fr"), "p-fenrir60");
         assert_eq!(default_voice_for_language("kokoro", "en-US"), "af_bella");
-        assert!(voices.iter().any(|v| v.id == "af_nicole" && v.label.contains("chuchotée")));
+        assert!(voices_for_family("kokoro").iter().all(|v| v.label.contains('·')));
     }
 
     #[test]
     fn an_unknown_voice_gives_the_default_of_its_language() {
-        assert_eq!(voice_for_language("kokoro", "fr", Some("ff_siwis")), "ff_siwis");
+        assert_eq!(voice_for_language("kokoro", "en", Some("am_fenrir")), "am_fenrir");
+        // Une voix retirée du catalogue retombe sur la recommandée de sa langue.
+        assert_eq!(voice_for_language("kokoro", "fr", Some("ff_siwis")), "p-fenrir60");
+        assert_eq!(voice_for_language("kokoro", "en", Some("bf_emma")), "af_bella");
         assert_eq!(voice_for_language("kokoro", "fr", Some("af_bella")), "p-fenrir60", "voix d'une autre langue");
         assert_eq!(voice_for_language("kokoro", "en", Some("F1")), "af_bella");
         assert_eq!(voice_for_language("kokoro", "en", None), "af_bella");

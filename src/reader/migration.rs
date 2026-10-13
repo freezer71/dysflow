@@ -75,7 +75,9 @@ pub fn former_voice(config: &Config) -> String {
 }
 
 fn switched(former: &str) -> String {
-    format!("Nouvelle voix : Kokoro remplace {former}. L'ancien modèle reste installé : Réglages › Voix pour y revenir.")
+    // Plus de « Réglages › Voix pour y revenir » : l'app ne propose plus
+    // d'autre modèle que Kokoro (14 oct. 2026).
+    format!("Nouvelle voix : Kokoro remplace {former}.")
 }
 
 fn offered(package: &ModelPackage) -> String {
@@ -282,7 +284,7 @@ mod tests {
 
     #[test]
     fn an_installed_kokoro_is_taken_at_once() {
-        let available = [by_id("kokoro_82m_mlx"), by_id("supertonic_3_f16")];
+        let available = [by_id("kokoro_82m_mlx")];
         let step = plan(&on_supertonic(), &available, |p| p.family == "kokoro");
         assert_eq!(step, Step::Switch(by_id("kokoro_82m_mlx")));
     }
@@ -297,8 +299,7 @@ mod tests {
 
     #[test]
     fn nothing_is_recorded_without_kokoro_in_this_build() {
-        let available = [by_id("supertonic_3_f16")];
-        assert_eq!(plan(&on_supertonic(), &available, |_| true), Step::Nothing);
+        assert_eq!(plan(&on_supertonic(), &[], |_| true), Step::Nothing);
     }
 
     #[test]
@@ -367,9 +368,13 @@ mod tests {
     fn the_former_voice_is_named_for_the_notice() {
         assert_eq!(former_voice(&Config::default()), "la voix du système");
         let mut c = Config::default();
+        c.engine.family = "kokoro".into();
+        c.engine.model_path = models::install_path(by_id("kokoro_82m_int8")).unwrap().to_string_lossy().into_owned();
+        assert_eq!(former_voice(&c), "Kokoro 82M · int8");
+        // Un modèle hors catalogue (Supertonic, retiré) : le nom de sa famille.
         c.engine.family = "supertonic".into();
-        c.engine.model_path = models::install_path(by_id("supertonic_3_f16")).unwrap().to_string_lossy().into_owned();
-        assert_eq!(former_voice(&c), "Supertonic 3 · F16");
+        c.engine.model_path = "/m/supertonic/supertonic-3-f16.gguf".into();
+        assert_eq!(former_voice(&c), "supertonic");
     }
 
     #[test]
@@ -389,7 +394,7 @@ mod tests {
         let mut r = offline_reader(on_supertonic());
         let notice = r.migrate_voice(Instant::now()).expect("un avis");
         assert!(notice.starts_with("Nouvelle voix : Kokoro remplace"), "{notice}");
-        assert!(notice.contains("Réglages › Voix"), "{notice}");
+        assert!(!notice.contains("pour y revenir"), "plus d'autre modèle à proposer : {notice}");
         assert_eq!(r.config().engine.family, "kokoro");
         assert_eq!(r.config().voice.voice, "F2", "l'ancienne voix reste pour y revenir");
         assert_eq!(r.config().voice.per_language["fr"], "p-fenrir60");

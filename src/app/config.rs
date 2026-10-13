@@ -572,30 +572,21 @@ impl Field {
                     // Champ libre : il s'édite avec Entrée.
                     return Effect::None;
                 }
-                if models::voices_follow_language(&config.engine.family) {
-                    // Kokoro : une voix par langue. Le champ défile parmi
-                    // celles de la langue par défaut et écrit sa ligne de
-                    // `[voice.per_language]`, que seule `tts_params_in` lit.
-                    let language = config.default_language();
-                    let code = crate::text::language::Lang::parse(&language)
-                        .map_or_else(|| language.clone(), |l| l.code().to_string());
-                    let own: Vec<&models::VoiceOption> =
-                        voices.iter().filter(|v| v.language.is_empty() || v.language == code).collect();
-                    if own.is_empty() {
-                        return Effect::None;
-                    }
-                    let shown = voice_in_use(config);
-                    let current = own.iter().position(|v| v.id == shown).unwrap_or(0) as i32;
-                    let next = (current + delta).rem_euclid(own.len() as i32) as usize;
-                    config.voice.per_language.insert(code, own[next].id.to_string());
-                    return Effect::Resynthesize;
+                // Seul Kokoro nomme ses voix, une par langue. Le champ défile
+                // parmi celles de la langue par défaut et écrit sa ligne de
+                // `[voice.per_language]`, que seule `tts_params_in` lit.
+                let language = config.default_language();
+                let code = crate::text::language::Lang::parse(&language)
+                    .map_or_else(|| language.clone(), |l| l.code().to_string());
+                let own: Vec<&models::VoiceOption> =
+                    voices.iter().filter(|v| v.language.is_empty() || v.language == code).collect();
+                if own.is_empty() {
+                    return Effect::None;
                 }
-                let current = voices
-                    .iter()
-                    .position(|v| v.id == config.voice.voice)
-                    .unwrap_or(0) as i32;
-                let next = (current + delta).rem_euclid(voices.len() as i32) as usize;
-                config.voice.voice = voices[next].id.to_string();
+                let shown = voice_in_use(config);
+                let current = own.iter().position(|v| v.id == shown).unwrap_or(0) as i32;
+                let next = (current + delta).rem_euclid(own.len() as i32) as usize;
+                config.voice.per_language.insert(code, own[next].id.to_string());
                 Effect::Resynthesize
             }
             // Les autres champs textuels s'éditent avec Entrée, pas aux flèches.
@@ -925,17 +916,20 @@ mod tests {
     #[test]
     fn languages_cycle_through_those_of_the_model() {
         let mut config = Config::default();
-        config.engine.family = "supertonic".into();
+        config.engine.family = "kokoro".into();
         config.voice.language = "fr".into();
-        for _ in 0..32 {
+        Field::Language.adjust(&mut config, 1);
+        assert_eq!(config.voice.language, "en");
+        Field::Language.adjust(&mut config, 1);
+        assert_eq!(config.voice.language, "auto");
+        Field::Language.adjust(&mut config, 1);
+        assert_eq!(config.voice.language, "fr", "deux langues et « auto », un tour complet");
+        // Famille hors catalogue : les sept langues du terminal.
+        config.engine.family = "inconnue".into();
+        for _ in 0..8 {
             Field::Language.adjust(&mut config, 1);
         }
-        assert_eq!(config.voice.language, "fr", "trente et une langues et « auto », un tour complet");
-        config.engine.family = "magpie_tts".into();
-        for _ in 0..12 {
-            Field::Language.adjust(&mut config, 1);
-        }
-        assert_eq!(config.voice.language, "fr", "onze langues et « auto » chez MagpieTTS");
+        assert_eq!(config.voice.language, "fr", "sept langues et « auto »");
     }
 
     #[test]
@@ -1027,44 +1021,24 @@ mod tests {
     }
 
     #[test]
-    fn built_in_voices_cycle_with_the_arrows() {
-        let mut config = Config::default();
-        config.engine.family = "supertonic".into();
-
-        // Champ à défilement, pas de saisie, dès lors que la famille en expose.
-        assert!(!Field::Voice.is_text(&config));
-
-        assert_eq!(Field::Voice.adjust(&mut config, 1), Effect::Resynthesize);
-        assert_eq!(config.voice.voice, "M2");
-        Field::Voice.adjust(&mut config, -1);
-        assert_eq!(config.voice.voice, "M1");
-        // Le défilement boucle vers la dernière voix.
-        Field::Voice.adjust(&mut config, -1);
-        assert_eq!(config.voice.voice, "F5");
-        assert!(Field::Voice.value(&config, 1.0).contains("féminine"));
-    }
-
-    #[test]
     fn kokoro_voice_field_cycles_the_voices_of_the_default_language() {
         let mut config = Config::default();
         config.engine.family = "kokoro".into();
         config.voice.voice = "M3".into();
         assert!(!Field::Voice.is_text(&config));
-        // Français par défaut : deux voix, on boucle.
+        // Français par défaut : une seule voix, le défilement y revient.
         assert_eq!(Field::Voice.value(&config, 1.0), "p-fenrir60 · française, recommandée");
         assert_eq!(Field::Voice.adjust(&mut config, 1), Effect::Resynthesize);
-        assert_eq!(config.voice.per_language["fr"], "ff_siwis");
-        assert_eq!(config.tts_params().voice, "ff_siwis");
-        Field::Voice.adjust(&mut config, 1);
         assert_eq!(config.voice.per_language["fr"], "p-fenrir60");
+        assert_eq!(config.tts_params().voice, "p-fenrir60");
         assert_eq!(config.voice.voice, "M3", "la voix de l'ancien modèle reste");
-        // Langue imposée en anglais : les 28 voix anglaises.
+        // Langue imposée en anglais : les trois voix anglaises, on boucle.
         config.voice.language = "en".into();
         Field::Voice.adjust(&mut config, 1);
-        assert_eq!(config.voice.per_language["en"], "af_alloy");
-        assert_eq!(config.tts_params().voice, "af_alloy");
+        assert_eq!(config.voice.per_language["en"], "am_fenrir");
+        assert_eq!(config.tts_params().voice, "am_fenrir");
         Field::Voice.adjust(&mut config, -2);
-        assert_eq!(config.voice.per_language["en"], "bm_lewis");
+        assert_eq!(config.voice.per_language["en"], "af_heart");
     }
 
     #[test]

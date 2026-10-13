@@ -1283,9 +1283,9 @@ mod tests {
     fn a_voice_per_language_round_trips_and_the_silent_reader_never_migrates() {
         let reader = SillonReader::silent();
         let mut patch = SettingsPatch::default();
-        patch.voice_for_language = Some(LanguageVoice { language: "en".into(), voice: "af_sky".into() });
+        patch.voice_for_language = Some(LanguageVoice { language: "en".into(), voice: "am_fenrir".into() });
         let applied = reader.apply_patch(patch);
-        assert_eq!(applied.voices_by_language, [LanguageVoice { language: "en".into(), voice: "af_sky".into() }]);
+        assert_eq!(applied.voices_by_language, [LanguageVoice { language: "en".into(), voice: "am_fenrir".into() }]);
         assert_eq!(reader.migrate_voice(), None, "hors disque : rien ne bouge");
         assert_eq!(reader.measures().stalls, 0);
     }
