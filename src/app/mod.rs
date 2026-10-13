@@ -486,11 +486,11 @@ impl App {
     fn publish_new_sentences(&mut self) {
         let total = self.builder.sentence_count();
         while self.published < total {
-            let (text, words, pause) = {
+            let (text, words, written, pause) = {
                 let sentence = &self.builder.document().sentences[self.published];
-                (sentence.text.clone(), sentence.spoken_words(), sentence.trailing_pause_ms)
+                (sentence.text.clone(), sentence.spoken_words(), sentence.written_words(), sentence.trailing_pause_ms)
             };
-            self.synth.push_with_words(text, words, pause);
+            self.synth.push_sentence(text, words, written, pause);
             self.published += 1;
         }
     }
@@ -1584,7 +1584,12 @@ impl App {
             self.config.engine.prefetch as usize,
         );
         for sentence in &self.builder.document().sentences {
-            synth.push_with_words(sentence.text.clone(), sentence.spoken_words(), sentence.trailing_pause_ms);
+            synth.push_sentence(
+                sentence.text.clone(),
+                sentence.spoken_words(),
+                sentence.written_words(),
+                sentence.trailing_pause_ms,
+            );
         }
         self.published = self.builder.sentence_count();
         // La cadence mesurée valait pour l'ancien moteur, et une phrase qu'il
@@ -2465,6 +2470,15 @@ pub(crate) mod tests {
             app.tick();
             std::thread::sleep(Duration::from_millis(5));
         }
+    }
+
+    #[test]
+    fn the_word_cut_sees_numbers_as_written() {
+        // La forme parlée dit « dix-huit » ; l'écrit « 18 » interdit la
+        // coupe juste après : la tête finit sur « heures ».
+        let (mut app, _out) = cutting_app("Le train partira vers 18 heures depuis la gare du centre-ville.");
+        tick_until(&mut app, |a| a.synth.get(0).is_some());
+        assert_eq!(app.synth.get(0).unwrap().part, crate::tts::pool::Part::Head { words: 6 });
     }
 
     #[test]

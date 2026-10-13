@@ -249,6 +249,12 @@ impl Sentence {
             .collect()
     }
 
+    /// Les mots tels qu'ils s'écrivent (« 18 », pas « dix-huit ») : la coupe
+    /// d'une phrase sans ponctuation s'y décide.
+    pub fn written_words(&self) -> Vec<String> {
+        self.words.iter().map(|w| w.text.clone()).collect()
+    }
+
     /// Le mot prononcé à `elapsed` d'après le minutage mesuré de chaque mot,
     /// et la part déjà dite. `None` si le minutage ne couvre pas les mots.
     pub fn word_fraction_timed(&self, elapsed: f32, spans: &[WordSpan]) -> Option<(usize, f32)> {

@@ -26,6 +26,9 @@ struct Job {
     text: String,
     /// Formes parlées des mots affichés, pour le minutage.
     words: Vec<String>,
+    /// Formes écrites des mêmes mots (« 18 » là où `words` dit
+    /// « dix-huit ») : la coupe sans ponctuation se décide dessus.
+    written: Vec<String>,
     pause_ms: u64,
 }
 
@@ -34,6 +37,7 @@ struct Picked {
     id: usize,
     text: String,
     words: Vec<String>,
+    written: Vec<String>,
     params: TtsParams,
     generation: u64,
     pause_ms: u64,
@@ -50,19 +54,6 @@ pub(crate) struct Split {
     pub tail_words: Vec<String>,
 }
 
-/// Coupe après le premier mot qui finit par une virgule, un point-virgule
-/// ou deux-points, à condition que la tête ait au moins trois mots et que
-/// la suite ne soit pas vide. Sans signe de coupe utilisable, une phrase
-/// d'au moins `WORD_CUT_MIN_WORDS` mots est coupée après `WORD_CUT_HEAD`
-/// mots (voir `word_cut`). La coupe peut toucher l'intonation : elle est
-/// réservée à la phrase qui conditionne l'attente. Le pool passe par
-/// `split_sentence`, qui retrouve la coupe dans la forme parlée.
-#[cfg(test)]
-pub(crate) fn split_first_clause(words: &[String]) -> Option<Split> {
-    let cut = punctuation_cut(words).or_else(|| word_cut(words))?;
-    Some(split_at(words, cut))
-}
-
 /// Une phrase sans signe de coupe se synthétisait entière (~300 ms pour
 /// dix mots avant le premier son) : elle est coupée après ce nombre de mots.
 const WORD_CUT_HEAD: usize = 5;
@@ -72,34 +63,50 @@ const WORD_CUT_MAX_HEAD: usize = 7;
 const WORD_CUT_MIN_TAIL: usize = 4;
 /// En dessous, la phrase reste entière : `WORD_CUT_HEAD + WORD_CUT_MIN_TAIL`.
 const WORD_CUT_MIN_WORDS: usize = WORD_CUT_HEAD + WORD_CUT_MIN_TAIL;
+/// Une tête qui finit sur l'un de ces mots laisse son complément en suspens
+/// (« vers | la gare ») : la coupe avance d'un mot.
+const FUNCTION_WORDS: &[&str] = &[
+    "le", "la", "les", "l'", "un", "une", "des", "de", "du", "d'", "au", "aux", "à", "en", "vers", "et", "ou",
+    "que", "qui", "pour", "par", "sur", "dans", "the", "a", "an", "of", "to", "and", "or", "in", "on", "for",
+    "with",
+];
 
-/// Nombre de mots de la tête, coupée à la ponctuation.
+/// Nombre de mots de la tête coupée à la ponctuation : après le premier
+/// mot qui finit par une virgule, un point-virgule ou deux-points et laisse
+/// au moins trois mots en tête et une suite non vide. Un signe trop tôt
+/// (« Oui, … ») cède la place au suivant.
 fn punctuation_cut(words: &[String]) -> Option<usize> {
-    let cut = words.iter().position(|w| w.ends_with([',', ';', ':']))?;
-    (cut >= 2 && cut + 1 < words.len()).then_some(cut + 1)
+    words
+        .iter()
+        .enumerate()
+        .position(|(i, w)| w.ends_with([',', ';', ':']) && i >= 2 && i + 1 < words.len())
+        .map(|i| i + 1)
 }
 
-/// Nombre de mots de la tête, coupée sans ponctuation : après le cinquième
-/// mot, ou un peu plus loin (au plus le septième) si la coupe tomberait
-/// après une élision (« qu' ») ou un nombre en chiffres, que la suite ne
-/// doit pas séparer de ce qu'ils annoncent. La suite garde toujours
-/// `WORD_CUT_MIN_TAIL` mots ; faute de place acceptable, pas de coupe.
-fn word_cut(words: &[String]) -> Option<usize> {
-    if words.len() < WORD_CUT_MIN_WORDS {
-        return None;
-    }
+/// Têtes possibles d'une coupe sans ponctuation, dans l'ordre : après le
+/// cinquième mot, ou un peu plus loin (au plus le septième) si la coupe
+/// tomberait après une élision, un nombre en chiffres ou un mot-outil. La
+/// suite garde toujours `WORD_CUT_MIN_TAIL` mots. Décidé sur les formes
+/// écrites : « 18 » s'y lit encore comme un nombre.
+fn word_cuts(written: &[String]) -> impl Iterator<Item = usize> + '_ {
+    let long_enough = written.len() >= WORD_CUT_MIN_WORDS;
     (WORD_CUT_HEAD..=WORD_CUT_MAX_HEAD)
-        .take_while(|&k| words.len() - k >= WORD_CUT_MIN_TAIL)
-        .find(|&k| may_end_a_head(&words[k - 1]))
+        .filter(move |_| long_enough)
+        .take_while(move |&k| written.len() - k >= WORD_CUT_MIN_TAIL)
+        .filter(move |&k| may_end_a_head(&written[k - 1]))
 }
 
-/// Un mot après lequel la coupe peut tomber : ni élision, ni nombre en
-/// chiffres.
+/// Un mot écrit après lequel la coupe peut tomber : ni élision, ni nombre en
+/// chiffres, ni mot-outil.
 fn may_end_a_head(word: &str) -> bool {
     if word.ends_with(['\'', '’']) {
         return false;
     }
-    !word.trim_end_matches(|c: char| !c.is_alphanumeric()).ends_with(|c: char| c.is_ascii_digit())
+    let bare = word.trim_end_matches(|c: char| !c.is_alphanumeric());
+    if bare.ends_with(|c: char| c.is_ascii_digit()) {
+        return false;
+    }
+    !FUNCTION_WORDS.contains(&bare.to_lowercase().as_str())
 }
 
 fn split_at(words: &[String], cut: usize) -> Split {
@@ -114,15 +121,20 @@ fn split_at(words: &[String], cut: usize) -> Split {
 
 /// Coupe la phrase à envoyer au moteur : la coupe se décide sur les mots,
 /// mais tête et suite sont prises dans `text`, la forme parlée de la phrase
-/// entière, à la même ponctuation. Un mot verbalisé seul perd son contexte
-/// (« 10 000 » dirait « dix zéro zéro zéro ») : la phrase doit se dire de la
-/// même façon, coupée ou non. Faute de retrouver la coupe dans `text`, la
-/// phrase reste entière.
-pub(crate) fn split_sentence(text: &str, words: &[String]) -> Option<Split> {
+/// entière. Un mot verbalisé seul perd son contexte (« 10 000 » dirait
+/// « dix zéro zéro zéro ») : la phrase doit se dire de la même façon, coupée
+/// ou non. Faute de retrouver la coupe dans `text`, la phrase reste entière.
+///
+/// `words` : formes parlées (minutage, ponctuation) ; `written` : formes
+/// écrites, de même longueur, pour la coupe sans ponctuation.
+pub(crate) fn split_sentence(text: &str, words: &[String], written: &[String]) -> Option<Split> {
     if let Some(cut) = punctuation_cut(words) {
         return split_text_at_mark(text, split_at(words, cut));
     }
-    split_text_at_word(text, split_at(words, word_cut(words)?))
+    let written = if written.len() == words.len() { written } else { words };
+    // Un nombre dit en plusieurs mots peut rendre une coupe introuvable dans
+    // le texte : la suivante a sa chance, jusqu'au septième mot.
+    word_cuts(written).find_map(|cut| split_text_at_word(text, split_at(words, cut)))
 }
 
 fn split_text_at_mark(text: &str, split: Split) -> Option<Split> {
@@ -146,25 +158,34 @@ fn split_text_at_mark(text: &str, split: Split) -> Option<Split> {
 }
 
 /// Coupe sans ponctuation : le texte est coupé au blanc qui sépare le dernier
-/// mot de la tête du premier mot de la suite, mots entiers. La même paire
+/// mot de la tête du premier mot de la suite, mots entiers (une forme parlée
+/// peut en compter plusieurs : « deux mille vingt-sept »). La même paire
 /// peut revenir plus tôt dans la phrase : on prend son homologue de même
-/// rang. Introuvable, la phrase reste entière.
+/// rang. Introuvable, pas de coupe.
 fn split_text_at_word(text: &str, split: Split) -> Option<Split> {
-    let last = split.head_words.last()?.as_str();
-    let first = split.tail_words.first()?.as_str();
-    let pairs = |tokens: &[&str]| -> Vec<usize> {
-        (1..tokens.len()).filter(|&i| tokens[i - 1] == last && tokens[i] == first).collect()
+    let last: Vec<&str> = split.head_words.last()?.split_whitespace().collect();
+    let first: Vec<&str> = split.tail_words.first()?.split_whitespace().collect();
+    if last.is_empty() || first.is_empty() {
+        return None;
+    }
+    // Frontières (en jetons) où `last` finit et `first` commence.
+    let boundaries = |tokens: &[&str]| -> Vec<usize> {
+        (last.len()..=tokens.len().saturating_sub(first.len()))
+            .filter(|&i| tokens[i - last.len()..i] == last[..] && tokens[i..i + first.len()] == first[..])
+            .collect()
     };
-    let word_tokens: Vec<&str> = split.head_words.iter().chain(&split.tail_words).map(String::as_str).collect();
-    let rank = pairs(&word_tokens).iter().position(|&i| i == split.head_words.len())?;
-    // Positions des mots de `text`, pour couper au blanc qui précède.
+    let head_tokens = split.head_words.iter().flat_map(|w| w.split_whitespace()).count();
+    let spoken: Vec<&str> =
+        split.head_words.iter().chain(&split.tail_words).flat_map(|w| w.split_whitespace()).collect();
+    let rank = boundaries(&spoken).iter().position(|&i| i == head_tokens)?;
+    // Début de chaque jeton de `text`, pour couper au blanc qui précède.
     let starts: Vec<usize> = text
         .char_indices()
         .filter(|&(i, c)| !c.is_whitespace() && text[..i].chars().next_back().map_or(true, char::is_whitespace))
         .map(|(i, _)| i)
         .collect();
     let tokens: Vec<&str> = text.split_whitespace().collect();
-    let at = starts[*pairs(&tokens).get(rank)?];
+    let at = starts[*boundaries(&tokens).get(rank)?];
     let head = text[..at].trim();
     let tail = text[at..].trim();
     if head.is_empty() || tail.is_empty() {
@@ -303,6 +324,7 @@ impl State {
                 id,
                 text: job.text.clone(),
                 words: job.words.clone(),
+                written: job.written.clone(),
                 params: self.params.clone(),
                 generation: self.generation,
                 pause_ms: job.pause_ms,
@@ -382,8 +404,17 @@ impl Synthesizer {
 
     /// Ajoute une phrase et les formes parlées de ses mots affichés.
     pub fn push_with_words(&self, text: String, words: Vec<String>, pause_ms: u64) {
+        let written = words.clone();
+        self.push_sentence(text, words, written, pause_ms);
+    }
+
+    /// Ajoute une phrase, les formes parlées de ses mots et leurs formes
+    /// écrites, sur lesquelles se décide la coupe sans ponctuation : un
+    /// nombre en chiffres y reste reconnaissable.
+    pub fn push_sentence(&self, text: String, words: Vec<String>, written: Vec<String>, pause_ms: u64) {
+        let written = if written.len() == words.len() { written } else { words.clone() };
         let mut state = self.shared.state.lock().unwrap();
-        state.jobs.push(Job { text, words, pause_ms });
+        state.jobs.push(Job { text, words, written, pause_ms });
         drop(state);
         self.shared.wake.notify_all();
     }
@@ -583,7 +614,7 @@ fn worker_loop(shared: Arc<Shared>) {
         }
 
         let session = session.as_mut().expect("session ouverte juste au-dessus");
-        let split = if job.split { split_sentence(&job.text, &job.words) } else { None };
+        let split = if job.split { split_sentence(&job.text, &job.words, &job.written) } else { None };
         let Some(split) = split else {
             let outcome = synthesize(&shared, session.as_mut(), &job.text, &job.words, &job.params)
                 .map(|s| with_trailing_silence(s, job.words.len(), job.pause_ms));
@@ -1159,21 +1190,46 @@ mod tests {
         text.split_whitespace().map(str::to_string).collect()
     }
 
+    /// Une phrase passée par le vrai découpage : texte parlé, formes
+    /// parlées et formes écrites, comme le lecteur les donne au pool.
+    fn real_sentence(text: &str) -> crate::doc::Sentence {
+        let mut builder = crate::doc::DocumentBuilder::new(crate::doc::builder::CodePolicy::Announce);
+        builder.push_block(text);
+        let doc = builder.document();
+        assert_eq!(doc.sentences.len(), 1, "une seule phrase : {text}");
+        doc.sentences[0].clone()
+    }
+
+    fn written(sentence: &crate::doc::Sentence) -> Vec<String> {
+        sentence.words.iter().map(|w| w.text.clone()).collect()
+    }
+
+    fn split_real(text: &str) -> Option<Split> {
+        let s = real_sentence(text);
+        split_sentence(&s.text, &s.spoken_words(), &written(&s))
+    }
+
     #[test]
     fn the_first_clause_is_cut_after_three_words_at_least() {
-        let split = split_first_clause(&words("Le quatorze juillet, Camille harangua la foule.")).unwrap();
+        let split = split_real("Le quatorze juillet, Camille harangua la foule.").unwrap();
         assert_eq!(split.head_text, "Le quatorze juillet,");
         assert_eq!(split.head_words.len(), 3);
         assert_eq!(split.tail_text, "Camille harangua la foule.");
-        assert!(split_first_clause(&words("Oui, bien sûr, tout à fait.")).is_none(), "tête trop courte");
-        assert!(split_first_clause(&words("Une phrase sans virgule du tout.")).is_none());
-        assert!(split_first_clause(&words("Trois mots ici,")).is_none(), "rien après");
-        assert_eq!(split_first_clause(&words("Pour le corriger ; lancez les tests.")).unwrap().head_words.len(), 4);
+        assert!(split_real("Une phrase sans virgule du tout.").is_none());
+        assert!(split_real("Trois mots ici,").is_none(), "rien après");
+    }
+
+    #[test]
+    fn a_comma_too_early_gives_way_to_a_later_one() {
+        let split = split_real("Oui, bien sûr, tout à fait.").unwrap();
+        assert_eq!(split.head_text, "Oui, bien sûr,");
+        let split = split_real("Oui, le train partira vers midi depuis la gare, sans retard.").unwrap();
+        assert_eq!(split.head_text, "Oui, le train partira vers midi depuis la gare,");
     }
 
     #[test]
     fn a_long_sentence_without_punctuation_is_cut_after_five_words() {
-        let split = split_first_clause(&words("Camille traversa la grande place sous la pluie fine du matin.")).unwrap();
+        let split = split_real("Camille traversa la grande place sous la pluie fine du matin.").unwrap();
         assert_eq!(split.head_text, "Camille traversa la grande place");
         assert_eq!(split.head_words.len(), 5);
         assert_eq!(split.tail_text, "sous la pluie fine du matin.");
@@ -1182,60 +1238,90 @@ mod tests {
 
     #[test]
     fn a_ten_word_sentence_without_punctuation_gets_a_five_word_head() {
-        let split = split_first_clause(&words("Il marcha longtemps vers le nord sans jamais se retourner.")).unwrap();
+        let split = split_real("Il marchait très longtemps seul sans jamais se retourner vraiment.").unwrap();
         assert_eq!(split.head_words.len(), 5);
         assert_eq!(split.tail_words.len(), 5);
     }
 
     #[test]
     fn a_sentence_of_eight_words_without_punctuation_stays_whole() {
-        assert!(split_first_clause(&words("Il marcha longtemps vers le nord sans fin.")).is_none());
+        assert!(split_real("Il marchait très longtemps seul sans fin aucune.").is_none());
     }
 
     #[test]
     fn the_word_cut_never_falls_after_an_elision() {
-        // « qu' » au cinquième mot : la coupe avance d'un mot.
-        let split = split_first_clause(&words("Elle savait bien alors qu' il ne viendrait plus jamais ce soir.")).unwrap();
+        // Écrit « qu' » seul au cinquième mot : la coupe avance d'un mot.
+        let words: Vec<String> = "Elle savait bien alors qu' il ne viendrait plus jamais ce soir."
+            .split_whitespace()
+            .map(str::to_string)
+            .collect();
+        let text = words.join(" ");
+        let split = split_sentence(&text, &words, &words).unwrap();
         assert_eq!(split.head_text, "Elle savait bien alors qu' il");
-        assert_eq!(split.head_words.len(), 6);
-        let curly = split_first_clause(&words("Elle savait bien alors qu’ il ne viendrait plus jamais ce soir.")).unwrap();
-        assert_eq!(curly.head_words.len(), 6);
+        let curly: Vec<String> = words.iter().map(|w| w.replace('\'', "’")).collect();
+        assert_eq!(split_sentence(&curly.join(" "), &curly, &curly).unwrap().head_words.len(), 6);
     }
 
     #[test]
     fn the_word_cut_never_falls_after_a_number_in_digits() {
-        let split = split_first_clause(&words("Le train partira vers 18 heures depuis la gare du centre-ville.")).unwrap();
-        assert_eq!(split.head_text, "Le train partira vers 18 heures");
-        // Rien d'acceptable du cinquième au septième mot : pas de coupe.
-        assert!(split_first_clause(&words("Les codes sont 12 34 56 78 90 et rien de plus.")).is_none());
-        // La suite garde au moins quatre mots : au plus 5 + (n - 9) mots en tête.
-        assert!(split_first_clause(&words("Nous avons vu qu' l' d' ils partaient demain.")).is_none());
+        // La forme parlée dit « dix-huit » : c'est l'écrit « 18 » qui compte.
+        let s = real_sentence("Le train partira vers 18 heures depuis la gare du centre-ville.");
+        assert!(s.spoken_words().contains(&"dix-huit".to_string()), "l'essai suppose « 18 » verbalisé");
+        let split = split_sentence(&s.text, &s.spoken_words(), &written(&s)).unwrap();
+        assert_eq!(split.head_text, "Le train partira vers dix-huit heures");
+        assert_eq!(split.tail_text, "depuis la gare du centre-ville.");
+        assert_eq!(split.head_words.len(), 6);
+        // « 2027 », puis deux mots-outils : rien d'acceptable avant le 8e mot.
+        assert!(split_real("Il est né en 2027 dans une petite ville du nord de la France.").is_none());
+    }
+
+    #[test]
+    fn a_head_never_ends_on_a_function_word() {
+        let split = split_real("Nous partirons demain matin vers la mer avec toute la famille.").unwrap();
+        assert_eq!(split.head_text, "Nous partirons demain matin vers la mer");
+        let split = split_real("We will take the train to the old city by the river tonight.").unwrap();
+        assert_eq!(split.head_text, "We will take the train");
     }
 
     #[test]
     fn a_comma_still_wins_over_the_word_cut() {
-        let split = split_first_clause(&words("Le quatorze juillet, Camille harangua la foule venue de toute la ville.")).unwrap();
+        let split = split_real("Le quatorze juillet, Camille harangua la foule venue de toute la ville.").unwrap();
         assert_eq!(split.head_text, "Le quatorze juillet,");
     }
 
     #[test]
-    fn the_word_cut_is_found_in_the_spoken_text() {
-        let w = words("Le train partira vers dix-huit heures depuis la gare du centre.");
-        let split = split_sentence("Le train partira vers dix-huit heures depuis la gare du centre.", &w).unwrap();
-        assert_eq!(split.head_text, "Le train partira vers dix-huit");
-        assert_eq!(split.tail_text, "heures depuis la gare du centre.");
-        assert_eq!(split.head_words.len(), 5);
-        // Les mots précédant la coupe peuvent différer : seule la frontière compte.
-        let split = split_sentence("Le TGV partira vers dix-huit heures depuis la gare du centre.", &w).unwrap();
-        assert_eq!(split.head_text, "Le TGV partira vers dix-huit");
+    fn a_number_said_in_several_words_is_found_in_the_spoken_text() {
+        // Le premier mot de la suite se dit « deux mille vingt-sept ».
+        let split = split_real("Nous avons reçu hier soir 2027 lettres de toute la région.").unwrap();
+        assert_eq!(split.head_text, "Nous avons reçu hier soir");
+        assert!(split.tail_text.starts_with("deux mille vingt-sept lettres"), "{}", split.tail_text);
+        // « 10 000 » se dit « dix mille » en contexte, « dix » + « zéro zéro
+        // zéro » mot à mot : la coupe après « euros » se retrouve quand même.
+        let split = split_real("Le seuil fixé était 10 000 euros pour tous les gens du coin.").unwrap();
+        assert_eq!(split.head_text, "Le seuil fixé était dix mille euros");
+        assert_eq!(split.tail_text, "pour tous les gens du coin.");
     }
 
     #[test]
-    fn a_spoken_text_that_diverges_at_the_word_cut_stays_whole() {
-        let w = words("Il marcha longtemps vers le nord sans jamais se retourner.");
-        assert!(split_sentence("Il marcha longtemps vers le septentrion sans jamais se retourner.", &w).is_none());
+    fn a_cut_missing_from_the_spoken_text_tries_the_next_word() {
+        let words: Vec<String> =
+            "Il a vu hier soir trois chats noirs dans la cour.".split_whitespace().map(str::to_string).collect();
+        let split = split_sentence("Il a vu hier soir-là trois chats noirs dans la cour.", &words, &words).unwrap();
+        assert_eq!(split.head_text, "Il a vu hier soir-là trois");
+        assert_eq!(split.head_words.len(), 6);
+    }
+
+    #[test]
+    fn a_spoken_text_that_diverges_at_every_word_cut_stays_whole() {
+        let s = real_sentence("Il marchait très longtemps seul sans jamais se retourner vraiment.");
+        assert!(split_sentence("Il marchait sans cesse ni repos.", &s.spoken_words(), &written(&s)).is_none());
         // Mot entier, pas une fin de mot : « elle » ne vaut pas « le ».
-        assert!(split_sentence("Il marcha longtemps vers elle nord sans jamais se retourner.", &w).is_none());
+        let words: Vec<String> = "Camille traversa la grande place sous la pluie fine du matin."
+            .split_whitespace()
+            .map(str::to_string)
+            .collect();
+        assert!(split_sentence("Camille traversa la grande replace resous lala pluie fine du matin.", &words, &words)
+            .is_none());
     }
 
     /// Minute ses mots (100 ms chacun) et coupe la phrase attendue. Avec
@@ -1375,8 +1461,8 @@ mod tests {
     #[test]
     fn a_spoken_text_without_the_cut_stays_whole() {
         let words = words("Le quatorze juillet, Camille harangua la foule.");
-        assert!(split_sentence("Le quatorze juillet Camille harangua la foule.", &words).is_none());
-        let split = split_sentence("Le 14 juillet, Camille harangua la foule.", &words).unwrap();
+        assert!(split_sentence("Le quatorze juillet Camille harangua la foule.", &words, &words).is_none());
+        let split = split_sentence("Le 14 juillet, Camille harangua la foule.", &words, &words).unwrap();
         assert_eq!((split.head_text.as_str(), split.tail_text.as_str()), ("Le 14 juillet,", "Camille harangua la foule."));
         assert_eq!(split.head_words.len(), 3);
     }
