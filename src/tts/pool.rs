@@ -276,6 +276,10 @@ struct State {
     cache: HashMap<usize, Entry>,
     in_flight: HashSet<usize>,
     failures: HashMap<usize, String>,
+    /// La dernière ouverture de session a échoué, avec ce message. Effacé
+    /// par une ouverture réussie ; gardé d'un texte à l'autre, le moteur
+    /// restant le même.
+    open_failure: Option<String>,
     /// Temps passé à synthétiser, cumulé.
     busy: Duration,
 }
@@ -350,6 +354,7 @@ impl Synthesizer {
                 cache: HashMap::new(),
                 in_flight: HashSet::new(),
                 failures: HashMap::new(),
+                open_failure: None,
                 busy: Duration::ZERO,
             }),
             wake: Condvar::new(),
@@ -440,6 +445,12 @@ impl Synthesizer {
     /// Message d'erreur si la synthèse de cette phrase a échoué.
     pub fn failure(&self, id: usize) -> Option<String> {
         self.shared.state.lock().unwrap().failures.get(&id).cloned()
+    }
+
+    /// Message de la dernière ouverture de session, si elle a échoué : la
+    /// voix entière est alors muette, pas une phrase.
+    pub fn open_failure(&self) -> Option<String> {
+        self.shared.state.lock().unwrap().open_failure.clone()
     }
 
     /// Redonne leur chance aux phrases en échec à partir de `from`.
@@ -552,8 +563,14 @@ fn worker_loop(shared: Arc<Shared>) {
 
         if session.is_none() {
             match shared.engine.open_session() {
-                Ok(s) => session = Some(s),
+                Ok(s) => {
+                    session = Some(s);
+                    shared.state.lock().unwrap().open_failure = None;
+                }
                 Err(err) => {
+                    // Une famille qui ne sait pas synthétiser échoue ici, à
+                    // chaque phrase : le lecteur doit pouvoir le dire.
+                    shared.state.lock().unwrap().open_failure = Some(err.to_string());
                     finish_generation(
                         &shared,
                         job.id,
@@ -867,6 +884,38 @@ mod tests {
 
         assert_eq!(wait_ready(&synth, 0).audio.samples.len(), 20);
         assert_eq!(synth.failure(0), None);
+        assert_eq!(synth.open_failure(), None, "une ouverture réussie efface l'échec");
+    }
+
+    /// Moteur chargé dont aucune session ne s'ouvre (une famille qui ne
+    /// sait ni synthétiser ni cloner hors ligne).
+    struct NoSession;
+
+    impl TtsEngine for NoSession {
+        fn name(&self) -> String {
+            "sans session".into()
+        }
+        fn open_session(&self) -> Result<Box<dyn TtsSession>> {
+            anyhow::bail!("cette famille ne sait ni synthétiser ni cloner hors-ligne")
+        }
+        fn max_sessions(&self) -> usize {
+            2
+        }
+    }
+
+    #[test]
+    fn a_session_that_never_opens_is_said_once_for_the_voice() {
+        let synth = Synthesizer::new(Arc::new(NoSession), TtsParams::default(), 2, 4);
+        assert_eq!(synth.open_failure(), None, "rien n'a encore échoué");
+        synth.push("Une phrase.".into(), 0);
+        synth.push("Une autre.".into(), 0);
+        assert!(wait_for(|| synth.failure(1).is_some()));
+        assert_eq!(
+            synth.open_failure().as_deref(),
+            Some("cette famille ne sait ni synthétiser ni cloner hors-ligne")
+        );
+        synth.reset();
+        assert!(synth.open_failure().is_some(), "le moteur reste le même d'un texte à l'autre");
     }
 
     /// Moteur dont chaque synthèse annonce son départ puis attend un feu vert.

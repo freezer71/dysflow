@@ -17,6 +17,24 @@ final class MeasureChargeTests: XCTestCase {
         XCTAssertTrue(arrive, "la phrase 50 doit exister dans le texte de charge")
     }
 
+    /// Une voix « prête » d'un autre moteur (audio.cpp sur un
+    /// `.safetensors`, muette) ne passe pas pour Kokoro MLX.
+    func testOnlyAReadyKokoroMLXVoiceIsAccepted() async {
+        let reader = SillonReader.silent()
+        reader.openText(markdown: "Un. Deux.", source: "test-kokoro")
+        let prete = await eventuallyTrue { reader.snapshot().voice == .ready }
+        XCTAssertTrue(prete)
+        var s = reader.snapshot()
+        XCTAssertFalse(s.engine.isEmpty, "le moteur se nomme")
+        XCTAssertFalse(Measure.voixKokoroMLXPrete(s), "le lecteur muet n'est pas Kokoro MLX")
+        s.engine = Measure.moteurKokoroMLX
+        XCTAssertTrue(Measure.voixKokoroMLXPrete(s))
+        s.voice = .fallback(reason: "x")
+        XCTAssertFalse(Measure.voixKokoroMLXPrete(s))
+        s.voice = .unavailable(reason: "x")
+        XCTAssertFalse(Measure.voixKokoroMLXPrete(s))
+    }
+
     func testTheBridgeSurvivesALoweringAndALift() throws {
         let sortie = KokoroOutput(samples: [Float](repeating: 0.5, count: 1000), durations: [2, 3])
         let rendu = try FfiConverterTypeKokoroOutput_lift(FfiConverterTypeKokoroOutput_lower(sortie))

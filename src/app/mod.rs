@@ -43,6 +43,9 @@ pub struct ReadingStyle {
     pub ruler: bool,
 }
 
+/// Début du statut d'une voix dont aucune session ne s'ouvre.
+const VOICE_UNAVAILABLE: &str = "Voix indisponible : ";
+
 pub struct App {
     builder: DocumentBuilder,
     input: Option<Receiver<InputEvent>>,
@@ -405,6 +408,30 @@ impl App {
         if self.status_until.is_some_and(|t| Instant::now() > t) {
             self.status.clear();
             self.status_until = None;
+        }
+        self.announce_unavailable_voice();
+    }
+
+    /// Raison pour laquelle la voix ne peut rien dire : l'ouverture d'une
+    /// session de synthèse a échoué (une famille qui ne sait ni synthétiser
+    /// ni cloner hors ligne). Chaque phrase échoue alors et se saute.
+    pub fn voice_unavailable(&self) -> Option<String> {
+        self.synth.open_failure()
+    }
+
+    /// Tant que la voix est indisponible, le statut le dit, sans délai :
+    /// sans cela le lecteur sautait toutes les phrases en silence.
+    fn announce_unavailable_voice(&mut self) {
+        match self.voice_unavailable() {
+            Some(reason) => {
+                let message = format!("{VOICE_UNAVAILABLE}{reason}");
+                if self.status != message {
+                    self.status = message;
+                    self.status_until = None;
+                }
+            }
+            None if self.status.starts_with(VOICE_UNAVAILABLE) => self.status.clear(),
+            None => {}
         }
     }
 

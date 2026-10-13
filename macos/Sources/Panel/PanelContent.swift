@@ -162,7 +162,8 @@ struct HelpOverlay: View {
 /// La ligne de message du panneau : ce que l'app vient de dire (« Phrase
 /// copiée »), sinon le statut du lecteur (« Signet ajouté », « Aucun mot de
 /// ce côté », sortie audio indisponible), sinon, voix de repli, comment en
-/// installer une ; sinon la première préparation des noyaux Metal, ou le
+/// installer une ; voix muette (aucune session ne s'ouvre), pourquoi ;
+/// sinon la première préparation des noyaux Metal, ou le
 /// chargement de la voix.
 enum PanelStatus {
     static let fallbackHint = "Voix du système — installer une voix : ⌘,"
@@ -173,6 +174,7 @@ enum PanelStatus {
         if let message { return message }
         if !snapshot.status.isEmpty { return snapshot.status }
         if case .fallback = snapshot.voice { return fallbackHint }
+        if case .unavailable(let reason) = snapshot.voice { return "Voix indisponible : \(reason)" }
         if preparing { return preparingLine }
         if case .loading = snapshot.voice { return loadingLine }
         return nil

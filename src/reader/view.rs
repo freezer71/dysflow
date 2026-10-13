@@ -19,6 +19,8 @@ pub enum VoiceState {
     Ready,
     /// Voix de repli, le moteur voulu ayant échoué.
     Fallback { reason: String },
+    /// Voix chargée mais muette : aucune session de synthèse ne s'ouvre.
+    Unavailable { reason: String },
 }
 
 /// Recherche en cours : requête, rang du résultat courant (à partir de un), total.
@@ -58,6 +60,9 @@ pub struct Snapshot {
     pub volume: f32,
     pub muted: bool,
     pub voice: VoiceState,
+    /// Nom du moteur qui parle (« Kokoro · MLX »), vide au repos : l'état
+    /// « prête » ne dit pas lequel.
+    pub engine: String,
     /// Message d'état du lecteur.
     pub status: String,
     pub search: Option<SearchState>,
@@ -151,6 +156,16 @@ pub fn snapshot(reader: &Reader) -> Snapshot {
             Readiness::Fallback(reason) => VoiceState::Fallback { reason },
         },
     };
+    // L'échec à l'ouverture d'une session prime : la voix « prête » ne dit
+    // rien du tout, chaque phrase échoue et se saute.
+    let engine = match (reader.is_resting(), reader.engine()) {
+        (false, Some(engine)) => engine.name(),
+        _ => String::new(),
+    };
+    let voice = match reader.session().and_then(|app| app.voice_unavailable()) {
+        Some(reason) if voice != VoiceState::Resting => VoiceState::Unavailable { reason },
+        _ => voice,
+    };
     let Some(app) = reader.session() else {
         // Au repos, la position retenue reste celle où l'on s'est arrêté ;
         // le document se reconstruit pour en tirer section et avancement.
@@ -174,6 +189,7 @@ pub fn snapshot(reader: &Reader) -> Snapshot {
             speed: reader.config().voice.speed,
             volume: reader.config().voice.volume,
             voice,
+            engine,
             download: reader.download(),
             preview: reader.preview_view(),
             document_language: reader.document_language().cloned(),
@@ -207,6 +223,7 @@ pub fn snapshot(reader: &Reader) -> Snapshot {
         volume: app.player.volume(),
         muted: app.player.is_muted(),
         voice,
+        engine,
         status: app.status().to_string(),
         search: app.search().map(|s| SearchState {
             query: s.query.clone(),
@@ -360,6 +377,57 @@ mod tests {
         assert_eq!(s.word_progress, 0.0);
         assert_eq!(s.voice, VoiceState::Ready);
         assert!(!s.playing);
+    }
+
+    #[test]
+    fn the_snapshot_names_the_engine_that_speaks() {
+        // L'outil de mesure doit savoir que c'est bien Kokoro MLX qui parle,
+        // pas une voix « prête » quelconque.
+        let mut r = reader_with("Un. Deux.");
+        assert_eq!(snapshot(&r).engine, SilentEngine.name());
+        r.rest();
+        assert_eq!(snapshot(&r).engine, "", "au repos, aucun moteur");
+    }
+
+    /// Un moteur chargé dont aucune session ne s'ouvre.
+    struct NoSession;
+    impl TtsEngine for NoSession {
+        fn name(&self) -> String {
+            "sans session".into()
+        }
+        fn open_session(&self) -> anyhow::Result<Box<dyn crate::tts::TtsSession>> {
+            anyhow::bail!("cette famille ne sait ni synthétiser ni cloner hors-ligne")
+        }
+        fn max_sessions(&self) -> usize {
+            1
+        }
+    }
+
+    #[test]
+    fn a_voice_whose_session_never_opens_says_it_is_unavailable() {
+        // Chaque phrase échouait, le lecteur les sautait toutes, et la voix
+        // restait « prête », sans un mot.
+        let mut config = Config::default();
+        config.reading.autoplay = false;
+        let mut r = Reader::new(
+            config,
+            Box::new(|_| Arc::new(NoSession) as Arc<dyn TtsEngine>),
+            Box::new(Player::silent),
+            Instant::now(),
+        );
+        r.open_text("Un. Deux.", "test", Instant::now());
+        let deadline = Instant::now() + std::time::Duration::from_secs(5);
+        while snapshot(&r).voice == VoiceState::Ready && Instant::now() < deadline {
+            r.with_session(Instant::now(), |app| app.tick());
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        r.with_session(Instant::now(), |app| app.tick());
+        let s = snapshot(&r);
+        assert_eq!(
+            s.voice,
+            VoiceState::Unavailable { reason: "cette famille ne sait ni synthétiser ni cloner hors-ligne".into() }
+        );
+        assert_eq!(s.status, "Voix indisponible : cette famille ne sait ni synthétiser ni cloner hors-ligne");
     }
 
     #[test]

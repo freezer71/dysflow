@@ -126,7 +126,7 @@ enum Measure {
                 let s = reader.snapshot()
                 print("MESURE etat document=\(s.hasDocument) lecture=\(s.playing) audible=\(s.audible) fini=\(s.finished) phrase=\(s.sentence) revision=\(s.revision) voix=\(s.voice) statut=\(s.status) sautees=\(s.skipped)")
                 switch s.voice {
-                case .resting, .fallback:
+                case .resting, .fallback, .unavailable:
                     print("MESURE erreur voix-indisponible")
                 default:
                     print("MESURE erreur delai-depasse")
@@ -272,22 +272,36 @@ enum Measure {
         fflush(stdout)
     }
 
-    /// Attend que la voix demandée soit prête (60 s au plus). Une voix de repli
-    /// ou un modèle absent n'est pas Kokoro MLX : la mesure s'arrête, elle ne
-    /// mesurerait pas ce que la spec demande.
+    /// Nom du moteur Kokoro sur MLX dans l'instantané (`KokoroEngine::name`,
+    /// étiquette « MLX » du calcul de l'app).
+    static let moteurKokoroMLX = "Kokoro · MLX"
+
+    /// Prête ne suffit pas : c'est Kokoro sur MLX qui doit parler.
+    static func voixKokoroMLXPrete(_ s: Snapshot) -> Bool {
+        s.voice == .ready && s.engine == moteurKokoroMLX
+    }
+
+    /// Attend que la voix demandée soit prête (60 s au plus). Une voix de repli,
+    /// un modèle absent, ou une voix « prête » d'un autre moteur (audio.cpp sur
+    /// un `.safetensors`, muette) n'est pas Kokoro MLX : la mesure s'arrête,
+    /// elle ne mesurerait pas ce que la spec demande.
     private static func attendreVoixKokoro(_ reader: SillonReader) async throws {
         let debut = ContinuousClock.now
         let echeance = debut + .seconds(60)
         while true {
-            let etat = reader.snapshot().voice
+            let s = reader.snapshot()
+            let etat = s.voice
             switch etat {
             case .resting where ContinuousClock.now < debut + .seconds(5):
                 break  // la demande n'a pas encore été prise en compte
             case .ready:
-                print("MESURE voix ready")
+                guard voixKokoroMLXPrete(s) else {
+                    throw refus("voix-non-kokoro-mlx-moteur-\(s.engine.isEmpty ? "inconnu" : s.engine)")
+                }
+                print("MESURE voix ready moteur=\(s.engine)")
                 fflush(stdout)
                 return
-            case .fallback, .resting:
+            case .fallback, .resting, .unavailable:
                 throw refus("voix-non-kokoro-mlx-\(String(describing: etat).prefix(8))")
             case .loading:
                 break

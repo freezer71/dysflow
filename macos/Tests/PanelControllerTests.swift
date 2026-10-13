@@ -569,6 +569,15 @@ final class PanelStatusTests: XCTestCase {
                        "Aucun mot de ce côté")
     }
 
+    /// Une voix dont aucune session ne s'ouvre le dit, au lieu de rester muette.
+    func testAnUnavailableVoiceSaysWhy() {
+        XCTAssertEqual(PanelStatus.line(message: nil, snapshot: snapshot(voice: .unavailable(reason: "x"))),
+                       "Voix indisponible : x")
+        XCTAssertEqual(PanelStatus.line(message: nil, snapshot: snapshot(status: "Voix indisponible : x",
+                                                                          voice: .unavailable(reason: "x"))),
+                       "Voix indisponible : x", "le statut du lecteur le dit déjà")
+    }
+
     func testFallbackVoiceSaysHowToInstallOne() {
         let s = snapshot(voice: .fallback(reason: "modèle absent"))
         XCTAssertEqual(PanelStatus.line(message: nil, snapshot: s),

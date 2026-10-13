@@ -390,6 +390,7 @@ struct VoiceTab: View {
     /// première fois, à part du lecteur), sinon le chargement.
     static func voiceLine(_ state: VoiceState, preparing: Bool = false) -> String? {
         if case .fallback(let reason) = state { return "Voix du système en repli : \(reason)" }
+        if case .unavailable(let reason) = state { return "Voix indisponible : \(reason)" }
         if preparing { return "Voix en préparation (première fois)…" }
         if case .loading = state { return "Voix en chargement…" }
         return nil

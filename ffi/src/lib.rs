@@ -176,6 +176,8 @@ pub enum VoiceState {
     Loading,
     Ready,
     Fallback { reason: String },
+    /// Voix chargée mais muette : aucune session de synthèse ne s'ouvre.
+    Unavailable { reason: String },
 }
 
 #[derive(uniffi::Record)]
@@ -254,6 +256,8 @@ pub struct Snapshot {
     pub volume: f32,
     pub muted: bool,
     pub voice: VoiceState,
+    /// Nom du moteur qui parle (« Kokoro · MLX »), vide au repos.
+    pub engine: String,
     pub status: String,
     pub search: Option<SearchState>,
     pub bookmarked: bool,
@@ -949,7 +953,9 @@ fn snapshot_of(s: view::Snapshot) -> Snapshot {
             view::VoiceState::Loading => VoiceState::Loading,
             view::VoiceState::Ready => VoiceState::Ready,
             view::VoiceState::Fallback { reason } => VoiceState::Fallback { reason },
+            view::VoiceState::Unavailable { reason } => VoiceState::Unavailable { reason },
         },
+        engine: s.engine,
         status: s.status,
         search: s.search.map(|q| SearchState {
             query: q.query,

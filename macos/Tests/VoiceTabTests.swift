@@ -131,6 +131,8 @@ final class VoiceTabTests: XCTestCase {
         XCTAssertEqual(VoiceTab.voiceLine(.loading), "Voix en chargement…")
         XCTAssertNil(VoiceTab.voiceLine(.ready))
         XCTAssertNil(VoiceTab.voiceLine(.resting))
+        XCTAssertEqual(VoiceTab.voiceLine(.unavailable(reason: "famille sans synthèse")),
+                       "Voix indisponible : famille sans synthèse")
     }
 
     /// 1c : le repli se dit une seule fois, avec sa raison.
