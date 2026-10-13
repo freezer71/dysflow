@@ -79,7 +79,7 @@ le chemin MLX de l'app.
 | Mémoire (empreinte physique) | ≤ 2 Go | 1,25–1,55 Go (plafond MLX 1 Go) |
 | Premier son, voix chaude | ≤ 0,3 s | 0,11 s (1re proposition seule) |
 | En pause | 0 % CPU, aucun appel à MLX | – |
-| Après « Garder la voix chargée » | modèle, cache MLX et espeak-ng libérés ; l'empreinte revient à celle de l'app sans voix (± 50 Mo) | – |
+| Après « Garder la voix chargée » | modèle, cache MLX et espeak-ng libérés ; l'empreinte reste ≤ celle de l'app sans voix + 100 Mo (mesuré le 13 oct. 2026 : fragmentation malloc, 16,8 Mo vivants, le reste des pages libres du zone SMALL ; `malloc_zone_pressure_relief` rend 0) | – |
 
 Sous Linux (ORT, CPU), le seuil de 10 % reste limite : 9,7 % avec 4 fils (pointes
 à 2,5 cœurs), 13 % avec 2 fils (0,25 cœur). On le note, sans en faire un critère
@@ -132,7 +132,17 @@ la même bibliothèque appelée depuis Python.
   0,11 s. Quand la phrase du curseur n'est pas prête (démarrage, saut,
   resynthèse), le moteur Kokoro la synthétise **en deux morceaux** : la tête,
   jusqu'à la première virgule, au premier point-virgule ou aux premiers
-  deux-points (au moins 3 mots), puis la suite.
+  deux-points (au moins 3 mots), puis la suite. Sans signe de coupe
+  utilisable, une phrase d'au moins 9 mots est coupée après 5 mots (la suite
+  en garde au moins 4), jamais juste après une élision (« qu' ») ni après un
+  nombre en chiffres : la coupe avance alors d'un mot, au plus jusqu'au 7e,
+  sinon la phrase reste entière. Sans coupe, 10 mots demandaient ~300 ms
+  avant le premier son (~0,48 s mesuré). La coupe est retrouvée dans la forme
+  parlée, mots entiers ; introuvable, la phrase reste entière.
+- Une voix dont aucune session ne s'ouvre (par exemple audio.cpp sur un
+  `.safetensors` sans `family = "kokoro"`) se dit : statut « Voix
+  indisponible : … » et état de voix `Unavailable`, au lieu de sauter toutes
+  les phrases en silence avec une voix « prête ».
 - La tête joue dès qu'elle est prête, et la suite s'enchaîne sans blanc. Les
   phrases suivantes restent entières : la coupe peut modifier légèrement
   l'intonation, donc on la limite à la phrase qui conditionne l'attente.
@@ -485,7 +495,8 @@ pub struct KokoroOutput { pub samples: Vec<f32>, pub durations: Vec<u32> }
   - CPU de l'arbre de processus, GPU `ioreg` moins le repos, empreinte physique.
   - macOS : `Measure.swift` (`--measure`) gagne ce scénario de charge, ainsi que
     le premier son à chaud, la pause (CPU nul sur 20 s) et le repos (empreinte
-    après `restVoice`). `scripts/measure-macos.sh` rend les lignes `MESURE` des
+    après `restVoice`, ≤ app sans voix + 100 Mo). La voix n'est acceptée que
+    prête **et** nommée `Kokoro · MLX` (champ `engine` de l'instantané). `scripts/measure-macos.sh` rend les lignes `MESURE` des
     critères d'acceptation.
   - Linux : un exemple `kokoro_serve` parle le protocole stdin/stdout du banc,
     pour réutiliser le pilote tel quel.

@@ -116,8 +116,10 @@ def make_verdicts(phases, peak, extra):
         "premier son à chaud ≤ 0,3 s (médiane)": bool(sauts) and statistics.median(sauts) <= 300,
         "pause : aucun appel à MLX": phases["pause"].get("appels_mlx", 1) == 0,
         "pause : CPU nul (< 0,01 cœur)": phases["pause"].get("cpu_cores_avg", 1.0) < 0.01,
-        "repos : empreinte de l'app sans voix ± 50 Mo": sans_voix is not None and repos is not None
-        and abs(repos - sans_voix) <= 50,
+        # + 100 Mo : la fragmentation malloc mesurée (16,8 Mo vivants, le reste
+        # des pages libres du zone SMALL ; malloc_zone_pressure_relief rend 0).
+        "repos : empreinte ≤ app sans voix + 100 Mo": sans_voix is not None and repos is not None
+        and repos - sans_voix <= 100,
     }
 
 def invalid_reason(mesures):

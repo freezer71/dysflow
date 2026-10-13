@@ -56,13 +56,20 @@ class Verdicts(unittest.TestCase):
         self.assertFalse([ok for n, ok in self.run_verdicts(ph).items() if n.startswith("temps occupé")][0])
         self.assertFalse(self.run_verdicts(peak=2.01)["empreinte ≤ 2 Go"])
         self.assertFalse(self.run_verdicts(sauts=(310, 320, 330))["premier son à chaud ≤ 0,3 s (médiane)"])
-        self.assertFalse(self.run_verdicts(repos=451)["repos : empreinte de l'app sans voix ± 50 Mo"])
+        self.assertFalse(self.run_verdicts(repos=501)["repos : empreinte ≤ app sans voix + 100 Mo"])
         ph = phases_ok(); ph["read_2x"]["coupures"] = 1
         self.assertFalse([ok for n, ok in self.run_verdicts(ph).items() if n.startswith("2× sans coupure")][0])
         ph = phases_ok(); ph["pause"]["appels_mlx"] = 1
         self.assertFalse(self.run_verdicts(ph)["pause : aucun appel à MLX"])
         ph = phases_ok(); ph["pause"]["cpu_cores_avg"] = 0.05
         self.assertFalse(self.run_verdicts(ph)["pause : CPU nul (< 0,01 cœur)"])
+    def test_rest_footprint_allows_up_to_100_mb_above_and_any_amount_below(self):
+        # Fragmentation malloc mesurée : 16,8 Mo vivants, le reste en pages
+        # libres du zone SMALL que macOS ne reprend pas tout de suite.
+        label = "repos : empreinte ≤ app sans voix + 100 Mo"
+        self.assertTrue(self.run_verdicts(sans=400, repos=500)[label])
+        self.assertFalse(self.run_verdicts(sans=400, repos=501)[label])
+        self.assertTrue(self.run_verdicts(sans=400, repos=300)[label], "sous l'app sans voix : rien de retenu")
     def test_a_run_that_never_touched_mlx_is_not_ok(self):
         for phase, label in (("read_1x", "temps occupé à 1×"), ("read_2x", "2× sans coupure")):
             ph = phases_ok(); ph[phase]["appels_mlx"] = 0
