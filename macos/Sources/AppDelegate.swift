@@ -88,7 +88,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         model = ReaderModel(reader: reader)
-        if isUITesting { model.staged = UITestStaging.staging(for: ProcessInfo.processInfo.arguments) }
+        if isUITesting {
+            model.staged = UITestStaging.staging(for: ProcessInfo.processInfo.arguments)
+            model.stagedCapabilities = UITestStaging.capabilities(for: ProcessInfo.processInfo.arguments)
+        }
         model.refresh()
         panel = PanelController(model: model)
         transport = Transport(model: model)

@@ -41,8 +41,8 @@ final class ErrorTextTests: XCTestCase {
         backend.failPreview = "sortie audio indisponible"
         let store = SettingsStore(backend: backend, announce: { said.append($0) })
         await store.load()
-        await store.listen()
-        await store.listen()
+        await store.listen(language: "fr")
+        await store.listen(language: "fr")
         XCTAssertEqual(store.previewNote, "sortie audio indisponible")
         XCTAssertEqual(said, ["sortie audio indisponible", "sortie audio indisponible"])
     }

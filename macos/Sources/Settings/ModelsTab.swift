@@ -17,7 +17,7 @@ struct ModelsTab: View {
             ErrorText(settings.error, identifier: "erreur-reglages")
             Section("Catalogue") {
                 if store.catalogue.isEmpty {
-                    Text("Aucun modèle proposé : cette version est compilée sans audio.cpp.")
+                    Text("Aucun modèle proposé par cette version : la voix du système lit.")
                 }
                 ForEach(store.catalogue, id: \.id) { m in row(m) }
             }

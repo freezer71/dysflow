@@ -34,12 +34,12 @@ final class SettingsStoreTests: XCTestCase {
         let backend = FakeSettingsBackend()
         let store = await loadedStore(backend)
         store.setVoice("p-fenrir60", language: "fr")
-        store.setVoice("af_sky", language: "en")
+        store.setVoice("am_fenrir", language: "en")
         let sent = await eventuallyTrue { backend.patches.count == 2 }
         XCTAssertTrue(sent)
         XCTAssertEqual(Set(backend.stored.voicesByLanguage),
                        [LanguageVoice(language: "fr", voice: "p-fenrir60"),
-                        LanguageVoice(language: "en", voice: "af_sky")])
+                        LanguageVoice(language: "en", voice: "am_fenrir")])
         let applied = await eventuallyTrue { store.values.voicesByLanguage.count == 2 }
         XCTAssertTrue(applied)
     }
@@ -92,16 +92,6 @@ final class SettingsStoreTests: XCTestCase {
         store.set(\.lineSpacing, 4)
         let clamped = await eventuallyTrue { store.values.lineSpacing == 3 }
         XCTAssertTrue(clamped, "ramené dans les bornes et affiché tel qu'appliqué")
-    }
-
-    /// Point d'attention 5 : la voix choisie part avant l'aperçu.
-    func testListeningSendsThePendingChangeFirst() async {
-        let backend = FakeSettingsBackend()
-        let store = await loadedStore(backend, delay: .seconds(30))
-        store.set(\.voice, "F2")
-        await store.listen()
-        XCTAssertEqual(backend.log, ["patch", "écoute"])
-        XCTAssertEqual(backend.patches.last?.voice, "F2")
     }
 
     func testAFailedWriteKeepsTheValueAndSaysWhy() async {
@@ -330,19 +320,20 @@ final class SettingsStoreTests: XCTestCase {
     func testAVoicePerLanguageIsWrittenAlone() async {
         let backend = FakeSettingsBackend()
         let store = await loadedStore(backend)
-        store.setVoice("af_sky", language: "en")
+        store.setVoice("am_fenrir", language: "en")
         await store.flush()
-        XCTAssertEqual(backend.patches.last?.voiceForLanguage, LanguageVoice(language: "en", voice: "af_sky"))
+        XCTAssertEqual(backend.patches.last?.voiceForLanguage, LanguageVoice(language: "en", voice: "am_fenrir"))
         XCTAssertNil(backend.patches.last?.voice, "la voix des autres modèles ne bouge pas")
-        XCTAssertEqual(store.values.voicesByLanguage.first(where: { $0.language == "en" })?.voice, "af_sky")
+        XCTAssertEqual(store.values.voicesByLanguage.first(where: { $0.language == "en" })?.voice, "am_fenrir")
     }
 
     func testListeningInALanguageWritesFirstThenSpeaksIt() async {
         let backend = FakeSettingsBackend()
         let store = await loadedStore(backend)
-        store.setVoice("ff_siwis", language: "fr")
-        await store.listen(language: "fr")
-        XCTAssertEqual(backend.log, ["patch", "écoute fr"])
+        store.setVoice("af_heart", language: "en")
+        await store.listen(language: "en")
+        XCTAssertEqual(backend.log, ["patch", "écoute en"])
+        XCTAssertEqual(backend.patches.last?.voiceForLanguage, LanguageVoice(language: "en", voice: "af_heart"))
     }
 
     func testARefusedListeningInALanguageIsSaid() async {

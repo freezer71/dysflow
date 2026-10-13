@@ -42,6 +42,9 @@ final class ReaderModel {
     /// Tests d'interface seulement (`UITestStaging`) : ce qui est posé
     /// sur chaque instantané publié.
     @ObservationIgnored var staged: ((inout Snapshot) -> Void)?
+    /// Tests d'interface seulement (`UITestStaging.kokoro`) : les capacités
+    /// de Kokoro, pour montrer ses voix sous le lecteur muet.
+    @ObservationIgnored var stagedCapabilities: ModelCapabilities?
 
     init(reader: SillonReader, now: @escaping () -> Date = Date.init,
          frames: FrameSource? = nil) {
@@ -306,6 +309,7 @@ final class ReaderModel {
     }
     /// Voix, langues et réglages honorés par le modèle actif.
     func loadCapabilities() async -> ModelCapabilities {
+        if let stagedCapabilities { return stagedCapabilities }
         let reader = reader
         return await Task.detached { reader.capabilities() }.value
     }
@@ -338,12 +342,6 @@ final class ReaderModel {
     func freeSpace() async -> UInt64? {
         let reader = reader
         return await Task.detached { reader.freeSpace() }.value
-    }
-    /// « Écouter » : la phrase d'exemple avec les réglages en cours.
-    func previewVoice() async throws {
-        let reader = reader
-        try await Task.detached { try reader.previewVoice() }.value
-        wake()
     }
     func stopPreview() async {
         let reader = reader

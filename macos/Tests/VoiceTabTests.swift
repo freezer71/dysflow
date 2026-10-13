@@ -2,34 +2,31 @@ import XCTest
 @testable import Sillon
 
 final class VoiceTabTests: XCTestCase {
-    func testWithoutAnActiveModelTheSystemVoiceIsListedFirst() {
-        let none = VoiceTab.modelOptions([.sample(id: "a", name: "A")])
-        XCTAssertEqual(none.map(\.value), ["", "a"])
-        XCTAssertEqual(none.first?.title, "Voix du système")
-        let active = VoiceTab.modelOptions([.sample(id: "a", name: "A", active: true)])
-        XCTAssertEqual(active.map(\.value), ["a"])
-    }
-
-    func testLanguagesStartWithAutomaticThenTheModelsOnesPlusTheOneInPlace() {
-        let options = VoiceTab.languageOptions(["fr", "en"], current: "ja")
-        XCTAssertEqual(options.map(\.value), ["auto", "fr", "en", "ja"])
-        XCTAssertEqual(options[0].title, "Automatique")
-        XCTAssertEqual(options[1].title, "Français")
-        XCTAssertTrue(options[3].title.hasSuffix("(hors liste)"))
-        XCTAssertEqual(VoiceTab.languageOptions(["fr"], current: "fr").count, 2)
-    }
-
     func testKokoroOffersOneVoicePerLanguage() {
         let caps = Capabilities.kokoro
         XCTAssertTrue(VoiceTab.followsLanguage(caps))
         XCTAssertFalse(VoiceTab.followsLanguage(Capabilities.supertonic))
-        XCTAssertEqual(VoiceTab.voices(caps, language: "fr").map(\.id), ["p-fenrir60", "ff_siwis"])
-        XCTAssertEqual(VoiceTab.voices(caps, language: "en").map(\.id), ["af_bella", "af_sky"])
+        XCTAssertEqual(VoiceTab.voices(caps, language: "fr").map(\.id), ["p-fenrir60"])
+        XCTAssertEqual(VoiceTab.voices(caps, language: "en").map(\.id), ["af_bella", "am_fenrir", "af_heart"])
         var values = SettingsView.defaults
         values.voicesByLanguage = []
         XCTAssertEqual(VoiceTab.voice(for: "en", in: values, caps), "af_bella", "rien de choisi : la première")
-        values.voicesByLanguage = [LanguageVoice(language: "en", voice: "af_sky")]
-        XCTAssertEqual(VoiceTab.voice(for: "en", in: values, caps), "af_sky")
+        values.voicesByLanguage = [LanguageVoice(language: "en", voice: "am_fenrir")]
+        XCTAssertEqual(VoiceTab.voice(for: "en", in: values, caps), "am_fenrir")
+    }
+
+    /// Une voix retirée du catalogue (ou écrite à la main) se montre comme
+    /// celle que le moteur fait parler : la recommandée de sa langue. Le menu
+    /// ne liste que les voix proposées, sans « (hors liste) ».
+    func testARetiredVoiceShowsAsTheRecommendedOne() {
+        let caps = Capabilities.kokoro
+        var values = SettingsView.defaults
+        values.voicesByLanguage = [LanguageVoice(language: "en", voice: "bf_emma"),
+                                   LanguageVoice(language: "fr", voice: "ff_siwis")]
+        XCTAssertEqual(VoiceTab.voice(for: "en", in: values, caps), "af_bella")
+        XCTAssertEqual(VoiceTab.voice(for: "fr", in: values, caps), "p-fenrir60")
+        XCTAssertEqual(VoiceTab.voiceOptions(caps, language: "en").map(\.value), ["af_bella", "am_fenrir", "af_heart"])
+        XCTAssertEqual(VoiceTab.voiceOptions(caps, language: "fr").map(\.title), ["p-fenrir60 · française, recommandée"])
     }
 
     func testTheDocumentLanguageSaysWhatWasDetected() {
@@ -125,6 +122,11 @@ final class VoiceTabTests: XCTestCase {
         UITestStaging.staging(for: ["--ui-testing-avis"])?(&n)
         XCTAssertNotNil(n.notice)
         XCTAssertNil(n.offer)
+        XCTAssertNil(UITestStaging.capabilities(for: ["--ui-testing"]))
+        let kokoro = UITestStaging.capabilities(for: ["--ui-testing", "--ui-testing-kokoro"])
+        XCTAssertEqual(kokoro?.family, "kokoro")
+        XCTAssertEqual(kokoro?.voices.map(\.id), Capabilities.kokoro.voices.map(\.id),
+                       "les voix du moteur : p-fenrir60, af_bella, am_fenrir, af_heart")
     }
 
     func testTheVoiceStateLine() {
@@ -159,23 +161,6 @@ final class VoiceTabTests: XCTestCase {
                        "Écoute…")
         XCTAssertEqual(VoiceTab.previewLine(PreviewView(pending: false, playing: false, error: "échec"), refusal: nil),
                        "échec")
-    }
-
-    func testAVoiceOutsideTheListIsShownAsIs() {
-        let voices = Capabilities.supertonic.voices
-        XCTAssertNil(VoiceTab.unlistedVoice("", voices))
-        XCTAssertNil(VoiceTab.unlistedVoice("M1", voices))
-        XCTAssertEqual(VoiceTab.unlistedVoice("Aria", voices), "Aria")
-    }
-
-    func testAClonedVoiceIsAskedForOnlyWhenNeeded() {
-        XCTAssertFalse(VoiceTab.needsReference(Capabilities.supertonic))
-        let cloning = ModelCapabilities(family: "chatterbox", voices: [], languages: ["en"],
-                                        honoured: [], requiresReference: false)
-        XCTAssertTrue(VoiceTab.needsReference(cloning), "aucune voix intégrée")
-        let system = ModelCapabilities(family: "", voices: [], languages: [], honoured: [],
-                                       requiresReference: false)
-        XCTAssertFalse(VoiceTab.needsReference(system), "voix du système")
     }
 
     func testNumbersAreWrittenTheFrenchWay() {

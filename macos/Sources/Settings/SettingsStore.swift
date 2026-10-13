@@ -7,7 +7,6 @@ protocol SettingsBackend: AnyObject {
     func loadSettings() async -> SettingsView
     func loadCapabilities() async -> ModelCapabilities
     func updateSettings(_ patch: SettingsPatch) async throws -> SettingsView
-    func previewVoice() async throws
     /// La phrase d'exemple dans une langue (Kokoro : une voix par langue).
     func previewVoice(in language: String) async throws
     func stopPreview() async
@@ -190,13 +189,6 @@ final class SettingsStore {
     func isIgnored(_ key: SettingKey) -> Bool { key.isIgnored(honoured: capabilities.honoured) }
 
     func isShown(_ key: SettingKey) -> Bool { showIgnored || !isIgnored(key) }
-
-    /// La phrase d'exemple, avec ce qui vient d'être choisi.
-    func listen() async {
-        previewError.clear()
-        await committer.flush()
-        do { try await backend.previewVoice() } catch { previewError.fail(Self.message(of: error)) }
-    }
 
     /// La voix d'une langue (Kokoro) : l'écran suit, l'écriture après la pause.
     func setVoice(_ voice: String, language: String) {

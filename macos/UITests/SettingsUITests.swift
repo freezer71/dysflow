@@ -41,13 +41,14 @@ final class SettingsUITests: XCTestCase {
         XCTAssertTrue(any[marker].waitForExistence(timeout: 3), "\(title) : \(marker) absent")
         switch title {
         case "Voix":
-            XCTAssertTrue(any["ecouter"].waitForExistence(timeout: 3), "Voix : bouton Écouter absent")
+            // Le lecteur muet n'a pas Kokoro : vitesse et volume seulement.
+            XCTAssertTrue(any["vitesse"].waitForExistence(timeout: 3), "Voix : vitesse absente")
         case "Lecture":
             XCTAssertTrue(any["police-lecture"].waitForExistence(timeout: 3), "Lecture : police absente")
         case "Modèles":
             // Selon la compilation et les modèles installés : l'espace libre,
             // le message du catalogue vide, ou au moins une ligne de modèle.
-            let empty = window.staticTexts["Aucun modèle proposé : cette version est compilée sans audio.cpp."]
+            let empty = window.staticTexts["Aucun modèle proposé par cette version : la voix du système lit."]
             let deadline = Date().addingTimeInterval(3)
             while Date() < deadline, !(any["espace-libre"].exists || empty.exists || self.modelButtons(in: window) > 0) {
                 RunLoop.current.run(until: Date().addingTimeInterval(0.1))
@@ -83,25 +84,6 @@ final class SettingsUITests: XCTestCase {
                 form.scroll(byDeltaX: 0, deltaY: 5000)
             }
         }
-    }
-
-    /// L'onglet Voix donne le focus à la liste des voix : flèches pour
-    /// choisir, Espace pour écouter, sans rien taper dans un champ.
-    func testTheVoiceTabFocusesTheVoiceList() throws {
-        let app = launch(["--show-settings"])
-        let window = app.windows["Réglages"]
-        XCTAssertTrue(window.waitForExistence(timeout: 5))
-        window.toolbars.buttons["Voix"].click()
-        let list = window.descendants(matching: .any)["liste-voix"]
-        guard list.waitForExistence(timeout: 3) else {
-            throw XCTSkip("Pas de liste de voix : le lecteur muet des tests n'a aucune voix. À vérifier à la main avec un modèle installé.")
-        }
-        let focused = app.descendants(matching: .any)
-            .element(matching: NSPredicate(format: "hasKeyboardFocus == true"))
-        XCTAssertTrue(focused.waitForExistence(timeout: 3))
-        XCTAssertNotEqual(focused.elementType, .textField, "le focus est dans un champ de texte : \(focused.label)")
-        XCTAssertTrue(list.frame.contains(focused.frame) || focused.identifier == "liste-voix",
-                      "le focus n'est pas sur la liste des voix : \(focused.debugDescription.prefix(200))")
     }
 
     /// Chaque onglet se parcourt au clavier.

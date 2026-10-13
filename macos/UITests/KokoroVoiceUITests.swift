@@ -1,18 +1,51 @@
 import XCTest
 
-/// La langue du document dans l'onglet Voix, et son audit. Lancé à la main,
+/// L'onglet Voix simplifié (14 oct. 2026), et son audit. Lancé à la main,
 /// avec l'accord de l'utilisateur : `-only-testing:SillonUITests/KokoroVoiceUITests`.
-/// Le lecteur des tests est muet (pas de Kokoro) : la langue du document,
-/// elle, vaut pour toutes les voix.
+/// Le lecteur des tests est muet : `--ui-testing-kokoro` lui prête les
+/// capacités de Kokoro (`UITestStaging`).
 final class KokoroVoiceUITests: XCTestCase {
-    func testTheDocumentLanguageIsShownAndChangeable() throws {
-        continueAfterFailure = false
+    private func voiceTab(_ arguments: [String]) -> (XCUIApplication, XCUIElement) {
         let app = XCUIApplication()
-        app.launchArguments = ["--ui-testing", "--show-settings"]
+        app.launchArguments = ["--ui-testing", "--show-settings"] + arguments
         app.launch()
         let window = app.windows["Réglages"]
         XCTAssertTrue(window.waitForExistence(timeout: 5))
         window.toolbars.buttons["Voix"].click()
+        return (app, window)
+    }
+
+    /// Rien de ce qui a été retiré ne revient : modèle actif, liste de voix,
+    /// voix clonée, expression, langue par défaut, réglages ignorés.
+    private func assertNothingRemovedIsBack(in window: XCUIElement) {
+        let any = window.descendants(matching: .any)
+        for identifier in ["modele-actif", "liste-voix", "langue", "intonation", "ecouter"] {
+            XCTAssertFalse(any[identifier].exists, "\(identifier) est revenu")
+        }
+        XCTAssertFalse(window.checkBoxes["Afficher aussi les réglages ignorés par ce modèle"].exists)
+        XCTAssertFalse(window.buttons["Choisir un fichier WAV…"].exists)
+        XCTAssertFalse(window.sliders["Hauteur"].exists)
+        XCTAssertFalse(window.sliders["Énergie"].exists)
+    }
+
+    /// Kokoro : une voix et un « Écouter » par langue, la langue du
+    /// document, la vitesse, le volume.
+    func testKokoroShowsOneVoicePerLanguageAndTheDocumentLanguage() throws {
+        continueAfterFailure = false
+        let (app, window) = voiceTab(["--ui-testing-kokoro"])
+        let french = window.popUpButtons["voix-francaise"]
+        XCTAssertTrue(french.waitForExistence(timeout: 3), "voix française absente")
+        XCTAssertEqual(french.value as? String, "p-fenrir60 · française, recommandée")
+        let english = window.popUpButtons["voix-anglaise"]
+        XCTAssertEqual(english.value as? String, "af_bella · américaine, femme, recommandée")
+        english.click()
+        XCTAssertEqual(app.menuItems.matching(NSPredicate(format: "title CONTAINS ' · américaine'")).count, 3)
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(window.buttons["ecouter-fr"].exists)
+        XCTAssertTrue(window.buttons["ecouter-en"].exists)
+        XCTAssertTrue(window.sliders["vitesse"].exists)
+        XCTAssertTrue(window.sliders["Volume"].exists)
+        assertNothingRemovedIsBack(in: window)
         let picker = window.popUpButtons["langue-document"]
         XCTAssertTrue(picker.waitForExistence(timeout: 3), "langue du document absente")
         XCTAssertEqual(picker.value as? String, "Automatique (français)")
@@ -20,6 +53,18 @@ final class KokoroVoiceUITests: XCTestCase {
         app.menuItems["Anglais"].click()
         XCTAssertTrue(picker.waitForValue("Anglais"))
         try app.performAccessibilityAuditOutsideTouchBar()
+    }
+
+    /// Sans Kokoro (voix du système) : vitesse et volume, rien d'autre.
+    func testWithoutKokoroOnlySpeedAndVolumeRemain() throws {
+        continueAfterFailure = false
+        let (app, window) = voiceTab([])
+        XCTAssertTrue(window.sliders["vitesse"].waitForExistence(timeout: 3), "vitesse absente")
+        XCTAssertTrue(window.sliders["Volume"].exists)
+        XCTAssertEqual(window.sliders.count, 2)
+        XCTAssertEqual(window.popUpButtons.count, 0, "ni voix ni langue sans Kokoro")
+        assertNothingRemovedIsBack(in: window)
+        try app.performAccessibilityAuditOutsideTouchBar(visibleIn: window)
     }
 }
 
