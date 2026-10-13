@@ -270,10 +270,13 @@ impl Config {
             let configured = self.voice.per_language.get(code).map(String::as_str);
             crate::models::voice_for_language(family, code, configured).to_string()
         } else {
-            // Une voix que la famille ne connaît pas ne doit jamais atteindre
-            // le moteur : elle y provoque une erreur illisible. Un chemin de
-            // WAV sous `~` est développé : le moteur ne le ferait pas.
-            expand_tilde(&crate::models::sanitised_voice(family, &self.voice.voice))
+            // Hors Kokoro, aucune famille ne nomme plus ses voix : la voix
+            // configurée part telle quelle, sans filtre. Une config Magpie
+            // écrite à la main avec un préréglage étranger (« F1 ») retombe
+            // sur l'erreur « stoll: no conversion » du modèle : accepté, ce
+            // modèle est hors catalogue. Un chemin de WAV sous `~` est
+            // développé : le moteur ne le ferait pas.
+            expand_tilde(self.voice.voice.trim())
         };
         TtsParams {
             voice,
@@ -443,6 +446,21 @@ mod tests {
         // Le débit n'est plus une option du modèle : la vitesse s'applique au son.
         let supertonic = params.model_options("supertonic");
         assert!(!supertonic.contains_key("speaking_rate"));
+    }
+
+    /// Hors Kokoro, plus aucune famille ne nomme ses voix : la voix
+    /// configurée part telle quelle, sans filtre (l'erreur « stoll » d'une
+    /// config Magpie écrite à la main avec « F1 » est acceptée, hors
+    /// catalogue). Un `~` est développé.
+    #[test]
+    fn outside_kokoro_the_configured_voice_goes_unfiltered() {
+        let mut config = Config::default();
+        config.engine.family = "magpie_tts".into();
+        config.voice.voice = " F1 ".into();
+        assert_eq!(config.tts_params().voice, "F1");
+        config.voice.voice = "~/voix.wav".into();
+        let home = dirs::home_dir().map(|h| h.join("voix.wav").to_string_lossy().into_owned());
+        assert_eq!(Some(config.tts_params().voice), home.or(Some("~/voix.wav".into())));
     }
 
     #[test]

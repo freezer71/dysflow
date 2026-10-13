@@ -1,6 +1,11 @@
-//! La voix de repli quand le moteur voulu échoue : le premier modèle
-//! audio.cpp installé, chargé seulement s'il doit parler, sinon la voix du
-//! système.
+//! La voix de repli quand le moteur voulu échoue : la voix du système.
+//!
+//! Compilé avec audio.cpp, `fallback_engine` cherche encore un paquet
+//! audio.cpp installé *au catalogue*, chargé seulement s'il doit parler. Le
+//! catalogue n'en propose plus aucun depuis le 14 oct. 2026 (Kokoro seul) :
+//! la recherche ne trouve rien et la voix du système parle. Un Supertonic
+//! déjà sur le disque ne sert donc plus de repli. Le code reste pour le jour
+//! où un paquet audio.cpp reviendrait au catalogue.
 
 use anyhow::Result;
 use std::sync::{Arc, Mutex};
@@ -64,7 +69,8 @@ impl TtsEngine for OnDemand {
     }
 }
 
-/// La voix de repli pour ces réglages.
+/// La voix de repli pour ces réglages : la voix du système (voir la doc du
+/// module pour la recherche audio.cpp, aujourd'hui sans résultat).
 pub fn fallback_engine(settings: &EngineSettings) -> Arc<dyn TtsEngine> {
     let system: Arc<dyn TtsEngine> = Arc::new(super::system::SystemEngine::new());
     #[cfg(feature = "audio-cpp")]

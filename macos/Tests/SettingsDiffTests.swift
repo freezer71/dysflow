@@ -60,7 +60,7 @@ final class SettingsDiffTests: XCTestCase {
     func testAnUnknownFamilyIgnoresNothing() {
         XCTAssertFalse(SettingKey.temperature.isIgnored(honoured: []))
         XCTAssertTrue(SettingKey.temperature.isIgnored(honoured: ["voice", "speaking_rate"]))
-        XCTAssertFalse(SettingKey.pitch.isIgnored(honoured: ["voice", "pitch_shift"]))
+        XCTAssertFalse(SettingKey.topK.isIgnored(honoured: ["voice", "top_k"]))
     }
 
     /// La vitesse s'applique au son, jamais au modèle : aucune voix ne peut

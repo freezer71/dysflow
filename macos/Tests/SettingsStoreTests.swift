@@ -70,12 +70,12 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertTrue(backend.patches.isEmpty)
     }
 
-    /// Supertonic → MagpieTTS : température apparaît, la hauteur reste ignorée.
+    /// Supertonic → MagpieTTS : température apparaît, top-p reste ignoré.
     func testIgnoredSettingsFollowTheActiveModel() async {
         let backend = FakeSettingsBackend()
         let store = await loadedStore(backend)
         XCTAssertFalse(store.isShown(.temperature))
-        XCTAssertTrue(store.isIgnored(.pitch))
+        XCTAssertTrue(store.isIgnored(.topP))
         store.showIgnored = true
         XCTAssertTrue(store.isShown(.temperature), "montré sur demande")
         store.showIgnored = false

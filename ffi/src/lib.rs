@@ -714,14 +714,6 @@ impl SillonReader {
             .map_err(failed)
     }
 
-    /// La phrase d'exemple avec les réglages en cours ; la raison d'un refus.
-    pub fn preview_voice(&self) -> Result<(), SillonError> {
-        self.handle
-            .ask(|reader| reader.preview_voice(Instant::now()))
-            .ok_or_else(|| failed("lecteur indisponible"))?
-            .map_err(failed)
-    }
-
     pub fn stop_preview(&self) {
         let _ = self.handle.ask(|reader| reader.stop_preview());
     }
@@ -1191,7 +1183,7 @@ mod tests {
         let caps = reader.capabilities();
         assert!(caps.voices.is_empty());
         assert_eq!(caps.languages.len(), 7);
-        let err = reader.preview_voice().unwrap_err().to_string();
+        let err = reader.preview_voice_in("fr".into()).unwrap_err().to_string();
         assert!(err.contains("sortie audio"), "{err}");
         reader.stop_preview();
         assert!(!reader.snapshot().preview.pending);

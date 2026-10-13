@@ -125,13 +125,16 @@ installe, puis sélectionne. Rien n'est jamais téléchargé sans cette action.
 
 | Modèle | Taille | Langues | Voix |
 |---|---|---|---|
-| MagpieTTS Multilingual · Q8_0 | 1,6 Go | 11, dont le français | Aria · Jason · John · Leo · Sofia |
-| Supertonic 3 · F16 | 298 Mo | 31, dont le français | `M1`–`M5`, `F1`–`F5` |
-| Supertonic 3 · Q8_0 | 433 Mo | 31, dont le français | idem |
+| Kokoro 82M · int8 (terminal, feature `kokoro-onnx`) | 108 Mo | français, anglais | `p-fenrir60` · `af_bella`, `am_fenrir`, `af_heart` |
+| Kokoro 82M · MLX (app macOS seulement) | 342 Mo | français, anglais | idem |
 
-Le catalogue ne retient que des modèles **à voix nommées** : aucun n'exige qu'on
-lui fabrique une voix — enregistrement à cloner ou description à composer —
-avant de pouvoir l'écouter. Un test le vérifie à chaque compilation.
+Le catalogue ne propose **que Kokoro** : une voix française (`p-fenrir60`,
+livrée avec Sillon) et trois anglaises (`af_bella`, recommandée, `am_fenrir`,
+`af_heart`). Sans lui, la voix du système lit. Supertonic 3 et MagpieTTS en
+sont sortis le 14 octobre 2026 : un seul modèle, c'est un choix de moins à
+faire. Le moteur audio.cpp reste compilable, et un `model_path` posé à la main
+dans `config.toml` charge encore un de ces modèles ; les mesures qui suivent
+les concernent et sont gardées pour mémoire.
 
 Les modèles vont dans `~/.local/share/sillon/models/<famille>/` (sur macOS,
 `~/Library/Application Support/sillon/models/`). Un modèle déjà installé est
@@ -287,13 +290,13 @@ lit donc comme il s'écrit.
 
 ### Choisir une voix
 
-Rubrique **Voix**, champ *Voix*, `←` `→` pour parcourir les voix du modèle, `t`
-pour écouter celle qui est retenue. Rien d'autre à faire.
+Rubrique **Voix**, champ *Voix*, `←` `→` pour parcourir les voix de la langue
+par défaut, `t` pour écouter celle qui est retenue. Rien d'autre à faire.
 
-Supertonic 3 en propose dix, `M1`–`M5` et `F1`–`F5`. MagpieTTS en propose cinq,
-nommés — Aria, Jason, John, Leo, Sofia — relevés dans le `speakers.json`
-embarqué de son paquet. Je ne les ai pas écoutés : `t` le dira mieux qu'une
-étiquette.
+Kokoro a une voix par langue de document : `p-fenrir60` en français (la seule),
+`af_bella`, `am_fenrir` ou `af_heart` en anglais. Une voix écrite à la main qui
+n'est plus proposée parle avec la recommandée de sa langue, sans que le fichier
+soit réécrit.
 
 Sans modèle installé — ou sans la feature — le lecteur se replie sur la voix du
 système (`say` sur macOS, `espeak-ng` ailleurs). La barre d'état affiche alors
@@ -448,7 +451,8 @@ encore ferme l'écran. Les flèches n'ont donc qu'un sens à la fois.
 | `a` | Montrer les réglages sans effet |
 | `w` | Enregistrer |
 
-**Les réglages inertes sont masqués par défaut.** Sur Supertonic, cinq des sept
+**Les réglages inertes sont masqués par défaut.** Le relevé ci-dessous vaut
+pour les modèles audio.cpp chargés à la main (hors catalogue). Sur Supertonic, cinq des sept
 réglages d'échantillonnage ne servent à rien : les afficher noyait les deux qui
 agissent. Une ligne discrète dit combien sont cachés, et `a` les rend visibles,
 marqués `(ignoré par ce modèle)`. Le relevé vient du code de chaque famille :
@@ -480,8 +484,9 @@ tous les locuteurs de la même voix, en silence.
 Les préréglages, eux, sont propres à chaque modèle : `F1` ne veut rien dire pour
 MagpieTTS, qui n'y voit ni un locuteur ni un index et le laisse descendre
 jusqu'à `std::stoll` — d'où un « stoll: no conversion » pour toute explication.
-**La voix suit donc la famille** : changer de modèle la remplace par celle du
-nouveau, et une voix inconnue n'atteint jamais le moteur.
+Depuis que ces modèles ont quitté le catalogue, le lecteur ne connaît plus
+leurs voix et transmet la voix configurée telle quelle : une configuration
+Magpie écrite à la main doit donc nommer un de ses locuteurs.
 
 C'est aussi pourquoi la variante MagpieTTS en précision d'origine n'est pas au
 catalogue. Sa spécification nomme l'option `speaker`, alors que le code

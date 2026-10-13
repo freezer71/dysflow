@@ -586,6 +586,11 @@ impl Field {
                 let shown = voice_in_use(config);
                 let current = own.iter().position(|v| v.id == shown).unwrap_or(0) as i32;
                 let next = (current + delta).rem_euclid(own.len() as i32) as usize;
+                // Une seule voix dans la langue (le français) : rien ne change,
+                // rien à écrire ni à resynthétiser.
+                if own[next].id == shown {
+                    return Effect::None;
+                }
                 config.voice.per_language.insert(code, own[next].id.to_string());
                 Effect::Resynthesize
             }
@@ -1026,15 +1031,17 @@ mod tests {
         config.engine.family = "kokoro".into();
         config.voice.voice = "M3".into();
         assert!(!Field::Voice.is_text(&config));
-        // Français par défaut : une seule voix, le défilement y revient.
+        // Français par défaut : une seule voix, les flèches ne changent rien
+        // et ne relancent pas la synthèse.
         assert_eq!(Field::Voice.value(&config, 1.0), "p-fenrir60 · française, recommandée");
-        assert_eq!(Field::Voice.adjust(&mut config, 1), Effect::Resynthesize);
-        assert_eq!(config.voice.per_language["fr"], "p-fenrir60");
+        assert_eq!(Field::Voice.adjust(&mut config, 1), Effect::None);
+        assert_eq!(Field::Voice.adjust(&mut config, -1), Effect::None);
+        assert!(!config.voice.per_language.contains_key("fr"), "rien d'écrit");
         assert_eq!(config.tts_params().voice, "p-fenrir60");
         assert_eq!(config.voice.voice, "M3", "la voix de l'ancien modèle reste");
         // Langue imposée en anglais : les trois voix anglaises, on boucle.
         config.voice.language = "en".into();
-        Field::Voice.adjust(&mut config, 1);
+        assert_eq!(Field::Voice.adjust(&mut config, 1), Effect::Resynthesize);
         assert_eq!(config.voice.per_language["en"], "am_fenrir");
         assert_eq!(config.tts_params().voice, "am_fenrir");
         Field::Voice.adjust(&mut config, -2);

@@ -1,10 +1,10 @@
-/// Les réglages qu'un modèle peut ignorer, sous le nom que leur donne le
-/// moteur (`models::honoured_options`). Ni la vitesse ni le volume : ils
-/// s'appliquent au son, quelle que soit la voix.
+/// Les réglages de l'onglet Avancé qu'un modèle peut ignorer, sous le nom
+/// que leur donne le moteur (`models::honoured_options`). Ni la vitesse ni
+/// le volume : ils s'appliquent au son, quelle que soit la voix. Voix,
+/// langue, hauteur, énergie, intonation et consigne n'ont plus de contrôle
+/// dans l'app (14 oct. 2026) : leurs clés restent lues dans `config.toml`.
 enum SettingKey: String, CaseIterable {
-    case voice, language
-    case pitch = "pitch_shift"
-    case energy, emotion, instruction, temperature
+    case temperature
     case topP = "top_p"
     case topK = "top_k"
     case guidance = "guidance_scale"

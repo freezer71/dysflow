@@ -849,15 +849,6 @@ pub fn honoured_options(family: &str) -> &'static [&'static str] {
     }
 }
 
-/// Vrai si la famille reconnaît cette voix.
-///
-/// Une famille sans voix nommées accepte n'importe quoi — un chemin de WAV,
-/// un préréglage qui lui est propre — et ne se prononce donc pas.
-pub fn knows_voice(family: &str, voice: &str) -> bool {
-    let voices = voices_for_family(family);
-    voices.is_empty() || voice.trim().is_empty() || voices.iter().any(|v| v.id == voice.trim())
-}
-
 /// Voix par défaut d'une famille, quand elle en nomme.
 pub fn default_voice(family: &str) -> &'static str {
     voices_for_family(family).first().map_or("", |v| v.id)
@@ -895,20 +886,6 @@ pub fn voice_for_language(family: &str, language: &str, configured: Option<&str>
                 .find(|v| v.id == c && (v.language.is_empty() || v.language == code))
         })
         .map_or_else(|| default_voice_for_language(family, code), |v| v.id)
-}
-
-/// Écarte une voix que la famille ne reconnaît pas.
-///
-/// Un préréglage hérité d'un autre modèle n'a aucun sens ici : `F1` n'est pour
-/// MagpieTTS ni un nom de locuteur ni un index, et le modèle le laisse
-/// descendre jusqu'à `std::stoll`. L'utilisateur reçoit alors
-/// « stoll: no conversion » pour toute explication.
-pub fn sanitised_voice(family: &str, voice: &str) -> String {
-    if knows_voice(family, voice) {
-        voice.trim().to_string()
-    } else {
-        String::new()
-    }
 }
 
 /// Orthographes possibles de l'option qui porte le nom de la voix.
@@ -1161,25 +1138,6 @@ mod tests {
                 package.family
             );
         }
-    }
-
-    #[test]
-    fn a_preset_from_another_model_is_never_forwarded() {
-        // « F1 », préréglage d'un ancien modèle, n'est pas une voix Kokoro.
-        assert!(!knows_voice("kokoro", "F1"));
-        assert_eq!(sanitised_voice("kokoro", "F1"), "");
-        assert_eq!(default_voice("kokoro"), "p-fenrir60");
-
-        // Ce que la famille connaît passe intact, vide compris.
-        assert!(knows_voice("kokoro", "af_heart"));
-        assert_eq!(sanitised_voice("kokoro", "af_heart"), "af_heart");
-        assert!(knows_voice("kokoro", ""));
-
-        // Une famille sans voix nommées ne se prononce pas : le champ y porte
-        // un chemin de WAV ou un préréglage qui lui est propre.
-        assert!(knows_voice("inconnue", "n'importe quoi"));
-        assert_eq!(sanitised_voice("inconnue", "/tmp/a.wav"), "/tmp/a.wav");
-        assert_eq!(default_voice("inconnue"), "");
     }
 
     #[test]

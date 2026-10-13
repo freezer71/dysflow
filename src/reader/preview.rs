@@ -31,15 +31,9 @@ pub struct PreviewView {
 }
 
 impl Reader {
-    /// Fait dire la phrase d'exemple. Un texte au repos se réveille ; sans
-    /// texte, la voix se charge. Rend la raison d'un refus.
-    pub fn preview_voice(&mut self, now: Instant) -> Result<(), String> {
-        let language = self.current_language();
-        self.preview_voice_in(&language, now)
-    }
-
     /// La phrase d'exemple dans `language` : chaque voix s'écoute dans la
-    /// sienne.
+    /// sienne. Un texte au repos se réveille ; sans texte, la voix se charge.
+    /// Rend la raison d'un refus.
     pub fn preview_voice_in(&mut self, language: &str, now: Instant) -> Result<(), String> {
         self.last_activity = now;
         self.preview_error = None;
@@ -175,7 +169,7 @@ mod tests {
     #[test]
     fn a_preview_without_text_loads_the_voice_and_explains_a_missing_output() {
         let (mut r, loads) = reader_with(silent);
-        let err = r.preview_voice(Instant::now()).unwrap_err();
+        let err = r.preview_voice_in("fr", Instant::now()).unwrap_err();
         assert_eq!(err, sample::AUDIO_MISSING);
         assert_eq!(loads.load(Ordering::SeqCst), 1, "la voix se charge au besoin");
         assert!(r.voice_loaded());
@@ -186,7 +180,7 @@ mod tests {
     #[test]
     fn a_cloning_model_without_wav_refuses_the_preview() {
         let (mut r, _) = reader_with(cloning);
-        let err = r.preview_voice(Instant::now()).unwrap_err();
+        let err = r.preview_voice_in("fr", Instant::now()).unwrap_err();
         assert_eq!(err, sample::REFERENCE_MISSING);
     }
 
@@ -194,7 +188,7 @@ mod tests {
     fn a_preview_with_an_open_text_goes_through_the_session() {
         let (mut r, loads) = reader_with(silent);
         r.open_text("Un. Deux.", "a", Instant::now());
-        let err = r.preview_voice(Instant::now()).unwrap_err();
+        let err = r.preview_voice_in("fr", Instant::now()).unwrap_err();
         assert_eq!(err, sample::AUDIO_MISSING);
         assert_eq!(loads.load(Ordering::SeqCst), 1, "la voix du texte sert");
         assert!(r.lone_preview.is_none(), "pas d'aperçu à part");
@@ -205,7 +199,7 @@ mod tests {
         let (mut r, loads) = reader_with(silent);
         r.open_text("Un. Deux.", "a", Instant::now());
         r.rest();
-        let _ = r.preview_voice(Instant::now());
+        let _ = r.preview_voice_in("fr", Instant::now());
         assert!(!r.is_resting());
         assert_eq!(loads.load(Ordering::SeqCst), 2);
     }
@@ -213,7 +207,7 @@ mod tests {
     #[test]
     fn opening_a_text_drops_the_lone_preview() {
         let (mut r, _) = reader_with(silent);
-        let _ = r.preview_voice(Instant::now());
+        let _ = r.preview_voice_in("fr", Instant::now());
         assert!(r.lone_preview.is_some());
         r.open_text("Un.", "a", Instant::now());
         assert!(r.lone_preview.is_none());

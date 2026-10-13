@@ -1,11 +1,12 @@
 import SwiftUI
 
-/// Onglet Voix, réduit à l'essentiel (14 oct. 2026) : une voix et un
-/// « Écouter » par langue, la langue du document ouvert, la vitesse, le
-/// volume. Au-dessus, seulement quand il y a lieu : l'état de la voix,
-/// l'avis et l'offre du passage à Kokoro. Sans Kokoro actif (voix du
-/// système en repli, Kokoro pas encore installé) : l'état, l'offre, la
-/// vitesse et le volume, rien d'autre.
+/// Onglet Voix, réduit à l'essentiel (14 oct. 2026). Quand Kokoro parle
+/// (ou se charge, ou se prépare) : une voix et un « Écouter » par langue,
+/// la langue du document ouvert, la vitesse, le volume. Quand il ne parle
+/// pas — pas encore installé, ou configuré mais en échec, la voix du
+/// système lisant en repli — : l'état, l'offre ou « Voir les modèles », la
+/// vitesse et le volume, rien d'autre (`showsKokoroVoices`). Au-dessus,
+/// seulement quand il y a lieu : l'état de la voix, l'avis et l'offre.
 struct VoiceTab: View {
     let model: ReaderModel
     @Bindable var store: SettingsStore
@@ -32,7 +33,7 @@ struct VoiceTab: View {
             offer
             ErrorText(modelError.text, identifier: "erreur-modele-actif")
             Section {
-                if Self.followsLanguage(store.capabilities) {
+                if Self.showsKokoroVoices(store.capabilities, voice: model.snapshot.voice) {
                     languageVoicePicker("fr", title: "Voix française", identifier: "voix-francaise")
                     languageVoicePicker("en", title: "Voix anglaise", identifier: "voix-anglaise")
                     if let line = Self.previewLine(model.snapshot.preview, refusal: store.previewNote) {
@@ -179,6 +180,15 @@ struct VoiceTab: View {
     /// Kokoro choisit sa voix par langue.
     static func followsLanguage(_ c: ModelCapabilities) -> Bool {
         c.family == "kokoro"
+    }
+
+    /// Les voix Kokoro ne se montrent que si Kokoro parle vraiment : il est
+    /// la famille configurée, et la voix n'est ni en repli sur celle du
+    /// système ni indisponible. Sinon « Écouter la voix française » ferait
+    /// entendre `say` sous le nom de p-fenrir60. Chargement et préparation
+    /// gardent les voix : c'est Kokoro qui arrive.
+    static func showsKokoroVoices(_ c: ModelCapabilities, voice: VoiceState) -> Bool {
+        followsLanguage(c) && !suggestsModels(voice)
     }
 
     static func voices(_ c: ModelCapabilities, language: String) -> [VoiceChoice] {

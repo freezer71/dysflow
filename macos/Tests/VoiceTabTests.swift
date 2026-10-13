@@ -15,6 +15,18 @@ final class VoiceTabTests: XCTestCase {
         XCTAssertEqual(VoiceTab.voice(for: "en", in: values, caps), "am_fenrir")
     }
 
+    /// Kokoro configuré mais en repli (voix du système) ou indisponible : ni
+    /// ses voix ni ses « Écouter ». Prêt, au repos, en chargement : oui.
+    func testKokoroVoicesShowOnlyWhenKokoroReallySpeaks() {
+        let kokoro = Capabilities.kokoro
+        for state in [VoiceState.ready, .resting, .loading] {
+            XCTAssertTrue(VoiceTab.showsKokoroVoices(kokoro, voice: state), "\(state)")
+        }
+        XCTAssertFalse(VoiceTab.showsKokoroVoices(kokoro, voice: .fallback(reason: "Metal indisponible")))
+        XCTAssertFalse(VoiceTab.showsKokoroVoices(kokoro, voice: .unavailable(reason: "aucune session")))
+        XCTAssertFalse(VoiceTab.showsKokoroVoices(Capabilities.supertonic, voice: .ready), "pas Kokoro")
+    }
+
     /// Une voix retirée du catalogue (ou écrite à la main) se montre comme
     /// celle que le moteur fait parler : la recommandée de sa langue. Le menu
     /// ne liste que les voix proposées, sans « (hors liste) ».

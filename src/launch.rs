@@ -334,9 +334,6 @@ fn read_clipboard() -> Result<String> {
     }
 }
 
-/// Fait suivre la voix de la famille, et le dit si la voix configurée lui
-/// était inconnue. Kokoro, qui choisit sa voix par langue, remplit les
-/// langues sans voix en silence : rien n'y était inconnu.
 /// Le passage à Kokoro au terminal : un Kokoro installé est adopté, une
 /// seule fois ; installable seulement, il est signalé sans rien retenir
 /// (le terminal ne télécharge rien de lui-même). Rend l'avis.
@@ -635,7 +632,7 @@ mod tests {
     }
 
     #[test]
-    fn adopting_kokoro_fills_its_voices_without_a_notice() {
+    fn aligning_at_launch_fills_only_kokoros_voices() {
         // Kokoro remplit ses voix par langue en silence : rien d'inconnu.
         let mut config = Config::default();
         config.engine.family = "kokoro".into();
