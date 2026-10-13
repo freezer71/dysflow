@@ -3,11 +3,13 @@ import MachO
 import Observation
 
 /// La première synthèse après une installation ou une mise à jour compile les
-/// noyaux Metal (≈ 9 s), gardés ensuite dans le cache du système. L'app la
-/// fait hors du fil principal, une fois par version, dès que Kokoro devient la
-/// voix active (lancement, choix de la voix, fin du téléchargement accepté),
-/// et libère le modèle aussitôt : les 9 s ne tombent jamais sur le premier
-/// mot lu.
+/// noyaux Metal (≈ 9 s), gardés ensuite dans le cache du système ; aux
+/// lancements suivants, le premier passage d'un processus dépasse encore
+/// 0,3 s. L'app prépare donc hors du fil principal **à chaque activation**
+/// de Kokoro (chaque lancement, choix de la voix, fin du téléchargement
+/// accepté), sans abandon possible, et libère le modèle aussitôt (si le
+/// lecteur ne le tient pas) : ce coût ne tombe jamais sur le premier mot lu.
+/// La clé de version ne sert plus qu'à dire « première fois ».
 @MainActor
 enum KokoroWarmUp {
     static let versionKey = "kokoroPreparedVersion"
@@ -65,13 +67,15 @@ enum KokoroWarmUp {
 
     /// `preparation` : l'état observé par l'onglet Voix (celui de
     /// `ReaderModel`) ; une préparation déjà en cours n'est pas relancée.
+    /// « Première fois » (`isRunning`) ne se dit que si cette version n'a
+    /// pas encore réussi la sienne.
     @discardableResult
     static func runIfNeeded(compute: KokoroCompute, modelDirectory: String?, version: String,
                             defaults: UserDefaults = .standard,
                             preparation: VoicePreparation) -> Task<Void, Never>? {
-        guard let directory = modelDirectory, !preparation.isRunning,
-              defaults.string(forKey: versionKey) != version else { return nil }
-        preparation.isRunning = true
+        guard let directory = modelDirectory, !preparation.working else { return nil }
+        preparation.working = true
+        preparation.isRunning = defaults.string(forKey: versionKey) != version
         // `.utility` et non `.background` : le lecteur peut attendre le verrou
         // MLX derrière elle, et une préparation bridée le ferait attendre.
         let work = Task.detached(priority: .utility) { () -> Bool in
@@ -86,6 +90,7 @@ enum KokoroWarmUp {
         }
         return Task { @MainActor in
             let prepared = await work.value
+            preparation.working = false
             preparation.isRunning = false
             if prepared { defaults.set(version, forKey: versionKey) }
         }
@@ -97,5 +102,8 @@ enum KokoroWarmUp {
 @MainActor
 @Observable
 final class VoicePreparation {
+    /// Une préparation « première fois » tourne : dite aux vues.
     fileprivate(set) var isRunning = false
+    /// Une préparation tourne, première fois ou non.
+    @ObservationIgnored fileprivate(set) var working = false
 }

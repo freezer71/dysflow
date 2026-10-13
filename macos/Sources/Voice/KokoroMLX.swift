@@ -3,11 +3,12 @@ import KokoroMLX
 import os
 
 /// Un passage avant de Kokoro : `KokoroRunner` (MLX) dans l'app, un faux
-/// dans les tests. `shouldStop` est consulté une fois les durées calculées ;
-/// s'il dit vrai, le décodeur ne tourne pas et le passage rend `nil`.
+/// dans les tests. `shouldStop` est consulté aux points d'arrêt du modèle
+/// (après les durées, puis dans le décodeur) ; s'il dit vrai, le passage
+/// s'arrête et rend `nil`. `nil` : aucun point d'arrêt (préparation).
 protocol KokoroForward: AnyObject {
     func run(ids: [Int32], style: [Float],
-             shouldStop: () -> Bool) -> (samples: [Float], durations: [Int32])?
+             shouldStop: (() -> Bool)?) -> (samples: [Float], durations: [Int32])?
 }
 
 extension KokoroRunner: KokoroForward {}
@@ -28,9 +29,10 @@ extension KokoroRunner: KokoroForward {}
 ///
 /// Abandon : le pool dit, par `SynthesisCancel`, qu'une synthèse n'a plus
 /// d'usage (curseur parti, génération changée). Elle est consultée avant le
-/// passage (sous le verrou, après l'attente) et entre les durées et le
-/// décodeur ; abandonnée, la synthèse rend `SillonError.Cancelled`, jamais
-/// `Failed`. Un passage abandonné après les durées compte dans `calls` et
+/// passage (sous le verrou, après l'attente), après les durées, puis dans le
+/// décodeur (après `encode`, chaque bloc de `decode`, chaque étage du
+/// générateur) ; abandonnée, la synthèse rend `SillonError.Cancelled`, jamais
+/// `Failed`. Un passage abandonné en route compte dans `calls` et
 /// `forwardSeconds` (il a eu lieu, pour le temps réellement passé) ; un
 /// abandon avant le passage n'y compte pas.
 final class KokoroMLXCompute: KokoroCompute, @unchecked Sendable {
@@ -94,38 +96,59 @@ final class KokoroMLXCompute: KokoroCompute, @unchecked Sendable {
         }
     }
 
-    /// Une courte synthèse : « bala. » (b a l a .), style nul. La première
-    /// après une installation compile les noyaux Metal ; si un passage les a
-    /// déjà compilés dans ce processus (la lecture est partie avant), elle ne
-    /// fait rien et réussit.
+    /// La phrase de préparation, en phonèmes : courte mais réaliste (36
+    /// symboles, espaces, une virgule), pour que les noyaux préparés soient
+    /// ceux d'une lecture. Lettres ASCII seules (a → 43 … z → 68, sans g,
+    /// absent du vocabulaire de Kokoro), espace 16, virgule 3, point 4.
+    static let warmUpPhonemes = "la vwa se prepar, avek yn fraz kurt."
+
+    static func warmUpIds() -> [Int64] {
+        let ids = warmUpPhonemes.unicodeScalars.map { c -> Int64 in
+            switch c {
+            case " ": return 16
+            case ",": return 3
+            case ".": return 4
+            default: return 43 + Int64(c.value - UnicodeScalar("a").value)
+            }
+        }
+        return [0] + ids + [0]
+    }
+
+    /// Une courte synthèse réaliste, style nul, jamais abandonnée et sans
+    /// point d'arrêt. La première d'un processus prépare les noyaux Metal
+    /// (≈ 9 s après une installation, encore > 0,3 s aux lancements
+    /// suivants) ; si un passage complet a déjà eu lieu dans ce processus
+    /// (la lecture est partie avant), elle ne fait rien et réussit.
     func warmUp() throws {
         try mlx.withLockUnchecked {
             guard forward != nil else { throw SillonError.Failed(message: "modèle Kokoro non chargé") }
             if kernelsCompiled { return }
-            _ = try runLocked(ids: [0, 44, 43, 54, 43, 4, 0], style: [Float](repeating: 0, count: 256),
-                              isCancelled: { false })
+            _ = try runLocked(ids: Self.warmUpIds(), style: [Float](repeating: 0, count: 256), isCancelled: nil)
         }
     }
 
+    /// Swift ne garde jamais `cancel` au-delà de l'appel.
     func synthesize(ids: [Int64], style: [Float], cancel: SynthesisCancel) throws -> KokoroOutput {
         try synthesize(ids: ids, style: style, isCancelled: { cancel.isCancelled() })
     }
 
     /// `isCancelled` : le test d'abandon (le pool, ou un essai).
-    func synthesize(ids: [Int64], style: [Float], isCancelled: () -> Bool) throws -> KokoroOutput {
+    func synthesize(ids: [Int64], style: [Float], isCancelled: @escaping () -> Bool) throws -> KokoroOutput {
         try mlx.withLockUnchecked { try runLocked(ids: ids, style: style, isCancelled: isCancelled) }
     }
 
-    /// Sous `mlx`.
-    private func runLocked(ids: [Int64], style: [Float], isCancelled: () -> Bool) throws -> KokoroOutput {
+    /// Sous `mlx`. `isCancelled` nil : jamais abandonnée, sans point d'arrêt.
+    private func runLocked(ids: [Int64], style: [Float], isCancelled: (() -> Bool)?) throws -> KokoroOutput {
+        // L'abandon d'abord : une synthèse inutile pendant une brève
+        // libération des poids est un abandon, pas un échec.
+        if isCancelled?() == true { throw SillonError.Cancelled }
         guard let forward else { throw SillonError.Failed(message: "modèle Kokoro non chargé") }
-        if isCancelled() { throw SillonError.Cancelled }
         counter.withLockUnchecked { synthesized += 1 }
         let debut = DispatchTime.now().uptimeNanoseconds
         let sortie = forward.run(ids: ids.map { Int32(clamping: $0) }, style: style, shouldStop: isCancelled)
         let fait = DispatchTime.now().uptimeNanoseconds - debut
         counter.withLockUnchecked { forwardNanos += fait }
-        // Abandonné avant le décodeur : ses noyaux ne sont peut-être pas
+        // Abandonné en route : les noyaux de la fin ne sont peut-être pas
         // compilés, la préparation garde son travail.
         guard let sortie else { throw SillonError.Cancelled }
         kernelsCompiled = true

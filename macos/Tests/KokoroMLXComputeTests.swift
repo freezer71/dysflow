@@ -3,39 +3,57 @@ import XCTest
 
 /// Un passage avant factice : jamais MLX ni de poids dans les tests. Il
 /// mesure le nombre d'appels simultanés (le calcul doit les sérialiser), et
-/// imite le point d'arrêt de `KokoroModel` : les durées, le test d'abandon,
-/// puis le décodeur.
+/// imite les points d'arrêt de `KokoroModel` : après les durées, après
+/// `encode`, après chacun des 4 blocs de `decode`, après chacun des 2
+/// étages du générateur ; puis le générateur finit.
 final class FakeKokoroForward: KokoroForward, @unchecked Sendable {
     private let lock = NSLock()
     private var inFlight = 0
     private(set) var maxInFlight = 0
     private(set) var runs = 0
     private var decoded = 0
+    private var stopPoints = 0
+    private var lastIds: [Int32] = []
+    private var lastHadStopTest: Bool?
     /// Si posé, chaque passage attend ce signal (synthèse « longue »).
     var gate: DispatchSemaphore?
     /// Signalé à l'entrée de chaque passage.
     let entered = DispatchSemaphore(value: 0)
 
+    static let stopPointsPerPass = 1 + 1 + 4 + 2
+
     func run(ids: [Int32], style: [Float],
-             shouldStop: () -> Bool) -> (samples: [Float], durations: [Int32])? {
+             shouldStop: (() -> Bool)?) -> (samples: [Float], durations: [Int32])? {
         lock.withLock {
             inFlight += 1
             runs += 1
             maxInFlight = max(maxInFlight, inFlight)
+            lastIds = ids
+            lastHadStopTest = shouldStop != nil
         }
         defer { lock.withLock { inFlight -= 1 } }
         entered.signal()
         if let gate { gate.wait() } else { usleep(500) }
-        // Les durées sont là : le point d'arrêt, avant le décodeur.
-        if shouldStop() { return nil }
+        if let shouldStop {
+            for _ in 0..<Self.stopPointsPerPass {
+                lock.withLock { stopPoints += 1 }
+                if shouldStop() { return nil }
+            }
+        }
+        // Le générateur va au bout.
         lock.withLock { decoded += 1 }
         return ([Float](repeating: 0, count: ids.count * 600), [Int32](repeating: 2, count: ids.count))
     }
 
     var observedMax: Int { lock.withLock { maxInFlight } }
     var observedRuns: Int { lock.withLock { runs } }
-    /// Passages allés jusqu'au décodeur.
+    /// Passages dont le générateur est allé au bout.
     var decoderRuns: Int { lock.withLock { decoded } }
+    /// Points d'arrêt atteints, tous passages confondus.
+    var observedStopPoints: Int { lock.withLock { stopPoints } }
+    var observedLastIds: [Int32] { lock.withLock { lastIds } }
+    /// Le dernier passage avait-il un test d'abandon (des points d'arrêt) ?
+    var observedLastHadStopTest: Bool? { lock.withLock { lastHadStopTest } }
 }
 
 /// Les essais d'avant l'abandon : une synthèse jamais abandonnée.
@@ -185,6 +203,7 @@ final class KokoroMLXComputeTests: XCTestCase {
             guard case SillonError.Cancelled = error else { return XCTFail("\(error)") }
         }
         XCTAssertEqual(asked, 2, "avant le passage, puis après les durées")
+        XCTAssertEqual(factory.forward.observedStopPoints, 1)
         XCTAssertEqual(factory.forward.observedRuns, 1)
         XCTAssertEqual(factory.forward.decoderRuns, 0, "aucune exécution du décodeur")
         XCTAssertEqual(compute.calls, 1, "le passage a eu lieu")
@@ -194,6 +213,57 @@ final class KokoroMLXComputeTests: XCTestCase {
         let out = try compute.synthesize(ids: [0, 43, 0], style: [], cancel: SynthesisCancel.fixed(cancelled: false))
         XCTAssertEqual(out.durations, [2, 2, 2])
         XCTAssertEqual(factory.forward.decoderRuns, 1)
+        compute.release()
+    }
+
+    /// Le saut arrive quand les durées sont déjà là, pendant le décodeur
+    /// (le cas mesuré : la suite de la phrase précédente) : le passage
+    /// s'arrête au point suivant, le générateur ne finit pas.
+    func testAStopRequestedInTheDecoderStopsIt() throws {
+        let factory = ForwardFactory()
+        let compute = factory.compute()
+        try compute.load(modelDir: "/m/kokoro")
+        var asked = 0
+        // Avant le passage, durées, encode : utile ; au 1er bloc de decode : plus.
+        XCTAssertThrowsError(try compute.synthesize(ids: [0, 43, 0], style: [],
+                                                    isCancelled: { asked += 1; return asked > 3 })) { error in
+            guard case SillonError.Cancelled = error else { return XCTFail("\(error)") }
+        }
+        XCTAssertEqual(asked, 4)
+        XCTAssertEqual(factory.forward.observedStopPoints, 3, "durées, encode, 1er bloc")
+        XCTAssertEqual(factory.forward.decoderRuns, 0, "le générateur ne finit pas")
+        // Toujours utile : tous les points consultés, le générateur finit.
+        _ = try compute.synthesize(ids: [0, 43, 0], style: [], isCancelled: { false })
+        XCTAssertEqual(factory.forward.observedStopPoints, 3 + FakeKokoroForward.stopPointsPerPass)
+        XCTAssertEqual(factory.forward.decoderRuns, 1)
+        compute.release()
+    }
+
+    /// Une synthèse inutile pendant une brève libération des poids : un
+    /// abandon, pas un échec.
+    func testAnAbandonWithoutWeightsIsStillAnAbandon() {
+        let compute = ForwardFactory().compute()
+        XCTAssertThrowsError(try compute.synthesize(ids: [0], style: [],
+                                                    cancel: SynthesisCancel.fixed(cancelled: true))) { error in
+            guard case SillonError.Cancelled = error else { return XCTFail("\(error)") }
+        }
+    }
+
+    /// La préparation : une vraie phrase courte (noyaux des tailles d'une
+    /// lecture), jamais abandonnée, sans point d'arrêt ni synchronisation
+    /// de plus.
+    func testTheWarmUpSpeaksARealisticSentenceWithoutStopPoints() throws {
+        let factory = ForwardFactory()
+        let compute = factory.compute()
+        try compute.load(modelDir: "/m/kokoro")
+        try compute.warmUp()
+        let ids = factory.forward.observedLastIds
+        XCTAssertGreaterThanOrEqual(ids.count, 30, "\(ids.count) jetons")
+        XCTAssertEqual(ids.first, 0)
+        XCTAssertEqual(ids.last, 0)
+        XCTAssertTrue(ids.contains(16) && ids.contains(3), "espaces et virgule")
+        XCTAssertEqual(factory.forward.observedLastHadStopTest, false)
+        XCTAssertEqual(factory.forward.observedStopPoints, 0)
         compute.release()
     }
 

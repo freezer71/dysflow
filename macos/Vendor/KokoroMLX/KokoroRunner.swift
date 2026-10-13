@@ -18,10 +18,11 @@ public final class KokoroRunner: @unchecked Sendable {
     }
 
     /// Un passage avant à vitesse 1 : l'audio à 24 kHz et une durée par jeton.
-    /// `nil` si `shouldStop`, consulté une fois les durées calculées, dit
-    /// vrai : le décodeur n'a pas tourné.
+    /// `nil` si `shouldStop`, consulté aux points d'arrêt du modèle (durées,
+    /// puis dans le décodeur), dit vrai : le décodeur n'est pas allé au
+    /// bout. `shouldStop` nil : aucun point d'arrêt (préparation).
     public func run(ids: [Int32], style: [Float],
-                    shouldStop: () -> Bool) -> (samples: [Float], durations: [Int32])? {
+                    shouldStop: (() -> Bool)?) -> (samples: [Float], durations: [Int32])? {
         let input = MLXArray(ids).reshaped([1, -1])
         let refS = MLXArray(style, [1, style.count])
         guard let sortie = model(inputIds: input, refS: refS, speed: 1, shouldStop: shouldStop) else {

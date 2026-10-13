@@ -210,7 +210,8 @@ class KokoroGenerator: Module {
         )
     }
 
-    func callAsFunction(_ x: MLXArray, _ s: MLXArray, _ f0: MLXArray) -> MLXArray {
+    func callAsFunction(_ x: MLXArray, _ s: MLXArray, _ f0: MLXArray,
+                        shouldStop: (() -> Bool)? = nil) -> MLXArray? {
         let f0Up = f0Upsamp(f0[.newAxis].transposed(0, 2, 1))
         let (harSource, _, _) = mSource(f0Up)
         let harFlat = harSource.transposed(0, 2, 1).squeezed(axis: 1)
@@ -235,6 +236,8 @@ class KokoroGenerator: Module {
                 xs = xs.map { $0 + blockOut } ?? blockOut
             }
             h = xs! / Float(numKernels)
+            // Sillon : point d'arrêt après chaque étage.
+            if stopsHere(h, shouldStop) { return nil }
         }
 
         h = leakyRelu(h, negativeSlope: 0.01)
@@ -295,7 +298,8 @@ class KokoroDecoder: Module {
         _generator = ModuleInfo(wrappedValue: KokoroGenerator(styleDim: styleDim, config: config.istftnet))
     }
 
-    func callAsFunction(_ asr: MLXArray, _ f0: MLXArray, _ n: MLXArray, _ s: MLXArray) -> MLXArray {
+    func callAsFunction(_ asr: MLXArray, _ f0: MLXArray, _ n: MLXArray, _ s: MLXArray,
+                        shouldStop: (() -> Bool)? = nil) -> MLXArray? {
         let f0Curve = f0
         let f0Exp = f0.expandedDimensions(axis: 1).swappedAxes(2, 1)
         let f0Down = f0Conv(f0Exp, op: .conv1d).swappedAxes(2, 1)
@@ -304,6 +308,7 @@ class KokoroDecoder: Module {
 
         var x = MLX.concatenated([asr, f0Down, nDown], axis: 1)
         x = encode(x, s)
+        if stopsHere(x, shouldStop) { return nil }   // Sillon
 
         let asrResOut = asrRes[0](asr.swappedAxes(2, 1), op: .conv1d).swappedAxes(2, 1)
 
@@ -316,7 +321,20 @@ class KokoroDecoder: Module {
             if block.upsampleType != "none" {
                 res = false
             }
+            if stopsHere(x, shouldStop) { return nil }   // Sillon
         }
-        return generator(x, s, f0Curve)
+        return generator(x, s, f0Curve, shouldStop: shouldStop)
     }
+}
+
+// MARK: - Points d'arrêt (ajout de Sillon)
+
+/// MLX est paresseux : sans évaluation, rien n'a encore tourné et le test
+/// ne vaudrait rien. Avec un test d'abandon, `x` est évalué (une
+/// synchronisation) puis le test consulté ; sans test (`nil` : préparation,
+/// défaut), ni synchronisation ni test — le chemin d'origine.
+func stopsHere(_ x: MLXArray, _ shouldStop: (() -> Bool)?) -> Bool {
+    guard let shouldStop else { return false }
+    MLX.eval(x)
+    return shouldStop()
 }

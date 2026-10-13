@@ -55,8 +55,9 @@ impl From<uniffi::UnexpectedUniFFICallbackError> for SillonError {
 ///   détenteurs (la préparation des noyaux de l'app en est un) : les poids
 ///   ne partent qu'au dernier `release` ;
 /// - `synthesize` consulte `cancel` avant le passage et entre les durées et
-///   le décodeur ; s'il dit vrai, elle s'arrête et rend
-///   `SillonError::Cancelled` (jamais `Failed`).
+///   le décodeur, et aux points d'arrêt du décodeur ; s'il dit vrai, elle
+///   s'arrête et rend `SillonError::Cancelled` (jamais `Failed`). Elle ne
+///   garde jamais `cancel` au-delà de l'appel (il retient le pool).
 #[uniffi::export(with_foreign)]
 pub trait KokoroCompute: Send + Sync {
     fn load(&self, model_dir: String) -> Result<(), SillonError>;

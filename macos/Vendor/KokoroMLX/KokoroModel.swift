@@ -37,12 +37,14 @@ public final class KokoroModel: Module, @unchecked Sendable {
 
     // MARK: - Passage avant
 
-    /// `shouldStop` (ajout de Sillon) : consulté une fois, quand les durées
-    /// sont calculées ; s'il dit vrai, le passage s'arrête là (ni F0, ni
-    /// bruit, ni décodeur) et rend `nil`.
+    /// `shouldStop` (ajout de Sillon) : consulté quand les durées sont
+    /// calculées, puis dans le décodeur après `encode`, après chaque bloc de
+    /// `decode` et après chaque étage du générateur (chaque fois après une
+    /// évaluation) ; s'il dit vrai, le passage s'arrête là et rend `nil`.
+    /// `nil` : aucun point d'arrêt, aucune synchronisation de plus.
     public func callAsFunction(
         inputIds: MLXArray, refS: MLXArray, speed: Float = 1.0,
-        shouldStop: () -> Bool = { false }
+        shouldStop: (() -> Bool)? = nil
     ) -> (audio: MLXArray, predDur: MLXArray)? {
         let seqLen = inputIds.shape[inputIds.ndim - 1]
         let inputLengths = MLXArray([Int32(seqLen)])
@@ -68,7 +70,7 @@ public final class KokoroModel: Module, @unchecked Sendable {
 
         let durArray: [Int32] = predDur.asArray(Int32.self)
         // Sillon : point d'arrêt, après la synchronisation des durées.
-        if shouldStop() { return nil }
+        if shouldStop?() == true { return nil }
         var indices = [MLXArray]()
         for (i, n) in durArray.enumerated() {
             let count = min(max(Int(n), 0), maxFramesPerPhoneme)
@@ -93,7 +95,7 @@ public final class KokoroModel: Module, @unchecked Sendable {
         let tEn = textEncoder(inputIds, inputLengths: inputLengths, mask: textMask)
         let asr = MLX.matmul(tEn, predAln)
 
-        let audio = decoder(asr, f0Pred, nPred, acousticStyle)
+        guard let audio = decoder(asr, f0Pred, nPred, acousticStyle, shouldStop: shouldStop) else { return nil }
         return (audio[0], predDur)
     }
 

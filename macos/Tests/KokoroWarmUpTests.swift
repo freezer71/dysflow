@@ -11,21 +11,33 @@ final class KokoroWarmUpTests: XCTestCase {
         return defaults
     }
 
-    func testTheMetalKernelsArePreparedOncePerVersion() async {
+    /// Chaque activation de Kokoro (chaque lancement, chaque retour à
+    /// Kokoro) prépare : au second lancement aussi, le premier passage d'un
+    /// processus dépassait 0,3 s. « Première fois » ne se dit qu'une fois
+    /// par version.
+    func testTheMetalKernelsArePreparedAtEveryActivation() async {
         let defaults = freshDefaults()
         let compute = FakeKokoroCompute()
         let preparation = VoicePreparation()
-        await KokoroWarmUp.runIfNeeded(compute: compute, modelDirectory: "/m/kokoro", version: "1",
-                                       defaults: defaults, preparation: preparation)?.value
+        let first = KokoroWarmUp.runIfNeeded(compute: compute, modelDirectory: "/m/kokoro", version: "1",
+                                             defaults: defaults, preparation: preparation)
+        XCTAssertTrue(preparation.isRunning, "première fois pour cette version : dite")
+        await first?.value
         XCTAssertEqual(compute.loads, 1)
         XCTAssertEqual(compute.warmUps, 1)
         XCTAssertEqual(compute.releases, 1, "le modèle est libéré tout de suite")
         XCTAssertFalse(preparation.isRunning)
-        XCTAssertNil(KokoroWarmUp.runIfNeeded(compute: compute, modelDirectory: "/m/kokoro", version: "1",
-                                              defaults: defaults, preparation: preparation))
+
+        let again = KokoroWarmUp.runIfNeeded(compute: compute, modelDirectory: "/m/kokoro", version: "1",
+                                             defaults: defaults, preparation: preparation)
+        XCTAssertNotNil(again, "même version : préparée quand même")
+        XCTAssertFalse(preparation.isRunning, "mais sans « première fois »")
+        await again?.value
+        XCTAssertEqual(compute.warmUps, 2)
+        XCTAssertEqual(compute.releases, 2)
         await KokoroWarmUp.runIfNeeded(compute: compute, modelDirectory: "/m/kokoro", version: "2",
                                        defaults: defaults, preparation: preparation)?.value
-        XCTAssertEqual(compute.warmUps, 2, "nouvelle version : nouvelle préparation")
+        XCTAssertEqual(compute.warmUps, 3)
     }
 
     func testAFailedPreparationIsTriedAgainAtTheNextLaunch() async {

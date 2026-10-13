@@ -135,11 +135,13 @@ impl KokoroBackend for OrtBackend {
         self.infer(&[0, 43, 0], &[0.0; 256], &Cancel::never()).map(|_| ())
     }
 
-    /// L'abandon n'est vérifié qu'avant l'appel : un passage ORT ne
-    /// s'interrompt pas (pas de point d'arrêt interne).
+    /// L'abandon n'est vérifié qu'avant l'appel (avant et après l'attente
+    /// de la session) : un passage ORT ne s'interrompt pas (pas de point
+    /// d'arrêt interne).
     fn infer(&self, ids: &[i64], style: &[f32], cancel: &Cancel) -> Result<KokoroRaw> {
         cancel.check()?;
         let mut guard = self.session.lock().unwrap_or_else(|e| e.into_inner());
+        cancel.check()?;
         let session = guard.as_mut().context("modèle Kokoro non chargé")?;
         let outputs = session.run(ort::inputs![
             "input_ids" => Tensor::from_array(([1usize, ids.len()], ids.to_vec()))?,

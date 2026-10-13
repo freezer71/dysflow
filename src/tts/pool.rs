@@ -739,6 +739,10 @@ fn cancel_for(shared: &Arc<Shared>, id: usize, generation: u64) -> Cancel {
 /// Une synthèse abandonnée : la phrase n'est plus en cours, rien n'est
 /// rangé ni compté comme échec. Abandonnée pendant sa suite, sa tête part
 /// aussi : restée seule en cache, elle empêcherait de refaire la phrase.
+///
+/// Course bénigne : le curseur peut revenir sur la phrase entre la décision
+/// du moteur et ce verrou. La phrase est alors simplement refaite (au pire
+/// une tête de plus) : rien n'est perdu ni joué deux fois.
 fn abandon(shared: &Arc<Shared>, id: usize, generation: u64) {
     let mut state = shared.state.lock().unwrap();
     state.in_flight.remove(&id);
@@ -1866,6 +1870,8 @@ mod tests {
 
     #[test]
     fn the_tail_of_a_sentence_left_behind_is_abandoned() {
+        // Un petit saut (0 → 1) : la phrase 0 reste dans `keep_behind`, rien
+        // ne l'évince ; seule l'abandon peut retirer sa tête orpheline.
         let mut sentences = vec!["Le quatorze juillet, Camille harangua la foule.".to_string()];
         sentences.extend(numbered(19).into_iter().skip(1));
         let rig = AbandonRig::new(true, &sentences);
@@ -1873,15 +1879,24 @@ mod tests {
         rig.release.send(()).unwrap();
         assert_eq!(rig.next_started(), "Camille harangua la foule.");
         wait_ready(&rig.synth, 0);
-        rig.synth.set_cursor(10);
+        rig.synth.set_cursor(1);
         rig.release.send(()).unwrap();
-        assert_eq!(rig.next_started(), "phrase 10");
+        assert_eq!(rig.next_started(), "phrase 1");
         assert_eq!(rig.abandoned(), ["Camille harangua la foule."]);
         assert!(rig.synth.get(0).is_none(), "la tête orpheline ne reste pas en cache");
         assert!(rig.synth.tail(0).is_none());
         assert_eq!(rig.synth.failure(0), None);
+
+        // Le curseur revient : la phrase est refaite entière, tête et suite,
+        // au lieu d'attendre pour toujours une suite qui ne viendra pas.
+        rig.synth.set_cursor(0);
         rig.release.send(()).unwrap();
-        wait_ready(&rig.synth, 10);
+        assert_eq!(rig.next_started(), "Le quatorze juillet,");
+        rig.release.send(()).unwrap();
+        assert_eq!(rig.next_started(), "Camille harangua la foule.");
+        rig.release.send(()).unwrap();
+        assert_eq!(wait_tail(&rig.synth, 0).part, Part::Whole);
+        assert_eq!(rig.synth.get(0).map(|r| r.part), Some(Part::Head { words: 3 }));
     }
 
     #[test]

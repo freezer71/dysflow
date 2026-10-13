@@ -154,14 +154,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Kokoro est peut-être devenu la voix active (lancement, voix choisie,
     /// proposition acceptée, téléchargement fini) : les noyaux Metal se
-    /// préparent hors du fil principal, une fois par version de l'app, pour
-    /// que leur compilation (≈ 9 s) ne tombe jamais sur le premier mot lu.
+    /// préparent hors du fil principal, à chaque activation (voir
+    /// `KokoroWarmUp`), pour que leur préparation ne tombe jamais sur le
+    /// premier mot lu.
     func kokoroBecameActive() {
         guard let compute = kokoroCompute, let model else { return }
         let version = KokoroWarmUp.version(of: .main)
-        // Déjà faite pour cette version : pas même la lecture des réglages.
-        guard UserDefaults.standard.string(forKey: KokoroWarmUp.versionKey) != version,
-              !model.voicePreparation.isRunning else { return }
+        guard !model.voicePreparation.working else { return }
         Task { @MainActor in
             let settings = await model.loadSettings()
             KokoroWarmUp.runIfNeeded(compute: compute,
