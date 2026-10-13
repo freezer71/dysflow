@@ -28,7 +28,7 @@ struct VoiceTab: View {
                         .fixedSize()
                 }
                 VoiceStateLine(state: model.snapshot.voice, preparing: model.voicePreparation.isRunning)
-                if case .fallback = model.snapshot.voice {
+                if Self.suggestsModels(model.snapshot.voice) {
                     Button("Voir les modèles") { SettingsNavigation.shared.select(.models) }
                 }
                 if let notice = model.snapshot.notice {
@@ -382,6 +382,15 @@ struct VoiceTab: View {
     static func acceptedDownloadFailure(accepted: String?, download: DownloadView?) -> String? {
         guard let accepted, let d = download, d.id == accepted, let failed = d.failed else { return nil }
         return "Téléchargement interrompu : \(failed)"
+    }
+
+    /// Voix de repli ou voix muette (aucune session ne s'ouvre) : un autre
+    /// modèle est la piste.
+    static func suggestsModels(_ state: VoiceState) -> Bool {
+        switch state {
+        case .fallback, .unavailable: true
+        default: false
+        }
     }
 
     /// L'état de la voix, une seule ligne : la voix du système en repli avec

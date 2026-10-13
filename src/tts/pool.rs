@@ -301,6 +301,12 @@ struct State {
     /// par une ouverture réussie ; gardé d'un texte à l'autre, le moteur
     /// restant le même.
     open_failure: Option<String>,
+    /// Sessions ouvertes, tous workers confondus : tant qu'il y en a une, la
+    /// voix parle, quoi qu'ait dit la dernière ouverture.
+    open_sessions: usize,
+    /// Ouvertures en cours : un worker refusé pendant qu'un autre ouvre
+    /// encore lui laisse la phrase.
+    opening: usize,
     /// Temps passé à synthétiser, cumulé.
     busy: Duration,
 }
@@ -377,6 +383,8 @@ impl Synthesizer {
                 in_flight: HashSet::new(),
                 failures: HashMap::new(),
                 open_failure: None,
+                open_sessions: 0,
+                opening: 0,
                 busy: Duration::ZERO,
             }),
             wake: Condvar::new(),
@@ -478,10 +486,15 @@ impl Synthesizer {
         self.shared.state.lock().unwrap().failures.get(&id).cloned()
     }
 
-    /// Message de la dernière ouverture de session, si elle a échoué : la
-    /// voix entière est alors muette, pas une phrase.
+    /// Message de la dernière ouverture de session, si elle a échoué et
+    /// qu'aucune session n'est ouverte : la voix entière est alors muette.
+    /// Une session ouverte ailleurs parle : rien à signaler.
     pub fn open_failure(&self) -> Option<String> {
-        self.shared.state.lock().unwrap().open_failure.clone()
+        let state = self.shared.state.lock().unwrap();
+        if state.open_sessions > 0 {
+            return None;
+        }
+        state.open_failure.clone()
     }
 
     /// Redonne leur chance aux phrases en échec à partir de `from`.
@@ -580,6 +593,9 @@ fn worker_loop(shared: Arc<Shared>) {
             let mut state = shared.state.lock().unwrap();
             loop {
                 if shared.shutdown.load(Ordering::SeqCst) {
+                    if session.is_some() {
+                        state.open_sessions -= 1;
+                    }
                     return;
                 }
                 // Demandé à chaque choix : un moteur chargé en différé ne le
@@ -593,15 +609,32 @@ fn worker_loop(shared: Arc<Shared>) {
         };
 
         if session.is_none() {
-            match shared.engine.open_session() {
+            shared.state.lock().unwrap().opening += 1;
+            let opened = shared.engine.open_session();
+            shared.state.lock().unwrap().opening -= 1;
+            match opened {
                 Ok(s) => {
                     session = Some(s);
-                    shared.state.lock().unwrap().open_failure = None;
+                    let mut state = shared.state.lock().unwrap();
+                    state.open_failure = None;
+                    state.open_sessions += 1;
                 }
                 Err(err) => {
                     // Une famille qui ne sait pas synthétiser échoue ici, à
                     // chaque phrase : le lecteur doit pouvoir le dire.
-                    shared.state.lock().unwrap().open_failure = Some(err.to_string());
+                    let mut state = shared.state.lock().unwrap();
+                    state.open_failure = Some(err.to_string());
+                    if state.open_sessions > 0 || state.opening > 0 {
+                        // Une autre session parle (ou s'ouvre) : ce worker se
+                        // retire et rend la phrase, plutôt que de la faire
+                        // sauter. Si l'autre échoue aussi, c'est lui qui le
+                        // dira.
+                        state.in_flight.remove(&job.id);
+                        drop(state);
+                        shared.wake.notify_all();
+                        return;
+                    }
+                    drop(state);
                     finish_generation(
                         &shared,
                         job.id,
@@ -947,6 +980,64 @@ mod tests {
         );
         synth.reset();
         assert!(synth.open_failure().is_some(), "le moteur reste le même d'un texte à l'autre");
+    }
+
+    /// La première session s'ouvre, les suivantes échouent (audio.cpp à
+    /// plusieurs sessions, l'une refusée).
+    struct OneSessionOnly {
+        opens: AtomicUsize,
+    }
+
+    impl TtsEngine for OneSessionOnly {
+        fn name(&self) -> String {
+            "une session".into()
+        }
+        fn open_session(&self) -> Result<Box<dyn TtsSession>> {
+            if self.opens.fetch_add(1, Ordering::SeqCst) == 0 {
+                return Ok(Box::new(SlowSession));
+            }
+            anyhow::bail!("plus de session")
+        }
+        fn max_sessions(&self) -> usize {
+            2
+        }
+    }
+
+    /// Lente assez pour que l'autre worker prenne une phrase entre-temps.
+    struct SlowSession;
+    impl TtsSession for SlowSession {
+        fn synthesize(&mut self, text: &str, _: &TtsParams) -> Result<PcmBuffer> {
+            thread::sleep(Duration::from_millis(30));
+            Ok(PcmBuffer::new(vec![0.1; text.len() * 10], 1000, 1))
+        }
+    }
+
+    #[test]
+    fn one_open_session_keeps_the_voice_available() {
+        let engine = Arc::new(OneSessionOnly { opens: AtomicUsize::new(0) });
+        let synth = Synthesizer::new(Arc::clone(&engine) as Arc<dyn TtsEngine>, TtsParams::default(), 2, 4);
+        for i in 0..6 {
+            synth.push(format!("phrase {i}"), 0);
+        }
+        assert!(wait_for(|| engine.opens.load(Ordering::SeqCst) >= 2), "les deux workers ont essayé");
+        for i in 0..4 {
+            synth.set_cursor(i);
+            wait_ready(&synth, i);
+        }
+        assert_eq!(synth.open_failure(), None, "une session parle : la voix n'est pas indisponible");
+        assert_eq!(synth.stats().failed, 0, "aucune phrase sautée pour le worker refusé");
+    }
+
+    #[test]
+    fn a_sentence_refused_by_an_open_session_never_makes_the_voice_unavailable() {
+        let texts = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let engine = Arc::new(SplittingEngine::new(&texts));
+        engine.fail_tail.store(true, Ordering::SeqCst);
+        let synth = Synthesizer::new(engine as Arc<dyn TtsEngine>, TtsParams::default(), 1, 4);
+        let first = "Le quatorze juillet, Camille harangua la foule.";
+        synth.push_with_words(first.into(), words(first), 0);
+        assert!(wait_for(|| synth.failure(0).is_some()));
+        assert_eq!(synth.open_failure(), None);
     }
 
     /// Moteur dont chaque synthèse annonce son départ puis attend un feu vert.

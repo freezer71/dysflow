@@ -1066,6 +1066,42 @@ mod tests {
         assert!(matches!(reader.snapshot().voice, VoiceState::Ready));
     }
 
+    /// Le nom que l'outil de mesure exige (`Measure.moteurKokoroMLX`) :
+    /// celui du moteur Kokoro sur le calcul de l'app, enveloppé comme dans
+    /// `SillonReader::with_kokoro`. Qu'il change, et la mesure refuserait
+    /// toute voix : ce test le dit d'abord.
+    #[test]
+    fn the_kokoro_engine_on_the_app_compute_is_named_kokoro_mlx() {
+        struct NoCompute;
+        impl KokoroCompute for NoCompute {
+            fn load(&self, _: String) -> Result<(), SillonError> {
+                Ok(())
+            }
+            fn warm_up(&self) -> Result<(), SillonError> {
+                Ok(())
+            }
+            fn synthesize(&self, _: Vec<i64>, _: Vec<f32>) -> Result<KokoroOutput, SillonError> {
+                Ok(KokoroOutput { samples: Vec::new(), durations: Vec::new() })
+            }
+            fn release(&self) {}
+        }
+        struct NoPhonemes;
+        impl kokoro::phonemes::Phonemizer for NoPhonemes {
+            fn phonemize(&mut self, _: &str, items: &[String]) -> anyhow::Result<Vec<String>> {
+                Ok(vec![String::new(); items.len()])
+            }
+        }
+        let shared = Arc::new(kokoro::SharedCompute::new(Arc::new(ForeignKokoro(Arc::new(NoCompute)))));
+        let engine = kokoro::KokoroEngine::with_parts(
+            shared,
+            Box::new(NoPhonemes),
+            kokoro::Vocab::from_pairs([]),
+            std::path::PathBuf::new(),
+            Arc::new(SilentEngine),
+        );
+        assert_eq!(engine.name(), "Kokoro · MLX");
+    }
+
     #[test]
     fn seek_to_word_crosses_the_bridge_as_an_absolute_word() {
         let command: Command = ReaderCommand::SeekToWord { sentence: 2, word: 5 }.into();

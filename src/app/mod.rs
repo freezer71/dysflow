@@ -2472,6 +2472,56 @@ pub(crate) mod tests {
         }
     }
 
+    /// Aucune session ne s'ouvre tant que `broken` est levé.
+    struct Repairable {
+        broken: Arc<std::sync::atomic::AtomicBool>,
+    }
+    impl TtsEngine for Repairable {
+        fn name(&self) -> String {
+            "réparable".into()
+        }
+        fn open_session(&self) -> anyhow::Result<Box<dyn crate::tts::TtsSession>> {
+            if self.broken.load(std::sync::atomic::Ordering::SeqCst) {
+                anyhow::bail!("famille sans synthèse");
+            }
+            Ok(Box::new(Cutting::default()))
+        }
+        fn max_sessions(&self) -> usize {
+            1
+        }
+    }
+
+    #[test]
+    fn a_voice_that_recovers_clears_its_unavailable_status() {
+        let broken = Arc::new(std::sync::atomic::AtomicBool::new(true));
+        let mut builder = DocumentBuilder::new(CodePolicy::Announce);
+        builder.push_block("Un. Deux.");
+        let mut config = Config::default();
+        config.reading.autoplay = false;
+        let engine = Arc::new(Repairable { broken: Arc::clone(&broken) });
+        let mut app = App::new(builder, None, engine, config, "t".into(), Vec::new(), crate::audio::Player::silent());
+        tick_until(&mut app, |a| a.status() == "Voix indisponible : famille sans synthèse");
+        assert!(app.voice_unavailable().is_some());
+
+        broken.store(false, std::sync::atomic::Ordering::SeqCst);
+        app.seek_to(0); // revenir sur un passage muet redonne sa chance à la phrase
+        tick_until(&mut app, |a| a.voice_unavailable().is_none());
+        app.tick();
+        assert!(!app.status().starts_with("Voix indisponible"), "{}", app.status());
+    }
+
+    #[test]
+    fn a_refused_sentence_with_an_open_session_is_not_an_unavailable_voice() {
+        let (mut app, _out) = cutting_app_with(
+            "Le quatorze juillet, Camille harangua la foule.",
+            Cutting { refuse_tail: true, ..Cutting::default() },
+        );
+        tick_until(&mut app, |a| a.synth.failure(0).is_some());
+        app.tick();
+        assert_eq!(app.voice_unavailable(), None);
+        assert!(!app.status().starts_with("Voix indisponible"));
+    }
+
     #[test]
     fn the_word_cut_sees_numbers_as_written() {
         // La forme parlée dit « dix-huit » ; l'écrit « 18 » interdit la

@@ -135,6 +135,13 @@ final class VoiceTabTests: XCTestCase {
                        "Voix indisponible : famille sans synthèse")
     }
 
+    func testModelsAreSuggestedForAFallbackOrAnUnavailableVoice() {
+        XCTAssertTrue(VoiceTab.suggestsModels(.fallback(reason: "x")))
+        XCTAssertTrue(VoiceTab.suggestsModels(.unavailable(reason: "x")))
+        XCTAssertFalse(VoiceTab.suggestsModels(.ready))
+        XCTAssertFalse(VoiceTab.suggestsModels(.loading))
+    }
+
     /// 1c : le repli se dit une seule fois, avec sa raison.
     func testTheFallbackIsSaidOnceWithItsReason() {
         XCTAssertEqual(VoiceTab.voiceLine(.fallback(reason: "fichier manquant")),
