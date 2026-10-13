@@ -21,6 +21,10 @@ uniffi::setup_scaffolding!();
 pub enum SillonError {
     #[error("{message}")]
     Failed { message: String },
+    /// Une synthèse Kokoro abandonnée en route (`SynthesisCancel`) : ni un
+    /// échec ni un résultat.
+    #[error("synthèse abandonnée")]
+    Cancelled,
 }
 
 fn failed(e: impl ToString) -> SillonError {
@@ -49,13 +53,41 @@ impl From<uniffi::UnexpectedUniFFICallbackError> for SillonError {
 ///   `MainActor`) : il peut lui-même attendre le moteur ;
 /// - `load` et `release` vont par paires, éventuellement de plusieurs
 ///   détenteurs (la préparation des noyaux de l'app en est un) : les poids
-///   ne partent qu'au dernier `release`.
+///   ne partent qu'au dernier `release` ;
+/// - `synthesize` consulte `cancel` avant le passage et entre les durées et
+///   le décodeur ; s'il dit vrai, elle s'arrête et rend
+///   `SillonError::Cancelled` (jamais `Failed`).
 #[uniffi::export(with_foreign)]
 pub trait KokoroCompute: Send + Sync {
     fn load(&self, model_dir: String) -> Result<(), SillonError>;
     fn warm_up(&self) -> Result<(), SillonError>;
-    fn synthesize(&self, ids: Vec<i64>, style: Vec<f32>) -> Result<KokoroOutput, SillonError>;
+    fn synthesize(
+        &self,
+        ids: Vec<i64>,
+        style: Vec<f32>,
+        cancel: Arc<SynthesisCancel>,
+    ) -> Result<KokoroOutput, SillonError>;
     fn release(&self);
+}
+
+/// Le test d'abandon d'une synthèse, passé au calcul de l'app : vrai quand
+/// le pool n'a plus l'usage du résultat (curseur parti, génération
+/// changée). Chaque appel prend un instant le verrou du pool : à consulter
+/// à un point de synchronisation, pas en boucle.
+#[derive(uniffi::Object)]
+pub struct SynthesisCancel(tts::Cancel);
+
+#[uniffi::export]
+impl SynthesisCancel {
+    /// Une réponse fixe : pour les essais et la préparation.
+    #[uniffi::constructor]
+    pub fn fixed(cancelled: bool) -> Arc<Self> {
+        Arc::new(Self(if cancelled { tts::Cancel::when(|| true) } else { tts::Cancel::never() }))
+    }
+
+    pub fn is_cancelled(&self) -> bool {
+        self.0.is_cancelled()
+    }
 }
 
 #[derive(uniffi::Record)]
@@ -77,8 +109,12 @@ impl KokoroBackend for ForeignKokoro {
     fn warm_up(&self) -> anyhow::Result<()> {
         self.0.warm_up().map_err(|e| anyhow::anyhow!(e.to_string()))
     }
-    fn infer(&self, ids: &[i64], style: &[f32]) -> anyhow::Result<KokoroRaw> {
-        let out = self.0.synthesize(ids.to_vec(), style.to_vec()).map_err(|e| anyhow::anyhow!(e.to_string()))?;
+    fn infer(&self, ids: &[i64], style: &[f32], cancel: &tts::Cancel) -> anyhow::Result<KokoroRaw> {
+        let cancel = Arc::new(SynthesisCancel(cancel.clone()));
+        let out = self.0.synthesize(ids.to_vec(), style.to_vec(), cancel).map_err(|e| match e {
+            SillonError::Cancelled => anyhow::Error::new(tts::Cancelled),
+            e => anyhow::anyhow!(e.to_string()),
+        })?;
         Ok(KokoroRaw { samples: out.samples, durations: out.durations })
     }
     fn release(&self) {
@@ -92,7 +128,7 @@ impl KokoroBackend for ForeignKokoro {
 pub fn kokoro_bridge_check(compute: Arc<dyn KokoroCompute>, model_dir: String) -> Result<u64, SillonError> {
     let backend = ForeignKokoro(compute);
     backend.load(std::path::Path::new(&model_dir)).map_err(failed)?;
-    let raw = backend.infer(&[0, 43, 0], &[0.0; 256]).map_err(failed);
+    let raw = backend.infer(&[0, 43, 0], &[0.0; 256], &tts::Cancel::never()).map_err(failed);
     backend.release();
     let raw = raw?;
     kokoro::check(&raw, 3).map_err(failed)?;
@@ -1080,7 +1116,7 @@ mod tests {
             fn warm_up(&self) -> Result<(), SillonError> {
                 Ok(())
             }
-            fn synthesize(&self, _: Vec<i64>, _: Vec<f32>) -> Result<KokoroOutput, SillonError> {
+            fn synthesize(&self, _: Vec<i64>, _: Vec<f32>, _: Arc<SynthesisCancel>) -> Result<KokoroOutput, SillonError> {
                 Ok(KokoroOutput { samples: Vec::new(), durations: Vec::new() })
             }
             fn release(&self) {}
@@ -1182,13 +1218,33 @@ mod tests {
         fn warm_up(&self) -> Result<(), SillonError> {
             Ok(())
         }
-        fn synthesize(&self, ids: Vec<i64>, _style: Vec<f32>) -> Result<KokoroOutput, SillonError> {
+        fn synthesize(
+            &self,
+            ids: Vec<i64>,
+            _style: Vec<f32>,
+            cancel: Arc<SynthesisCancel>,
+        ) -> Result<KokoroOutput, SillonError> {
+            if cancel.is_cancelled() {
+                return Err(SillonError::Cancelled);
+            }
             if self.fail {
                 return Err(SillonError::Failed { message: "Calcul Metal indisponible".into() });
             }
             Ok(KokoroOutput { samples: vec![0.0; ids.len() * 2 * 600], durations: vec![2; ids.len()] })
         }
         fn release(&self) {}
+    }
+
+    /// Le test d'abandon du pool traverse le pont, et l'abandon revient
+    /// comme tel : ni un échec, ni un résultat.
+    #[test]
+    fn an_abandon_crosses_the_bridge_both_ways() {
+        let backend = ForeignKokoro(Arc::new(FakeCompute { fail: false }));
+        let err = backend.infer(&[0, 43, 0], &[0.0; 256], &tts::Cancel::when(|| true)).unwrap_err();
+        assert!(tts::is_cancelled(&err), "{err}");
+        assert!(backend.infer(&[0, 43, 0], &[0.0; 256], &tts::Cancel::never()).is_ok());
+        assert!(SynthesisCancel::fixed(true).is_cancelled());
+        assert!(!SynthesisCancel::fixed(false).is_cancelled());
     }
 
     #[test]

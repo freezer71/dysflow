@@ -18,7 +18,7 @@ use std::sync::{Arc, Mutex};
 
 use self::phonemes::Phonemizer;
 use self::voices::{load_voice, VoicePack};
-use super::{PcmBuffer, Readiness, Synthesis, TtsEngine, TtsParams, TtsSession};
+use super::{Cancel, PcmBuffer, Readiness, Synthesis, TtsEngine, TtsParams, TtsSession};
 use crate::text::language::Lang;
 
 pub const SAMPLE_RATE: u32 = 24_000;
@@ -241,8 +241,21 @@ impl TtsSession for KokoroSession {
     }
 
     fn synthesize_timed(&mut self, text: &str, words: &[String], params: &TtsParams) -> Result<Synthesis> {
+        self.synthesize_cancellable(text, words, params, &Cancel::never())
+    }
+
+    /// Le test d'abandon va au calcul, à chaque morceau. Un abandon n'est
+    /// pas un échec : il ne compte pas vers le repli et ne remet pas le
+    /// compte à zéro.
+    fn synthesize_cancellable(
+        &mut self,
+        text: &str,
+        words: &[String],
+        params: &TtsParams,
+        cancel: &Cancel,
+    ) -> Result<Synthesis> {
         if self.inner.broken().is_some() {
-            return self.fallback()?.synthesize_timed(text, words, params);
+            return self.fallback()?.synthesize_cancellable(text, words, params, cancel);
         }
         let language = Lang::parse(&params.language).unwrap_or(Lang::Fr).code();
         let voice_name = match params.voice.trim() {
@@ -279,10 +292,11 @@ impl TtsSession for KokoroSession {
             let raw = self
                 .inner
                 .backend
-                .infer(&tokens, voice.row(part.chars().count()))
+                .infer(&tokens, voice.row(part.chars().count()), cancel)
                 .and_then(|raw| check(&raw, tokens.len()).map(|()| raw));
             let raw = match raw {
                 Ok(raw) => raw,
+                Err(err) if super::is_cancelled(&err) => return Err(err),
                 Err(err) => {
                     self.inner.compute_failed();
                     return Err(err);
@@ -327,6 +341,8 @@ mod tests {
         Fail,
         /// Un appel sur deux échoue.
         Flaky,
+        /// Consulte le test d'abandon après les durées, comme MLX.
+        Abandon,
     }
 
     /// Deux trames par jeton, du silence de la bonne longueur ; retient les
@@ -335,11 +351,18 @@ mod tests {
         mode: Mode,
         calls: Mutex<Vec<(Vec<i64>, f32)>>,
         released: AtomicUsize,
+        /// Abandons vus par le calcul.
+        abandoned: AtomicUsize,
     }
 
     impl FakeBackend {
         fn new(mode: Mode) -> Arc<Self> {
-            Arc::new(Self { mode, calls: Mutex::new(Vec::new()), released: AtomicUsize::new(0) })
+            Arc::new(Self {
+                mode,
+                calls: Mutex::new(Vec::new()),
+                released: AtomicUsize::new(0),
+                abandoned: AtomicUsize::new(0),
+            })
         }
     }
 
@@ -353,7 +376,11 @@ mod tests {
         fn warm_up(&self) -> Result<()> {
             Ok(())
         }
-        fn infer(&self, ids: &[i64], style: &[f32]) -> Result<KokoroRaw> {
+        fn infer(&self, ids: &[i64], style: &[f32], cancel: &crate::tts::Cancel) -> Result<KokoroRaw> {
+            if self.mode == Mode::Abandon {
+                self.abandoned.fetch_add(cancel.is_cancelled() as usize, Ordering::SeqCst);
+                cancel.check()?;
+            }
             let mut calls = self.calls.lock().unwrap();
             calls.push((ids.to_vec(), style[0]));
             if self.mode == Mode::Flaky && calls.len() % 2 == 1 {
@@ -369,7 +396,7 @@ mod tests {
                 }
                 Mode::Nan => samples[0] = f32::NAN,
                 Mode::Fail => anyhow::bail!("calcul perdu"),
-                Mode::Flaky => {}
+                Mode::Flaky | Mode::Abandon => {}
             }
             Ok(KokoroRaw { samples, durations })
         }
@@ -556,6 +583,25 @@ mod tests {
         }
         assert_eq!(engine.readiness(), Readiness::Ready);
         assert_eq!(backend.released.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn an_abandoned_synthesis_is_neither_a_failure_nor_a_fallback() {
+        let backend = FakeBackend::new(Mode::Abandon);
+        let (engine, _) = engine(Arc::clone(&backend), false, "abandon");
+        let mut session = engine.open_session().unwrap();
+        let abandon = crate::tts::Cancel::when(|| true);
+        for _ in 0..MAX_COMPUTE_FAILURES * 2 {
+            let err = session.synthesize_cancellable("un deux", &[], &params("rampe"), &abandon).unwrap_err();
+            assert!(crate::tts::is_cancelled(&err), "{err}");
+        }
+        assert_eq!(backend.abandoned.load(Ordering::SeqCst), MAX_COMPUTE_FAILURES * 2, "le calcul voit l'abandon");
+        assert_eq!(engine.inner.failures.load(Ordering::SeqCst), 0, "aucun échec compté");
+        assert_eq!(engine.readiness(), Readiness::Ready, "pas de repli");
+        assert_eq!(backend.released.load(Ordering::SeqCst), 0);
+        let kept = crate::tts::Cancel::when(|| false);
+        let out = session.synthesize_cancellable("un deux", &[], &params("rampe"), &kept).unwrap();
+        assert!(!out.pcm.is_empty(), "une synthèse utile va au bout");
     }
 
     #[test]

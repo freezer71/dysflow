@@ -14,6 +14,7 @@ use ort::session::Session;
 use ort::value::Tensor;
 
 use super::{KokoroBackend, KokoroRaw};
+use crate::tts::Cancel;
 
 pub const ONNX_FILE: &str = "model_quantized.onnx";
 const MINIMUM: (u32, u32) = (1, 31);
@@ -131,10 +132,13 @@ impl KokoroBackend for OrtBackend {
     }
 
     fn warm_up(&self) -> Result<()> {
-        self.infer(&[0, 43, 0], &[0.0; 256]).map(|_| ())
+        self.infer(&[0, 43, 0], &[0.0; 256], &Cancel::never()).map(|_| ())
     }
 
-    fn infer(&self, ids: &[i64], style: &[f32]) -> Result<KokoroRaw> {
+    /// L'abandon n'est vérifié qu'avant l'appel : un passage ORT ne
+    /// s'interrompt pas (pas de point d'arrêt interne).
+    fn infer(&self, ids: &[i64], style: &[f32], cancel: &Cancel) -> Result<KokoroRaw> {
+        cancel.check()?;
         let mut guard = self.session.lock().unwrap_or_else(|e| e.into_inner());
         let session = guard.as_mut().context("modèle Kokoro non chargé")?;
         let outputs = session.run(ort::inputs![
@@ -202,7 +206,7 @@ mod tests {
         let dir = std::path::PathBuf::from(std::env::var("SILLON_KOKORO_DIR").expect("SILLON_KOKORO_DIR"));
         let backend = OrtBackend::new(4);
         backend.load(&dir).unwrap();
-        let raw = backend.infer(&[0, 44, 43, 54, 43, 4, 0], &[0.0; 256]).unwrap();
+        let raw = backend.infer(&[0, 44, 43, 54, 43, 4, 0], &[0.0; 256], &Cancel::never()).unwrap();
         crate::tts::kokoro::check(&raw, 7).unwrap();
         backend.release();
     }

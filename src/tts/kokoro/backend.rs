@@ -5,6 +5,8 @@ use anyhow::{ensure, Result};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
+use crate::tts::Cancel;
+
 /// Ce que le calcul rend : l'audio à 24 kHz, et une durée par jeton
 /// d'entrée, en trames de 600 échantillons.
 #[derive(Debug, Clone, PartialEq)]
@@ -17,13 +19,17 @@ pub struct KokoroRaw {
 /// durées en sortie. Les appels arrivent sur le fil de synthèse et bloquent
 /// jusqu'au résultat. `speed` vaut toujours 1 : la vitesse est appliquée au
 /// son, par Sonic.
+///
+/// `infer` rend `Err(Cancelled)` quand `cancel` dit la synthèse inutile :
+/// MLX le consulte avant le passage et entre les durées et le décodeur, ORT
+/// avant l'appel seulement.
 pub trait KokoroBackend: Send + Sync {
     /// « MLX », « int8 » : pour le nom du moteur.
     fn label(&self) -> &'static str;
     fn load(&self, model_dir: &Path) -> Result<()>;
     /// Une courte synthèse, pour compiler ce qui doit l'être.
     fn warm_up(&self) -> Result<()>;
-    fn infer(&self, ids: &[i64], style: &[f32]) -> Result<KokoroRaw>;
+    fn infer(&self, ids: &[i64], style: &[f32], cancel: &Cancel) -> Result<KokoroRaw>;
     /// Libère poids et caches : la voix part au repos.
     fn release(&self);
 }
@@ -106,8 +112,8 @@ impl KokoroBackend for SharedCompute {
         self.inner.warm_up()
     }
 
-    fn infer(&self, ids: &[i64], style: &[f32]) -> Result<KokoroRaw> {
-        self.inner.infer(ids, style)
+    fn infer(&self, ids: &[i64], style: &[f32], cancel: &Cancel) -> Result<KokoroRaw> {
+        self.inner.infer(ids, style, cancel)
     }
 
     fn release(&self) {
@@ -158,7 +164,7 @@ mod tests {
         fn warm_up(&self) -> Result<()> {
             Ok(())
         }
-        fn infer(&self, _: &[i64], _: &[f32]) -> Result<KokoroRaw> {
+        fn infer(&self, _: &[i64], _: &[f32], _: &Cancel) -> Result<KokoroRaw> {
             anyhow::bail!("non utilisé")
         }
         fn release(&self) {
@@ -233,7 +239,7 @@ mod tests {
             fn warm_up(&self) -> Result<()> {
                 Ok(())
             }
-            fn infer(&self, _: &[i64], _: &[f32]) -> Result<KokoroRaw> {
+            fn infer(&self, _: &[i64], _: &[f32], _: &Cancel) -> Result<KokoroRaw> {
                 anyhow::bail!("non utilisé")
             }
             fn release(&self) {

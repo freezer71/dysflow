@@ -224,6 +224,63 @@ pub trait TtsEngine: Send + Sync {
     }
 }
 
+/// Le test d'abandon d'une synthèse : vrai quand son résultat n'a plus
+/// d'usage (le curseur a quitté la phrase, ou la génération a changé).
+///
+/// Le pool le fournit ; le moteur le consulte là où il peut s'arrêter
+/// (Kokoro MLX : entre les durées et le décodeur ; les autres : avant de
+/// commencer). Chaque consultation prend un instant le verrou du pool : à
+/// appeler quelques fois par synthèse, pas dans une boucle.
+#[derive(Clone)]
+pub struct Cancel(Option<Arc<dyn Fn() -> bool + Send + Sync>>);
+
+impl Cancel {
+    /// Jamais abandonnée : aperçus, préparation, essais.
+    pub fn never() -> Self {
+        Self(None)
+    }
+
+    pub fn when(test: impl Fn() -> bool + Send + Sync + 'static) -> Self {
+        Self(Some(Arc::new(test)))
+    }
+
+    pub fn is_cancelled(&self) -> bool {
+        self.0.as_ref().is_some_and(|test| test())
+    }
+
+    /// `Err(Cancelled)` si la synthèse est devenue inutile.
+    pub fn check(&self) -> Result<()> {
+        if self.is_cancelled() {
+            return Err(Cancelled.into());
+        }
+        Ok(())
+    }
+}
+
+impl std::fmt::Debug for Cancel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(if self.0.is_some() { "Cancel(test)" } else { "Cancel(jamais)" })
+    }
+}
+
+/// L'erreur d'une synthèse abandonnée : ni un échec (rien ne compte contre
+/// la voix, pas de repli), ni un résultat (rien en cache).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Cancelled;
+
+impl std::fmt::Display for Cancelled {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("synthèse abandonnée")
+    }
+}
+
+impl std::error::Error for Cancelled {}
+
+/// Vrai si l'erreur dit un abandon, et non un échec.
+pub fn is_cancelled(err: &anyhow::Error) -> bool {
+    err.is::<Cancelled>()
+}
+
 /// Une session de synthèse, utilisée par un seul thread.
 pub trait TtsSession: Send {
     fn synthesize(&mut self, text: &str, params: &TtsParams) -> Result<PcmBuffer>;
@@ -234,6 +291,20 @@ pub trait TtsSession: Send {
     fn synthesize_timed(&mut self, text: &str, words: &[String], params: &TtsParams) -> Result<Synthesis> {
         let _ = words;
         Ok(Synthesis { pcm: self.synthesize(text, params)?, words: None })
+    }
+
+    /// Comme `synthesize_timed`, abandonnée (`Err(Cancelled)`) quand
+    /// `cancel` le dit. Par défaut, vérifié avant de commencer seulement :
+    /// un moteur qui sait s'arrêter en route (Kokoro) la redéfinit.
+    fn synthesize_cancellable(
+        &mut self,
+        text: &str,
+        words: &[String],
+        params: &TtsParams,
+        cancel: &Cancel,
+    ) -> Result<Synthesis> {
+        cancel.check()?;
+        self.synthesize_timed(text, words, params)
     }
 }
 
@@ -487,7 +558,7 @@ mod tests {
             fn warm_up(&self) -> Result<()> {
                 Ok(())
             }
-            fn infer(&self, _: &[i64], _: &[f32]) -> Result<kokoro::KokoroRaw> {
+            fn infer(&self, _: &[i64], _: &[f32], _: &Cancel) -> Result<kokoro::KokoroRaw> {
                 anyhow::bail!("non utilisé")
             }
             fn release(&self) {}

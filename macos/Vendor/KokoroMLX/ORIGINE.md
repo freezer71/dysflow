@@ -8,5 +8,8 @@ Fichiers Kokoro de [mlx-audio-swift](https://github.com/Blaizzy/mlx-audio-swift)
 Changements : imports `MLXLMCommon`, `HuggingFace`, `MLXAudioCore` retirés ;
 quantification retirée de `KokoroConfig` ; `import MLXFFT` ajouté au décodeur ;
 `KokoroModel.swift` réduit au passage avant (`callAsFunction` public) et au
-chargement d'un dossier. `KokoroRunner.swift` est un ajout de Sillon. Seule
-dépendance : mlx-swift 0.32.3.
+chargement d'un dossier ; `callAsFunction` prend en plus `shouldStop`
+(consulté une fois, juste après `predDur.asArray`, la synchronisation des
+durées : s'il dit vrai, le passage rend `nil` sans prédiction F0/bruit ni
+décodeur) et rend donc un optionnel. `KokoroRunner.swift` est un ajout de
+Sillon. Seule dépendance : mlx-swift 0.32.3.

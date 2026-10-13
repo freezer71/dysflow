@@ -17,7 +17,7 @@ final class FakeKokoroCompute: KokoroCompute, @unchecked Sendable {
         if failLoad { throw SillonError.Failed(message: "Calcul Metal indisponible") }
     }
     func warmUp() throws { lock.withLock { counts.warmUp += 1 } }
-    func synthesize(ids: [Int64], style: [Float]) throws -> KokoroOutput {
+    func synthesize(ids: [Int64], style: [Float], cancel: SynthesisCancel) throws -> KokoroOutput {
         lock.withLock { counts.synthesize += 1 }
         return KokoroOutput(samples: [Float](repeating: 0, count: ids.count * 2 * 600),
                             durations: [UInt32](repeating: 2, count: ids.count))

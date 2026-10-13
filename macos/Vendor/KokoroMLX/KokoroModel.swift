@@ -37,9 +37,13 @@ public final class KokoroModel: Module, @unchecked Sendable {
 
     // MARK: - Passage avant
 
+    /// `shouldStop` (ajout de Sillon) : consulté une fois, quand les durées
+    /// sont calculées ; s'il dit vrai, le passage s'arrête là (ni F0, ni
+    /// bruit, ni décodeur) et rend `nil`.
     public func callAsFunction(
-        inputIds: MLXArray, refS: MLXArray, speed: Float = 1.0
-    ) -> (audio: MLXArray, predDur: MLXArray) {
+        inputIds: MLXArray, refS: MLXArray, speed: Float = 1.0,
+        shouldStop: () -> Bool = { false }
+    ) -> (audio: MLXArray, predDur: MLXArray)? {
         let seqLen = inputIds.shape[inputIds.ndim - 1]
         let inputLengths = MLXArray([Int32(seqLen)])
         var textMask = MLXArray(Array(0..<Int32(seqLen))).reshaped([1, -1])
@@ -63,6 +67,8 @@ public final class KokoroModel: Module, @unchecked Sendable {
             .asType(.int32)[0]
 
         let durArray: [Int32] = predDur.asArray(Int32.self)
+        // Sillon : point d'arrêt, après la synchronisation des durées.
+        if shouldStop() { return nil }
         var indices = [MLXArray]()
         for (i, n) in durArray.enumerated() {
             let count = min(max(Int(n), 0), maxFramesPerPhoneme)

@@ -18,7 +18,7 @@ use std::sync::{Arc, Condvar, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
-use super::{PcmBuffer, Synthesis, TtsEngine, TtsParams, WordSpan};
+use super::{Cancel, PcmBuffer, Synthesis, TtsEngine, TtsParams, WordSpan};
 
 /// Phrase à synthétiser.
 #[derive(Debug, Clone)]
@@ -340,6 +340,14 @@ impl State {
         None
     }
 
+    /// Vrai tant qu'une synthèse de la phrase `id` sous `generation` a un
+    /// usage : même génération, et phrase dans la fenêtre
+    /// [curseur, curseur + fenêtre) — celle où `next_job` puise. La suite
+    /// d'une phrase que le curseur a quittée n'en a plus.
+    fn still_wanted(&self, id: usize, generation: u64) -> bool {
+        generation == self.generation && id >= self.cursor && id < self.cursor + self.window && id < self.jobs.len()
+    }
+
     /// Libère ce qui est trop loin du curseur pour resservir.
     fn evict(&mut self) {
         let low = self.cursor.saturating_sub(self.keep_behind);
@@ -647,16 +655,23 @@ fn worker_loop(shared: Arc<Shared>) {
         }
 
         let session = session.as_mut().expect("session ouverte juste au-dessus");
+        let cancel = cancel_for(&shared, job.id, job.generation);
         let split = if job.split { split_sentence(&job.text, &job.words, &job.written) } else { None };
         let Some(split) = split else {
-            let outcome = synthesize(&shared, session.as_mut(), &job.text, &job.words, &job.params)
-                .map(|s| with_trailing_silence(s, job.words.len(), job.pause_ms));
-            finish_generation(&shared, job.id, job.generation, outcome);
+            match synthesize(&shared, session.as_mut(), &job.text, &job.words, &job.params, &cancel) {
+                Err(Stop::Cancelled) => abandon(&shared, job.id, job.generation),
+                outcome => {
+                    let outcome = outcome
+                        .map(|s| with_trailing_silence(s, job.words.len(), job.pause_ms))
+                        .map_err(Stop::message);
+                    finish_generation(&shared, job.id, job.generation, outcome);
+                }
+            }
             continue;
         };
         // La tête d'abord, jouable aussitôt ; la phrase reste « en cours »
         // jusqu'à la suite.
-        let head = synthesize(&shared, session.as_mut(), &split.head_text, &split.head_words, &job.params)
+        let head = synthesize(&shared, session.as_mut(), &split.head_text, &split.head_words, &job.params, &cancel)
             .map(|s| {
                 let s = Synthesis { pcm: fade_edge(s.pcm, Edge::End), ..s };
                 let mut rendered = with_trailing_silence(s, split.head_words.len(), 0);
@@ -665,34 +680,94 @@ fn worker_loop(shared: Arc<Shared>) {
             });
         match head {
             Ok(rendered) => finish_head(&shared, job.id, job.generation, rendered),
-            Err(message) => {
+            Err(Stop::Cancelled) => {
+                abandon(&shared, job.id, job.generation);
+                continue;
+            }
+            Err(Stop::Failed(message)) => {
                 finish_generation(&shared, job.id, job.generation, Err(message));
                 continue;
             }
         }
-        let tail = synthesize(&shared, session.as_mut(), &split.tail_text, &split.tail_words, &job.params)
-            .map(|s| Synthesis { pcm: fade_edge(s.pcm, Edge::Start), ..s })
-            .map(|s| with_trailing_silence(s, split.tail_words.len(), job.pause_ms));
-        finish_tail(&shared, job.id, job.generation, tail);
+        match synthesize(&shared, session.as_mut(), &split.tail_text, &split.tail_words, &job.params, &cancel) {
+            Err(Stop::Cancelled) => abandon(&shared, job.id, job.generation),
+            tail => {
+                let tail = tail
+                    .map(|s| Synthesis { pcm: fade_edge(s.pcm, Edge::Start), ..s })
+                    .map(|s| with_trailing_silence(s, split.tail_words.len(), job.pause_ms))
+                    .map_err(Stop::message);
+                finish_tail(&shared, job.id, job.generation, tail);
+            }
+        }
     }
 }
 
+/// Pourquoi une synthèse n'a pas rendu de son.
+#[derive(Debug)]
+enum Stop {
+    /// Devenue inutile en route : ni échec ni résultat.
+    Cancelled,
+    Failed(String),
+}
+
+impl Stop {
+    /// Le message d'un échec ; un abandon est traité avant.
+    fn message(self) -> String {
+        match self {
+            Stop::Cancelled => super::Cancelled.to_string(),
+            Stop::Failed(message) => message,
+        }
+    }
+}
+
+/// Le test d'abandon de la phrase `id` prise sous `generation` : il prend
+/// un instant le verrou du pool, jamais pendant le calcul lui-même (le
+/// moteur l'appelle entre deux étapes). La fermeture du pool abandonne
+/// aussi.
+fn cancel_for(shared: &Arc<Shared>, id: usize, generation: u64) -> Cancel {
+    let shared = Arc::clone(shared);
+    Cancel::when(move || {
+        if shared.shutdown.load(Ordering::SeqCst) {
+            return true;
+        }
+        // Appelé depuis le calcul de l'app (Swift) : jamais de panique ici.
+        let state = shared.state.lock().unwrap_or_else(|e| e.into_inner());
+        !state.still_wanted(id, generation)
+    })
+}
+
+/// Une synthèse abandonnée : la phrase n'est plus en cours, rien n'est
+/// rangé ni compté comme échec. Abandonnée pendant sa suite, sa tête part
+/// aussi : restée seule en cache, elle empêcherait de refaire la phrase.
+fn abandon(shared: &Arc<Shared>, id: usize, generation: u64) {
+    let mut state = shared.state.lock().unwrap();
+    state.in_flight.remove(&id);
+    if generation == state.generation {
+        state.cache.remove(&id);
+    }
+    drop(state);
+    shared.wake.notify_all();
+}
+
 /// Une synthèse, chronométrée : le temps occupé est la mesure du filtre de
-/// charge. Un son vide est un échec.
+/// charge. Un son vide est un échec. Une synthèse abandonnée compte dans
+/// `busy` pour le temps réellement passé.
 fn synthesize(
     shared: &Arc<Shared>,
     session: &mut dyn super::TtsSession,
     text: &str,
     words: &[String],
     params: &TtsParams,
-) -> Result<Synthesis, String> {
+    cancel: &Cancel,
+) -> Result<Synthesis, Stop> {
     let started = std::time::Instant::now();
-    let outcome = session.synthesize_timed(text, words, params);
+    let outcome = session.synthesize_cancellable(text, words, params, cancel);
     shared.state.lock().unwrap().busy += started.elapsed();
     match outcome {
-        Ok(s) if s.pcm.is_empty() => Err("aucun échantillon produit".to_string()),
+        Ok(s) if s.pcm.is_empty() => Err(Stop::Failed("aucun échantillon produit".to_string())),
         Ok(s) => Ok(s),
-        Err(e) => Err(e.to_string()),
+        Err(e) if super::is_cancelled(&e) => Err(Stop::Cancelled),
+        Err(e) => Err(Stop::Failed(e.to_string())),
     }
 }
 
@@ -1626,6 +1701,187 @@ mod tests {
         assert_eq!(head.audio.samples[0], 0.1, "le début de la tête n'est pas touché");
         assert!(tail.audio.samples[0].abs() < 0.01);
         assert_eq!(*tail.audio.samples.last().unwrap(), 0.1, "la fin de la suite non plus");
+    }
+
+    /// Moteur dont chaque synthèse annonce son texte, attend un feu vert
+    /// (le passage MLX jusqu'aux durées), puis consulte le test d'abandon :
+    /// abandonnée, elle le note et rend `Cancelled`.
+    struct Abandoning {
+        started: std::sync::Mutex<std::sync::mpsc::Sender<String>>,
+        gate: Arc<std::sync::Mutex<std::sync::mpsc::Receiver<()>>>,
+        abandoned: Arc<std::sync::Mutex<Vec<String>>>,
+        splits: bool,
+    }
+    struct AbandoningSession {
+        started: std::sync::mpsc::Sender<String>,
+        gate: Arc<std::sync::Mutex<std::sync::mpsc::Receiver<()>>>,
+        abandoned: Arc<std::sync::Mutex<Vec<String>>>,
+    }
+
+    impl TtsEngine for Abandoning {
+        fn name(&self) -> String {
+            "abandon".into()
+        }
+        fn open_session(&self) -> Result<Box<dyn TtsSession>> {
+            Ok(Box::new(AbandoningSession {
+                started: self.started.lock().unwrap().clone(),
+                gate: Arc::clone(&self.gate),
+                abandoned: Arc::clone(&self.abandoned),
+            }))
+        }
+        fn max_sessions(&self) -> usize {
+            1
+        }
+        fn splits_first_clause(&self) -> bool {
+            self.splits
+        }
+    }
+
+    impl TtsSession for AbandoningSession {
+        fn synthesize(&mut self, _: &str, _: &TtsParams) -> Result<PcmBuffer> {
+            unreachable!("le pool passe par synthesize_cancellable")
+        }
+        fn synthesize_cancellable(
+            &mut self,
+            text: &str,
+            _: &[String],
+            _: &TtsParams,
+            cancel: &crate::tts::Cancel,
+        ) -> Result<Synthesis> {
+            self.started.send(text.to_string()).unwrap();
+            // Banc démonté (feu vert lâché) : la synthèse finit tout de suite.
+            let _ = self.gate.lock().unwrap().recv_timeout(Duration::from_secs(5));
+            if cancel.is_cancelled() {
+                self.abandoned.lock().unwrap().push(text.to_string());
+                return Err(crate::tts::Cancelled.into());
+            }
+            Ok(Synthesis { pcm: PcmBuffer::new(vec![0.1; text.len() * 10], 1000, 1), words: None })
+        }
+    }
+
+    /// `release` avant `synth` : lâché d'abord, il libère le worker en
+    /// attente et la fermeture du pool ne l'attend pas.
+    struct AbandonRig {
+        release: std::sync::mpsc::Sender<()>,
+        synth: Synthesizer,
+        started: std::sync::mpsc::Receiver<String>,
+        abandoned: Arc<std::sync::Mutex<Vec<String>>>,
+    }
+
+    impl AbandonRig {
+        fn new(splits: bool, sentences: &[String]) -> Self {
+            let (started_tx, started) = std::sync::mpsc::channel();
+            let (release, gate) = std::sync::mpsc::channel();
+            let abandoned = Arc::new(std::sync::Mutex::new(Vec::new()));
+            let engine = Arc::new(Abandoning {
+                started: std::sync::Mutex::new(started_tx),
+                gate: Arc::new(std::sync::Mutex::new(gate)),
+                abandoned: Arc::clone(&abandoned),
+                splits,
+            });
+            let synth = Synthesizer::new(engine, TtsParams::default(), 1, 4);
+            for s in sentences {
+                synth.push_with_words(s.clone(), words(s), 0);
+            }
+            Self { synth, started, release, abandoned }
+        }
+        fn next_started(&self) -> String {
+            self.started.recv_timeout(Duration::from_secs(5)).expect("une synthèse démarre")
+        }
+        fn abandoned(&self) -> Vec<String> {
+            self.abandoned.lock().unwrap().clone()
+        }
+    }
+
+    fn numbered(n: usize) -> Vec<String> {
+        (0..n).map(|i| format!("phrase {i}")).collect()
+    }
+
+    #[test]
+    fn a_jump_away_abandons_the_synthesis_in_flight() {
+        let rig = AbandonRig::new(false, &numbered(20));
+        assert_eq!(rig.next_started(), "phrase 0");
+        rig.synth.set_cursor(10);
+        rig.release.send(()).unwrap();
+        assert_eq!(rig.next_started(), "phrase 10", "la nouvelle phrase part aussitôt après");
+        assert_eq!(rig.abandoned(), ["phrase 0"]);
+        assert!(rig.synth.get(0).is_none(), "rien en cache");
+        assert_eq!(rig.synth.failure(0), None, "un abandon n'est pas un échec");
+        assert_eq!(rig.synth.stats().failed, 0);
+        rig.release.send(()).unwrap();
+        assert_eq!(wait_ready(&rig.synth, 10).audio.samples.len(), "phrase 10".len() * 10);
+
+        // La phrase abandonnée reste disponible : y revenir la refait (et
+        // abandonne la phrase d'avance prise entre-temps).
+        assert_eq!(rig.next_started(), "phrase 11");
+        rig.synth.set_cursor(0);
+        rig.release.send(()).unwrap();
+        assert_eq!(rig.next_started(), "phrase 0");
+        rig.release.send(()).unwrap();
+        wait_ready(&rig.synth, 0);
+        assert_eq!(rig.abandoned(), ["phrase 0", "phrase 11"]);
+    }
+
+    #[test]
+    fn a_new_generation_abandons_the_synthesis_in_flight() {
+        let rig = AbandonRig::new(false, &numbered(6));
+        assert_eq!(rig.next_started(), "phrase 0");
+        rig.synth.set_params(TtsParams { voice: "autre".into(), ..TtsParams::default() });
+        rig.release.send(()).unwrap();
+        assert_eq!(rig.next_started(), "phrase 0", "refaite sous les nouveaux paramètres");
+        assert_eq!(rig.abandoned(), ["phrase 0"]);
+        assert_eq!(rig.synth.failure(0), None);
+        rig.release.send(()).unwrap();
+        wait_ready(&rig.synth, 0);
+
+        // Un nouveau texte aussi.
+        assert_eq!(rig.next_started(), "phrase 1");
+        rig.synth.reset();
+        rig.synth.push("bb".into(), 0);
+        rig.release.send(()).unwrap();
+        assert_eq!(rig.next_started(), "bb");
+        assert_eq!(rig.abandoned(), ["phrase 0", "phrase 1"]);
+        rig.release.send(()).unwrap();
+        wait_ready(&rig.synth, 0);
+    }
+
+    #[test]
+    fn a_sentence_still_wanted_is_never_abandoned() {
+        let rig = AbandonRig::new(false, &numbered(8));
+        assert_eq!(rig.next_started(), "phrase 0");
+        rig.release.send(()).unwrap();
+        assert_eq!(rig.next_started(), "phrase 1");
+        // Le curseur avance sur la phrase en cours : toujours utile.
+        rig.synth.set_cursor(1);
+        rig.release.send(()).unwrap();
+        wait_ready(&rig.synth, 1);
+        assert_eq!(rig.next_started(), "phrase 2");
+        // Elle reste dans la fenêtre [curseur, curseur + 4).
+        rig.synth.set_cursor(2);
+        rig.release.send(()).unwrap();
+        wait_ready(&rig.synth, 2);
+        assert!(rig.abandoned().is_empty(), "{:?}", rig.abandoned());
+        assert_eq!(rig.synth.stats().failed, 0);
+    }
+
+    #[test]
+    fn the_tail_of_a_sentence_left_behind_is_abandoned() {
+        let mut sentences = vec!["Le quatorze juillet, Camille harangua la foule.".to_string()];
+        sentences.extend(numbered(19).into_iter().skip(1));
+        let rig = AbandonRig::new(true, &sentences);
+        assert_eq!(rig.next_started(), "Le quatorze juillet,");
+        rig.release.send(()).unwrap();
+        assert_eq!(rig.next_started(), "Camille harangua la foule.");
+        wait_ready(&rig.synth, 0);
+        rig.synth.set_cursor(10);
+        rig.release.send(()).unwrap();
+        assert_eq!(rig.next_started(), "phrase 10");
+        assert_eq!(rig.abandoned(), ["Camille harangua la foule."]);
+        assert!(rig.synth.get(0).is_none(), "la tête orpheline ne reste pas en cache");
+        assert!(rig.synth.tail(0).is_none());
+        assert_eq!(rig.synth.failure(0), None);
+        rig.release.send(()).unwrap();
+        wait_ready(&rig.synth, 10);
     }
 
     #[test]

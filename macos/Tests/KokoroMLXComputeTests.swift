@@ -2,31 +2,47 @@ import XCTest
 @testable import Sillon
 
 /// Un passage avant factice : jamais MLX ni de poids dans les tests. Il
-/// mesure le nombre d'appels simultanés (le calcul doit les sérialiser).
+/// mesure le nombre d'appels simultanés (le calcul doit les sérialiser), et
+/// imite le point d'arrêt de `KokoroModel` : les durées, le test d'abandon,
+/// puis le décodeur.
 final class FakeKokoroForward: KokoroForward, @unchecked Sendable {
     private let lock = NSLock()
     private var inFlight = 0
     private(set) var maxInFlight = 0
     private(set) var runs = 0
+    private var decoded = 0
     /// Si posé, chaque passage attend ce signal (synthèse « longue »).
     var gate: DispatchSemaphore?
     /// Signalé à l'entrée de chaque passage.
     let entered = DispatchSemaphore(value: 0)
 
-    func run(ids: [Int32], style: [Float]) -> (samples: [Float], durations: [Int32]) {
+    func run(ids: [Int32], style: [Float],
+             shouldStop: () -> Bool) -> (samples: [Float], durations: [Int32])? {
         lock.withLock {
             inFlight += 1
             runs += 1
             maxInFlight = max(maxInFlight, inFlight)
         }
+        defer { lock.withLock { inFlight -= 1 } }
         entered.signal()
         if let gate { gate.wait() } else { usleep(500) }
-        lock.withLock { inFlight -= 1 }
+        // Les durées sont là : le point d'arrêt, avant le décodeur.
+        if shouldStop() { return nil }
+        lock.withLock { decoded += 1 }
         return ([Float](repeating: 0, count: ids.count * 600), [Int32](repeating: 2, count: ids.count))
     }
 
     var observedMax: Int { lock.withLock { maxInFlight } }
     var observedRuns: Int { lock.withLock { runs } }
+    /// Passages allés jusqu'au décodeur.
+    var decoderRuns: Int { lock.withLock { decoded } }
+}
+
+/// Les essais d'avant l'abandon : une synthèse jamais abandonnée.
+extension KokoroMLXCompute {
+    func synthesize(ids: [Int64], style: [Float]) throws -> KokoroOutput {
+        try synthesize(ids: ids, style: style, cancel: SynthesisCancel.fixed(cancelled: false))
+    }
 }
 
 /// Compte les chargements et les vidages de cache demandés au calcul.
@@ -153,6 +169,47 @@ final class KokoroMLXComputeTests: XCTestCase {
         compute.release()                       // le moteur rend /m/b
         XCTAssertEqual(factory.clears, 2)
         XCTAssertThrowsError(try compute.synthesize(ids: [0], style: []))
+    }
+
+    /// Le pool n'a plus l'usage de la synthèse quand les durées sont là : le
+    /// décodeur ne tourne pas, et l'abandon revient comme tel, pas comme un
+    /// échec. Le passage compte (`calls`, `forwardSeconds`) : il a eu lieu.
+    func testAnAbandonAfterTheDurationsSkipsTheDecoder() throws {
+        let factory = ForwardFactory()
+        let compute = factory.compute()
+        try compute.load(modelDir: "/m/kokoro")
+        var asked = 0
+        // Utile au départ, inutile une fois les durées calculées.
+        XCTAssertThrowsError(try compute.synthesize(ids: [0, 43, 0], style: [],
+                                                    isCancelled: { asked += 1; return asked > 1 })) { error in
+            guard case SillonError.Cancelled = error else { return XCTFail("\(error)") }
+        }
+        XCTAssertEqual(asked, 2, "avant le passage, puis après les durées")
+        XCTAssertEqual(factory.forward.observedRuns, 1)
+        XCTAssertEqual(factory.forward.decoderRuns, 0, "aucune exécution du décodeur")
+        XCTAssertEqual(compute.calls, 1, "le passage a eu lieu")
+        XCTAssertGreaterThan(compute.forwardSeconds, 0, "son temps compte")
+
+        // Une synthèse utile va au bout.
+        let out = try compute.synthesize(ids: [0, 43, 0], style: [], cancel: SynthesisCancel.fixed(cancelled: false))
+        XCTAssertEqual(out.durations, [2, 2, 2])
+        XCTAssertEqual(factory.forward.decoderRuns, 1)
+        compute.release()
+    }
+
+    /// Déjà inutile avant le passage (par exemple en attente derrière la
+    /// préparation) : MLX n'est pas appelé du tout.
+    func testAnAbandonBeforeThePassSkipsMLX() throws {
+        let factory = ForwardFactory()
+        let compute = factory.compute()
+        try compute.load(modelDir: "/m/kokoro")
+        XCTAssertThrowsError(try compute.synthesize(ids: [0, 43, 0], style: [],
+                                                    cancel: SynthesisCancel.fixed(cancelled: true))) { error in
+            guard case SillonError.Cancelled = error else { return XCTFail("\(error)") }
+        }
+        XCTAssertEqual(factory.forward.observedRuns, 0)
+        XCTAssertEqual(compute.calls, 0)
+        compute.release()
     }
 
     /// Une synthèse a déjà compilé les noyaux dans ce processus : la
