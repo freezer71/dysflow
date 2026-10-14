@@ -25,26 +25,14 @@ pub struct SettingsView {
     pub language: String,
     pub speed: f32,
     pub pitch: f32,
-    pub energy: f32,
-    pub emotion: String,
-    pub instruction: String,
     pub volume: f32,
     // [engine]
     pub engine: String,
     pub model_path: String,
     pub family: String,
-    pub compute: String,
     pub threads: u32,
     pub sessions: u32,
     pub prefetch: u32,
-    // [sampling] — `None` : la valeur du modèle ; pour la graine, un tirage.
-    pub temperature: Option<f32>,
-    pub top_p: Option<f32>,
-    pub top_k: Option<u32>,
-    pub guidance_scale: Option<f32>,
-    pub repetition_penalty: Option<f32>,
-    pub inference_steps: Option<u32>,
-    pub seed: Option<u64>,
     // [reading]
     pub code_blocks: String,
     pub autoplay: bool,
@@ -56,8 +44,6 @@ pub struct SettingsView {
     pub keep_voice_minutes: i64,
     /// La sortie audio choisie ; vide : celle du système.
     pub output_device: String,
-    // [extra]
-    pub extra: BTreeMap<String, String>,
     /// `[voice.per_language]` : la voix de chaque langue (Kokoro).
     pub voices_by_language: BTreeMap<String, String>,
 }
@@ -69,24 +55,13 @@ impl SettingsView {
             language: c.voice.language.clone(),
             speed: c.voice.speed,
             pitch: c.voice.pitch,
-            energy: c.voice.energy,
-            emotion: c.voice.emotion.clone(),
-            instruction: c.voice.instruction.clone(),
             volume: c.voice.volume,
             engine: c.engine.engine.clone(),
             model_path: c.engine.model_path.clone(),
             family: c.engine.family.clone(),
-            compute: c.engine.compute.clone(),
             threads: c.engine.threads,
             sessions: c.engine.sessions,
             prefetch: c.engine.prefetch,
-            temperature: c.sampling.temperature,
-            top_p: c.sampling.top_p,
-            top_k: c.sampling.top_k,
-            guidance_scale: c.sampling.guidance_scale,
-            repetition_penalty: c.sampling.repetition_penalty,
-            inference_steps: c.sampling.inference_steps,
-            seed: c.sampling.seed,
             code_blocks: c.reading.code_blocks.clone(),
             autoplay: c.reading.autoplay,
             seek_step: c.reading.seek_step,
@@ -95,7 +70,6 @@ impl SettingsView {
             reading_ruler: c.reading.reading_ruler,
             keep_voice_minutes: c.app.keep_voice_minutes,
             output_device: c.app.output_device.clone(),
-            extra: c.extra.clone(),
             voices_by_language: c.voice.per_language.clone(),
         }
     }
@@ -103,31 +77,19 @@ impl SettingsView {
 
 /// Une modification : un champ par réglage, `None` quand il n'est pas touché.
 ///
-/// L'échantillonnage a deux niveaux : `Some(None)` rend la main au modèle
-/// (à un tirage au hasard pour la graine). Le chemin et la famille du modèle
-/// n'y sont pas : ils changent avec `use_voice`.
+/// Le chemin et la famille du modèle n'y sont pas : ils changent avec
+/// `use_voice`.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct SettingsPatch {
     pub voice: Option<String>,
     pub language: Option<String>,
     pub speed: Option<f32>,
     pub pitch: Option<f32>,
-    pub energy: Option<f32>,
-    pub emotion: Option<String>,
-    pub instruction: Option<String>,
     pub volume: Option<f32>,
     pub engine: Option<String>,
-    pub compute: Option<String>,
     pub threads: Option<u32>,
     pub sessions: Option<u32>,
     pub prefetch: Option<u32>,
-    pub temperature: Option<Option<f32>>,
-    pub top_p: Option<Option<f32>>,
-    pub top_k: Option<Option<u32>>,
-    pub guidance_scale: Option<Option<f32>>,
-    pub repetition_penalty: Option<Option<f32>>,
-    pub inference_steps: Option<Option<u32>>,
-    pub seed: Option<Option<u64>>,
     pub code_blocks: Option<String>,
     pub autoplay: Option<bool>,
     pub seek_step: Option<u32>,
@@ -136,10 +98,6 @@ pub struct SettingsPatch {
     pub reading_ruler: Option<bool>,
     pub keep_voice_minutes: Option<i64>,
     pub output_device: Option<String>,
-    /// Options libres posées ou remplacées.
-    pub extra_set: Vec<(String, String)>,
-    /// Options libres retirées.
-    pub extra_remove: Vec<String>,
     /// La voix d'une langue : `("en", "am_fenrir")`.
     pub voice_for_language: Option<(String, String)>,
 }
@@ -157,22 +115,11 @@ impl SettingsPatch {
         set(&mut c.voice.language, &self.language);
         set(&mut c.voice.speed, &self.speed);
         set(&mut c.voice.pitch, &self.pitch);
-        set(&mut c.voice.energy, &self.energy);
-        set(&mut c.voice.emotion, &self.emotion);
-        set(&mut c.voice.instruction, &self.instruction);
         set(&mut c.voice.volume, &self.volume);
         set(&mut c.engine.engine, &self.engine);
-        set(&mut c.engine.compute, &self.compute);
         set(&mut c.engine.threads, &self.threads);
         set(&mut c.engine.sessions, &self.sessions);
         set(&mut c.engine.prefetch, &self.prefetch);
-        set(&mut c.sampling.temperature, &self.temperature);
-        set(&mut c.sampling.top_p, &self.top_p);
-        set(&mut c.sampling.top_k, &self.top_k);
-        set(&mut c.sampling.guidance_scale, &self.guidance_scale);
-        set(&mut c.sampling.repetition_penalty, &self.repetition_penalty);
-        set(&mut c.sampling.inference_steps, &self.inference_steps);
-        set(&mut c.sampling.seed, &self.seed);
         set(&mut c.reading.code_blocks, &self.code_blocks);
         set(&mut c.reading.autoplay, &self.autoplay);
         set(&mut c.reading.seek_step, &self.seek_step);
@@ -183,12 +130,6 @@ impl SettingsPatch {
         set(&mut c.app.output_device, &self.output_device);
         if let Some((language, voice)) = &self.voice_for_language {
             c.voice.per_language.insert(language.clone(), voice.clone());
-        }
-        for (key, value) in &self.extra_set {
-            c.extra.insert(key.clone(), value.clone());
-        }
-        for key in &self.extra_remove {
-            c.extra.remove(key);
         }
     }
 }
@@ -237,7 +178,7 @@ impl SettingsEffect {
         voice.speed = after.voice.speed;
         voice.per_language = after.voice.per_language.clone();
         let heard = before.tts_params_in(language).voice != after.tts_params_in(language).voice;
-        if voice != after.voice || heard || before.sampling != after.sampling || before.extra != after.extra {
+        if voice != after.voice || heard {
             return Self::Resynthesize;
         }
         if before.voice.volume != after.voice.volume || before.voice.speed != after.voice.speed {
@@ -292,9 +233,6 @@ pub struct ModelCapabilities {
     pub voices: Vec<VoiceChoice>,
     pub languages: Vec<String>,
     pub honoured: Vec<String>,
-    /// Le modèle ne parle qu'en clonant un WAV. Connu une fois la voix
-    /// chargée seulement : faux avant.
-    pub requires_reference: bool,
 }
 
 /// Décrit un paquet ; `active_path` est le chemin du modèle en place.
@@ -455,7 +393,6 @@ impl Reader {
                 .collect(),
             languages: models::languages_for_family(&family).into_iter().map(String::from).collect(),
             honoured: models::honoured_options(&family).iter().map(|o| o.to_string()).collect(),
-            requires_reference: self.engine.as_ref().is_some_and(|e| e.requires_reference()),
             family,
         }
     }
@@ -642,7 +579,6 @@ mod tests {
         assert_eq!(supertonic.family, "supertonic");
         assert!(supertonic.voices.is_empty());
         assert!(supertonic.honoured.is_empty());
-        assert!(!supertonic.requires_reference);
 
         // Famille inconnue : rien n'est affirmé.
         let unknown = reader_on("").capabilities();
@@ -736,11 +672,6 @@ mod tests {
         if Config::default().engine.threads == 1 { 2 } else { 1 }
     }
 
-    /// Un calcul sûrement différent du défaut (« cpu » sous Linux, « metal » sous macOS).
-    fn other_compute() -> String {
-        if Config::default().engine.compute == "cpu" { "metal".into() } else { "cpu".into() }
-    }
-
     fn effect_of(change: impl FnOnce(&mut Config)) -> SettingsEffect {
         let before = Config::default();
         let mut after = before.clone();
@@ -756,22 +687,11 @@ mod tests {
             language: Some("en".into()),
             speed: Some(1.4),
             pitch: Some(0.2),
-            energy: Some(1.3),
-            emotion: Some("calme".into()),
-            instruction: Some("posé".into()),
             volume: Some(0.6),
             engine: Some("system".into()),
-            compute: Some(other_compute()),
             threads: Some(3),
             sessions: Some(2),
             prefetch: Some(9),
-            temperature: Some(Some(0.7)),
-            top_p: Some(Some(0.9)),
-            top_k: Some(Some(40)),
-            guidance_scale: Some(Some(3.5)),
-            repetition_penalty: Some(Some(1.2)),
-            inference_steps: Some(Some(12)),
-            seed: Some(Some(42)),
             code_blocks: Some("skip".into()),
             autoplay: Some(true),
             seek_step: Some(7),
@@ -780,8 +700,6 @@ mod tests {
             reading_ruler: Some(false),
             keep_voice_minutes: Some(30),
             output_device: Some("Casque".into()),
-            extra_set: vec![("cfg_scale".into(), "3".into())],
-            extra_remove: vec![],
             voice_for_language: Some(("en".into(), "am_fenrir".into())),
         };
         let expected = SettingsView {
@@ -789,24 +707,13 @@ mod tests {
             language: "en".into(),
             speed: 1.4,
             pitch: 0.2,
-            energy: 1.3,
-            emotion: "calme".into(),
-            instruction: "posé".into(),
             volume: 0.6,
             engine: "system".into(),
             model_path: String::new(),
             family: String::new(),
-            compute: other_compute(),
             threads: 3,
             sessions: 2,
             prefetch: 9,
-            temperature: Some(0.7),
-            top_p: Some(0.9),
-            top_k: Some(40),
-            guidance_scale: Some(3.5),
-            repetition_penalty: Some(1.2),
-            inference_steps: Some(12),
-            seed: Some(42),
             code_blocks: "skip".into(),
             autoplay: true,
             seek_step: 7,
@@ -815,20 +722,10 @@ mod tests {
             reading_ruler: false,
             keep_voice_minutes: 30,
             output_device: "Casque".into(),
-            extra: BTreeMap::from([("cfg_scale".to_string(), "3".to_string())]),
             voices_by_language: BTreeMap::from([("en".to_string(), "am_fenrir".to_string())]),
         };
         assert_eq!(r.apply_patch(&patch, Instant::now()), expected);
         assert_eq!(r.settings(), expected);
-        // Retirer une option libre, rendre la main au modèle.
-        let back = SettingsPatch {
-            temperature: Some(None),
-            extra_remove: vec!["cfg_scale".into()],
-            ..Default::default()
-        };
-        let applied = r.apply_patch(&back, Instant::now());
-        assert_eq!(applied.temperature, None);
-        assert!(applied.extra.is_empty());
     }
 
     #[test]
@@ -862,12 +759,9 @@ mod tests {
         assert_eq!(effect_of(|c| c.voice.speed = 1.5), Immediate, "la vitesse s'applique au son");
         assert_eq!(effect_of(|c| c.voice.voice = "F1".into()), Resynthesize);
         assert_eq!(effect_of(|c| c.voice.language = "en".into()), Reparse, "la normalisation suit la langue");
-        assert_eq!(effect_of(|c| c.sampling.temperature = Some(0.5)), Resynthesize);
-        assert_eq!(effect_of(|c| c.sampling.seed = Some(1)), Resynthesize);
-        assert_eq!(effect_of(|c| { c.extra.insert("k".into(), "v".into()); }), Resynthesize);
+        assert_eq!(effect_of(|c| c.voice.pitch = 0.5), Resynthesize);
         assert_eq!(effect_of(|c| c.reading.code_blocks = "skip".into()), Reparse);
         assert_eq!(effect_of(|c| c.engine.engine = "system".into()), Reload);
-        assert_eq!(effect_of(|c| c.engine.compute = other_compute()), Reload);
         assert_eq!(effect_of(|c| c.engine.threads = other_threads()), Reload);
         assert_eq!(effect_of(|c| c.engine.sessions = 3), Reload);
         assert_eq!(effect_of(|c| c.engine.prefetch = 9), Reload);
@@ -882,7 +776,7 @@ mod tests {
         let mut config = Config::default();
         config.reading.code_blocks = "lire".into();
         config.voice.language = "ja".into();
-        config.engine.compute = "cuda".into();
+        config.engine.family = "maison".into();
         config.app.keep_voice_minutes = 7;
         let mut r = Reader::new(
             config,
@@ -897,7 +791,7 @@ mod tests {
         let after = r.settings();
         assert_eq!(after.code_blocks, "lire");
         assert_eq!(after.language, "ja");
-        assert_eq!(after.compute, "cuda");
+        assert_eq!(after.family, "maison");
         assert_eq!(after.keep_voice_minutes, 7);
         assert_eq!(after.line_spacing, 2);
     }
@@ -912,8 +806,6 @@ mod tests {
                 threads: Some(0),
                 speed: Some(9.0),
                 volume: Some(-1.0),
-                temperature: Some(Some(f32::NAN)),
-                top_k: Some(Some(900)),
                 ..Default::default()
             },
             Instant::now(),
@@ -923,8 +815,6 @@ mod tests {
         assert_eq!(applied.threads, 1);
         assert_eq!(applied.speed, 3.0);
         assert_eq!(applied.volume, 0.0);
-        assert_eq!(applied.temperature, None);
-        assert_eq!(applied.top_k, Some(200));
     }
 
     #[test]
@@ -978,10 +868,10 @@ mod tests {
         let t0 = Instant::now();
         r.open_text("Un. Deux.", "a", t0);
         r.rest();
-        r.apply_patch(&SettingsPatch { compute: Some(other_compute()), ..Default::default() }, t0);
+        r.apply_patch(&SettingsPatch { threads: Some(other_threads()), ..Default::default() }, t0);
         assert_eq!(loads.load(Ordering::SeqCst), 1, "rien ne se charge au repos");
         assert!(r.is_resting());
-        assert_eq!(r.config().engine.compute, other_compute());
+        assert_eq!(r.config().engine.threads, other_threads());
     }
 
     #[test]

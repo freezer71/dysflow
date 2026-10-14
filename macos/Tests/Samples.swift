@@ -5,8 +5,8 @@ extension VoiceModel {
     static func sample(id: String, name: String = "Modèle", bytes: UInt64 = 300_000_000,
                        installed: Bool = true, active: Bool = false) -> VoiceModel {
         VoiceModel(id: id, name: name, bytes: bytes, installed: installed, active: active,
-                   recommended: false, summary: "Rapide et léger.", family: "supertonic",
-                   precision: "f16", languagesLabel: "31 langues, dont le français",
+                   recommended: false, summary: "Rapide et léger.", family: "kokoro",
+                   precision: "int8", languagesLabel: "français, anglais",
                    languages: ["fr", "en"], pace: "Lecture fluide.", voicesLabel: "",
                    licenses: "")
     }

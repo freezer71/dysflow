@@ -2,20 +2,9 @@
 
 /// Capacités relevées sur `models::honoured_options`.
 enum Capabilities {
-    static let supertonic = ModelCapabilities(
-        family: "supertonic",
-        voices: [VoiceChoice(id: "M1", label: "M1 · masculine 1", language: ""),
-                 VoiceChoice(id: "F2", label: "F2 · féminine 2", language: "")],
-        languages: ["fr", "en"],
-        honoured: ["voice", "language", "speaking_rate", "seed", "num_inference_steps"],
-        requiresReference: false)
-    static let magpie = ModelCapabilities(
-        family: "magpie_tts",
-        voices: [VoiceChoice(id: "Aria", label: "Aria", language: "")],
-        languages: ["fr", "en", "de"],
-        honoured: ["voice", "voice_id", "speaker", "language", "temperature", "top_k",
-                   "guidance_scale", "seed"],
-        requiresReference: false)
+    /// Aucun modèle : la voix du système, sans voix nommée.
+    static let system = ModelCapabilities(
+        family: "", voices: [], languages: ["fr", "en"], honoured: [])
     static let kokoro = ModelCapabilities(
         family: "kokoro",
         voices: [VoiceChoice(id: "p-fenrir60", label: "p-fenrir60 · française, recommandée", language: "fr"),
@@ -23,8 +12,7 @@ enum Capabilities {
                  VoiceChoice(id: "am_fenrir", label: "am_fenrir · américaine, homme", language: "en"),
                  VoiceChoice(id: "af_heart", label: "af_heart · américaine, femme", language: "en")],
         languages: ["fr", "en"],
-        honoured: ["voice", "language"],
-        requiresReference: false)
+        honoured: ["voice", "language"])
 }
 
 /// Un moteur pour les tests : il garde les patchs, borne l'interlignage
@@ -32,7 +20,7 @@ enum Capabilities {
 @MainActor
 final class FakeSettingsBackend: SettingsBackend {
     var stored = SettingsView.defaults
-    var capabilities = Capabilities.supertonic
+    var capabilities = Capabilities.system
     private(set) var patches: [SettingsPatch] = []
     private(set) var log: [String] = []
     /// Message de l'erreur rendue par la prochaine écriture.
@@ -107,7 +95,7 @@ final class GatedSettingsBackend: SettingsBackend {
         if gateLoads { await withCheckedContinuation { loadGates.append($0) } }
         return snapshot
     }
-    func loadCapabilities() async -> ModelCapabilities { Capabilities.supertonic }
+    func loadCapabilities() async -> ModelCapabilities { Capabilities.system }
 
     func updateSettings(_ patch: SettingsPatch) async throws -> SettingsView {
         running += 1

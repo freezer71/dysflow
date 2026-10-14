@@ -33,10 +33,8 @@ final class SettingsStore {
 
     private(set) var values = SettingsView.defaults
     private(set) var capabilities = ModelCapabilities(family: "", voices: [], languages: [],
-                                                      honoured: [], requiresReference: false)
+                                                      honoured: [])
     private(set) var loaded = false
-    /// Afficher aussi les réglages que le modèle actif ignore.
-    var showIgnored = false
     /// La dernière écriture refusée ; le réglage reste affiché.
     var error: String? { writeError.text }
     /// Le refus du dernier « Écouter ».
@@ -185,10 +183,6 @@ final class SettingsStore {
     }
 
     var isDragging: Bool { dragging }
-
-    func isIgnored(_ key: SettingKey) -> Bool { key.isIgnored(honoured: capabilities.honoured) }
-
-    func isShown(_ key: SettingKey) -> Bool { showIgnored || !isIgnored(key) }
 
     /// La voix d'une langue (Kokoro) : l'écran suit, l'écriture après la pause.
     func setVoice(_ voice: String, language: String) {

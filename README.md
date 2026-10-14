@@ -337,24 +337,22 @@ en cours de lecture :
 | Rubrique | Contenu |
 |---|---|
 | **Modèles** | Installer, choisir, supprimer. Taille, langues, espace libre. |
-| **Voix** | Voix, vitesse, volume, langue. |
-| **Échantillonnage** | Température, top-p, top-k, guidage, étapes, graine. |
+| **Voix** | Voix, vitesse, hauteur, volume, langue. |
 | **Lecture** | Largeur de colonne, interlignage, règle, blocs de code, pas d'avance. |
-| **Moteur** | Moteur, backend, threads, sessions, préchargement, modèle. |
+| **Moteur** | Moteur, threads, sessions, préchargement, modèle. |
 
 Le menu porte l'état de chaque rubrique en face de son nom — modèles installés,
 voix et débit retenus, moteur chargé — pour ne pas avoir à l'ouvrir pour le
 savoir.
 
 L'écran fonctionne **par pages**, jamais en colonnes côte à côte. Il s'ouvre sur
-un menu qui n'affiche que les cinq rubriques et leur état :
+un menu qui n'affiche que les quatre rubriques et leur état :
 
 ```
    ▸ 1  Modèles            3 installés
      2  Voix               Aria · 1.00×
-     3  Échantillonnage    défauts
-     4  Lecture            plein écran · announce
-     5  Moteur             kokoro
+     3  Lecture            plein écran · announce
+     4  Moteur             kokoro
 ```
 
 Un chiffre ouvre sa rubrique en plein écran ; `Échap` ramène au menu, `Échap`
@@ -362,7 +360,7 @@ encore ferme l'écran. Les flèches n'ont donc qu'un sens à la fois.
 
 | Touche | Effet |
 |---|---|
-| `1` … `5` | Ouvrir une rubrique directement |
+| `1` … `4` | Ouvrir une rubrique directement |
 | `↑` `↓` | Se déplacer dans la liste |
 | `Entrée` | Ouvrir · éditer · installer · choisir |
 | `←` `→` | Modifier une valeur |
@@ -372,8 +370,8 @@ encore ferme l'écran. Les flèches n'ont donc qu'un sens à la fois.
 | `w` | Enregistrer |
 
 **Les réglages inertes sont masqués par défaut.** Kokoro ne lit que la voix
-et la langue : les sept réglages d'échantillonnage n'agissent pas sur lui. Une
-ligne discrète dit combien sont cachés, et `a` les rend visibles, marqués
+et la langue : la hauteur, qui ne règle que la voix du système, n'agit pas sur
+lui. Une ligne discrète dit combien sont cachés, et `a` les rend visibles, marqués
 `(ignoré par ce modèle)`. Un réglage marqué inerte le dit aussi dans son
 explication, au lieu de décrire ce qu'il ferait s'il agissait.
 
@@ -390,27 +388,20 @@ par `sillon --write-config`.
 engine = "auto"           # auto | system
 model_path = "~/Library/Application Support/sillon/models/kokoro/kokoro-v1_0.safetensors"
 family = "kokoro"
-compute = "metal"         # cpu | metal | cuda | vulkan
-threads = 8
+threads = 8               # Kokoro au terminal (ONNX Runtime), borné à 4
 sessions = 0              # synthèses simultanées ; 0 = ce que la famille demande
 prefetch = 6              # phrases préparées en avance
 
 [voice]
-voice = ""                # préréglage, ou chemin d'un WAV à cloner
-language = "fr"
+voice = ""
+language = "auto"         # auto | fr | en…
 speed = 1.0
-pitch = 0.0
-energy = 1.0
-emotion = ""              # transmis en StyleCondition::emotion
-instruction = ""          # consigne de style en langage naturel
+pitch = 0.0               # voix du système seulement
 volume = 1.0
 
-[sampling]
-temperature = 0.7
-top_p = 0.9
-guidance_scale = 3.0
-inference_steps = 16
-seed = 42
+[voice.per_language]      # la voix Kokoro de chaque langue
+fr = "p-fenrir60"
+en = "af_bella"
 
 [reading]
 code_blocks = "announce"  # announce | skip | read
@@ -425,14 +416,15 @@ keep_voice_minutes = 10   # voix gardée chargée après la lecture ; -1 = toujo
 output_device = ""        # sortie audio par son nom ; "" = celle du système.
                           # Choisie, le son n'en sort jamais : débranchée, la
                           # lecture se met en pause au lieu de passer ailleurs.
-
-# Tout paramètre propre à une famille, transmis tel quel au modèle.
-[extra]
-cfg_scale = "2.5"
 ```
 
+Les sections `[sampling]` et `[extra]`, et les clés `compute`, `energy`,
+`emotion` et `instruction`, servaient aux modèles retirés le 14 octobre 2026 :
+une configuration qui les porte encore s'ouvre sans erreur, et elles
+disparaissent au prochain enregistrement.
+
 Les mêmes réglages existent en ligne de commande (`--voice`, `--speed`,
-`--emotion`, `--instruction`, `--set cle=valeur`…). Voir `sillon --help`.
+`--pitch`, `--language`, `--sessions`…). Voir `sillon --help`.
 
 ## Architecture
 

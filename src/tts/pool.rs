@@ -530,10 +530,6 @@ impl Synthesizer {
     }
 
     /// Vrai si le moteur exige un WAV de référence pour parler.
-    pub fn requires_reference(&self) -> bool {
-        self.shared.engine.requires_reference()
-    }
-
     /// Le moteur, pour ouvrir une session hors de l'ordonnanceur.
     ///
     /// Sert aux aperçus : ils doivent parler avec le même modèle et les mêmes

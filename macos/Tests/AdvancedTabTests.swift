@@ -2,32 +2,15 @@ import XCTest
 @testable import Sillon
 
 final class AdvancedTabTests: XCTestCase {
-    func testEnginesAndComputeAreNamedAndKeepAHandWrittenValue() {
+    func testEnginesAreNamedAndKeepAHandWrittenValue() {
         XCTAssertEqual(AdvancedTab.engineOptions(current: "auto").map(\.title),
                        ["Automatique", "Voix du système"])
-        XCTAssertEqual(AdvancedTab.computeOptions(current: "metal").map(\.value), ["metal", "cpu"])
-        XCTAssertEqual(AdvancedTab.computeOptions(current: "cuda").map(\.value), ["metal", "cpu", "cuda"])
+        XCTAssertEqual(AdvancedTab.engineOptions(current: "maison").map(\.value), ["auto", "system", "maison"])
     }
 
     func testZeroSessionsMeansTheModelDecides() {
         XCTAssertEqual(AdvancedTab.sessionsText(0), "Sessions : automatique")
         XCTAssertEqual(AdvancedTab.sessionsText(3), "Sessions : 3")
-    }
-
-    func testAnOptionIsAddedReplacedOrRefused() {
-        let one = ExtraOptions.adding(key: " cfg_scale ", value: " 3 ", to: [])
-        XCTAssertEqual(one, [ExtraOption(key: "cfg_scale", value: "3")])
-        let replaced = ExtraOptions.adding(key: "cfg_scale", value: "4", to: one ?? [])
-        XCTAssertEqual(replaced, [ExtraOption(key: "cfg_scale", value: "4")])
-        XCTAssertNil(ExtraOptions.adding(key: "  ", value: "1", to: []), "clé vide")
-        XCTAssertNil(ExtraOptions.adding(key: "a=b", value: "1", to: []), "« = » dans la clé")
-        XCTAssertEqual(ExtraOptions.removing("cfg_scale", from: replaced ?? []), [])
-    }
-
-    func testReplacingKeepsThePlaceAndNoKeyIsDuplicated() {
-        let start = [ExtraOption(key: "a", value: "1"), ExtraOption(key: "b", value: "2")]
-        let next = ExtraOptions.adding(key: "a", value: "9", to: start)
-        XCTAssertEqual(next, [ExtraOption(key: "a", value: "9"), ExtraOption(key: "b", value: "2")])
     }
 }
 
@@ -80,13 +63,13 @@ final class AdvancedStoreSafetyTests: XCTestCase {
         await store.load()
         store.set(\.threads, 6, reloadsVoice: true)
         try await Task.sleep(for: .milliseconds(100))
-        store.set(\.topK, 40)
+        store.set(\.lineSpacing, 2)
         try await Task.sleep(for: .milliseconds(200))
         XCTAssertTrue(backend.patches.isEmpty, "pas de rechargement en pleine rafale")
         let sent = await eventuallyTrue { backend.patches.count == 1 }
         XCTAssertTrue(sent)
         XCTAssertEqual(backend.patches.first?.threads, 6)
-        XCTAssertEqual(backend.patches.first?.topK, .value(value: 40))
+        XCTAssertEqual(backend.patches.first?.lineSpacing, 2)
     }
 
     func testFlushStillSendsAtOnceDuringTheEnginePause() async {

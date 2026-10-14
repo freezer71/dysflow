@@ -382,35 +382,18 @@ pub struct BookmarkView {
 }
 
 #[derive(uniffi::Record, Clone)]
-pub struct ExtraOption {
-    pub key: String,
-    pub value: String,
-}
-
-#[derive(uniffi::Record, Clone)]
 pub struct SettingsView {
     pub voice: String,
     pub language: String,
     pub speed: f32,
     pub pitch: f32,
-    pub energy: f32,
-    pub emotion: String,
-    pub instruction: String,
     pub volume: f32,
     pub engine: String,
     pub model_path: String,
     pub family: String,
-    pub compute: String,
     pub threads: u32,
     pub sessions: u32,
     pub prefetch: u32,
-    pub temperature: Option<f32>,
-    pub top_p: Option<f32>,
-    pub top_k: Option<u32>,
-    pub guidance_scale: Option<f32>,
-    pub repetition_penalty: Option<f32>,
-    pub inference_steps: Option<u32>,
-    pub seed: Option<u64>,
     pub code_blocks: String,
     pub autoplay: bool,
     pub seek_step: u32,
@@ -420,28 +403,7 @@ pub struct SettingsView {
     pub keep_voice_minutes: i64,
     /// La sortie audio choisie ; vide : celle du système.
     pub output_device: String,
-    pub extra: Vec<ExtraOption>,
     pub voices_by_language: Vec<LanguageVoice>,
-}
-
-/// Un réglage d'échantillonnage : la valeur du modèle, ou une valeur posée.
-#[derive(uniffi::Enum, Clone)]
-pub enum SamplingFloat {
-    Model,
-    Value { value: f32 },
-}
-
-#[derive(uniffi::Enum, Clone)]
-pub enum SamplingInt {
-    Model,
-    Value { value: u32 },
-}
-
-/// La graine : un tirage au hasard, ou une valeur fixe.
-#[derive(uniffi::Enum, Clone)]
-pub enum SamplingSeed {
-    Random,
-    Value { value: u64 },
 }
 
 /// Une modification : `None` pour un réglage non touché.
@@ -451,22 +413,11 @@ pub struct SettingsPatch {
     pub language: Option<String>,
     pub speed: Option<f32>,
     pub pitch: Option<f32>,
-    pub energy: Option<f32>,
-    pub emotion: Option<String>,
-    pub instruction: Option<String>,
     pub volume: Option<f32>,
     pub engine: Option<String>,
-    pub compute: Option<String>,
     pub threads: Option<u32>,
     pub sessions: Option<u32>,
     pub prefetch: Option<u32>,
-    pub temperature: Option<SamplingFloat>,
-    pub top_p: Option<SamplingFloat>,
-    pub top_k: Option<SamplingInt>,
-    pub guidance_scale: Option<SamplingFloat>,
-    pub repetition_penalty: Option<SamplingFloat>,
-    pub inference_steps: Option<SamplingInt>,
-    pub seed: Option<SamplingSeed>,
     pub code_blocks: Option<String>,
     pub autoplay: Option<bool>,
     pub seek_step: Option<u32>,
@@ -475,8 +426,6 @@ pub struct SettingsPatch {
     pub reading_ruler: Option<bool>,
     pub keep_voice_minutes: Option<i64>,
     pub output_device: Option<String>,
-    pub extra_set: Vec<ExtraOption>,
-    pub extra_remove: Vec<String>,
     /// La voix d'une langue (Kokoro : une voix par langue).
     pub voice_for_language: Option<LanguageVoice>,
 }
@@ -495,7 +444,6 @@ pub struct ModelCapabilities {
     pub voices: Vec<VoiceChoice>,
     pub languages: Vec<String>,
     pub honoured: Vec<String>,
-    pub requires_reference: bool,
 }
 
 #[derive(uniffi::Record)]
@@ -673,7 +621,6 @@ impl SillonReader {
                         .collect(),
                     languages: c.languages,
                     honoured: c.honoured,
-                    requires_reference: c.requires_reference,
                 }
             })
             .unwrap_or(ModelCapabilities {
@@ -681,7 +628,6 @@ impl SillonReader {
                 voices: Vec::new(),
                 languages: Vec::new(),
                 honoured: Vec::new(),
-                requires_reference: false,
             })
     }
 
@@ -876,24 +822,13 @@ fn settings_of(s: settings::SettingsView) -> SettingsView {
         language: s.language,
         speed: s.speed,
         pitch: s.pitch,
-        energy: s.energy,
-        emotion: s.emotion,
-        instruction: s.instruction,
         volume: s.volume,
         engine: s.engine,
         model_path: s.model_path,
         family: s.family,
-        compute: s.compute,
         threads: s.threads,
         sessions: s.sessions,
         prefetch: s.prefetch,
-        temperature: s.temperature,
-        top_p: s.top_p,
-        top_k: s.top_k,
-        guidance_scale: s.guidance_scale,
-        repetition_penalty: s.repetition_penalty,
-        inference_steps: s.inference_steps,
-        seed: s.seed,
         code_blocks: s.code_blocks,
         autoplay: s.autoplay,
         seek_step: s.seek_step,
@@ -902,11 +837,6 @@ fn settings_of(s: settings::SettingsView) -> SettingsView {
         reading_ruler: s.reading_ruler,
         keep_voice_minutes: s.keep_voice_minutes,
         output_device: s.output_device,
-        extra: s
-            .extra
-            .into_iter()
-            .map(|(key, value)| ExtraOption { key, value })
-            .collect(),
         voices_by_language: s
             .voices_by_language
             .into_iter()
@@ -915,45 +845,17 @@ fn settings_of(s: settings::SettingsView) -> SettingsView {
     }
 }
 
-fn float(v: Option<SamplingFloat>) -> Option<Option<f32>> {
-    v.map(|s| match s {
-        SamplingFloat::Model => None,
-        SamplingFloat::Value { value } => Some(value),
-    })
-}
-
-fn int(v: Option<SamplingInt>) -> Option<Option<u32>> {
-    v.map(|s| match s {
-        SamplingInt::Model => None,
-        SamplingInt::Value { value } => Some(value),
-    })
-}
-
 fn patch_from(p: SettingsPatch) -> settings::SettingsPatch {
     settings::SettingsPatch {
         voice: p.voice,
         language: p.language,
         speed: p.speed,
         pitch: p.pitch,
-        energy: p.energy,
-        emotion: p.emotion,
-        instruction: p.instruction,
         volume: p.volume,
         engine: p.engine,
-        compute: p.compute,
         threads: p.threads,
         sessions: p.sessions,
         prefetch: p.prefetch,
-        temperature: float(p.temperature),
-        top_p: float(p.top_p),
-        top_k: int(p.top_k),
-        guidance_scale: float(p.guidance_scale),
-        repetition_penalty: float(p.repetition_penalty),
-        inference_steps: int(p.inference_steps),
-        seed: p.seed.map(|s| match s {
-            SamplingSeed::Random => None,
-            SamplingSeed::Value { value } => Some(value),
-        }),
         code_blocks: p.code_blocks,
         autoplay: p.autoplay,
         seek_step: p.seek_step,
@@ -962,8 +864,6 @@ fn patch_from(p: SettingsPatch) -> settings::SettingsPatch {
         reading_ruler: p.reading_ruler,
         keep_voice_minutes: p.keep_voice_minutes,
         output_device: p.output_device,
-        extra_set: p.extra_set.into_iter().map(|o| (o.key, o.value)).collect(),
-        extra_remove: p.extra_remove,
         voice_for_language: p.voice_for_language.map(|v| (v.language, v.voice)),
     }
 }
@@ -1170,30 +1070,17 @@ mod tests {
     #[test]
     fn settings_round_trip_through_a_patch_without_touching_disk() {
         let reader = SillonReader::silent();
-        let mut patch = SettingsPatch::default();
-        patch.keep_voice_minutes = Some(5);
-        patch.line_spacing = Some(9);
-        patch.temperature = Some(SamplingFloat::Value { value: 0.7 });
-        patch.extra_set = vec![ExtraOption { key: "cfg_scale".into(), value: "3".into() }];
+        let patch = SettingsPatch { keep_voice_minutes: Some(5), line_spacing: Some(9), ..Default::default() };
         let applied = reader.apply_patch(patch);
         assert_eq!(applied.keep_voice_minutes, 5);
         assert_eq!(applied.line_spacing, 3, "ramené dans les bornes");
-        assert_eq!(applied.temperature, Some(0.7));
-        assert_eq!(applied.extra.len(), 1);
-        let mut back = SettingsPatch::default();
-        back.temperature = Some(SamplingFloat::Model);
-        back.extra_remove = vec!["cfg_scale".into()];
-        let applied = reader.apply_patch(back);
-        assert_eq!(applied.temperature, None);
-        assert!(applied.extra.is_empty());
         assert_eq!(reader.settings().keep_voice_minutes, 5);
     }
 
     #[test]
     fn the_silent_reader_writes_and_erases_nothing() {
         let reader = SillonReader::silent();
-        let mut patch = SettingsPatch::default();
-        patch.seek_step = Some(7);
+        let patch = SettingsPatch { seek_step: Some(7), ..Default::default() };
         assert_eq!(reader.update_settings(patch).expect("rien à écrire").seek_step, 7);
         let err = reader.clear_document_cache().unwrap_err().to_string();
         assert!(err.contains("mode d'essai"), "{err}");
@@ -1216,10 +1103,9 @@ mod tests {
     fn the_defaults_come_from_the_engine_configuration() {
         let d = default_settings();
         let c = Config::default();
-        assert_eq!(d.threads, c.engine.threads as u32);
+        assert_eq!(d.threads, c.engine.threads);
         assert_eq!(d.speed, settings::SettingsView::of(&c).speed);
         assert_eq!(d.line_spacing, settings::SettingsView::of(&c).line_spacing);
-        assert!(d.temperature.is_none() && d.extra.is_empty());
     }
 
     /// Un calcul « étranger » écrit en Rust : deux trames par jeton.
@@ -1297,8 +1183,10 @@ mod tests {
     #[test]
     fn a_voice_per_language_round_trips_and_the_silent_reader_never_migrates() {
         let reader = SillonReader::silent();
-        let mut patch = SettingsPatch::default();
-        patch.voice_for_language = Some(LanguageVoice { language: "en".into(), voice: "am_fenrir".into() });
+        let patch = SettingsPatch {
+            voice_for_language: Some(LanguageVoice { language: "en".into(), voice: "am_fenrir".into() }),
+            ..Default::default()
+        };
         let applied = reader.apply_patch(patch);
         assert_eq!(applied.voices_by_language, [LanguageVoice { language: "en".into(), voice: "am_fenrir".into() }]);
         assert_eq!(reader.migrate_voice(), None, "hors disque : rien ne bouge");

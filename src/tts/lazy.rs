@@ -140,19 +140,8 @@ impl TtsEngine for LazyEngine {
         self.shared.sessions.max(1)
     }
 
-    /// Ne se prononce qu'une fois le modèle chargé.
-    ///
-    /// Tant qu'il charge, répondre « oui » afficherait un avertissement qui
-    /// pourrait se révéler faux ; on attend de savoir.
-    fn requires_reference(&self) -> bool {
-        match &*self.shared.state.locked() {
-            State::Ready(engine) => engine.requires_reference(),
-            _ => false,
-        }
-    }
-
     /// L'annonce ne vaut que pendant le chargement ; une fois chargé, seul le
-    /// moteur réel en décide, comme pour `requires_reference` — tombé sur sa
+    /// moteur réel en décide — tombé sur sa
     /// voix de repli, il ne coupe plus, et l'annonce ne doit pas le contredire.
     /// Après un échec, c'est le repli qui parle : il répond pour lui. Le pool
     /// le redemande à chaque phrase.

@@ -45,7 +45,6 @@ fn where_the_startup_seconds_go() {
     let sessions = settings.sessions.max(1) as usize;
     println!("\n=== configuration ===");
     println!("famille   : {}", settings.family);
-    println!("backend   : {}", settings.backend);
     println!("sessions  : {sessions}");
 
     let quiet = sillon::logging::redirect_stderr();

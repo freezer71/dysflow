@@ -283,19 +283,6 @@ impl App {
         (self.synth, self.player)
     }
 
-    /// Vrai quand le moteur exige un enregistrement de référence et n'en a pas.
-    ///
-    /// Sans ce contrôle, une famille qui ne sait que cloner échoue une fois par
-    /// phrase, et le journal se remplit du même message deux cents fois. Mieux
-    /// vaut le dire une fois, là où l'on peut y remédier.
-    pub fn reference_missing(&self) -> bool {
-        if !self.synth.requires_reference() {
-            return false;
-        }
-        let voice = crate::config::expand_tilde(self.config.voice.voice.trim());
-        voice.is_empty() || !std::path::Path::new(&voice).is_file()
-    }
-
     /// Nom du moteur, tel qu'il doit s'afficher à cet instant.
     pub fn engine_name(&self) -> String {
         self.synth.engine_name()
@@ -1484,7 +1471,6 @@ impl App {
         preview::start(
             &mut self.previewer,
             &mut self.player,
-            self.synth.requires_reference(),
             &self.config,
             language,
             label,
@@ -2192,9 +2178,8 @@ pub(crate) mod tests {
     fn a_text_setting_reloads_the_engine_only_when_it_names_the_model() {
         let mut app = app_reading(DOC);
         let engine = app.synth.engine();
-        app.config_set_text(Field::Instruction, "  lentement ".to_string());
-        assert_eq!(app.config.voice.instruction, "lentement");
-        assert!(Arc::ptr_eq(&engine, &app.synth.engine()), "une consigne ne recharge rien");
+        app.config_set_text(Field::Family, "kokoro".to_string());
+        assert!(!Arc::ptr_eq(&engine, &app.synth.engine()), "la famille nomme le modèle");
     }
 
 

@@ -33,14 +33,6 @@ pub struct Args {
     #[arg(long)]
     pub pitch: Option<f32>,
 
-    /// Intonation demandée au modèle.
-    #[arg(long)]
-    pub emotion: Option<String>,
-
-    /// Consigne de style en langage naturel.
-    #[arg(long)]
-    pub instruction: Option<String>,
-
     /// Langue du texte.
     #[arg(long)]
     pub language: Option<String>,
@@ -57,10 +49,6 @@ pub struct Args {
     #[arg(long)]
     pub family: Option<String>,
 
-    /// Backend de calcul : cpu, metal, cuda, vulkan.
-    #[arg(long)]
-    pub compute: Option<String>,
-
     /// Sessions de synthèse simultanées ; 0 laisse la famille décider.
     #[arg(long)]
     pub sessions: Option<u32>,
@@ -76,10 +64,6 @@ pub struct Args {
     /// Ne pas démarrer la lecture automatiquement.
     #[arg(long)]
     pub no_autoplay: bool,
-
-    /// Option libre transmise au modèle, répétable : --set cle=valeur
-    #[arg(long = "set", value_name = "CLE=VALEUR")]
-    pub set: Vec<String>,
 
     /// Écrit la configuration résultante puis quitte.
     #[arg(long)]
@@ -130,7 +114,7 @@ pub fn prepare(args: &Args) -> Result<Launch> {
     let config_notice_is_none = config_notice.is_none();
     let mut notices: Vec<String> = config_notice.into_iter().collect();
 
-    apply_overrides(&mut config, args, &mut notices)?;
+    apply_overrides(&mut config, args)?;
 
     if args.show_config {
         print!("{}", toml::to_string_pretty(&config)?);
@@ -431,7 +415,7 @@ fn adopt_installed_model(config: &mut Config, notices: &mut Vec<String>) {
     }
 }
 
-fn apply_overrides(config: &mut Config, args: &Args, notices: &mut Vec<String>) -> Result<()> {
+fn apply_overrides(config: &mut Config, args: &Args) -> Result<()> {
     if let Some(v) = &args.voice {
         config.voice.voice = v.clone();
     }
@@ -440,12 +424,6 @@ fn apply_overrides(config: &mut Config, args: &Args, notices: &mut Vec<String>) 
     }
     if let Some(v) = args.pitch {
         config.voice.pitch = v;
-    }
-    if let Some(v) = &args.emotion {
-        config.voice.emotion = v.clone();
-    }
-    if let Some(v) = &args.instruction {
-        config.voice.instruction = v.clone();
     }
     if let Some(v) = &args.language {
         config.voice.language = v.clone();
@@ -461,9 +439,6 @@ fn apply_overrides(config: &mut Config, args: &Args, notices: &mut Vec<String>) 
     }
     if let Some(v) = &args.family {
         config.engine.family = v.clone();
-    }
-    if let Some(v) = &args.compute {
-        config.engine.compute = v.clone();
     }
     if let Some(v) = args.sessions {
         // Zéro est « auto » : ce que la famille demande.
@@ -482,14 +457,6 @@ fn apply_overrides(config: &mut Config, args: &Args, notices: &mut Vec<String>) 
         config.reading.autoplay = false;
     }
 
-    for entry in &args.set {
-        match entry.split_once('=') {
-            Some((key, value)) => {
-                config.extra.insert(key.trim().to_string(), value.trim().to_string());
-            }
-            None => notices.push(format!("--set ignoré, format attendu cle=valeur : {entry}")),
-        }
-    }
     Ok(())
 }
 
@@ -533,7 +500,7 @@ mod tests {
     /// ce que la ligne de commande garde pour ce lancement, ce qui s'écrit.
     fn migrated_with(args: &Args) -> (Config, Option<Config>, Vec<String>) {
         let mut config = on_supertonic();
-        apply_overrides(&mut config, args, &mut Vec::new()).unwrap();
+        apply_overrides(&mut config, args).unwrap();
         let mut notices = Vec::new();
         let to_save = migrate_for_launch(&mut config, on_supertonic(), args, &mut notices, &[kokoro_int8()], |_| true);
         (config, to_save, notices)
@@ -617,7 +584,7 @@ mod tests {
         let mut config = Config::default();
         config.engine.sessions = 3;
         let args = Args { sessions: Some(0), ..Args::default() };
-        apply_overrides(&mut config, &args, &mut Vec::new()).unwrap();
+        apply_overrides(&mut config, &args).unwrap();
         assert_eq!(config.engine.sessions, 0);
     }
 

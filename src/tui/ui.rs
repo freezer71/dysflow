@@ -857,26 +857,6 @@ fn status_spans(app: &App) -> Vec<Span<'static>> {
     // l'écran de configuration découvrable sans avoir lu de documentation.
     let on_fallback = !models::available().is_empty() && models::first_installed().is_none();
 
-    // Un modèle qui ne sait que cloner et n'a pas de référence ne produira
-    // jamais un son : le dire ici, en permanence, plutôt qu'une fois par phrase
-    // dans un journal que personne n'ouvre.
-    if app.reference_missing() {
-        spans.push(Span::styled(
-            " ⚠ aucune voix de référence ",
-            Style::default().fg(Color::Black).bg(ACCENT).add_modifier(Modifier::BOLD),
-        ));
-        spans.push(Span::styled(" ce modèle clone : ", Style::default().fg(NORMAL)));
-        spans.push(Span::styled(
-            "s",
-            Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
-        ));
-        spans.push(Span::styled(
-            " puis « Voix » pour désigner un WAV ",
-            Style::default().fg(NORMAL),
-        ));
-        return spans;
-    }
-
     // La vue figée est un état, pas un événement : il survit au message qui
     // l'a annoncé, sans quoi on cherche pourquoi le texte ne défile plus.
     if !app.view.is_following() {
@@ -1565,7 +1545,7 @@ fn render_config_footer(frame: &mut Frame, app: &App, area: Rect) {
     let keys = if app.screen.editing.is_some() {
         "Entrée valider · Échap annuler".to_string()
     } else if app.screen.page == Page::Menu {
-        format!("↑↓ choisir · Entrée ouvrir · 1…5 accès direct · t écouter · {exit}")
+        format!("↑↓ choisir · Entrée ouvrir · 1…4 accès direct · t écouter · {exit}")
     } else if app.screen.current_section() == Section::Models {
         "↑↓ modèle · Entrée installer/choisir · t écouter · d d supprimer · Échap menu".to_string()
     } else {
@@ -1582,8 +1562,6 @@ fn render_config_footer(frame: &mut Frame, app: &App, area: Rect) {
     // train de se produire, et il dure le temps qu'on l'écoute.
     let message = if let Some(preview) = app.preview_status() {
         preview
-    } else if app.reference_missing() {
-        "⚠ ce modèle ne parle qu'en clonant : renseignez un WAV dans « Voix »".to_string()
     } else if !app.screen.notice.is_empty() {
         app.screen.notice.clone()
     } else if !app.status().is_empty() {

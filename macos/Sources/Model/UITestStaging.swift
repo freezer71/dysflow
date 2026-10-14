@@ -19,7 +19,7 @@ enum UITestStaging {
                      VoiceChoice(id: "af_bella", label: "af_bella · américaine, femme, recommandée", language: "en"),
                      VoiceChoice(id: "am_fenrir", label: "am_fenrir · américaine, homme", language: "en"),
                      VoiceChoice(id: "af_heart", label: "af_heart · américaine, femme", language: "en")],
-            languages: ["fr", "en"], honoured: ["voice", "language"], requiresReference: false)
+            languages: ["fr", "en"], honoured: ["voice", "language"])
     }
 
     static func staging(for arguments: [String]) -> ((inout Snapshot) -> Void)? {

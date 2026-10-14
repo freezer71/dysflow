@@ -82,8 +82,8 @@ final class KokoroWarmUpTests: XCTestCase {
         XCTAssertEqual(KokoroWarmUp.modelDirectory(settings: settings), "/m/kokoro")
         settings.modelPath = "/m/kokoro/model_quantized.onnx"
         XCTAssertNil(KokoroWarmUp.modelDirectory(settings: settings))
-        settings.family = "supertonic"
-        settings.modelPath = "/m/supertonic/supertonic-3-f16.gguf"
+        settings.family = ""
+        settings.modelPath = ""
         XCTAssertNil(KokoroWarmUp.modelDirectory(settings: settings))
     }
 

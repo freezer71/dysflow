@@ -70,22 +70,6 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertTrue(backend.patches.isEmpty)
     }
 
-    /// Supertonic → MagpieTTS : température apparaît, top-p reste ignoré.
-    func testIgnoredSettingsFollowTheActiveModel() async {
-        let backend = FakeSettingsBackend()
-        let store = await loadedStore(backend)
-        XCTAssertFalse(store.isShown(.temperature))
-        XCTAssertTrue(store.isIgnored(.topP))
-        store.showIgnored = true
-        XCTAssertTrue(store.isShown(.temperature), "montré sur demande")
-        store.showIgnored = false
-        backend.capabilities = Capabilities.magpie
-        await store.reloadCapabilities()
-        XCTAssertTrue(store.isShown(.temperature))
-        XCTAssertTrue(store.isShown(.topK))
-        XCTAssertTrue(store.isShown(.guidance))
-    }
-
     func testTheValueShownIsTheOneApplied() async {
         let backend = FakeSettingsBackend()
         let store = await loadedStore(backend)
@@ -120,13 +104,12 @@ final class SettingsStoreTests: XCTestCase {
     }
 
     /// Même règle pour chaque curseur qui resynthétise : une seule écriture au relâchement.
-    func testEverySamplingSliderWritesOnceOnRelease() async throws {
+    func testEveryVoiceSliderWritesOnceOnRelease() async throws {
         let backend = FakeSettingsBackend()
         let store = await loadedStore(backend)
         store.dragChanged(true)
         store.set(\.pitch, 0.5)
-        store.set(\.energy, 1.5)
-        store.set(\.temperature, 0.6)
+        store.set(\.volume, 0.8)
         store.set(\.pitch, 0.7)
         try await Task.sleep(for: .milliseconds(100))
         XCTAssertTrue(backend.patches.isEmpty)
@@ -134,7 +117,7 @@ final class SettingsStoreTests: XCTestCase {
         let sent = await eventuallyTrue { backend.patches.count == 1 }
         XCTAssertTrue(sent)
         XCTAssertEqual(backend.patches.first?.pitch, 0.7)
-        XCTAssertEqual(backend.patches.first?.energy, 1.5)
+        XCTAssertEqual(backend.patches.first?.volume, 0.8)
         try await Task.sleep(for: .milliseconds(100))
         XCTAssertEqual(backend.patches.count, 1)
     }
@@ -153,10 +136,10 @@ final class SettingsStoreTests: XCTestCase {
         let backend = FakeSettingsBackend()
         let store = await loadedStore(backend)
         backend.stored.voice = "Aria"
-        backend.capabilities = Capabilities.magpie
+        backend.capabilities = Capabilities.kokoro
         await store.reload()
         XCTAssertEqual(store.values.voice, "Aria")
-        XCTAssertEqual(store.capabilities.family, "magpie_tts")
+        XCTAssertEqual(store.capabilities.family, "kokoro")
         try await Task.sleep(for: .milliseconds(100))
         XCTAssertTrue(backend.patches.isEmpty)
     }
