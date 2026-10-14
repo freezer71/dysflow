@@ -205,19 +205,6 @@ pub fn prepare(args: &Args) -> Result<Launch> {
     })))
 }
 
-/// Ce qui identifie un document d'une ouverture à l'autre : son chemin entier.
-///
-/// Le nom seul ne suffit pas — deux `spec.pdf` dans deux dossiers se
-/// partageraient positions et signets, et l'un enverrait la lecture de
-/// l'autre n'importe où. Le chemin est résolu pour qu'un même fichier, atteint
-/// par deux chemins, reste un seul document.
-pub fn document_identity(path: &std::path::Path) -> String {
-    std::fs::canonicalize(path)
-        .unwrap_or_else(|_| path.to_path_buf())
-        .to_string_lossy()
-        .into_owned()
-}
-
 /// Le texte d'une source qui en porte un, pour `--to-markdown`.
 ///
 /// Rend `None` pour un flux : il n'y a rien à extraire d'une entrée qui
@@ -254,7 +241,7 @@ fn read_input(
     if args.clip {
         let text = read_clipboard()?;
         let mut builder = builder_for(config, &text, None);
-        for block in input::split_blocks(&text) {
+        for block in crate::doc::blocks::split_blocks(&text) {
             builder.push_block(&block);
         }
         return Ok((builder, None, "presse-papiers".to_string()));
@@ -265,9 +252,9 @@ fn read_input(
             // Un fichier est analysé d'emblée : sommaire et durée sont
             // disponibles dès l'ouverture.
             let text = crate::source::load_with_cache(path, !args.no_cache)?;
-            let identity = document_identity(path);
+            let identity = crate::position::document_identity(path);
             let mut builder = builder_for(config, &text, Some(&identity));
-            for block in input::split_blocks(&text) {
+            for block in crate::doc::blocks::split_blocks(&text) {
                 builder.push_block(&block);
             }
             Ok((builder, None, identity))
@@ -564,7 +551,7 @@ mod tests {
         let b = scratch("b");
         std::fs::write(a.join("spec.pdf"), "x").unwrap();
         std::fs::write(b.join("spec.pdf"), "y").unwrap();
-        assert_ne!(document_identity(&a.join("spec.pdf")), document_identity(&b.join("spec.pdf")));
+        assert_ne!(crate::position::document_identity(&a.join("spec.pdf")), crate::position::document_identity(&b.join("spec.pdf")));
         std::fs::remove_dir_all(&a).ok();
         std::fs::remove_dir_all(&b).ok();
     }
@@ -574,7 +561,7 @@ mod tests {
         let dir = scratch("c");
         std::fs::write(dir.join("notes.md"), "x").unwrap();
         let detour = dir.join("..").join(dir.file_name().unwrap()).join("notes.md");
-        assert_eq!(document_identity(&dir.join("notes.md")), document_identity(&detour));
+        assert_eq!(crate::position::document_identity(&dir.join("notes.md")), crate::position::document_identity(&detour));
         std::fs::remove_dir_all(&dir).ok();
     }
 

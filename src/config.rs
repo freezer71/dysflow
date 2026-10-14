@@ -10,7 +10,6 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use crate::doc::builder::CodePolicy;
-use crate::tts::{EnginePreference, EngineSettings, TtsParams};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
@@ -143,6 +142,22 @@ impl Default for ReadingConfig {
     }
 }
 
+/// Ce qu'un changement de réglage impose au reste de l'application.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Effect {
+    None,
+    /// Régénérer l'audio déjà préparé.
+    Resynthesize,
+    /// Recharger le moteur, donc tout le pipeline de synthèse.
+    ReloadEngine,
+    /// Le découpage du document changerait : effet au prochain lancement.
+    Reparse,
+    /// Ajuster le volume de sortie du delta indiqué.
+    Volume(f32),
+    /// Appliquer la vitesse de la configuration au son, sur-le-champ.
+    Speed,
+}
+
 impl Config {
     /// Emplacement du fichier de configuration.
     pub fn path() -> Option<PathBuf> {
@@ -225,107 +240,12 @@ impl Config {
         crate::text::language::resolve(&self.voice.language, None, None)
     }
 
-    /// Paramètres de synthèse dans la langue par défaut.
-    pub fn tts_params(&self) -> TtsParams {
-        self.tts_params_in(&self.default_language())
-    }
-
-    /// Paramètres de synthèse pour un document dans `language`.
-    pub fn tts_params_in(&self, language: &str) -> TtsParams {
-        let family = &self.engine.family;
-        let voice = if crate::models::voices_follow_language(family) {
-            let code = crate::text::language::Lang::parse(language).map_or(language, |l| l.code());
-            let configured = self.voice.per_language.get(code).map(String::as_str);
-            crate::models::voice_for_language(family, code, configured).to_string()
-        } else {
-            // Hors Kokoro, aucune famille ne nomme plus ses voix : la voix
-            // configurée part telle quelle, sans filtre. Une config Magpie
-            // écrite à la main avec un préréglage étranger (« F1 ») retombe
-            // sur l'erreur « stoll: no conversion » du modèle : accepté, ce
-            // modèle est hors catalogue. Un chemin de WAV sous `~` est
-            // développé : le moteur ne le ferait pas.
-            expand_tilde(self.voice.voice.trim())
-        };
-        TtsParams {
-            voice,
-            language: language.to_string(),
-            pitch_shift: self.voice.pitch.clamp(-1.0, 1.0),
-        }
-    }
-
-    /// Fait suivre la voix quand la famille change.
-    ///
-    /// Seul Kokoro nomme ses voix, une par langue : `voice.voice` reste celle
-    /// de l'ancien modèle, pour qui voudra y revenir, et seules les langues
-    /// sans voix reçoivent la leur. Une voix retirée du catalogue n'est pas
-    /// réécrite : `tts_params_in` la remplace par la voix recommandée de sa
-    /// langue (règle des valeurs non listées). Les autres familles ne nomment
-    /// aucune voix : rien à aligner. Renvoie vrai si quelque chose a changé.
-    pub fn align_voice_with_family(&mut self) -> bool {
-        let family = self.engine.family.clone();
-        if !crate::models::voices_follow_language(&family) {
-            return false;
-        }
-        let mut changed = false;
-        for language in ["fr", "en"] {
-            if !self.voice.per_language.contains_key(language) {
-                let voice = crate::models::default_voice_for_language(&family, language);
-                self.voice.per_language.insert(language.to_string(), voice.to_string());
-                changed = true;
-            }
-        }
-        changed
-    }
-
-    pub fn engine_preference(&self) -> EnginePreference {
-        EnginePreference::parse(&self.engine.engine).unwrap_or(EnginePreference::Auto)
-    }
-
-    pub fn engine_settings(&self) -> EngineSettings {
-        EngineSettings {
-            model_path: expand_tilde(&self.engine.model_path),
-            family: self.engine.family.clone(),
-            threads: self.engine.threads.max(1),
-            sessions: self.sessions(),
-        }
-    }
-
-    /// Sessions de synthèse réellement ouvertes.
-    ///
-    /// Un nombre posé à la main l'emporte ; `0` s'en remet à la famille.
-    pub fn sessions(&self) -> u32 {
-        match self.engine.sessions {
-            0 => crate::models::sessions_for_family(&self.engine.family),
-            n => n,
-        }
-    }
-
     pub fn code_policy(&self) -> CodePolicy {
         CodePolicy::parse(&self.reading.code_blocks).unwrap_or(CodePolicy::Announce)
     }
 }
 
-/// Développe un `~` initial : un chemin littéral `~/...` n'existe pas.
-pub fn expand_tilde(path: &str) -> String {
-    expand_tilde_with(path, dirs::home_dir().as_deref())
-}
-
-/// `expand_tilde` avec un dossier personnel explicite (les tests n'ont pas à
-/// dépendre de celui de la machine).
-pub fn expand_tilde_with(path: &str, home: Option<&std::path::Path>) -> String {
-    let Some(rest) = path.strip_prefix('~') else {
-        return path.to_string();
-    };
-    let Some(home) = home else {
-        return path.to_string();
-    };
-    let rest = rest.trim_start_matches(['/', '\\']);
-    if rest.is_empty() {
-        home.to_string_lossy().into_owned()
-    } else {
-        home.join(rest).to_string_lossy().into_owned()
-    }
-}
+pub use crate::paths::{expand_tilde, expand_tilde_with};
 
 #[cfg(test)]
 mod tests {

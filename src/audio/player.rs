@@ -13,7 +13,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use super::tempo::{SpeedControl, Tempo};
-use crate::tts::PcmBuffer;
+use super::PcmBuffer;
 
 /// Une phrase présente dans la file de sortie.
 #[derive(Debug, Clone)]
@@ -719,7 +719,7 @@ mod tests {
             (0..4800).map(|i| 0.3 * (2.0 * std::f32::consts::PI * 220.0 * i as f32 / SYNTH as f32).sin()).collect();
         match split_at {
             Some(at) => {
-                use crate::tts::pool::{fade_edge, Edge};
+                use crate::audio::pcm::{fade_edge, Edge};
                 let head = Arc::new(fade_edge(PcmBuffer::new(signal[..at].to_vec(), SYNTH, 1), Edge::End));
                 let tail = Arc::new(fade_edge(PcmBuffer::new(signal[at..].to_vec(), SYNTH, 1), Edge::Start));
                 player.enqueue_part(0, &head, head.duration, Duration::ZERO, Duration::ZERO);

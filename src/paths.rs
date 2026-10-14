@@ -117,6 +117,28 @@ fn adopt(base: &Path) -> PathBuf {
     current
 }
 
+/// Développe un `~` initial : un chemin littéral `~/...` n'existe pas.
+pub fn expand_tilde(path: &str) -> String {
+    expand_tilde_with(path, dirs::home_dir().as_deref())
+}
+
+/// `expand_tilde` avec un dossier personnel explicite (les tests n'ont pas à
+/// dépendre de celui de la machine).
+pub fn expand_tilde_with(path: &str, home: Option<&std::path::Path>) -> String {
+    let Some(rest) = path.strip_prefix('~') else {
+        return path.to_string();
+    };
+    let Some(home) = home else {
+        return path.to_string();
+    };
+    let rest = rest.trim_start_matches(['/', '\\']);
+    if rest.is_empty() {
+        home.to_string_lossy().into_owned()
+    } else {
+        home.join(rest).to_string_lossy().into_owned()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

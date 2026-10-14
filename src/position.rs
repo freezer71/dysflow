@@ -11,6 +11,19 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+/// Ce qui identifie un document d'une ouverture à l'autre : son chemin entier.
+///
+/// Le nom seul ne suffit pas — deux `spec.pdf` dans deux dossiers se
+/// partageraient positions et signets, et l'un enverrait la lecture de
+/// l'autre n'importe où. Le chemin est résolu pour qu'un même fichier, atteint
+/// par deux chemins, reste un seul document.
+pub fn document_identity(path: &std::path::Path) -> String {
+    std::fs::canonicalize(path)
+        .unwrap_or_else(|_| path.to_path_buf())
+        .to_string_lossy()
+        .into_owned()
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Position {
     /// Document d'origine, pour ne pas mélanger les lectures.

@@ -4,13 +4,13 @@
 //! renvoie que ceux qu'elle touche (`SettingsPatch`) : rien n'écrase une
 //! valeur changée ailleurs — au clavier, au terminal — entre la lecture et
 //! l'écriture. Chaque modification déclenche l'effet le plus fort de ce qui
-//! a réellement changé, comme l'écran du terminal (`app::config::Effect`).
+//! a réellement changé, comme l'écran du terminal (`config::Effect`).
 
 use anyhow::{anyhow, Result};
 use std::collections::BTreeMap;
 use std::time::Instant;
 
-use crate::app::config::Effect;
+use crate::config::Effect;
 use crate::config::Config;
 use crate::doc::{BlockKind, Document};
 use crate::models::{self, Progress};

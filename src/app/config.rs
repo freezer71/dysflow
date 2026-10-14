@@ -6,7 +6,7 @@
 //! autres réglages de voix en régénérant la synthèse — et `w` les écrit dans
 //! `config.toml` pour les sessions suivantes.
 
-use crate::config::Config;
+use crate::config::{Config, Effect};
 use crate::models;
 
 /// Rubriques de l'écran.
@@ -698,22 +698,6 @@ impl ConfigScreen {
             models::Progress::Running { .. } => None,
         }
     }
-}
-
-/// Ce qu'un changement de réglage impose au reste de l'application.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Effect {
-    None,
-    /// Régénérer l'audio déjà préparé.
-    Resynthesize,
-    /// Recharger le moteur, donc tout le pipeline de synthèse.
-    ReloadEngine,
-    /// Le découpage du document changerait : effet au prochain lancement.
-    Reparse,
-    /// Ajuster le volume de sortie du delta indiqué.
-    Volume(f32),
-    /// Appliquer la vitesse de la configuration au son, sur-le-champ.
-    Speed,
 }
 
 #[cfg(test)]

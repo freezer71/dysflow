@@ -6,6 +6,7 @@
 //! donc valides pour toute la durée de la session, ce dont dépendent le cache
 //! de synthèse et les signets.
 
+pub mod blocks;
 pub mod builder;
 
 pub use builder::DocumentBuilder;

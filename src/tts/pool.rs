@@ -20,6 +20,7 @@ use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
 use super::{Cancel, PcmBuffer, Synthesis, TtsEngine, TtsParams, WordSpan};
+use crate::audio::pcm::{fade_edge, Edge};
 
 /// Phrase à synthétiser.
 #[derive(Debug, Clone)]
@@ -193,45 +194,6 @@ fn split_text_at_word(text: &str, split: Split) -> Option<Split> {
         return None;
     }
     Some(Split { head_text: head.to_string(), tail_text: tail.to_string(), ..split })
-}
-
-/// Bord d'un son à adoucir.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Edge {
-    Start,
-    End,
-}
-
-/// Durée du fondu à la coupe : assez court pour ne pas s'entendre comme
-/// tel, assez long pour ne pas claquer.
-const CUT_FADE: Duration = Duration::from_millis(5);
-
-/// Fondu en cosinus sur `CUT_FADE` au bord `edge`, jusqu'au silence.
-///
-/// Tête et suite passent chacune par leur propre conversion de fréquence,
-/// qui part d'un silence et y retourne : une tête coupée en pleine onde
-/// claquait à la jonction dès que la carte son ne tourne pas à la fréquence
-/// de la synthèse (24 kHz contre 48 kHz, le cas courant sur Mac).
-pub(crate) fn fade_edge(pcm: PcmBuffer, edge: Edge) -> PcmBuffer {
-    let ch = pcm.channels as usize;
-    let frames = pcm.samples.len() / ch;
-    let n = ((pcm.sample_rate as f64 * CUT_FADE.as_secs_f64()) as usize).min(frames);
-    if n == 0 {
-        return pcm;
-    }
-    let mut samples = pcm.samples.to_vec();
-    for k in 0..n {
-        // `k` : distance au bord, en trames ; gain nul au bord même.
-        let gain = 0.5 * (1.0 - (std::f32::consts::PI * k as f32 / n as f32).cos());
-        let frame = match edge {
-            Edge::Start => k,
-            Edge::End => frames - 1 - k,
-        };
-        for sample in &mut samples[frame * ch..(frame + 1) * ch] {
-            *sample *= gain;
-        }
-    }
-    PcmBuffer::new(samples, pcm.sample_rate, pcm.channels)
 }
 
 /// Position des virgules, points-virgules et deux-points qui finissent un

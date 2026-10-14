@@ -122,7 +122,7 @@ fn full_document_pipeline_preserves_every_kind_of_content() {
 #[test]
 fn streamed_input_matches_a_single_pass() {
     use sillon::doc::DocumentBuilder;
-    use sillon::input::BlockAssembler;
+    use sillon::doc::blocks::BlockAssembler;
 
     let mut assembler = BlockAssembler::new();
     let mut builder = DocumentBuilder::new(CodePolicy::Announce);

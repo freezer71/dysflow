@@ -11,7 +11,7 @@ use regex::Regex;
 
 use super::pdf::Page;
 
-/// Assemble des pages en un markdown que `input::split_blocks` sait découper.
+/// Assemble des pages en un markdown que `doc::blocks::split_blocks` sait découper.
 ///
 /// L'ordre compte : les lignes courantes partent avant que les pages ne soient
 /// soudées, et les césures se referment avant qu'on ne juge de la longueur des

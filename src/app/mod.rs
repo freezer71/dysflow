@@ -17,11 +17,13 @@ use crate::bookmark::BookmarkStore;
 use crate::position::PositionStore;
 use crate::config::Config;
 use crate::doc::{Document, DocumentBuilder};
-use crate::input::{BlockAssembler, InputEvent};
+use crate::doc::blocks::BlockAssembler;
+use crate::input::InputEvent;
 use crate::models;
 use crate::tts::preview::{self, Previewer};
 use crate::tts::{self, Synthesizer, TtsEngine, TtsParams};
-use crate::app::config::{ConfigScreen, Effect, Field, Page, Section};
+use crate::app::config::{ConfigScreen, Field, Page, Section};
+use crate::config::Effect;
 use crate::app::pace::Pace;
 use crate::app::search::Search;
 use crate::app::view::ViewAnchor;
@@ -1766,7 +1768,7 @@ pub(crate) mod tests {
 
     pub(crate) fn app_reading(markdown: &str) -> App {
         let mut builder = DocumentBuilder::new(CodePolicy::Announce);
-        for block in crate::input::split_blocks(markdown) {
+        for block in crate::doc::blocks::split_blocks(markdown) {
             builder.push_block(&block);
         }
         let mut config = Config::default();
@@ -1909,7 +1911,7 @@ pub(crate) mod tests {
     fn a_speed_change_keeps_the_synthesized_audio_and_reaches_the_player() {
         let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let mut builder = DocumentBuilder::new(CodePolicy::Announce);
-        for block in crate::input::split_blocks(DOC) {
+        for block in crate::doc::blocks::split_blocks(DOC) {
             builder.push_block(&block);
         }
         let mut config = Config::default();
@@ -1951,7 +1953,7 @@ pub(crate) mod tests {
     #[test]
     fn the_player_starts_at_the_configured_speed() {
         let mut builder = DocumentBuilder::new(CodePolicy::Announce);
-        for block in crate::input::split_blocks(DOC) {
+        for block in crate::doc::blocks::split_blocks(DOC) {
             builder.push_block(&block);
         }
         let mut config = Config::default();
@@ -2055,7 +2057,7 @@ pub(crate) mod tests {
     #[test]
     fn coming_back_to_a_silent_sentence_gives_it_another_chance() {
         let mut builder = DocumentBuilder::new(CodePolicy::Announce);
-        for block in crate::input::split_blocks(DOC) {
+        for block in crate::doc::blocks::split_blocks(DOC) {
             builder.push_block(&block);
         }
         let mut config = Config::default();
@@ -2256,7 +2258,7 @@ pub(crate) mod tests {
         // secondes de terminal muet. Le dire vaut mieux que laisser croire à
         // un blocage.
         let mut builder = DocumentBuilder::new(CodePolicy::Announce);
-        for block in crate::input::split_blocks(DOC) {
+        for block in crate::doc::blocks::split_blocks(DOC) {
             builder.push_block(&block);
         }
         let mut config = Config::default();
