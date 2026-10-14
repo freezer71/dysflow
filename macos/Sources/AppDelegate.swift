@@ -8,7 +8,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     static private(set) var shared: AppDelegate!
 
     /// Lancée par les tests d'interface : lecteur muet, texte d'exemple.
-    let isUITesting = ProcessInfo.processInfo.arguments.contains("--ui-testing")
+    /// Toujours faux dans l'app livrée (Release).
+    let isUITesting = AppDelegate.isUITestLaunch(ProcessInfo.processInfo.arguments)
     /// Hôte des tests unitaires : ni ouverture à la connexion, ni alerte, ni
     /// raccourcis globaux (ils s'inscriraient pour l'app de développement).
     let isUnitTesting = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
@@ -22,7 +23,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// lecteur est muet et n'écrit rien : jamais ~/.config/sillon ni
     /// ~/Library/Application Support/sillon.
     nonisolated static func usesSilentReader(arguments: [String], environment: [String: String]) -> Bool {
-        arguments.contains("--ui-testing") || environment["XCTestConfigurationFilePath"] != nil
+        isUITestLaunch(arguments) || environment["XCTestConfigurationFilePath"] != nil
+    }
+
+    /// `--ui-testing` : la mise en scène des tests d'interface n'existe
+    /// qu'en Debug ; l'app livrée ignore l'argument.
+    nonisolated static func isUITestLaunch(_ arguments: [String]) -> Bool {
+        #if DEBUG
+        arguments.contains("--ui-testing")
+        #else
+        false
+        #endif
     }
     private(set) var model: ReaderModel!
     private(set) var panel: PanelController!
@@ -134,9 +145,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             kokoroCompute = compute
             reader = SillonReader.withKokoro(compute: compute)
         }
+        #if DEBUG || SILLON_MESURE
         // Mode mesure : seul le lecteur et les mesures tournent. Retour avant le
         // modèle, le panneau, les raccourcis, l'ouverture à la connexion et
-        // l'accueil ; sans l'argument, rien ne change.
+        // l'accueil ; sans l'argument, rien ne change. Absent de l'app livrée :
+        // `scripts/measure-macos.sh` construit sa propre copie (SILLON_MESURE).
         if ProcessInfo.processInfo.arguments.contains("--measure-charge"), !isUnitTesting {
             Task { @MainActor [reader = reader!, compute = kokoroCompute] in
                 await Measure.charge(reader: reader, compute: compute)
@@ -151,11 +164,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             return
         }
+        #endif
+        #if DEBUG
+        // Les tests d'interface posent leur mise en scène sur le lecteur : le
+        // modèle n'en sait rien.
+        if isUITesting { reader = UITestStaging.reader(reader, arguments: ProcessInfo.processInfo.arguments) }
+        #endif
         model = ReaderModel(reader: reader)
-        if isUITesting {
-            model.staged = UITestStaging.staging(for: ProcessInfo.processInfo.arguments)
-            model.stagedCapabilities = UITestStaging.capabilities(for: ProcessInfo.processInfo.arguments)
-        }
         model.refresh()
         panel = PanelController(model: model)
         transport = Transport(model: model)

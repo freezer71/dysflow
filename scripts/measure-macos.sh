@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Mesure les seuils de la spec sur Sillon.app construite en Release.
+# Mesure les seuils de la spec sur Sillon.app construite en Release, avec
+# le code de mesure (`build-macos.sh --mesure`, absent de l'app livrée).
 set -euo pipefail
 cd "$(dirname "$0")/.."
-APP=macos/build/Release/Sillon.app
+APP=macos/build/Mesure/Sillon.app
 # Toujours reconstruire (incrémental), sinon on mesure une app périmée.
 CHARGE=0
 CONSTRUIRE=1
@@ -23,7 +24,7 @@ for arg in "$@"; do
 done
 [ "$CHARGE" = 1 ] && [ "$SECOND" = 1 ] && usage
 if [ "$CONSTRUIRE" = 1 ]; then
-    ./scripts/build-macos.sh
+    ./scripts/build-macos.sh --mesure
 fi
 # Filtre de charge : le pilote du banc échantillonne l'app pendant son scénario.
 if [ "$CHARGE" = 1 ]; then

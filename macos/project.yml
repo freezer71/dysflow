@@ -81,6 +81,11 @@ targets:
         INFOPLIST_KEY_CFBundleDisplayName: sillon
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         INFOPLIST_KEY_NSHumanReadableCopyright: ""
+        # `scripts/build-macos.sh --mesure` y met SILLON_MESURE : le code de
+        # mesure (`--measure`) n'entre que dans cette copie, jamais dans
+        # l'app livrée. DEBUG (tests) l'a aussi.
+        SILLON_CONDITIONS: ""
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) $(SILLON_CONDITIONS)
     preBuildScripts:
       - name: Vérifier que le moteur Rust est à jour
         basedOnDependencyAnalysis: false

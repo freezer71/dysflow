@@ -39,12 +39,6 @@ final class ReaderModel {
     /// La préparation des noyaux Metal de Kokoro (`KokoroWarmUp`), observée
     /// par l'onglet Voix.
     @ObservationIgnored let voicePreparation = VoicePreparation()
-    /// Tests d'interface seulement (`UITestStaging`) : ce qui est posé
-    /// sur chaque instantané publié.
-    @ObservationIgnored var staged: ((inout Snapshot) -> Void)?
-    /// Tests d'interface seulement (`UITestStaging.kokoro`) : les capacités
-    /// de Kokoro, pour montrer ses voix sous le lecteur muet.
-    @ObservationIgnored var stagedCapabilities: ModelCapabilities?
 
     init(reader: SillonReader, now: @escaping () -> Date = Date.init,
          frames: FrameSource? = nil) {
@@ -228,8 +222,7 @@ final class ReaderModel {
     }
 
     func refresh() {
-        var next = Self.published(reader.snapshot())
-        staged?(&next)
+        let next = Self.published(reader.snapshot())
         let changed = next != snapshot
         let newDocument = next.revision != snapshot.revision
         let newSection = next.section != snapshot.section
@@ -408,7 +401,6 @@ final class ReaderModel {
     }
     /// Voix, langues et réglages honorés par le modèle actif.
     func loadCapabilities() async -> ModelCapabilities {
-        if let stagedCapabilities { return stagedCapabilities }
         let reader = reader
         return await Task.detached { reader.capabilities() }.value
     }
