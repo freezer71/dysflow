@@ -312,7 +312,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// clavier pour le ⌘C simulé), puis le panneau, sans activer sillon.
     /// `capture` nil : le presse-papiers seul (depuis le menu). En mode
     /// mesure, ni modèle ni panneau : rien à faire (le menu plantait).
-    func read(capture: (() async -> CaptureOutcome)? = nil) async {
+    func read(capture: (@MainActor () async -> CaptureOutcome)? = nil) async {
         guard let model, let panel else { return }
         let pasteboard = SystemPasteboard()
         await readGate.run {

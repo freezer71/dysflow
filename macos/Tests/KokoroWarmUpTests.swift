@@ -62,7 +62,7 @@ final class KokoroWarmUpTests: XCTestCase {
         let defaults = freshDefaults()
         let compute = FakeKokoroCompute()
         let preparation = VoicePreparation()
-        var seen: [Bool] = []
+        nonisolated(unsafe) var seen: [Bool] = []
         withObservationTracking { _ = preparation.isRunning } onChange: { seen.append(true) }
         let task = KokoroWarmUp.runIfNeeded(compute: compute, modelDirectory: "/m/kokoro", version: "1",
                                             defaults: defaults, preparation: preparation)

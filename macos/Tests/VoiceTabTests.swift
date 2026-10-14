@@ -1,6 +1,7 @@
 import XCTest
 @testable import Sillon
 
+@MainActor
 final class VoiceTabTests: XCTestCase {
     func testKokoroOffersOneVoicePerLanguage() {
         let caps = Capabilities.kokoro

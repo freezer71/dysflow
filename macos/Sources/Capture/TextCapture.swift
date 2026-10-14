@@ -25,6 +25,7 @@ enum Veto: Equatable {
 }
 
 /// Une façon d'obtenir le texte que l'utilisateur veut entendre.
+@MainActor
 protocol TextSource {
     func outcome() async -> CaptureOutcome
 }
@@ -244,6 +245,7 @@ struct CopySource: TextSource {
 /// Essaie chaque source dans l'ordre ; la première qui répond l'emporte.
 /// Un veto, ou « rien de sélectionné » répondu par l'application, arrête la
 /// chaîne et revient tel quel : c'est à l'appelant de décider de la suite.
+@MainActor
 struct CaptureChain {
     let sources: [TextSource]
 

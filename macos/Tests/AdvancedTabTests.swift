@@ -1,6 +1,7 @@
 import XCTest
 @testable import Sillon
 
+@MainActor
 final class AdvancedTabTests: XCTestCase {
     func testEnginesAreNamedAndKeepAHandWrittenValue() {
         XCTAssertEqual(AdvancedTab.engineOptions(current: "auto").map(\.title),

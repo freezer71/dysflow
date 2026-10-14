@@ -3,7 +3,7 @@ import Foundation
 /// Écrit la dernière valeur d'une rafale de changements, une écriture à la
 /// fois : un curseur qu'on glisse ne produit pas une écriture par pas.
 @MainActor
-final class Committer<Value: Equatable> {
+final class Committer<Value: Equatable & Sendable> {
     /// Attend une durée. `Task.sleep` en vrai ; les tests passent une horloge
     /// qu'ils avancent eux-mêmes, sans dépendre du temps réel.
     typealias Sleep = @Sendable (Duration) async throws -> Void

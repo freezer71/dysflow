@@ -70,6 +70,7 @@ struct Stub: TextSource {
     func outcome() async -> CaptureOutcome { outcome_ }
 }
 
+@MainActor
 final class TextCaptureTests: XCTestCase {
     func testCopyReadsThenRestoresThePasteboard() async {
         let pb = FakePasteboard()

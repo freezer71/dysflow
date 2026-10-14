@@ -41,6 +41,7 @@ struct PopUpPicker<Value: Hashable>: NSViewRepresentable {
         }
     }
 
+    @MainActor
     final class Coordinator: NSObject {
         var parent: PopUpPicker
         init(_ parent: PopUpPicker) { self.parent = parent }
