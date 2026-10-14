@@ -1604,13 +1604,13 @@ impl App {
         self.skipped.clear();
 
         let previous = std::mem::replace(&mut self.synth, synth);
-        std::thread::spawn(move || drop(previous));
+        crate::sync::spawn_named("sillon-liberation", move || drop(previous));
 
         // L'aperçu doit parler avec le nouveau moteur, pas avec l'ancien. Son
         // arrêt attend la synthèse en cours : hors du thread d'interface, donc.
         self.stop_preview();
         let previous = std::mem::replace(&mut self.previewer, Previewer::new(self.synth.engine()));
-        std::thread::spawn(move || drop(previous));
+        crate::sync::spawn_named("sillon-liberation", move || drop(previous));
 
         self.player.flush();
         self.timings.clear();

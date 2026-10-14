@@ -6,7 +6,6 @@
 
 use std::io::{BufRead, BufReader, Read};
 use std::sync::mpsc::{self, Receiver};
-use std::thread;
 
 /// Message remonté par le lecteur d'entrée.
 pub enum InputEvent {
@@ -18,7 +17,7 @@ pub enum InputEvent {
 /// Lit une source ligne par ligne dans un thread dédié.
 pub fn spawn_reader<R: Read + Send + 'static>(source: R) -> Receiver<InputEvent> {
     let (tx, rx) = mpsc::channel();
-    thread::spawn(move || {
+    crate::sync::spawn_named("sillon-entree", move || {
         let mut reader = BufReader::new(source);
         let mut raw = Vec::new();
         let mut first = true;

@@ -11,7 +11,6 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use std::thread;
 
 /// Un fichier de plus, téléchargé dans le dossier de la famille.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -494,7 +493,7 @@ impl Download {
         let cancel = Arc::new(AtomicBool::new(false));
 
         let worker = (Arc::clone(&received), Arc::clone(&outcome), Arc::clone(&cancel));
-        thread::spawn(move || {
+        crate::sync::spawn_named("sillon-telechargement", move || {
             let (received, outcome, cancel) = worker;
             let mut base = 0u64;
             let mut result = Ok(());

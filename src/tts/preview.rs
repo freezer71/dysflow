@@ -13,7 +13,7 @@
 
 use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
 use std::sync::Arc;
-use std::thread::{self, JoinHandle};
+use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use super::{PcmBuffer, TtsEngine, TtsParams};
@@ -97,7 +97,7 @@ impl Previewer {
     pub fn new(engine: Arc<dyn TtsEngine>) -> Self {
         let (requests, inbox) = mpsc::channel();
         let (outbox, results) = mpsc::channel();
-        let worker = thread::spawn(move || worker(engine, inbox, outbox));
+        let worker = crate::sync::spawn_named("sillon-apercu", move || worker(engine, inbox, outbox));
         Self {
             requests: Some(requests),
             results,
@@ -234,6 +234,7 @@ fn latest(mut request: Request, requests: &Receiver<Request>) -> Request {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::thread;
 
     #[test]
     fn a_regional_english_code_gets_the_english_sample() {

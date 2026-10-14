@@ -267,9 +267,7 @@ impl EnginePreference {
     pub fn parse(value: &str) -> Option<Self> {
         match value.to_ascii_lowercase().as_str() {
             "auto" => Some(EnginePreference::Auto),
-            // audio.cpp n'est plus : une ancienne configuration qui le
-            // demandait prend le modèle configuré, comme `auto`.
-            "audio_cpp" | "audio-cpp" | "audiocpp" => Some(EnginePreference::Auto),
+            // L'ancien `audio_cpp` est ramené à `auto` par `Config::normalised`.
             "system" | "systeme" | "système" => Some(EnginePreference::System),
             _ => None,
         }

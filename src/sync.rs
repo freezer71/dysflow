@@ -6,6 +6,7 @@
 //! instructions (compteurs, files, états publiés) : on reprend la garde.
 
 use std::sync::{Condvar, Mutex, MutexGuard, PoisonError};
+use std::thread::{self, JoinHandle};
 
 pub trait LockExt<T> {
     /// `lock()`, en reprenant un verrou empoisonné.
@@ -27,6 +28,16 @@ impl CondvarExt for Condvar {
     fn wait_locked<'a, T>(&self, guard: MutexGuard<'a, T>) -> MutexGuard<'a, T> {
         self.wait(guard).unwrap_or_else(PoisonError::into_inner)
     }
+}
+
+/// `thread::spawn`, avec un nom : un fil nommé se reconnaît dans un
+/// échantillonnage (Instruments, `sample`) ou dans le message d'une panique.
+pub fn spawn_named<F, T>(name: &str, f: F) -> JoinHandle<T>
+where
+    F: FnOnce() -> T + Send + 'static,
+    T: Send + 'static,
+{
+    thread::Builder::new().name(name.to_string()).spawn(f).expect("création d'un fil")
 }
 
 #[cfg(test)]

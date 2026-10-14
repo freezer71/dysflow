@@ -13,7 +13,6 @@
 use crate::sync::{CondvarExt, LockExt};
 use anyhow::{anyhow, Result};
 use std::sync::{Arc, Condvar, Mutex};
-use std::thread;
 
 use super::{TtsEngine, TtsSession};
 
@@ -57,7 +56,7 @@ impl LazyEngine {
         });
 
         let worker = Arc::clone(&shared);
-        thread::spawn(move || {
+        crate::sync::spawn_named("sillon-chargement-voix", move || {
             let outcome = load();
             let mut state = worker.state.locked();
             *state = match outcome {
@@ -157,6 +156,7 @@ impl TtsEngine for LazyEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::thread;
     use crate::tts::{PcmBuffer, TtsParams};
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::{Duration, Instant};

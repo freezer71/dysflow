@@ -16,7 +16,7 @@ use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
-use std::thread::{self, JoinHandle};
+use std::thread::JoinHandle;
 use std::time::Duration;
 
 use super::{Cancel, PcmBuffer, Synthesis, TtsEngine, TtsParams, WordSpan};
@@ -365,7 +365,7 @@ impl Synthesizer {
         let handles = (0..worker_count)
             .map(|_| {
                 let shared = Arc::clone(&shared);
-                thread::spawn(move || worker_loop(shared))
+                crate::sync::spawn_named("sillon-synthese", move || worker_loop(shared))
             })
             .collect();
 
@@ -821,6 +821,7 @@ fn finish_tail(shared: &Arc<Shared>, id: usize, generation: u64, outcome: Result
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::thread;
     use crate::tts::TtsSession;
     use std::sync::atomic::AtomicUsize;
 
