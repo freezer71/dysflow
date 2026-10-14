@@ -25,7 +25,7 @@ if ort_tree=$(cargo tree -p sillon-ffi ${FEATURES:+--features "$FEATURES"} -e no
     echo "Erreur : ONNX Runtime (ort) entrerait dans l'app :" >&2
     echo "$ort_tree" >&2
     exit 1
-elif ! grep -q 'package ID specification `ort` did not match any packages' <<<"$ort_tree"; then
+elif ! grep -q "package ID specification \`ort\` did not match any packages" <<<"$ort_tree"; then
     echo "Erreur : impossible de vérifier l'absence d'ONNX Runtime (cargo tree a échoué) :" >&2
     echo "$ort_tree" >&2
     exit 1
@@ -49,7 +49,5 @@ cargo build --profile app -p sillon-ffi ${FEATURES:+--features "$FEATURES"}
 cp target/app/libsillon_ffi.a "$LIB/"
 
 FLAGS="-lsillon_ffi -lc++ -framework CoreAudio -framework AudioToolbox -framework AudioUnit -framework CoreFoundation -framework Security -framework Metal -framework Accelerate"
-# Un ancien shim audio.cpp (retiré le 14 oct. 2026) ne doit plus être joint.
-rm -f "$LIB/libaudiocpp_shim.dylib"
 echo "OTHER_LDFLAGS = $FLAGS" > "$GEN/Link.xcconfig"
 echo "Liaison prête dans $GEN et $LIB"

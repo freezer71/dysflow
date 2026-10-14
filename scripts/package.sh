@@ -2,7 +2,7 @@
 # Assemble un dossier distribuable : le binaire et les bibliothèques et
 # programmes qu'il charge (pour Kokoro, ONNX Runtime et sillon-espeak avec ses
 # données et ses sources GPL).
-set -e
+set -eu
 cd "$(dirname "$0")/.."
 
 # Vrai si le fichier $2 a l'empreinte SHA-256 $1 : sha256sum (GNU, ou BSD
@@ -57,14 +57,22 @@ case ",$FEATURES," in
 
     ORT_VERSION=1.31.0
     case "$(uname -s)-$(uname -m)" in
-    # Empreintes publiées avec la version v1.31.0 : une archive différente
-    # n'est jamais jointe.
+    # Empreintes publiées avec la version v1.31.0 (champ `digest` des
+    # fichiers de la publication GitHub) : une archive différente n'est
+    # jamais jointe. ORT_LIB : la bibliothèque dans l'archive, ORT_DEST son
+    # nom à côté du binaire (celui que cherche src/tts/kokoro/onnx.rs).
     Linux-x86_64)
         ORT_ARCHIVE="onnxruntime-linux-x64-$ORT_VERSION"
-        ORT_SHA256=cc5c72baf5ae5c8238a6841f0897227be2d02826b9cf98eaf02fdefaeeb03a57 ;;
+        ORT_SHA256=cc5c72baf5ae5c8238a6841f0897227be2d02826b9cf98eaf02fdefaeeb03a57
+        ORT_LIB="libonnxruntime.so.$ORT_VERSION" ORT_DEST=libonnxruntime.so ;;
     Linux-aarch64)
         ORT_ARCHIVE="onnxruntime-linux-aarch64-$ORT_VERSION"
-        ORT_SHA256=c5b8b3cca31f3d643a3b313b8f42e2d0f16a4fcefd02cda343d97bd5306afaab ;;
+        ORT_SHA256=c5b8b3cca31f3d643a3b313b8f42e2d0f16a4fcefd02cda343d97bd5306afaab
+        ORT_LIB="libonnxruntime.so.$ORT_VERSION" ORT_DEST=libonnxruntime.so ;;
+    Darwin-arm64)
+        ORT_ARCHIVE="onnxruntime-osx-arm64-$ORT_VERSION"
+        ORT_SHA256=1031b36dd3bdaa8d976a6130d9cf2a05e9be320b93ae804f8427b91dc3432afc
+        ORT_LIB="libonnxruntime.$ORT_VERSION.dylib" ORT_DEST=libonnxruntime.dylib ;;
     *) ORT_ARCHIVE="" ;;
     esac
     if [ -n "$ORT_ARCHIVE" ]; then
@@ -92,7 +100,7 @@ case ",$FEATURES," in
             mv "target/ort/extraction/$ORT_ARCHIVE" "target/ort/$ORT_ARCHIVE"
             rm -rf target/ort/extraction
         fi
-        cp "target/ort/$ORT_ARCHIVE/lib/libonnxruntime.so.$ORT_VERSION" "$OUT/libonnxruntime.so"
+        cp "target/ort/$ORT_ARCHIVE/lib/$ORT_LIB" "$OUT/$ORT_DEST"
         cp "target/ort/$ORT_ARCHIVE/LICENSE" "$OUT/LICENSE-onnxruntime"
         cp "target/ort/$ORT_ARCHIVE/ThirdPartyNotices.txt" "$OUT/ThirdPartyNotices-onnxruntime.txt"
         echo "Joint : ONNX Runtime $ORT_VERSION"

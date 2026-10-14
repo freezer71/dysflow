@@ -25,13 +25,15 @@ done
 if [ "$CONSTRUIRE" = 1 ]; then
     ./scripts/build-macos.sh
 fi
+# Les relevés vont sous target/runs (ignoré par git, effacé par cargo clean).
+mkdir -p target/runs
 # Filtre de charge : le pilote du banc échantillonne l'app pendant son scénario.
 if [ "$CHARGE" = 1 ]; then
     PY=${SILLON_BENCH_PY:-$HOME/Library/Caches/sillon-bench/light/venv-mlx/bin/python}
-    exec "$PY" -I scripts/mesure-charge.py app --app "$APP" --out /tmp/sillon-charge.json
+    exec "$PY" -I scripts/mesure-charge.py app --app "$APP" --out target/runs/sillon-charge.json
 fi
-SORTIE=/tmp/sillon-mesures.txt
-JOURNAL=/tmp/sillon-mesures.err
+SORTIE=target/runs/sillon-mesures.txt
+JOURNAL=target/runs/sillon-mesures.err
 # grep sans correspondance ne doit pas masquer le vrai diagnostic (|| true).
 "$APP/Contents/MacOS/Sillon" --measure 2>"$JOURNAL" | { grep '^MESURE' || true; } | tee "$SORTIE"
 if [ ! -s "$SORTIE" ]; then

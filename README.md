@@ -60,24 +60,33 @@ permanence.
 cargo install --path .          # voix du système seule, build en quelques secondes
 ```
 
-`install.sh` construit le binaire puis le pose dans `$PREFIX/bin` — `~/.local`
-par défaut, sans droits ; `PREFIX=/usr/local sudo -E ./scripts/install.sh`
-pour toute la machine. Il vérifie ensuite que `sillon` démarre depuis la
-racine, et dit s'il manque le `bin/` au `PATH`. Rien d'autre à copier : modèles
-et configuration vivent dans le répertoire de données. Pour désinstaller,
-`rm $PREFIX/bin/sillon`.
+`install.sh` assemble le paquet (`package.sh`, ci-dessous) et le copie en
+entier dans `$PREFIX/lib/sillon` — le binaire, ONNX Runtime, sillon-espeak et
+ses données, les licences —, puis pose `$PREFIX/bin/sillon`, un lien vers
+`../lib/sillon/sillon` : le binaire suit ce lien pour trouver ses voisins.
+`~/.local` par défaut, sans droits ; `PREFIX=/usr/local sudo -E
+./scripts/install.sh` pour toute la machine. Il vérifie ensuite, depuis la
+racine, que `sillon` démarre et que Kokoro se charge (`sillon --check-kokoro` :
+ONNX Runtime et sillon-espeak, sans le modèle), et dit s'il manque le `bin/` au
+`PATH`. Modèles et configuration vivent dans le répertoire de données. Pour
+désinstaller, `rm -r $PREFIX/lib/sillon $PREFIX/bin/sillon`.
 
 Sur Mac, avec l'app dans `/Applications`, `./scripts/install-app-command.sh`
 pose à la place une commande `sillon` qui ouvre l'app : `sillon document.pdf`
 ouvre le panneau sur le document et le lit (reprise à la dernière position),
 `sillon` seul ouvre la page de notes. Le lecteur au terminal n'est alors plus
-installé.
+la commande `sillon` (`$PREFIX/lib/sillon` reste, à retirer à la main) ; pour
+désinstaller la commande de l'app, `rm $PREFIX/bin/sillon`. Chacun des deux
+scripts prévient avant de remplacer l'autre, et ne le fait qu'après
+confirmation (ou avec `REMPLACER=1`).
 
 ### Distribuer le binaire
 
 `scripts/package.sh` assemble dans `dist/` le binaire et ce qu'il charge —
 ONNX Runtime et sillon-espeak pour Kokoro —, avec les licences, et vérifie que
-l'ensemble s'exécute hors de l'arbre de compilation :
+l'ensemble s'exécute hors de l'arbre de compilation. ONNX Runtime 1.31.0 est
+téléchargé depuis sa publication officielle, empreinte SHA-256 vérifiée, pour
+Linux x86_64 et ARM64 et pour macOS sur Apple Silicon :
 
 ```bash
 ./scripts/package.sh                 # ocr + kokoro-onnx par défaut

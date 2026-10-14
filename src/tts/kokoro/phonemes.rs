@@ -49,13 +49,22 @@ pub(crate) fn voice_of(language: &str) -> &'static str {
     }
 }
 
+/// Le dossier du binaire, liens symboliques résolus : `$PREFIX/bin/sillon`,
+/// lien vers `$PREFIX/lib/sillon/sillon`, trouve ses voisins dans
+/// `lib/sillon/` (ONNX Runtime, `sillon-espeak`, `espeak-ng-data`).
+pub fn exe_dir() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let exe = std::fs::canonicalize(&exe).unwrap_or(exe);
+    exe.parent().map(Path::to_path_buf)
+}
+
 /// Le programme `sillon-espeak` : `SILLON_ESPEAK` (l'app y met le sien), à
 /// côté du binaire, puis le `PATH`.
 pub fn locate_program() -> Option<PathBuf> {
     if let Some(path) = std::env::var_os("SILLON_ESPEAK").map(PathBuf::from) {
         return is_executable(&path).then_some(path);
     }
-    let beside = std::env::current_exe().ok().and_then(|e| e.parent().map(|d| d.join("sillon-espeak")));
+    let beside = exe_dir().map(|d| d.join("sillon-espeak"));
     if let Some(path) = beside.filter(|p| is_executable(p)) {
         return Some(path);
     }
@@ -81,8 +90,7 @@ fn is_executable(path: &std::path::Path) -> bool {
 /// système : `SILLON_ESPEAK_DATA` (l'app : `Contents/Resources`), sinon le
 /// dossier du binaire s'il le porte (paquet terminal de `package.sh`).
 pub fn data_dir() -> Option<PathBuf> {
-    let exe_dir = std::env::current_exe().ok().and_then(|e| e.parent().map(Path::to_path_buf));
-    data_dir_from(std::env::var_os("SILLON_ESPEAK_DATA"), exe_dir.as_deref())
+    data_dir_from(std::env::var_os("SILLON_ESPEAK_DATA"), exe_dir().as_deref())
 }
 
 fn data_dir_from(variable: Option<std::ffi::OsString>, exe_dir: Option<&Path>) -> Option<PathBuf> {

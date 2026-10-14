@@ -2,27 +2,8 @@
 # Construit Sillon.app : moteur, liaison, projet, application.
 #
 #   ./scripts/build-macos.sh                  # dans macos/build/Release/Sillon.app
-#   ./scripts/build-macos.sh --verifier-seulement   # ne refait que le contrôle des liens
 set -euo pipefail
 cd "$(dirname "$0")/.."
-
-# audio.cpp est sorti du projet (14 oct. 2026) : l'app ne doit plus lier son
-# shim, qu'un ancien macos/Libraries pourrait encore fournir.
-verifier_sans_shim() {
-    if otool -L "$1/Contents/MacOS/Sillon" | grep -q libaudiocpp_shim; then
-        echo "Erreur : l'app lie encore libaudiocpp_shim (relancer ./scripts/build-ffi.sh)" >&2
-        return 1
-    fi
-    if [ -e "$1/Contents/Frameworks/libaudiocpp_shim.dylib" ]; then
-        echo "Erreur : un ancien libaudiocpp_shim traîne dans Contents/Frameworks" >&2
-        return 1
-    fi
-}
-
-if [ "${1:-}" = "--verifier-seulement" ]; then
-    verifier_sans_shim macos/build/Release/Sillon.app
-    exit
-fi
 
 # mlx-swift compile ses noyaux Metal : il faut le composant Metal Toolchain.
 if ! xcrun -sdk macosx metal -v >/dev/null 2>&1; then
@@ -40,15 +21,11 @@ fi
 python3 -I scripts/third-party-rust.py --check
 cd macos
 xcodegen generate
-# Une construction antérieure à la sortie d'audio.cpp a laissé son shim dans
-# le dossier de produits : xcodebuild ne le retire pas.
-find build/derived -path "*Sillon.app/Contents/Frameworks/libaudiocpp_shim.dylib" -delete 2>/dev/null || true
 xcodebuild -project Sillon.xcodeproj -scheme Sillon -configuration Release \
     -destination 'platform=macOS,arch=arm64' -derivedDataPath build/derived build
 APP=$(find build/derived -name Sillon.app -path "*Release*" -maxdepth 6 | head -1)
 rm -rf build/Release && mkdir -p build/Release && cp -R "$APP" build/Release/
 cd ..
-verifier_sans_shim macos/build/Release/Sillon.app
 APP_BUILT=macos/build/Release/Sillon.app
 if [ ! -x "$APP_BUILT/Contents/Helpers/sillon-espeak" ]; then
     echo "Erreur : sillon-espeak manque dans l'app (Contents/Helpers)" >&2

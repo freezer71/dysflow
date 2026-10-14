@@ -10,7 +10,7 @@ machine de mesure). Rien n'est journalisé du texte lu.
 
 Lancer avec l'interpréteur du banc (numpy, soundfile) :
   ~/Library/Caches/sillon-bench/light/venv-mlx/bin/python -I scripts/mesure-charge.py app \
-      --app macos/build/Release/Sillon.app --out /tmp/sillon-charge.json
+      --app macos/build/Release/Sillon.app --out target/runs/sillon-charge.json
 """
 import argparse, json, os, re, statistics, subprocess, sys, tempfile, threading, time
 
@@ -253,8 +253,10 @@ def main():
     ap.add_argument("--calm", type=float, default=LOAD_MAX)
     ap.add_argument("--calm-max-s", type=float, default=600)
     ap.add_argument("--deadline-s", type=float, default=DEADLINE_S)
-    ap.add_argument("--out", required=True)
+    ap.add_argument("--out", default="target/runs/sillon-charge.json")
     a = ap.parse_args()
+    # Les relevés vont sous target/runs par défaut : le dossier peut manquer.
+    os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True)
     sys.exit(cmd_app(a) if a.cmd == "app" else cmd_serve(a))
 
 if __name__ == "__main__":

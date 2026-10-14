@@ -1,5 +1,7 @@
 # Quatre modes d'affichage dans l'app macOS — plan d'implémentation
 
+> **Document historique** — état au 8 oct. 2026 ; audio.cpp, Supertonic et MagpieTTS ont été retirés le 14 oct. 2026.
+
 > **Pour les agents :** sous-skill requis : superpowers:subagent-driven-development
 > (recommandé) ou superpowers:executing-plans, tâche par tâche. Les étapes
 > utilisent des cases à cocher (`- [ ]`).

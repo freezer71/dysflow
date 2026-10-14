@@ -73,6 +73,11 @@ pub struct Args {
     #[arg(long)]
     pub show_config: bool,
 
+    /// Vérifie que Kokoro se charge (ONNX Runtime, sillon-espeak et ses
+    /// données) puis quitte.
+    #[arg(long)]
+    pub check_kokoro: bool,
+
     /// Écrit le markdown extrait du fichier puis quitte.
     #[arg(long)]
     pub to_markdown: bool,
@@ -123,6 +128,10 @@ pub fn prepare(args: &Args) -> Result<Launch> {
     if args.write_config {
         let path = config.save()?;
         println!("Configuration écrite dans {}", path.display());
+        return Ok(Launch::Done);
+    }
+    if args.check_kokoro {
+        print!("{}", check_kokoro()?);
         return Ok(Launch::Done);
     }
 
@@ -203,6 +212,18 @@ pub fn prepare(args: &Args) -> Result<Launch> {
         has_input,
         quiet,
     })))
+}
+
+/// `--check-kokoro` : ce que Kokoro charge au terminal, sans le modèle
+/// (téléchargé à part). `install.sh` s'en sert après l'installation.
+#[cfg(feature = "kokoro-onnx")]
+fn check_kokoro() -> Result<String> {
+    tts::kokoro::onnx::check_install().context("Kokoro ne se charge pas")
+}
+
+#[cfg(not(feature = "kokoro-onnx"))]
+fn check_kokoro() -> Result<String> {
+    anyhow::bail!("Kokoro absent de ce binaire (construit sans la feature kokoro-onnx)")
 }
 
 /// Le texte d'une source qui en porte un, pour `--to-markdown`.

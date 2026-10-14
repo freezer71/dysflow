@@ -24,13 +24,14 @@ const LIBRARY: &str = "libonnxruntime.dylib";
 #[cfg(not(target_os = "macos"))]
 const LIBRARY: &str = "libonnxruntime.so";
 
-/// La bibliothèque ORT : `SILLON_ORT_LIB`, à côté du binaire, dans un `lib/`
-/// voisin, sinon le nom nu (chemins de recherche du système).
+/// La bibliothèque ORT : `SILLON_ORT_LIB`, à côté du binaire (liens
+/// symboliques résolus), dans un `lib/` voisin, sinon le nom nu (chemins de
+/// recherche du système).
 pub fn library_path() -> PathBuf {
     if let Some(path) = std::env::var_os("SILLON_ORT_LIB") {
         return explicit_library(path);
     }
-    if let Some(dir) = std::env::current_exe().ok().and_then(|e| e.parent().map(Path::to_path_buf)) {
+    if let Some(dir) = super::phonemes::exe_dir() {
         for candidate in [dir.join(LIBRARY), dir.join("lib").join(LIBRARY), dir.join("../lib").join(LIBRARY)] {
             if candidate.is_file() {
                 return candidate;
@@ -89,6 +90,37 @@ pub fn check_version(found: &str) -> Result<()> {
         );
     }
     Ok(())
+}
+
+/// Vérifie que Kokoro peut se charger : ONNX Runtime trouvé, assez récent et
+/// chargé par `ort`, puis `sillon-espeak` lancé avec ses données sur un mot
+/// de chaque langue. Le modèle, téléchargé à part, n'est pas demandé. Rend
+/// une ligne par élément vérifié.
+pub fn check_install() -> Result<String> {
+    use super::phonemes::{data_dir, EspeakProcess, Phonemizer};
+
+    let library = library_path();
+    let version = version_of(&library)?;
+    check_version(&version)?;
+    let _ = ort::init_from(&library).map_err(|e| anyhow!("ONNX Runtime : {e}"))?.commit();
+    let mut report = format!("ONNX Runtime {version} : {}\n", library.display());
+
+    let mut espeak = EspeakProcess::locate()?;
+    for (language, word) in [("fr", "bonjour"), ("en", "hello")] {
+        let phonemes =
+            espeak.phonemize(language, &[word.to_string()]).with_context(|| format!("sillon-espeak ({language})"))?;
+        let Some(first) = phonemes.first().filter(|p| !p.trim().is_empty()) else {
+            bail!("sillon-espeak ne rend aucun phonème pour « {word} » ({language})");
+        };
+        report.push_str(&format!("sillon-espeak ({language}) : {word} → {first}\n"));
+    }
+    espeak.stop();
+    let data = match data_dir() {
+        Some(dir) => dir.join("espeak-ng-data").display().to_string(),
+        None => "celles du système".to_string(),
+    };
+    report.push_str(&format!("Données espeak-ng : {data}\n"));
+    Ok(report)
 }
 
 /// Le calcul Kokoro sur processeur.

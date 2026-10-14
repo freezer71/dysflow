@@ -86,7 +86,7 @@ for f in phontab phonindex phondata intonations fr_dict en_dict; do
     fi
 done
 
-rm -rf "$OUT/bin" "$OUT/share"
+rm -rf "${OUT:?}/bin" "${OUT:?}/share"
 mkdir -p "$OUT/bin" "$OUT/share/espeak-ng-data"
 # Le programme : sillon-espeak.c et libespeak-ng, liée statiquement.
 CFLAGS=(-O2 -Wall -I"$SRC/src/include")
@@ -113,6 +113,8 @@ cp scripts/sillon-espeak.c "$OUT/sillon-espeak.c"
 # puis octets ; la voix, puis un lot d'une entrée).
 check() {
     local got
+    # Le format porte les octets de la trame (\005, \000…) : voulu.
+    # shellcheck disable=SC2059
     got=$(printf "$1" | "$OUT/bin/sillon-espeak" "$OUT/share" | LC_ALL=C tr -d '\000-\037')
     case "$got" in
         *"$2"*) echo "$2" ;;

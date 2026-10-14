@@ -15,7 +15,7 @@
 #
 # Sous 32 points, le trait fin se bouche : les petites tuiles
 # reçoivent la marque au trait gras. C'est le même logo, redessiné pour tenir.
-set -e
+set -eu
 cd "$(dirname "$0")/.."
 
 for outil in sips iconutil; do

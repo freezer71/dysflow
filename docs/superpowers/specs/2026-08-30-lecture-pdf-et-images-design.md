@@ -1,5 +1,7 @@
 # Lire des PDF et des images
 
+> **Document historique** — état au 30 août 2026 ; audio.cpp, Supertonic et MagpieTTS ont été retirés le 14 oct. 2026.
+
 Conception validée le 2026-08-30.
 
 ## Pourquoi
