@@ -47,11 +47,15 @@ final class PanelController {
     /// Ouvre la fenêtre des réglages (un onglet, ou le dernier ouvert) :
     /// `,` et `v` au clavier, l'écrou de la barre.
     @ObservationIgnored let openSettings: @MainActor (SettingsTab?) -> Void
+    /// La même, pour l'environnement des vues : une seule valeur, posée une
+    /// fois, pour que SwiftUI n'y voie jamais de changement.
+    @ObservationIgnored let openSettingsAction: OpenSettingsTabAction
 
     init(model: ReaderModel, store: DisplayModeStore? = nil,
          openSettings: @escaping @MainActor (SettingsTab?) -> Void = { _ in }) {
         self.model = model
         self.openSettings = openSettings
+        openSettingsAction = OpenSettingsTabAction(open: openSettings)
         self.store = store ?? DisplayModeStore(defaults: Self.processDefaults)
         // Avant la vue : son corps lit le placement (largeur du texte).
         placement = PanelPlacement(window: window, store: self.store, mode: { [unowned self] in self.mode })
