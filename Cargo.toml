@@ -1,9 +1,12 @@
+[workspace]
+members = [".", "ffi"]
+
 [package]
 name = "sillon"
 version = "0.2.0"
 edition = "2021"
 rust-version = "1.80"
-description = "Lecteur audio TUI en streaming : lit du markdown pipé ou un fichier, le hiérarchise et le synthétise via audio.cpp"
+description = "Lecteur audio TUI en streaming : lit du markdown pipé ou un fichier, le hiérarchise et le lit à voix haute (Kokoro, ou la voix du système)"
 license = "MIT"
 
 [dependencies]
@@ -32,24 +35,31 @@ anyhow = "1.0"
 hound = "3.5"
 ureq = "2.10"
 unicode-width = "0.2"
+# Langue d'un document (français ou anglais), MIT.
+whatlang = "0.18"
+# Kokoro au terminal : ONNX Runtime chargé dynamiquement (≥ 1.31, livré à
+# côté du binaire par package.sh), MIT/Apache.
+ort = { version = "=2.0.0-rc.13", optional = true, default-features = false, features = ["load-dynamic", "ndarray", "std", "api-22"] }
+libloading = { version = "0.8", optional = true }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
 [build-dependencies]
-cmake = { version = "0.1", optional = true }
-cc = { version = "1.1", optional = true }
+# Sonic (accélération de la parole) se compile toujours : deux fichiers C.
+cc = "1.1"
 
 [features]
 # Par défaut le binaire se construit en secondes et se replie sur le TTS système.
 default = ["clipboard"]
-# Compile et lie audio.cpp dans le binaire (nécessite CMake + le submodule vendor/audio.cpp).
-audio-cpp = ["dep:cmake", "dep:cc"]
 # Donne accès au presse-papiers : coller du texte ne demande rien de plus.
 clipboard = ["dep:arboard"]
 # Compile Tesseract dans le binaire pour lire images et scans, presse-papiers
 # compris — la reconnaissance s'ajoute au collage, elle ne le conditionne pas.
 ocr = ["dep:tesseract-rs", "dep:image", "clipboard"]
+# Kokoro au terminal par ONNX Runtime (≥ 1.31, chargé dynamiquement). Jamais
+# dans l'app macOS, qui calcule Kokoro en MLX.
+kokoro-onnx = ["dep:ort", "dep:libloading"]
 
 [[bin]]
 name = "sillon"
@@ -66,17 +76,6 @@ strip = true
 [profile.dev.package."*"]
 opt-level = 2
 
-
-
-
 [[example]]
-name = "switch"
-required-features = ["audio-cpp"]
-
-[[example]]
-name = "switch_app"
-required-features = ["audio-cpp"]
-
-[[example]]
-name = "magpie_bench"
-required-features = ["audio-cpp"]
+name = "kokoro_serve"
+required-features = ["kokoro-onnx"]

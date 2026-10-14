@@ -19,6 +19,7 @@ pub mod logging;
 pub mod models;
 pub mod paths;
 pub mod position;
+pub mod reader;
 pub mod source;
 pub mod text;
 pub mod tts;

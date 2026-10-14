@@ -1,0 +1,38 @@
+{
+ "fr": {
+  "Le 14 juillet 1789, Camille Desmoulins harangua la foule devant le Palais-Royal, et Paris bascula en quelques heures.": "lə katˈɔʁz ʒyijˈɛ mil sɛtsɑ̃ katʁəvɛ̃nˈœf, kamˈij dɛsmulˈɛ̃ aʁɑ̃ɡˈa la fˈul dəvˈɑ̃ lə palˈɛʁwajˈal, e paʁˈi baskylˈa ɑ̃ kˌɛlkəz ˈœʁ.",
+  "Le rapport de la SNCF, long de 37 pages, est arrivé un mardi ; personne n'a lu plus loin que le résumé.": "lə ʁapˈɔʁ də la ˌɛsˌɛnsˌeˈɛf, lˈɔ̃ də tʁɑ̃tsˈɛt pˈaʒ, ɛt aʁivˈe œ̃ maʁdˈi ; pɛʁsˈɔn na lˈy ply lwˌɛ̃ kə lə ʁezymˈe.",
+  "Pour corriger le bug, lancez cargo test, puis vérifiez que parse_config renvoie une erreur au lieu de planter.": "puʁ koʁiʒˈe lə bˈœɡ, lɑ̃sˈe kaʁɡˈo tˈɛst, pyˈi veʁifjˈe kə pˈaʁs kɔ̃fˈiɡ ʁɑ̃vwˈa yn ɛʁˈœʁ o ljˈø də plɑ̃tˈe.",
+  "Est-ce vraiment ce qu'elle a dit ?": "ɛs vʁɛmˈɑ̃ sə kɛl a dˈi ?",
+  "Peut-être : les notes sont confuses, et l'enregistrement a disparu.": "pˈøtˈɛtʁ : le nˈot sˈɔ̃ kɔ̃fˈyz, e lɑ̃ʁʒistʁəmˈɑ̃ a dispaʁˈy.",
+  "Marguerite Hollande habitait depuis 41 ans la même maison étroite de la rue des Tanneurs, et pendant tout ce temps, elle n'avait jamais fermé la porte du jardin à clé.": "maʁɡəʁˈit ɔlˈɑ̃d abitˈɛ dəpyˌi kaʁɑ̃teˈœ̃ ˈɑ̃ la mˈɛm mɛzˈɔ̃ etʁwˈat də la ʁˈy de tanˈœʁ, e pɑ̃dˈɑ̃ tu sə tˈɑ̃, ɛl navˈɛ ʒamˌɛ fɛʁmˈe la pˈɔʁt dy ʒaʁdˈɛ̃ a klˈe.",
+  "Ses voisins trouvaient cela imprudent, mais elle se contentait de hausser les épaules : une maison sans rien à voler, disait-elle, est la plus sûre de toutes.": "se vwazˈɛ̃ tʁuvˈɛ səlˌa ɛ̃pʁydˈɑ̃, mɛz ɛl sə kɔ̃tɑ̃tˈɛ də osˈe lez epˈol : yn mɛzˈɔ̃ sɑ̃ ʁjˌɛ̃n a volˈe, dizˈɛtˈɛl, ɛ la ply sˈyːʁ də tˈut.",
+  "Puis, un soir pluvieux de novembre, elle rentra chez elle et trouva la lumière de la cuisine allumée, une bouilloire qui chauffait sur le feu, et un inconnu assis tranquillement à sa table, comme s'il était attendu.": "pyˈi, œ̃ swˈaʁ plyvjˈø də novˈɑ̃bʁ, ɛl ʁɑ̃tʁˈa ʃez ɛl e tʁuvˈa la lymjˈɛʁ də la kyizˈin alymˈe, yn bujwˈaʁ ki ʃofˈɛ syʁ lə fˈø, e œ̃n ɛ̃kɔnˈy asˈi tʁɑ̃kilmˈɑ̃ a sa tˈabl, kɔm sil etˈɛt atɑ̃dˈy.",
+  "Deux siècles plus tard, on en parle encore dans les écoles, les cafés et les familles, parfois avec 3 ou 4 versions différentes.": "dˈø sjˈɛkl ply tˈaʁ, ɔ̃n ɑ̃ pˈaʁl ɑ̃kˌɔʁ dɑ̃ lez ekˈol, le kafˈez e le famˈij, paʁfwˈa avˌɛk tʁwˈa u kˈatʁ vɛʁsjˈɔ̃ difeʁˈɑ̃t.",
+  "Pour corriger le bug, lancez cargo test, puis vérifiez que l'API renvoie bien une erreur 404 au lieu de planter.": "puʁ koʁiʒˈe lə bˈœɡ, lɑ̃sˈe kaʁɡˈo tˈɛst, pyˈi veʁifjˈe kə lapˌeˈi ʁɑ̃vwˈa bjˈɛ̃n yn ɛʁˈœʁ katʁsɑ̃ kˈatʁ o ljˈø də plɑ̃tˈe.",
+  "Le 14 juillet 1789,": "lə katˈɔʁz ʒyijˈɛ mil sɛtsɑ̃ katʁəvɛ̃nˈœf,",
+  "Pour corriger le bug,": "puʁ koʁiʒˈe lə bˈœɡ,",
+  "Ses voisins trouvaient cela imprudent,": "se vwazˈɛ̃ tʁuvˈɛ səlˌa ɛ̃pʁydˈɑ̃,",
+  "Puis, un soir pluvieux de novembre,": "pyˈi, œ̃ swˈaʁ plyvjˈø də novˈɑ̃bʁ,",
+  "Le rapport de la SNCF,": "lə ʁapˈɔʁ də la ˌɛsˌɛnsˌeˈɛf,",
+  "Bonjour, voici la première phrase.": "bɔ̃ʒˈuʁ, vwasˌi la pʁəmjˈɛʁ fʁˈaz."
+ },
+ "en": {
+  "On March 3, 2024, Ada Whitmore boarded the 7:45 train to Edinburgh with nothing but a notebook and a thermos of tea.": "ˌɔn mˈɑɹʧ θɹˈi, twˈɛnti twˈɛnti fˈɔɹ, ˈAdə wˈɪtmɔɹ bˈɔɹdᵻd ðə sˈɛvən:fˈɔɹTi fˈIv tɹˈAn tʊ ˈɛdənbəɹə wɪð nˈʌθɪŋ bˌʌt ɐ nˈOtbˌʊk ænd ɐ θˈɜɹməs ʌv tˈi.",
+  "The NASA report, all 37 pages of it, arrived on a Tuesday; nobody read past the summary.": "ðə nˈæsə ɹəpˈɔɹt, ˈɔl θˈɜɹTi sˈɛvən pˈAʤᵻz ʌv ɪt, əɹˈIvd ˌɔn ɐ tˈuzdˌA; nˈObˌɑdi ɹˈɛd pˈæst ðə sˈʌməɹi.",
+  "To fix the build, run cargo test, then check that parse_config returns an error instead of crashing.": "tə fˈɪks ðə bˈɪld, ɹˈʌn kˈɑɹɡO tˈɛst, ðˈɛn ʧˈɛk ðæt pˈɑɹs kənfˈɪɡ ɹətˈɜɹnz ɐn ˈɛɹəɹ ɪnstˈɛd ʌv kɹˈæʃɪŋ.",
+  "Is that really what she said?": "ˌɪz ðˈæt ɹˈiᵊli wˌʌt ʃi sˈɛd?",
+  "Well, perhaps: the notes are unclear, and the recording is gone.": "wˈɛl, pəɹhˈæps: ðə nˈOts ɑɹ ˌʌnklˈɪɹ, ænd ðə ɹəkˈɔɹdɪŋ ɪz ɡˈɔn.",
+  "Margaret Holloway had lived in the same narrow house on Fenwick Street for 41 years, and in all that time she had never once locked the back door.": "mˈɑɹɡɹət hˈɑləwˌA hæd lˈɪvd ɪn ðə sˈAm nˈɛɹO hˈWs ˌɔn fˈɛnwɪk stɹˈit fɔɹ fˈɔɹTi wˈʌn jˈɪɹz, ænd ɪn ˈɔl ðˈæt tˈIm ʃi hæd nˈɛvəɹ wˈʌns lˈɑkt ðə bˈæk dˈɔɹ.",
+  "Her neighbours thought it reckless, but she would only shrug and say that a house with nothing worth stealing was the safest house of all.": "hˌɜɹ nˈAbəɹz θˈɔt ɪt ɹˈɛkləs, bˌʌt ʃi wʊd ˈOnli ʃɹˈʌɡ ænd sˈA ðæt ɐ hˈWs wɪð nˈʌθɪŋ wˈɜɹθ stˈilɪŋ wʌz ðə sˈAfᵻst hˈWs ʌv ˈɔl.",
+  "Then, one wet evening in November, she came home to find the kitchen light on, a kettle warming on the stove, and a stranger sitting calmly at her table, as if he had been expected.": "ðˈɛn, wˈʌn wˈɛt ˈivnɪŋ ɪn nOvˈɛmbəɹ, ʃi kˈAm hˈOm tə fˈInd ðə kˈɪʧᵊn lˈIt ˌɔn, ɐ kˈɛTᵊl wˈɔɹmɪŋ ˌɔn ðə stˈOv, ænd ɐ stɹˈAnʤəɹ sˈɪTɪŋ kˈɑmli æt hɜɹ tˈAbᵊl, æz ɪf hi hæd bɪn ɪkspˈɛktᵻd.",
+  "By the time she arrived, she had sketched out the whole plan, all 12 steps of it, on just two pages.": "bˌI ðə tˈIm ʃi əɹˈIvd, ʃi hæd skˈɛʧt ˈWt ðə hˈOl plˈæn, ˈɔl twˈɛlv stˈɛps ʌv ɪt, ˌɔn ʤˈʌst tˈu pˈAʤᵻz.",
+  "To fix the build, run npm install, then check that the API returns a 404 error instead of crashing.": "tə fˈɪks ðə bˈɪld, ɹˈʌn ˌɛnpˌiˈɛm ɪnstˈɔl, ðˈɛn ʧˈɛk ðæt ði ˌApˌiˈI ɹətˈɜɹnz ɐ fˈɔɹ hˈʌndɹəd fˈɔɹ ˈɛɹəɹ ɪnstˈɛd ʌv kɹˈæʃɪŋ.",
+  "On July 14th, 1789,": "ˌɔn ʤəlˈI fˌɔɹtˈinθ, sˌɛvəntˈin ˈATi nˈIn,",
+  "To fix the bug,": "tə fˈɪks ðə bˈʌɡ,",
+  "Her neighbours found this reckless,": "hˌɜɹ nˈAbəɹz fˈWnd ðɪs ɹˈɛkləs,",
+  "Then, one rainy evening in November,": "ðˈɛn, wˈʌn ɹˈAni ˈivnɪŋ ɪn nOvˈɛmbəɹ,",
+  "The report from the agency,": "ðə ɹəpˈɔɹt fɹʌm ði ˈAʤənsi,",
+  "Hello, here is the first sentence.": "həlˈO, hˈɪɹ ɪz ðə fˈɜɹst sˈɛntᵊns."
+ }
+}

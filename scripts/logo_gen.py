@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
-# Dessine le logo : un sillon de disque, coupé par la ligne de lecture.
+# Dessine le logo : un « s » tracé d'un seul trait, à la façon d'un sillon de
+# labour — trois rangs, deux demi-tours, comme l'œil qui suit les lignes.
+# Le point, au bout du trait, est la tête de lecture.
 #
-# Le tracé est calculé, pas dessiné à la main — une spirale d'Archimède ne
-# s'écrit pas à la souris sans que les tours se déforment. Le script en sort
-# des courbes de Bézier (et non une polyligne de mille points) : les SVG
-# restent courts, lisibles, et retouchables.
+# Monochrome, à la manière des icônes de Notion : une seule encre, des droites
+# et des demi-cercles, rien d'autre. Le tracé est calculé sur une grille de 64.
 #
-#   ./venv/bin/python scripts/logo_gen.py     # fonttools requis pour le mot
+#   python3 scripts/logo_gen.py     # fonttools requis pour le mot (lockup)
 
-import math
 import os
 
-ENCRE = "#161616"   # thème clair : bright
-CREME = "#FBF9F5"   # thème clair : background
-CLAIR = "#EEEEEE"   # thème sombre : bright
-ORANGE = "#F26B27"  # ACCENT, commun aux deux thèmes
+ENCRE = "#191919"   # encre, sur fond clair
+CLAIR = "#F1F1EF"   # encre, sur fond sombre
+BLANC = "#FFFFFF"   # plaque de l'icône d'application, thème clair
+NUIT = "#191919"    # plaque de l'icône d'application, thème sombre
+FILET = "#E3E2DE"   # bord de la plaque claire
 
 CX = CY = 32.0      # centre de la case
 RACINE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
@@ -22,109 +22,37 @@ SORTIE = os.path.join(RACINE, "assets", "logo")
 POLICE = os.path.join(RACINE, "assets", "fonts", "AtkinsonHyperlegible-Bold.ttf")
 
 
-# --- La spirale -----------------------------------------------------------
-
-def _point(t, r0, k, phase):
-    r = r0 + k * t
-    return (CX + r * math.cos(t + phase), CY + r * math.sin(t + phase))
-
-
-def _tangente(t, r0, k, phase):
-    """Dérivée du point : sert à poser les poignées des Béziers."""
-    r, a = r0 + k * t, t + phase
-    return (k * math.cos(a) - r * math.sin(a), k * math.sin(a) + r * math.cos(a))
-
-
-def _dans_la_saignee(t, r0, k, phase, gap):
-    """La ligne de lecture ne creuse qu'à gauche : à droite, le disque est plein."""
-    x, y = _point(t, r0, k, phase)
-    return abs(y - CY) < gap and x <= CX
-
-
-def _intervalles(r0, k, phase, gap, t_max, pas=math.radians(0.25)):
-    """Les portions de spirale que la saignée laisse intactes.
-
-    On balaie finement pour repérer les changements d'état, puis on affine la
-    frontière par dichotomie : une entaille au pixel près, sans échantillonner
-    le tracé lui-même."""
-    def frontiere(a, b):
-        for _ in range(40):
-            m = (a + b) / 2
-            if _dans_la_saignee(m, r0, k, phase, gap) == _dans_la_saignee(a, r0, k, phase, gap):
-                a = m
-            else:
-                b = m
-        return (a + b) / 2
-
-    gardes, debut = [], None
-    t, precedent = 0.0, _dans_la_saignee(0.0, r0, k, phase, gap)
-    if not precedent:
-        debut = 0.0
-    while t < t_max:
-        t = min(t + pas, t_max)
-        courant = _dans_la_saignee(t, r0, k, phase, gap)
-        if courant != precedent:
-            bord = frontiere(t - pas, t)
-            if courant:                      # on entre dans la saignée
-                gardes.append((debut, bord))
-                debut = None
-            else:                            # on en sort
-                debut = bord
-            precedent = courant
-    if debut is not None:
-        gardes.append((debut, t_max))
-    return [(a, b) for a, b in gardes if b - a > 1e-3]
-
-
-def _beziers(t0, t1, r0, k, phase, arc=math.pi / 4):
-    """Approxime la spirale entre t0 et t1 par des cubiques.
-
-    Sur un huitième de tour, l'écart entre la cubique d'Hermite et la spirale
-    est très inférieur à l'épaisseur du trait : inutile de découper plus fin."""
-    n = max(1, math.ceil((t1 - t0) / arc))
-    h = (t1 - t0) / n
-    x, y = _point(t0, r0, k, phase)
-    d = [f"M {x:.2f} {y:.2f}"]
-    for i in range(n):
-        ta, tb = t0 + i * h, t0 + (i + 1) * h
-        ax, ay = _point(ta, r0, k, phase)
-        bx, by = _point(tb, r0, k, phase)
-        dax, day = _tangente(ta, r0, k, phase)
-        dbx, dby = _tangente(tb, r0, k, phase)
-        d.append(f"C {ax + dax*h/3:.2f} {ay + day*h/3:.2f}"
-                 f" {bx - dbx*h/3:.2f} {by - dby*h/3:.2f}"
-                 f" {bx:.2f} {by:.2f}")
-    return " ".join(d)
-
-
-def sillon(tours, r_int, r_ext, gap, phase=-math.pi / 2):
-    """Le sillon entier, entaillé par la ligne de lecture."""
-    t_max = tours * 2 * math.pi
-    k = (r_ext - r_int) / t_max
-    return [_beziers(a, b, r_int, k, phase)
-            for a, b in _intervalles(r_int, k, phase, gap, t_max)]
-
-
 # --- La marque ------------------------------------------------------------
 
-def marque(encre=ENCRE, tours=3, r_int=6.5, r_ext=27, trait=3.4,
-           gap=4.2, ligne=4.4, tete=6.0, depart=4.0, indent=""):
-    """Le disque, la ligne de lecture qui y entre, et la tête de lecture."""
-    traces = "".join(f'\n{indent}    <path d="{d}"/>'
-                     for d in sillon(tours, r_int, r_ext, gap))
-    return (
-        f'{indent}<g fill="none" stroke="{encre}" stroke-width="{trait}"'
-        f' stroke-linecap="round">{traces}\n{indent}</g>\n'
-        f'{indent}<line x1="{depart}" y1="{CY}" x2="{CX}" y2="{CY}"'
-        f' stroke="{ORANGE}" stroke-width="{ligne}" stroke-linecap="round"/>\n'
-        f'{indent}<circle cx="{CX}" cy="{CY}" r="{tete}" fill="{ORANGE}"/>'
-    )
+def sillon(largeur=26.0, ecart=13.0, trait=5.0, point=3.4, jeu=3.6):
+    """Le trait en « s » et le point qui le termine.
+
+    Trois rangs de `largeur`, espacés de `ecart` ; les demi-tours ont pour
+    rayon la moitié de l'écart, ce qui les rend parfaitement ronds. Le dernier
+    rang s'arrête court : le point y prend place, détaché de `jeu`."""
+    r = ecart / 2
+    g, d = CX - largeur / 2, CX + largeur / 2
+    haut, milieu, bas = CY - ecart, CY, CY + ecart
+    # Le point s'aligne sur le bord gauche des rangs ; le trait s'arrête avant.
+    fin = g + point + jeu + trait / 2
+    chemin = (f"M {d:.2f} {haut:.2f} H {g:.2f}"
+              f" A {r:.2f} {r:.2f} 0 0 0 {g:.2f} {milieu:.2f}"
+              f" H {d:.2f}"
+              f" A {r:.2f} {r:.2f} 0 0 1 {d:.2f} {bas:.2f}"
+              f" H {fin:.2f}")
+    return chemin, (g, bas, point), trait
 
 
-# Sous 32 pixels, trois tours virent à la tache : la petite marque en garde
-# deux, sur un trait plus gras. C'est le même dessin, pas un autre logo.
-PETITE = dict(tours=2, r_int=8, r_ext=26, trait=5.0, gap=5.5,
-              ligne=5.5, tete=7.0, depart=3.0)
+def marque(encre=ENCRE, indent="", **dessin):
+    chemin, (px, py, pr), trait = sillon(**dessin)
+    return (f'{indent}<path d="{chemin}" fill="none" stroke="{encre}"'
+            f' stroke-width="{trait}" stroke-linecap="round" stroke-linejoin="round"/>\n'
+            f'{indent}<circle cx="{px:.2f}" cy="{py:.2f}" r="{pr}" fill="{encre}"/>')
+
+
+# Sous 32 pixels, le trait s'épaissit et les rangs s'écartent un peu : le
+# blanc entre eux doit survivre à 16 pixels. Même dessin, pas un autre logo.
+PETITE = dict(largeur=24.0, ecart=15.0, trait=7.0, point=4.6, jeu=3.4)
 
 
 # --- Le mot ---------------------------------------------------------------
@@ -164,35 +92,36 @@ def mot(texte, taille):
 
 # --- L'icône d'application ------------------------------------------------
 
-def icone(**dessin):
+def icone(plaque=BLANC, encre=ENCRE, filet=FILET, **dessin):
     """La marque posée sur le carré du système.
 
     macOS n'arrondit rien lui-même : le carré et sa marge font partie du
     dessin. Un côté de 824/1024 et un rayon de 22,37 % approchent de près le
-    gabarit d'Apple. La marque est réduite pour garder son air autour d'elle."""
+    gabarit d'Apple. Un filet d'un demi-point détache la plaque blanche d'un
+    fond blanc, comme le carré de Notion."""
     cote, rayon = 51.5, 11.5
     marge = (64 - cote) / 2
+    bord = (f' stroke="{filet}" stroke-width="0.5"' if filet else "")
     return (f'  <rect x="{marge}" y="{marge}" width="{cote}" height="{cote}"'
-            f' rx="{rayon}" fill="{CREME}"/>\n'
-            f'  <g transform="translate({CX} {CY}) scale(0.72) translate(-{CX} -{CY})">\n'
-            + marque(ENCRE, indent="    ", **dessin) + "\n  </g>")
+            f' rx="{rayon}" fill="{plaque}"{bord}/>\n'
+            f'  <g transform="translate({CX} {CY}) scale(0.78) translate(-{CX} -{CY})">\n'
+            + marque(encre, indent="    ", **dessin) + "\n  </g>")
 
 
 # --- Les fichiers ---------------------------------------------------------
 
-def svg(corps, largeur=64, hauteur=64, fond=None):
-    fond = "" if fond is None else f'\n  <rect width="{largeur}" height="{hauteur}" fill="{fond}"/>'
+def svg(corps, largeur=64, hauteur=64):
     return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {largeur} {hauteur}"'
             f' width="{largeur}" height="{hauteur}" role="img" aria-label="sillon">'
-            f'{fond}\n{corps}\n</svg>\n')
+            f'\n{corps}\n</svg>\n')
 
 
-def lockup(encre=ENCRE, taille=46, gouttiere=20):
+def lockup(encre=ENCRE, taille=40, gouttiere=8):
     d, largeur_mot, limites = mot("sillon", taille)
     # Le mot est calé sur le centre optique de ses propres contours, pas sur
-    # sa ligne de base : c'est ce qui l'aligne vraiment avec l'axe du disque.
+    # sa ligne de base : c'est ce qui l'aligne vraiment avec la marque.
     ligne_de_base = CY - (limites[1] + limites[3]) / 2
-    x = 64 + gouttiere
+    x = 64 - 10 + gouttiere
     corps = (marque(encre, indent="  ") +
              f'\n  <g transform="translate({x} {ligne_de_base:.2f})">'
              f'\n    <path d="{d}" fill="{encre}"/>\n  </g>')
@@ -221,6 +150,7 @@ def main():
 
     ecrire("sillon-app.svg", svg(icone()))
     ecrire("sillon-app-small.svg", svg(icone(**PETITE)))
+    ecrire("sillon-app-dark.svg", svg(icone(NUIT, CLAIR, None)))
 
 
 if __name__ == "__main__":

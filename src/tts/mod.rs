@@ -1,14 +1,25 @@
 //! Synthèse vocale : contrat commun, moteurs, et ordonnanceur parallèle.
 
 pub mod lazy;
+pub mod fallback;
+pub mod kokoro;
 pub mod pool;
 pub mod preview;
+pub mod silent;
 pub mod system;
 
-#[cfg(feature = "audio-cpp")]
-pub mod audio_cpp;
 
 pub use pool::{SynthesisStats, Synthesizer};
+
+pub use crate::doc::WordSpan;
+
+/// Une phrase synthétisée, avec le temps de chacun de ses mots affichés
+/// quand le moteur sait le dire.
+#[derive(Debug, Clone)]
+pub struct Synthesis {
+    pub pcm: PcmBuffer,
+    pub words: Option<Vec<WordSpan>>,
+}
 
 use anyhow::Result;
 use std::collections::BTreeMap;
@@ -17,18 +28,16 @@ use std::time::Duration;
 
 /// Paramètres d'une requête de synthèse.
 ///
-/// Le découpage suit celui d'audio.cpp : d'un côté le conditionnement de style
-/// (`StyleCondition`), de l'autre les options libres du modèle. Tout ce que le
-/// moteur accepte est donc atteignable depuis la configuration.
+/// D'un côté le conditionnement de style (`StyleCondition`), de l'autre les
+/// options libres du modèle.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TtsParams {
     pub voice: String,
     pub language: String,
-    /// Débit, appliqué **à la synthèse**.
-    ///
-    /// Ré-échantillonner après coup transposerait la voix ; c'est le modèle qui
-    /// doit parler plus vite.
-    pub speaking_rate: f32,
+    // Pas de débit ici : la synthèse se fait toujours à 1×, et la vitesse
+    // s'applique au son pendant la lecture (`audio::tempo`, par Sonic, sans
+    // changer la hauteur). Donnée au modèle, elle comprimait la durée prévue
+    // de la phrase et lui faisait avaler mots et ponctuation.
     pub pitch_shift: f32,
     pub energy: f32,
     pub emotion: String,
@@ -53,7 +62,6 @@ impl Default for TtsParams {
         Self {
             voice: String::new(),
             language: "fr".to_string(),
-            speaking_rate: 1.0,
             pitch_shift: 0.0,
             energy: 1.0,
             emotion: String::new(),
@@ -67,65 +75,6 @@ impl Default for TtsParams {
             seed: None,
             extra: BTreeMap::new(),
         }
-    }
-}
-
-impl TtsParams {
-    /// Options nommées à passer au modèle, filtrées pour la famille visée.
-    ///
-    /// Le filtrage n'est pas cosmétique : certaines familles valident leur
-    /// requête et refusent tout net une option qu'elles ne connaissent pas —
-    /// MagpieTTS répond « unknown MagpieTTS request option: speaking_rate » et
-    /// ne produit rien. Une famille non répertoriée reçoit tout, faute de
-    /// savoir ce qu'elle accepte.
-    #[cfg_attr(not(feature = "audio-cpp"), allow(dead_code))]
-    pub fn model_options(&self, family: &str) -> BTreeMap<String, String> {
-        let mut out: BTreeMap<String, String> = self
-            .extra
-            .iter()
-            .filter(|(key, _)| crate::models::honours(family, key))
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .collect();
-        let mut set = |key: &str, value: String| {
-            if !crate::models::honours(family, key) {
-                return;
-            }
-            out.entry(key.to_string()).or_insert(value);
-        };
-        // Le débit voyage par les options : Supertonic ne lit `speaking_rate`
-        // que là, jamais dans le conditionnement de style — la vitesse y
-        // restait donc sans effet. Les familles ne s'accordent pas sur le nom,
-        // d'où les deux clés ; le filtrage ci-dessus écarte celle que la
-        // famille visée n'accepte pas.
-        if self.speaking_rate > 0.0 {
-            set("speaking_rate", self.speaking_rate.to_string());
-            set("speed", self.speaking_rate.to_string());
-        }
-        if let Some(v) = self.temperature {
-            set("temperature", v.to_string());
-        }
-        if let Some(v) = self.top_p {
-            set("top_p", v.to_string());
-        }
-        if let Some(v) = self.top_k {
-            set("top_k", v.to_string());
-        }
-        if let Some(v) = self.guidance_scale {
-            set("guidance_scale", v.to_string());
-        }
-        if let Some(v) = self.repetition_penalty {
-            set("repetition_penalty", v.to_string());
-        }
-        if let Some(v) = self.inference_steps {
-            set("num_inference_steps", v.to_string());
-        }
-        if let Some(v) = self.seed {
-            set("seed", v.to_string());
-        }
-        if !self.instruction.is_empty() {
-            set("instruction", self.instruction.clone());
-        }
-        out
     }
 }
 
@@ -143,6 +92,21 @@ pub struct PcmBuffer {
 }
 
 impl PcmBuffer {
+    /// Le même son, privé de ses `offset` premières secondes.
+    ///
+    /// La coupe tombe sur une trame entière : couper entre deux canaux
+    /// inverserait gauche et droite pour toute la suite.
+    pub fn skip(&self, offset: Duration) -> PcmBuffer {
+        let start = self.sample_index(offset);
+        PcmBuffer::new(self.samples[start..].to_vec(), self.sample_rate, self.channels)
+    }
+
+    /// Indice du premier échantillon de la trame qui tombe à `offset`.
+    pub fn sample_index(&self, offset: Duration) -> usize {
+        let frames = (offset.as_secs_f64() * self.sample_rate as f64) as usize;
+        (frames * self.channels as usize).min(self.samples.len())
+    }
+
     pub fn new(samples: Vec<f32>, sample_rate: u32, channels: u16) -> Self {
         let channels = channels.max(1);
         let sample_rate = sample_rate.max(1);
@@ -162,12 +126,20 @@ impl PcmBuffer {
     }
 }
 
+/// Où en est un moteur, vu de l'interface.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Readiness {
+    Ready,
+    Loading,
+    /// Le moteur voulu a échoué ; la voix de repli parle à sa place.
+    Fallback(String),
+}
+
 /// Un moteur TTS : détient le modèle, et ouvre des sessions de synthèse.
 ///
-/// La séparation moteur / session reflète audio.cpp, où les poids sont
-/// partagés (`shared_ptr<const Assets>`) tandis que chaque session porte son
-/// propre graphe. C'est ce qui autorise plusieurs synthèses en parallèle sur un
-/// seul chargement du modèle.
+/// Les poids sont partagés par le moteur ; chaque session porte son propre
+/// état. C'est ce qui autorise plusieurs synthèses en parallèle sur un seul
+/// chargement du modèle.
 pub trait TtsEngine: Send + Sync {
     fn name(&self) -> String;
 
@@ -185,11 +157,101 @@ pub trait TtsEngine: Send + Sync {
     fn requires_reference(&self) -> bool {
         false
     }
+
+    /// État du moteur, pour l'annoncer. Un moteur ordinaire est prêt.
+    fn readiness(&self) -> Readiness {
+        Readiness::Ready
+    }
+
+    /// Vrai quand le moteur gagne à synthétiser la phrase attendue en deux
+    /// morceaux (tête jusqu'à la première virgule, puis la suite).
+    fn splits_first_clause(&self) -> bool {
+        false
+    }
+}
+
+/// Le test d'abandon d'une synthèse : vrai quand son résultat n'a plus
+/// d'usage (le curseur a quitté la phrase, ou la génération a changé).
+///
+/// Le pool le fournit ; le moteur le consulte là où il peut s'arrêter
+/// (Kokoro MLX : entre les durées et le décodeur ; les autres : avant de
+/// commencer). Chaque consultation prend un instant le verrou du pool : à
+/// appeler quelques fois par synthèse, pas dans une boucle.
+#[derive(Clone)]
+pub struct Cancel(Option<Arc<dyn Fn() -> bool + Send + Sync>>);
+
+impl Cancel {
+    /// Jamais abandonnée : aperçus, préparation, essais.
+    pub fn never() -> Self {
+        Self(None)
+    }
+
+    pub fn when(test: impl Fn() -> bool + Send + Sync + 'static) -> Self {
+        Self(Some(Arc::new(test)))
+    }
+
+    pub fn is_cancelled(&self) -> bool {
+        self.0.as_ref().is_some_and(|test| test())
+    }
+
+    /// `Err(Cancelled)` si la synthèse est devenue inutile.
+    pub fn check(&self) -> Result<()> {
+        if self.is_cancelled() {
+            return Err(Cancelled.into());
+        }
+        Ok(())
+    }
+}
+
+impl std::fmt::Debug for Cancel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(if self.0.is_some() { "Cancel(test)" } else { "Cancel(jamais)" })
+    }
+}
+
+/// L'erreur d'une synthèse abandonnée : ni un échec (rien ne compte contre
+/// la voix, pas de repli), ni un résultat (rien en cache).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Cancelled;
+
+impl std::fmt::Display for Cancelled {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("synthèse abandonnée")
+    }
+}
+
+impl std::error::Error for Cancelled {}
+
+/// Vrai si l'erreur dit un abandon, et non un échec.
+pub fn is_cancelled(err: &anyhow::Error) -> bool {
+    err.is::<Cancelled>()
 }
 
 /// Une session de synthèse, utilisée par un seul thread.
 pub trait TtsSession: Send {
     fn synthesize(&mut self, text: &str, params: &TtsParams) -> Result<PcmBuffer>;
+
+    /// Comme `synthesize`, avec le temps de chaque mot de `words` — les
+    /// formes parlées des mots affichés, dans l'ordre. Sans minutage par
+    /// défaut : le lecteur répartit alors la durée selon les lettres.
+    fn synthesize_timed(&mut self, text: &str, words: &[String], params: &TtsParams) -> Result<Synthesis> {
+        let _ = words;
+        Ok(Synthesis { pcm: self.synthesize(text, params)?, words: None })
+    }
+
+    /// Comme `synthesize_timed`, abandonnée (`Err(Cancelled)`) quand
+    /// `cancel` le dit. Par défaut, vérifié avant de commencer seulement :
+    /// un moteur qui sait s'arrêter en route (Kokoro) la redéfinit.
+    fn synthesize_cancellable(
+        &mut self,
+        text: &str,
+        words: &[String],
+        params: &TtsParams,
+        cancel: &Cancel,
+    ) -> Result<Synthesis> {
+        cancel.check()?;
+        self.synthesize_timed(text, words, params)
+    }
 }
 
 /// Construit le moteur demandé, sans jamais bloquer l'appelant.
@@ -202,58 +264,85 @@ pub fn build_engine(
     preference: EnginePreference,
     settings: &EngineSettings,
 ) -> (Arc<dyn TtsEngine>, Option<String>) {
-    let fallback: Arc<dyn TtsEngine> = Arc::new(system::SystemEngine::new());
+    build_engine_with(preference, settings, None)
+}
+
+/// `build_engine`, avec le calcul MLX de Kokoro quand l'app le fournit.
+///
+/// `mlx` est un calcul partagé (`SharedCompute`) : l'app l'enveloppe une
+/// fois et passe le même `Arc` à chaque construction, pour qu'un moteur
+/// relâché après le chargement du suivant ne vide pas ses poids.
+pub fn build_engine_with(
+    preference: EnginePreference,
+    settings: &EngineSettings,
+    mlx: Option<Arc<kokoro::SharedCompute>>,
+) -> (Arc<dyn TtsEngine>, Option<String>) {
     if preference == EnginePreference::System {
-        return (fallback, None);
+        return (Arc::new(system::SystemEngine::new()), None);
     }
-
-    if let Err(reason) = audio_cpp_precondition(settings) {
-        let note = format!("audio.cpp indisponible ({reason}) — repli sur la voix système");
-        return (fallback, Some(note));
+    if settings.family == "kokoro" {
+        return build_kokoro(settings, mlx);
     }
+    // Kokoro est le seul modèle : une autre famille (Supertonic, MagpieTTS,
+    // laissés par une ancienne configuration) ne se charge plus.
+    let note = if settings.model_path.trim().is_empty() {
+        None
+    } else {
+        Some(format!(
+            "modèle « {} » non pris en charge — voix du système (installez Kokoro)",
+            if settings.family.is_empty() { settings.model_path.as_str() } else { settings.family.as_str() }
+        ))
+    };
+    (Arc::new(system::SystemEngine::new()), note)
+}
 
-    let sessions = settings.sessions.max(1) as usize;
-    let owned = settings.clone();
-    let engine = lazy::LazyEngine::spawn("audio.cpp".to_string(), sessions, fallback, move || {
-        try_audio_cpp(&owned)
-    });
+/// Kokoro : le calcul selon le fichier du paquet (`.onnx` : ORT ; sinon
+/// MLX, fourni par l'app), espeak-ng cherché au chargement.
+fn build_kokoro(
+    settings: &EngineSettings,
+    mlx: Option<Arc<kokoro::SharedCompute>>,
+) -> (Arc<dyn TtsEngine>, Option<String>) {
+    let fallback = fallback::fallback_engine(settings);
+    let Some(dir) = crate::models::kokoro_dir(&settings.model_path) else {
+        return (fallback, Some("Kokoro n'est pas installé — voir l'onglet Modèles".to_string()));
+    };
+    let backend = match kokoro_backend(settings, mlx) {
+        Ok(backend) => backend,
+        Err(reason) => return (fallback, Some(reason)),
+    };
+    let repli = Arc::clone(&fallback);
+    let engine = lazy::LazyEngine::spawn("Kokoro".to_string(), 1, fallback, move || {
+        let phonemizer = kokoro::phonemes::EspeakProcess::locate()?;
+        let engine = kokoro::KokoroEngine::load(backend, Box::new(phonemizer), &dir, repli)?;
+        Ok(Arc::new(engine) as Arc<dyn TtsEngine>)
+    })
+    .splitting_first_clause();
     (Arc::new(engine), None)
 }
 
-/// Vérifie ce qui peut l'être sans toucher au modèle.
-#[cfg(feature = "audio-cpp")]
-fn audio_cpp_precondition(settings: &EngineSettings) -> Result<(), String> {
-    let path = settings.model_path.trim();
-    if path.is_empty() {
-        return Err("aucun modèle configuré — renseignez engine.model_path ou --model".into());
+fn kokoro_backend(
+    settings: &EngineSettings,
+    mlx: Option<Arc<kokoro::SharedCompute>>,
+) -> Result<Arc<dyn kokoro::KokoroBackend>, String> {
+    if settings.model_path.ends_with(".onnx") {
+        // ONNX Runtime sur processeur, `min(engine.threads, 4)` fils. Un
+        // calcul propre à chaque construction : l'envelopper dans un
+        // `SharedCompute` neuf garde le même contrat que MLX.
+        #[cfg(feature = "kokoro-onnx")]
+        return Ok(Arc::new(kokoro::SharedCompute::new(Arc::new(kokoro::onnx::OrtBackend::new(settings.threads)))));
+        #[cfg(not(feature = "kokoro-onnx"))]
+        return Err("Kokoro int8 : binaire compilé sans `kokoro-onnx`".to_string());
     }
-    if !std::path::Path::new(path).exists() {
-        return Err(format!("modèle introuvable : {path}"));
+    match mlx {
+        Some(backend) if settings.backend != "cpu" => Ok(backend as Arc<dyn kokoro::KokoroBackend>),
+        _ => Err("Calcul Metal indisponible — Kokoro MLX ne tourne que dans l'app, sur la puce graphique".to_string()),
     }
-    Ok(())
-}
-
-#[cfg(not(feature = "audio-cpp"))]
-fn audio_cpp_precondition(_settings: &EngineSettings) -> Result<(), String> {
-    Err("binaire compilé sans la feature `audio-cpp`".into())
-}
-
-#[cfg(feature = "audio-cpp")]
-fn try_audio_cpp(settings: &EngineSettings) -> Result<Arc<dyn TtsEngine>> {
-    let engine = audio_cpp::AudioCppEngine::load(settings)?;
-    Ok(Arc::new(engine))
-}
-
-#[cfg(not(feature = "audio-cpp"))]
-fn try_audio_cpp(_settings: &EngineSettings) -> Result<Arc<dyn TtsEngine>> {
-    anyhow::bail!("binaire compilé sans la feature `audio-cpp`")
 }
 
 /// Moteur souhaité par l'utilisateur.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EnginePreference {
     Auto,
-    AudioCpp,
     System,
 }
 
@@ -261,19 +350,17 @@ impl EnginePreference {
     pub fn parse(value: &str) -> Option<Self> {
         match value.to_ascii_lowercase().as_str() {
             "auto" => Some(EnginePreference::Auto),
-            "audio_cpp" | "audio-cpp" | "audiocpp" => Some(EnginePreference::AudioCpp),
+            // audio.cpp n'est plus : une ancienne configuration qui le
+            // demandait prend le modèle configuré, comme `auto`.
+            "audio_cpp" | "audio-cpp" | "audiocpp" => Some(EnginePreference::Auto),
             "system" | "systeme" | "système" => Some(EnginePreference::System),
             _ => None,
         }
     }
 }
 
-/// Réglages de chargement du moteur natif.
-///
-/// Seule la liaison audio.cpp les consulte ; sans cette feature ils restent
-/// renseignés mais inertes.
+/// Réglages de chargement du moteur (Kokoro).
 #[derive(Debug, Clone)]
-#[cfg_attr(not(feature = "audio-cpp"), allow(dead_code))]
 pub struct EngineSettings {
     pub model_path: String,
     pub family: String,
@@ -287,32 +374,102 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_speaking_rate_travels_as_a_model_option() {
-        // Supertonic ne lit le débit que dans les options : l'omettre y rendait
-        // la vitesse inopérante, quelle que soit sa valeur.
-        let params = TtsParams {
-            speaking_rate: 1.5,
-            ..TtsParams::default()
-        };
-        assert_eq!(
-            params.model_options("supertonic").get("speaking_rate").map(String::as_str),
-            Some("1.5")
-        );
+    fn skipping_drops_whole_frames_from_the_start() {
+        // Stéréo, 10 trames par seconde : 0,3 s = 3 trames = 6 échantillons.
+        let pcm = PcmBuffer::new((0..20).map(|i| i as f32).collect(), 10, 2);
+        let rest = pcm.skip(Duration::from_millis(300));
+        assert_eq!(rest.samples.len(), 14);
+        assert_eq!(rest.samples[0], 6.0);
+        assert_eq!(rest.channels, 2);
     }
 
     #[test]
-    fn an_explicit_option_wins_over_the_field() {
-        // `extra` est la porte de sortie : ce que l'utilisateur y écrit prime.
-        let mut extra = BTreeMap::new();
-        extra.insert("speaking_rate".to_string(), "0.8".to_string());
-        let params = TtsParams {
-            speaking_rate: 1.5,
-            extra,
-            ..TtsParams::default()
-        };
-        assert_eq!(
-            params.model_options("supertonic").get("speaking_rate").map(String::as_str),
-            Some("0.8")
+    fn skipping_past_the_end_leaves_silence() {
+        let pcm = PcmBuffer::new(vec![0.5; 10], 10, 1);
+        assert!(pcm.skip(Duration::from_secs(5)).is_empty());
+    }
+
+    fn kokoro_settings(model_path: &str, backend: &str) -> EngineSettings {
+        EngineSettings {
+            model_path: model_path.into(),
+            family: "kokoro".into(),
+            backend: backend.into(),
+            threads: 4,
+            sessions: 1,
+        }
+    }
+
+    fn kokoro_files(name: &str, file: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("sillon-build-{}-{name}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("config.json"), "{}").unwrap();
+        std::fs::write(dir.join(file), b"x").unwrap();
+        dir.join(file)
+    }
+
+    #[test]
+    fn kokoro_without_its_files_falls_back_and_says_why() {
+        let settings = kokoro_settings("/nulle/part/kokoro-v1_0.safetensors", "metal");
+        let (_, note) = build_engine_with(EnginePreference::Auto, &settings, None);
+        assert!(note.unwrap().contains("Kokoro n'est pas installé"));
+    }
+
+    #[test]
+    fn kokoro_mlx_needs_the_compute_of_the_app() {
+        let path = kokoro_files("mlx", "kokoro-v1_0.safetensors");
+        let (_, note) = build_engine_with(EnginePreference::Auto, &kokoro_settings(&path.to_string_lossy(), "metal"), None);
+        assert!(note.unwrap().contains("Calcul Metal indisponible"));
+    }
+
+    #[test]
+    #[cfg(not(feature = "kokoro-onnx"))]
+    fn kokoro_int8_needs_the_onnx_feature() {
+        let path = kokoro_files("onnx", "model_quantized.onnx");
+        let (_, note) = build_engine_with(EnginePreference::Auto, &kokoro_settings(&path.to_string_lossy(), "cpu"), None);
+        assert!(note.unwrap().contains("kokoro-onnx"));
+    }
+
+    #[test]
+    #[cfg(feature = "kokoro-onnx")]
+    fn kokoro_int8_loads_onnx_runtime_in_the_background() {
+        // Aucune bibliothèque ORT sur la machine de test : le chargement
+        // échouera en arrière-plan, mais rien n'est tranché d'avance.
+        let path = kokoro_files("onnx-ort", "model_quantized.onnx");
+        let (engine, note) =
+            build_engine_with(EnginePreference::Auto, &kokoro_settings(&path.to_string_lossy(), "cpu"), None);
+        assert_eq!(note, None, "le calcul ORT part en arrière-plan");
+        assert!(engine.splits_first_clause());
+    }
+
+    #[test]
+    fn kokoro_with_its_compute_loads_in_the_background() {
+        struct Idle;
+        impl kokoro::KokoroBackend for Idle {
+            fn label(&self) -> &'static str {
+                "MLX"
+            }
+            fn load(&self, _: &std::path::Path) -> Result<()> {
+                std::thread::sleep(Duration::from_millis(200));
+                Ok(())
+            }
+            fn warm_up(&self) -> Result<()> {
+                Ok(())
+            }
+            fn infer(&self, _: &[i64], _: &[f32], _: &Cancel) -> Result<kokoro::KokoroRaw> {
+                anyhow::bail!("non utilisé")
+            }
+            fn release(&self) {}
+        }
+        let path = kokoro_files("charge", "kokoro-v1_0.safetensors");
+        let (engine, note) =
+            build_engine_with(
+            EnginePreference::Auto,
+            &kokoro_settings(&path.to_string_lossy(), "metal"),
+            Some(Arc::new(kokoro::SharedCompute::new(Arc::new(Idle)))),
         );
+        assert_eq!(note, None, "rien à dire d'avance : le chargement part en arrière-plan");
+        // Le nom dépend de l'issue du chargement (espeak-ng présent ou non
+        // sur la machine de test) : seule la coupe, annoncée d'avance, est sûre.
+        assert!(engine.splits_first_clause(), "annoncé avant la fin du chargement");
     }
 }

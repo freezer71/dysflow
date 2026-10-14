@@ -2,8 +2,7 @@
 //!
 //! Le fichier est optionnel : tous les champs ont un défaut et `#[serde(default)]`
 //! permet d'ouvrir une configuration écrite par une version antérieure sans la
-//! casser. Les réglages de voix reprennent le vocabulaire d'audio.cpp, si bien
-//! qu'ils atteignent réellement le modèle au lieu de rester décoratifs.
+//! casser.
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -20,6 +19,7 @@ pub struct Config {
     pub voice: VoiceConfig,
     pub sampling: SamplingConfig,
     pub reading: ReadingConfig,
+    pub app: AppConfig,
     /// Options transmises telles quelles au modèle TTS.
     ///
     /// Échappatoire pour tout paramètre propre à une famille que le lecteur ne
@@ -27,14 +27,35 @@ pub struct Config {
     pub extra: BTreeMap<String, String>,
 }
 
+/// Réglages propres à l'app macOS.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct AppConfig {
+    /// Minutes pendant lesquelles la voix reste chargée après la dernière
+    /// lecture. `-1` : toujours ; `0` : relâchée dès l'arrêt.
+    pub keep_voice_minutes: i64,
+    /// Migrations de voix déjà faites ou refusées (1 : le passage à Kokoro).
+    pub voice_migration: u32,
+    /// La sortie audio, par son nom ; vide : celle du système, qui suit
+    /// macOS. Choisie, le son n'en sort jamais : retirée, la lecture se met
+    /// en pause au lieu de passer aux haut-parleurs.
+    pub output_device: String,
+}
+
+impl Default for AppConfig {
+    fn default() -> Self {
+        Self { keep_voice_minutes: 10, voice_migration: 0, output_device: String::new() }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct EngineConfig {
-    /// `auto`, `audio_cpp` ou `system`.
+    /// `auto` ou `system` (`audio_cpp`, ancienne valeur, vaut `auto`).
     pub engine: String,
     /// Chemin du modèle (répertoire ou fichier GGUF).
     pub model_path: String,
-    /// Famille audio.cpp, par exemple `supertonic` ou `pocket_tts`.
+    /// Famille du modèle : `kokoro`.
     pub family: String,
     /// Backend de calcul : `cpu`, `metal`, `cuda`, `vulkan`.
     pub compute: String,
@@ -56,8 +77,8 @@ impl Default for EngineConfig {
             family: String::new(),
             compute: if cfg!(target_os = "macos") { "metal" } else { "cpu" }.to_string(),
             threads: cores.clamp(1, 8),
-            // Ce que la famille demande : une session pour Supertonic comme
-            // pour MagpieTTS. Voir `models::sessions_for_family`.
+            // Ce que la famille demande : une session pour Kokoro. Voir
+            // `models::sessions_for_family`.
             sessions: 0,
             prefetch: 6,
         }
@@ -69,8 +90,11 @@ impl Default for EngineConfig {
 pub struct VoiceConfig {
     /// Nom de voix, préréglage, ou chemin d'un WAV de référence.
     pub voice: String,
+    /// `auto` : chaque document prend sa langue détectée. `fr`, `en`… : tous
+    /// les documents parlent cette langue, sauf choix fait pour l'un d'eux.
     pub language: String,
-    /// Débit par défaut. Appliqué à la synthèse, jamais par ré-échantillonnage.
+    /// Vitesse de lecture. Appliquée au son par Sonic, sans changer la hauteur ;
+    /// la synthèse, elle, se fait toujours à 1×.
     pub speed: f32,
     /// Décalage de hauteur, en demi-tons normalisés (-1.0 à 1.0).
     pub pitch: f32,
@@ -80,19 +104,23 @@ pub struct VoiceConfig {
     /// Consigne de style en langage naturel.
     pub instruction: String,
     pub volume: f32,
+    /// Voix par langue de document, pour les familles qui en ont une par
+    /// langue (Kokoro) : `fr = "p-fenrir60"`, `en = "af_bella"`.
+    pub per_language: BTreeMap<String, String>,
 }
 
 impl Default for VoiceConfig {
     fn default() -> Self {
         Self {
             voice: String::new(),
-            language: "fr".to_string(),
+            language: crate::text::language::AUTO.to_string(),
             speed: 1.0,
             pitch: 0.0,
             energy: 1.0,
             emotion: String::new(),
             instruction: String::new(),
             volume: 1.0,
+            per_language: BTreeMap::new(),
         }
     }
 }
@@ -182,7 +210,7 @@ impl Config {
         Ok(path)
     }
 
-    fn save_to(&self, path: &std::path::Path) -> Result<()> {
+    pub(crate) fn save_to(&self, path: &std::path::Path) -> Result<()> {
         let text = toml::to_string_pretty(self).context("sérialisation de la configuration")?;
         crate::paths::write_atomic(path, text.as_bytes())
             .with_context(|| format!("écriture de {}", path.display()))?;
@@ -206,6 +234,22 @@ impl Config {
         self.engine.threads = self.engine.threads.clamp(1, 64);
         self.engine.sessions = self.engine.sessions.min(16);
         self.engine.prefetch = self.engine.prefetch.clamp(2, 64);
+        // audio.cpp n'est plus (14 oct. 2026) : son nom devient « auto », ce
+        // qu'il valait déjà, et l'écran des réglages ne le montre plus.
+        if matches!(self.engine.engine.to_ascii_lowercase().as_str(), "audio_cpp" | "audio-cpp" | "audiocpp") {
+            self.engine.engine = "auto".to_string();
+        }
+        // L'échantillonnage suit les bornes de l'écran ; un nombre sans
+        // valeur rend la main au modèle plutôt que d'atteindre le moteur.
+        let bounded = |value: Option<f32>, low: f32, high: f32| {
+            value.filter(|v| v.is_finite()).map(|v| v.clamp(low, high))
+        };
+        self.sampling.temperature = bounded(self.sampling.temperature, 0.0, 2.0);
+        self.sampling.top_p = bounded(self.sampling.top_p, 0.0, 1.0);
+        self.sampling.guidance_scale = bounded(self.sampling.guidance_scale, 0.0, 20.0);
+        self.sampling.repetition_penalty = bounded(self.sampling.repetition_penalty, 0.5, 2.0);
+        self.sampling.top_k = self.sampling.top_k.map(|v| v.clamp(1, 200));
+        self.sampling.inference_steps = self.sampling.inference_steps.map(|v| v.clamp(1, 200));
         self.reading.seek_step = self.reading.seek_step.clamp(1, 50);
         // Zéro reste « plein écran » ; une largeur posée se lit de 40 à 120.
         if self.reading.line_width != 0 {
@@ -215,18 +259,36 @@ impl Config {
         self
     }
 
-    /// Paramètres de synthèse dérivés de la configuration.
+    /// La langue des documents quand rien d'autre ne décide : celle de la
+    /// configuration, le français pour `auto`.
+    pub fn default_language(&self) -> String {
+        crate::text::language::resolve(&self.voice.language, None, None)
+    }
+
+    /// Paramètres de synthèse dans la langue par défaut.
     pub fn tts_params(&self) -> TtsParams {
+        self.tts_params_in(&self.default_language())
+    }
+
+    /// Paramètres de synthèse pour un document dans `language`.
+    pub fn tts_params_in(&self, language: &str) -> TtsParams {
+        let family = &self.engine.family;
+        let voice = if crate::models::voices_follow_language(family) {
+            let code = crate::text::language::Lang::parse(language).map_or(language, |l| l.code());
+            let configured = self.voice.per_language.get(code).map(String::as_str);
+            crate::models::voice_for_language(family, code, configured).to_string()
+        } else {
+            // Hors Kokoro, aucune famille ne nomme plus ses voix : la voix
+            // configurée part telle quelle, sans filtre. Une config Magpie
+            // écrite à la main avec un préréglage étranger (« F1 ») retombe
+            // sur l'erreur « stoll: no conversion » du modèle : accepté, ce
+            // modèle est hors catalogue. Un chemin de WAV sous `~` est
+            // développé : le moteur ne le ferait pas.
+            expand_tilde(self.voice.voice.trim())
+        };
         TtsParams {
-            // Une voix que la famille ne connaît pas ne doit jamais atteindre
-            // le moteur : elle y provoque une erreur illisible. Un chemin de
-            // WAV sous `~` est développé : le moteur ne le ferait pas.
-            voice: expand_tilde(&crate::models::sanitised_voice(
-                &self.engine.family,
-                &self.voice.voice,
-            )),
-            language: self.voice.language.clone(),
-            speaking_rate: self.voice.speed.clamp(0.25, 4.0),
+            voice,
+            language: language.to_string(),
             pitch_shift: self.voice.pitch.clamp(-1.0, 1.0),
             energy: self.voice.energy.clamp(0.0, 2.0),
             emotion: self.voice.emotion.clone(),
@@ -244,15 +306,26 @@ impl Config {
 
     /// Fait suivre la voix quand la famille change.
     ///
-    /// Les préréglages sont propres à chaque modèle : garder celui du
-    /// précédent afficherait un nom que le nouveau ne saurait pas honorer.
-    /// Renvoie vrai si la voix a dû être remplacée.
+    /// Seul Kokoro nomme ses voix, une par langue : `voice.voice` reste celle
+    /// de l'ancien modèle, pour qui voudra y revenir, et seules les langues
+    /// sans voix reçoivent la leur. Une voix retirée du catalogue n'est pas
+    /// réécrite : `tts_params_in` la remplace par la voix recommandée de sa
+    /// langue (règle des valeurs non listées). Les autres familles ne nomment
+    /// aucune voix : rien à aligner. Renvoie vrai si quelque chose a changé.
     pub fn align_voice_with_family(&mut self) -> bool {
-        if crate::models::knows_voice(&self.engine.family, &self.voice.voice) {
+        let family = self.engine.family.clone();
+        if !crate::models::voices_follow_language(&family) {
             return false;
         }
-        self.voice.voice = crate::models::default_voice(&self.engine.family).to_string();
-        true
+        let mut changed = false;
+        for language in ["fr", "en"] {
+            if !self.voice.per_language.contains_key(language) {
+                let voice = crate::models::default_voice_for_language(&family, language);
+                self.voice.per_language.insert(language.to_string(), voice.to_string());
+                changed = true;
+            }
+        }
+        changed
     }
 
     pub fn engine_preference(&self) -> EnginePreference {
@@ -286,10 +359,16 @@ impl Config {
 
 /// Développe un `~` initial : un chemin littéral `~/...` n'existe pas.
 pub fn expand_tilde(path: &str) -> String {
+    expand_tilde_with(path, dirs::home_dir().as_deref())
+}
+
+/// `expand_tilde` avec un dossier personnel explicite (les tests n'ont pas à
+/// dépendre de celui de la machine).
+pub fn expand_tilde_with(path: &str, home: Option<&std::path::Path>) -> String {
     let Some(rest) = path.strip_prefix('~') else {
         return path.to_string();
     };
-    let Some(home) = dirs::home_dir() else {
+    let Some(home) = home else {
         return path.to_string();
     };
     let rest = rest.trim_start_matches(['/', '\\']);
@@ -316,25 +395,27 @@ mod tests {
     fn partial_config_keeps_defaults_for_missing_fields() {
         let parsed: Config = toml::from_str("[voice]\nspeed = 1.5\n").unwrap();
         assert_eq!(parsed.voice.speed, 1.5);
-        assert_eq!(parsed.voice.language, "fr");
+        assert_eq!(parsed.voice.language, "auto");
         assert_eq!(parsed.reading.code_blocks, "announce");
     }
 
     #[test]
+    fn the_former_audio_cpp_engine_reads_as_auto() {
+        let parsed: Config = toml::from_str("[engine]\nengine = \"audio_cpp\"\n").unwrap();
+        assert_eq!(parsed.normalised().engine.engine, "auto");
+        let system: Config = toml::from_str("[engine]\nengine = \"system\"\n").unwrap();
+        assert_eq!(system.normalised().engine.engine, "system");
+    }
+
+    #[test]
     fn sessions_follow_the_family_when_left_to_auto() {
-        // Supertonic synthétise à vingt fois le temps réel : une session
-        // suffit, et chacune de plus coûte 460 Mo — deux fois le modèle.
+        // Kokoro calcule en série : une session.
         let mut config = Config::default();
         assert_eq!(config.engine.sessions, 0, "le défaut est « auto »");
-        config.engine.family = "supertonic".to_string();
-        assert_eq!(config.sessions(), 1);
-        // MagpieTTS sature le GPU à lui seul : une session, sinon la phrase
-        // attendue arrive après les autres.
-        config.engine.family = "magpie_tts".to_string();
+        config.engine.family = "kokoro".to_string();
         assert_eq!(config.sessions(), 1);
         // Un nombre posé à la main l'emporte, quelle que soit la famille.
         config.engine.sessions = 3;
-        config.engine.family = "supertonic".to_string();
         assert_eq!(config.sessions(), 3);
         assert_eq!(config.engine_settings().sessions, 3);
     }
@@ -356,76 +437,47 @@ mod tests {
         assert_eq!(params.pitch_shift, 0.3);
         assert_eq!(params.energy, 1.2);
 
-        // Famille non répertoriée : rien n'est filtré, tout passe.
-        let options = params.model_options("inconnue");
-        assert_eq!(options.get("temperature").map(String::as_str), Some("0.7"));
-        assert_eq!(options.get("seed").map(String::as_str), Some("42"));
-        assert_eq!(options.get("cfg_scale").map(String::as_str), Some("3"));
-        assert_eq!(options.get("instruction").map(String::as_str), Some("ton posé"));
-
-        // MagpieTTS valide sa requête et refuse toute option étrangère : il ne
-        // doit recevoir que ce qu'il sait lire.
-        let magpie = params.model_options("magpie_tts");
-        assert_eq!(magpie.get("seed").map(String::as_str), Some("42"));
-        assert_eq!(magpie.get("temperature").map(String::as_str), Some("0.7"));
-        assert!(!magpie.contains_key("speaking_rate"), "{magpie:?}");
-        assert!(!magpie.contains_key("instruction"), "{magpie:?}");
-        assert!(!magpie.contains_key("cfg_scale"), "{magpie:?}");
-
-        // Supertonic, lui, lit bien le débit.
-        let supertonic = params.model_options("supertonic");
-        assert!(supertonic.contains_key("speaking_rate"));
     }
 
+    /// Hors Kokoro, plus aucune famille ne nomme ses voix : la voix
+    /// configurée part telle quelle, sans filtre (l'erreur « stoll » d'une
+    /// config Magpie écrite à la main avec « F1 » est acceptée, hors
+    /// catalogue). Un `~` est développé.
     #[test]
-    fn the_voice_follows_the_family_it_belongs_to() {
+    fn outside_kokoro_the_configured_voice_goes_unfiltered() {
         let mut config = Config::default();
-        config.engine.family = "supertonic".into();
-        config.voice.voice = "F1".into();
-        // Tant qu'on reste chez Supertonic, rien ne bouge.
-        assert!(!config.align_voice_with_family());
-
-        // En changeant de modèle, le préréglage n'a plus cours.
         config.engine.family = "magpie_tts".into();
-        assert!(config.align_voice_with_family());
-        assert_eq!(config.voice.voice, "Aria");
-        // Et il ne se réaligne pas deux fois.
-        assert!(!config.align_voice_with_family());
+        config.voice.voice = " F1 ".into();
+        assert_eq!(config.tts_params().voice, "F1");
+        config.voice.voice = "~/voix.wav".into();
+        let home = dirs::home_dir().map(|h| h.join("voix.wav").to_string_lossy().into_owned());
+        assert_eq!(Some(config.tts_params().voice), home.or(Some("~/voix.wav".into())));
     }
 
     #[test]
     fn a_stale_voice_never_reaches_the_engine() {
-        // Défense de dernier recours, si la configuration n'a pas été alignée.
+        // Le préréglage d'un ancien modèle reste dans `voice.voice` : Kokoro
+        // prend la voix de sa langue, jamais celui-là.
         let mut config = Config::default();
-        config.engine.family = "magpie_tts".into();
+        config.engine.family = "kokoro".into();
         config.voice.voice = "F1".into();
-        assert_eq!(config.tts_params().voice, "");
+        assert_eq!(config.tts_params().voice, "p-fenrir60");
+        // Une famille hors catalogue ne nomme aucune voix : rien à aligner.
+        config.engine.family = "supertonic".into();
+        assert!(!config.align_voice_with_family());
+        assert_eq!(config.voice.voice, "F1");
     }
 
     #[test]
-    fn the_voice_is_posed_by_the_session_not_by_the_parameters() {
-        // Son orthographe dépend du paquet chargé, pas de la famille : c'est la
-        // session qui la pose, une fois qu'elle sait laquelle passe.
-        let mut config = Config::default();
-        config.engine.family = "magpie_tts".into();
-        config.voice.voice = "Sofia".into();
-        let options = config.tts_params().model_options("magpie_tts");
-        assert!(!options.contains_key("voice_id"));
-        assert!(!options.contains_key("speaker"));
-        assert_eq!(config.tts_params().voice, "Sofia");
-        // Les deux orthographes connues restent proposées à la session.
-        assert_eq!(
-            crate::models::voice_option_keys("magpie_tts"),
-            ["voice_id", "speaker"]
-        );
-        assert!(crate::models::voice_option_keys("supertonic").is_empty());
-    }
-
-    #[test]
-    fn speed_is_clamped_to_a_usable_range() {
-        let mut config = Config::default();
-        config.voice.speed = 99.0;
-        assert_eq!(config.tts_params().speaking_rate, 4.0);
+    fn the_reading_speed_never_reaches_the_model() {
+        // La vitesse s'applique au son, à la lecture : passée au modèle, elle
+        // compressait la durée prévue de la phrase et lui faisait avaler des
+        // mots. La synthèse reste à 1×, et le cache sert à toutes les vitesses.
+        let mut slow = Config::default();
+        slow.voice.speed = 1.0;
+        let mut fast = slow.clone();
+        fast.voice.speed = 2.5;
+        assert_eq!(fast.tts_params(), slow.tts_params(), "la vitesse ne change pas la requête");
     }
 
     #[test]
@@ -503,5 +555,81 @@ mod tests {
         let voice = config.tts_params().voice;
         assert!(!voice.starts_with('~'), "{voice}");
         assert!(voice.ends_with("voix.wav"), "{voice}");
+    }
+
+    #[test]
+    fn sampling_values_are_brought_back_within_the_screen_bounds() {
+        let mut config = Config::default();
+        config.sampling.temperature = Some(f32::NAN);
+        config.sampling.top_p = Some(4.0);
+        config.sampling.top_k = Some(900);
+        config.sampling.guidance_scale = Some(-3.0);
+        config.sampling.repetition_penalty = Some(9.0);
+        config.sampling.inference_steps = Some(0);
+        let c = config.normalised();
+        assert_eq!(c.sampling.temperature, None, "NaN rend la main au modèle");
+        assert_eq!(c.sampling.top_p, Some(1.0));
+        assert_eq!(c.sampling.top_k, Some(200));
+        assert_eq!(c.sampling.guidance_scale, Some(0.0));
+        assert_eq!(c.sampling.repetition_penalty, Some(2.0));
+        assert_eq!(c.sampling.inference_steps, Some(1));
+    }
+
+    #[test]
+    fn auto_is_the_default_and_speaks_french_until_a_document_says_otherwise() {
+        let config = Config::default();
+        assert_eq!(config.voice.language, "auto");
+        assert_eq!(config.default_language(), "fr");
+        assert_eq!(config.tts_params().language, "fr");
+        assert_eq!(config.tts_params_in("en").language, "en");
+    }
+
+    #[test]
+    fn kokoro_takes_its_voice_from_the_document_language() {
+        let mut config = Config::default();
+        config.engine.family = "kokoro".into();
+        config.voice.per_language.insert("en".into(), "am_fenrir".into());
+        config.voice.per_language.insert("fr".into(), "F1".into());
+        assert_eq!(config.tts_params_in("en").voice, "am_fenrir");
+        // Inconnue : la voix par défaut de la langue, sans réécrire la valeur.
+        assert_eq!(config.tts_params_in("fr").voice, "p-fenrir60");
+        assert_eq!(config.voice.per_language["fr"], "F1");
+    }
+
+    /// Les voix Kokoro retirées du catalogue le 14 oct. 2026 (`ff_siwis`,
+    /// `bf_emma`…) parlent avec la voix recommandée de leur langue. Le
+    /// fichier n'est pas réécrit, et le passage à Kokoro ne les remplace pas.
+    #[test]
+    fn a_retired_kokoro_voice_speaks_with_the_recommended_one() {
+        let mut config = Config::default();
+        config.engine.family = "kokoro".into();
+        config.voice.per_language.insert("fr".into(), "ff_siwis".into());
+        config.voice.per_language.insert("en".into(), "bf_emma".into());
+        assert!(!config.align_voice_with_family(), "rien à réécrire");
+        assert_eq!(config.tts_params_in("fr").voice, "p-fenrir60");
+        assert_eq!(config.tts_params_in("en").voice, "af_bella");
+        assert_eq!(config.voice.per_language["en"], "bf_emma", "la valeur reste dans le fichier");
+    }
+
+    #[test]
+    fn voices_per_language_round_trip_through_toml() {
+        let mut config = Config::default();
+        config.voice.per_language.insert("fr".into(), "p-fenrir60".into());
+        config.voice.per_language.insert("en".into(), "af_bella".into());
+        let text = toml::to_string_pretty(&config).unwrap();
+        assert!(text.contains("[voice.per_language]"), "{text}");
+        assert_eq!(toml::from_str::<Config>(&text).unwrap(), config);
+    }
+
+    #[test]
+    fn switching_to_kokoro_keeps_the_former_voice_for_a_way_back() {
+        let mut config = Config::default();
+        config.engine.family = "kokoro".into();
+        config.voice.voice = "F2".into();
+        assert!(config.align_voice_with_family());
+        assert_eq!(config.voice.voice, "F2", "la voix de Supertonic reste pour y revenir");
+        assert_eq!(config.voice.per_language["fr"], "p-fenrir60");
+        assert_eq!(config.voice.per_language["en"], "af_bella");
+        assert!(!config.align_voice_with_family(), "rien à refaire");
     }
 }

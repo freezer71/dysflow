@@ -7,50 +7,76 @@
 //! donc bornée par un tick d'interface, et remise à zéro à chaque phrase — au
 //! lieu de dériver indéfiniment.
 
-use rodio::buffer::SamplesBuffer;
 use rodio::{OutputStream, OutputStreamHandle, Sink};
 use std::collections::VecDeque;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use super::tempo::{SpeedControl, Tempo};
 use crate::tts::PcmBuffer;
 
 /// Une phrase présente dans la file de sortie.
 #[derive(Debug, Clone)]
 struct Queued {
     sentence_id: usize,
+    /// Numéro de la partie dans la file : une phrase coupée y entre en deux
+    /// parties, que seul ce numéro distingue.
+    seq: u64,
     total: Duration,
     speech: Duration,
+    /// Parole déjà passée au moment où la phrase entre en file : un saut au
+    /// mot la fait commencer en son milieu.
+    offset: Duration,
 }
 
 /// La phrase qui sonne actuellement.
+///
+/// Son chronomètre compte en temps **de synthèse** (à 1×) : une seconde
+/// d'horloge à 2× avance la phrase de deux secondes. Durées de la phrase et
+/// position restent ainsi dans la même unité, quelle que soit la vitesse, et
+/// le surlignage des mots tombe juste.
 #[derive(Debug, Clone)]
 struct Active {
     sentence_id: usize,
+    /// Numéro de la partie qui sonne.
+    seq: u64,
     total: Duration,
     speech: Duration,
-    /// Temps accumulé avant la dernière reprise.
+    /// Temps de synthèse accumulé avant la dernière reprise.
     accumulated: Duration,
     resumed_at: Option<Instant>,
+    /// Vitesse en vigueur depuis `resumed_at`.
+    speed: f32,
 }
 
+/// L'horloge est passée en paramètre (`now`) : les essais la posent, au lieu
+/// de dormir et d'espérer que la machine suive.
 impl Active {
-    fn elapsed(&self) -> Duration {
+    fn elapsed_at(&self, now: Instant) -> Duration {
         match self.resumed_at {
-            Some(t) => self.accumulated + t.elapsed(),
+            Some(t) => self.accumulated + now.saturating_duration_since(t).mul_f32(self.speed),
             None => self.accumulated,
         }
     }
 
-    fn pause(&mut self) {
+    fn pause_at(&mut self, now: Instant) {
         if let Some(t) = self.resumed_at.take() {
-            self.accumulated += t.elapsed();
+            self.accumulated += now.saturating_duration_since(t).mul_f32(self.speed);
         }
     }
 
-    fn resume(&mut self) {
+    /// Change de vitesse sans perdre ce qui a déjà été entendu.
+    fn set_speed_at(&mut self, speed: f32, now: Instant) {
+        if let Some(t) = self.resumed_at {
+            self.accumulated += now.saturating_duration_since(t).mul_f32(self.speed);
+            self.resumed_at = Some(now);
+        }
+        self.speed = speed;
+    }
+
+    fn resume_at(&mut self, now: Instant) {
         if self.resumed_at.is_none() {
-            self.resumed_at = Some(Instant::now());
+            self.resumed_at = Some(now);
         }
     }
 }
@@ -59,9 +85,9 @@ impl Active {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PlaybackPosition {
     pub sentence_id: usize,
-    /// Temps écoulé dans la parole de la phrase.
+    /// Temps écoulé dans la parole de la phrase, en temps de synthèse (1×).
     pub elapsed: Duration,
-    /// Durée de la parole, silence de fin exclu.
+    /// Durée de la parole à 1×, silence de fin exclu.
     pub speech: Duration,
 }
 
@@ -80,7 +106,67 @@ pub struct Player {
     playing: bool,
     volume: f32,
     muted: bool,
+    /// Vitesse lue par chaque phrase en file, à chaque bloc de 5 ms.
+    speed: SpeedControl,
+    /// Fréquence de la carte son : les phrases y sont converties avant le
+    /// mélangeur de rodio, qui sinon perd des échantillons. `None` sans
+    /// sortie connue : la fréquence de la synthèse est gardée.
+    output_rate: Option<u32>,
     error: Option<String>,
+    /// Dernier numéro de partie donné.
+    next_seq: u64,
+}
+
+/// Fréquence que rodio choisira pour la sortie par défaut : celle de la
+/// configuration par défaut du périphérique (`OutputStream::try_default`).
+fn default_output_rate() -> Option<u32> {
+    use rodio::cpal::traits::HostTrait;
+    let device = rodio::cpal::default_host().default_output_device()?;
+    device_rate(&device)
+}
+
+fn device_rate(device: &rodio::cpal::Device) -> Option<u32> {
+    use rodio::cpal::traits::DeviceTrait;
+    Some(device.default_output_config().ok()?.sample_rate().0)
+}
+
+/// Les sorties audio de la machine, par nom, sans doublon, dans l'ordre du
+/// système.
+pub fn output_devices() -> Vec<String> {
+    use rodio::cpal::traits::{DeviceTrait, HostTrait};
+    let mut names: Vec<String> = Vec::new();
+    if let Ok(devices) = rodio::cpal::default_host().output_devices() {
+        for name in devices.filter_map(|d| d.name().ok()) {
+            if !names.contains(&name) {
+                names.push(name);
+            }
+        }
+    }
+    names
+}
+
+/// La sortie que macOS (ou le système) choisit en ce moment.
+pub fn system_output() -> Option<String> {
+    use rodio::cpal::traits::{DeviceTrait, HostTrait};
+    rodio::cpal::default_host().default_output_device()?.name().ok()
+}
+
+/// La sortie de ce nom est-elle branchée ?
+pub fn output_present(name: &str) -> bool {
+    find_output(name).is_some()
+}
+
+fn find_output(name: &str) -> Option<rodio::cpal::Device> {
+    use rodio::cpal::traits::{DeviceTrait, HostTrait};
+    rodio::cpal::default_host()
+        .output_devices()
+        .ok()?
+        .find(|d| d.name().is_ok_and(|n| n == name))
+}
+
+/// Le message d'une sortie choisie mais absente.
+pub fn missing_output(name: &str) -> String {
+    format!("sortie « {name} » absente")
 }
 
 impl Default for Player {
@@ -90,19 +176,48 @@ impl Default for Player {
 }
 
 impl Player {
+    /// La sortie du système : celle que macOS choisit, et qui suit ses
+    /// changements (des écouteurs retirés, et le son passe aux haut-parleurs).
     pub fn new() -> Self {
-        let (stream, handle, sink, error) = match OutputStream::try_default() {
+        Self::open(OutputStream::try_default().map_err(|e| e.to_string()), default_output_rate)
+    }
+
+    /// Une sortie choisie par son nom, ou celle du système pour un nom vide.
+    /// Le son ne va jamais ailleurs : la sortie absente, le lecteur reste
+    /// sans son (`error`) plutôt que de passer aux haut-parleurs.
+    pub fn with_output(name: &str) -> Self {
+        let name = name.trim();
+        if name.is_empty() {
+            return Self::new();
+        }
+        match find_output(name) {
+            Some(device) => {
+                let rate = device_rate(&device);
+                Self::open(OutputStream::try_from_device(&device).map_err(|e| e.to_string()), || rate)
+            }
+            None => Self::open(Err(missing_output(name)), || None),
+        }
+    }
+
+    fn open(
+        stream: Result<(OutputStream, OutputStreamHandle), String>,
+        rate: impl FnOnce() -> Option<u32>,
+    ) -> Self {
+        let (stream, handle, sink, error) = match stream {
             Ok((stream, handle)) => match Sink::try_new(&handle) {
                 Ok(sink) => (Some(stream), Some(handle), Some(sink), None),
                 Err(err) => (Some(stream), None, None, Some(err.to_string())),
             },
-            Err(err) => (None, None, None, Some(err.to_string())),
+            Err(err) => (None, None, None, Some(err)),
         };
         // La file démarre en pause : rien ne doit sortir avant le premier
         // buffer, sans quoi la position partirait avant le son.
         if let Some(sink) = &sink {
             sink.pause();
         }
+        let output_rate = stream.as_ref().and_then(|_| rate());
+        // Le fil qui libère les phrases finies naît ici, pas dans le fil audio.
+        super::tempo::prepare();
         Self {
             _stream: stream,
             handle,
@@ -113,15 +228,18 @@ impl Player {
             playing: false,
             volume: 1.0,
             muted: false,
+            speed: SpeedControl::default(),
+            output_rate,
             error,
+            next_seq: 0,
         }
     }
 
     /// Lecteur sans sortie audio, pour les essais.
     ///
     /// Ouvrir un vrai flux dans chaque test bloque la suite dès que deux
-    /// s'ouvrent de front : la carte son n'est pas partageable ainsi.
-    #[cfg(test)]
+    /// s'ouvrent de front : la carte son n'est pas partageable ainsi. Sert
+    /// aussi au mode de test de l'app.
     pub fn silent() -> Self {
         Self {
             _stream: None,
@@ -133,7 +251,10 @@ impl Player {
             playing: false,
             volume: 1.0,
             muted: false,
+            speed: SpeedControl::default(),
+            output_rate: None,
             error: Some("sortie audio désactivée".to_string()),
+            next_seq: 0,
         }
     }
 
@@ -145,11 +266,26 @@ impl Player {
     pub fn simulate(&mut self, sentence_id: usize, elapsed: Duration, speech: Duration) {
         self.active = Some(Active {
             sentence_id,
+            seq: 0,
             total: speech,
             speech,
             accumulated: elapsed,
             resumed_at: None,
+            speed: self.speed.get(),
         });
+    }
+
+    /// Lecteur relié à une file sans carte son, que l'essai vide lui-même au
+    /// rythme qu'il veut — comme le ferait la sortie audio.
+    #[cfg(test)]
+    pub fn idle(output_rate: u32) -> (Self, rodio::queue::SourcesQueueOutput<f32>) {
+        let (sink, output) = Sink::new_idle();
+        sink.pause();
+        let mut player = Self::silent();
+        player.error = None;
+        player.sink = Some(sink);
+        player.output_rate = Some(output_rate);
+        (player, output)
     }
 
     pub fn error(&self) -> Option<&str> {
@@ -165,18 +301,66 @@ impl Player {
         self.queued.len()
     }
 
-    /// Empile une phrase à jouer.
+    /// Les parties en file : phrase et position de départ dans sa parole.
+    #[cfg(test)]
+    pub fn queued_parts(&self) -> Vec<(usize, Duration)> {
+        self.queued.iter().map(|q| (q.sentence_id, q.offset)).collect()
+    }
+
+    /// Empile une phrase à jouer depuis son début.
     pub fn enqueue(&mut self, sentence_id: usize, audio: &Arc<PcmBuffer>, speech: Duration) {
+        self.enqueue_from(sentence_id, audio, speech, Duration::ZERO);
+    }
+
+    /// Empile une phrase à jouer à partir de `offset` dans sa parole.
+    ///
+    /// La position rendue compte depuis le début de la phrase : le
+    /// surlignage reste juste, comme si le début avait été entendu.
+    pub fn enqueue_from(
+        &mut self,
+        sentence_id: usize,
+        audio: &Arc<PcmBuffer>,
+        speech: Duration,
+        offset: Duration,
+    ) {
+        self.enqueue_part(sentence_id, audio, speech, Duration::ZERO, offset);
+    }
+
+    /// Empile une partie de phrase : `base` est la parole de la phrase qui
+    /// la précède (la tête, pour une suite), `skip` ce qu'on passe dans
+    /// cette partie. Le chronomètre de la phrase part de `base + skip`.
+    ///
+    /// Les parties d'une même phrase passent chacune par leur propre
+    /// `Tempo`, bout à bout dans la file : à 1×, la suite commence à
+    /// l'échantillon qui suit la tête, sans silence ni raccord ajouté.
+    pub fn enqueue_part(
+        &mut self,
+        sentence_id: usize,
+        audio: &Arc<PcmBuffer>,
+        part_speech: Duration,
+        base: Duration,
+        skip: Duration,
+    ) {
         let Some(sink) = &self.sink else { return };
-        sink.append(SamplesBuffer::new(
+        let skip = skip.min(part_speech);
+        // Le son reste celui de la synthèse, à 1× ; la vitesse s'applique en
+        // le jouant, et peut changer en route.
+        sink.append(Tempo::new(
+            Arc::clone(&audio.samples),
             audio.channels,
             audio.sample_rate,
-            audio.samples.to_vec(),
+            self.output_rate.unwrap_or(audio.sample_rate),
+            audio.sample_index(skip),
+            audio.sample_index(part_speech),
+            self.speed.clone(),
         ));
+        self.next_seq += 1;
         self.queued.push_back(Queued {
             sentence_id,
-            total: audio.duration,
-            speech,
+            seq: self.next_seq,
+            total: base + audio.duration,
+            speech: base + part_speech,
+            offset: base + skip,
         });
         if self.playing {
             sink.play();
@@ -185,7 +369,8 @@ impl Player {
 
     /// Synchronise l'état interne sur la file réelle de `rodio`.
     ///
-    /// Renvoie les phrases dont la lecture vient de se terminer.
+    /// Renvoie les phrases dont la lecture vient de se terminer. Une tête
+    /// suivie de sa suite en file ne termine pas sa phrase.
     pub fn reconcile(&mut self) -> Vec<usize> {
         if self.preview.as_ref().is_some_and(|p| p.empty()) {
             self.preview = None;
@@ -197,20 +382,25 @@ impl Player {
         let mut finished = Vec::new();
         while self.queued.len() > remaining {
             if let Some(done) = self.queued.pop_front() {
-                finished.push(done.sentence_id);
+                let continues = self.queued.front().is_some_and(|q| q.sentence_id == done.sentence_id);
+                if !continues {
+                    finished.push(done.sentence_id);
+                }
             }
         }
 
         match self.queued.front() {
             Some(front) => {
-                let changed = self.active.as_ref().map(|a| a.sentence_id) != Some(front.sentence_id);
+                let changed = self.active.as_ref().map(|a| a.seq) != Some(front.seq);
                 if changed {
                     self.active = Some(Active {
                         sentence_id: front.sentence_id,
+                        seq: front.seq,
                         total: front.total,
                         speech: front.speech,
-                        accumulated: Duration::ZERO,
+                        accumulated: front.offset,
                         resumed_at: self.playing.then(Instant::now),
+                        speed: self.speed.get(),
                     });
                 }
             }
@@ -222,7 +412,7 @@ impl Player {
     pub fn position(&self) -> Option<PlaybackPosition> {
         self.active.as_ref().map(|a| PlaybackPosition {
             sentence_id: a.sentence_id,
-            elapsed: a.elapsed().min(a.total),
+            elapsed: a.elapsed_at(Instant::now()).min(a.total),
             speech: a.speech,
         })
     }
@@ -237,7 +427,7 @@ impl Player {
             sink.play();
         }
         if let Some(active) = self.active.as_mut() {
-            active.resume();
+            active.resume_at(Instant::now());
         }
     }
 
@@ -247,7 +437,7 @@ impl Player {
             sink.pause();
         }
         if let Some(active) = self.active.as_mut() {
-            active.pause();
+            active.pause_at(Instant::now());
         }
     }
 
@@ -296,10 +486,16 @@ impl Player {
         match Sink::try_new(handle) {
             Ok(sink) => {
                 sink.set_volume(self.effective_volume());
-                sink.append(SamplesBuffer::new(
+                // L'aperçu dit la vérité sur la vitesse : il passe par le
+                // même étirement que la lecture.
+                sink.append(Tempo::new(
+                    Arc::clone(&audio.samples),
                     audio.channels,
                     audio.sample_rate,
-                    audio.samples.to_vec(),
+                    self.output_rate.unwrap_or(audio.sample_rate),
+                    0,
+                    audio.samples.len(),
+                    self.speed.clone(),
                 ));
                 sink.play();
                 self.preview = Some(sink);
@@ -319,6 +515,23 @@ impl Player {
 
     pub fn volume(&self) -> f32 {
         self.volume
+    }
+
+    pub fn speed(&self) -> f32 {
+        self.speed.get()
+    }
+
+    /// Change la vitesse de lecture, phrase en cours comprise.
+    ///
+    /// Rien n'est resynthétisé ni vidé : chaque phrase en file lit la vitesse
+    /// à son prochain bloc de 5 ms. Le chronomètre de la phrase change de pas
+    /// au même instant, pour que le surlignage suive.
+    pub fn set_speed(&mut self, speed: f32) {
+        self.speed.set(speed);
+        let applied = self.speed.get();
+        if let Some(active) = self.active.as_mut() {
+            active.set_speed_at(applied, Instant::now());
+        }
     }
 
     pub fn is_muted(&self) -> bool {
@@ -360,37 +573,181 @@ impl Player {
 mod tests {
     use super::*;
 
-    fn active(speech_ms: u64) -> Active {
+    const MS: fn(u64) -> Duration = Duration::from_millis;
+
+    /// Une phrase qui sonne depuis `t0`, à 1×.
+    fn active(speech_ms: u64, t0: Instant) -> Active {
         Active {
             sentence_id: 0,
-            total: Duration::from_millis(speech_ms),
-            speech: Duration::from_millis(speech_ms),
+            seq: 0,
+            total: MS(speech_ms),
+            speech: MS(speech_ms),
             accumulated: Duration::ZERO,
-            resumed_at: Some(Instant::now()),
+            resumed_at: Some(t0),
+            speed: 1.0,
         }
     }
 
     #[test]
     fn timer_freezes_while_paused() {
-        let mut a = active(1000);
-        std::thread::sleep(Duration::from_millis(30));
-        a.pause();
-        let frozen = a.elapsed();
-        std::thread::sleep(Duration::from_millis(40));
-        assert_eq!(a.elapsed(), frozen, "le chronomètre a avancé en pause");
+        let t0 = Instant::now();
+        let mut a = active(1000, t0);
+        a.pause_at(t0 + MS(30));
+        assert_eq!(a.elapsed_at(t0 + MS(30)), MS(30));
+        assert_eq!(a.elapsed_at(t0 + MS(70)), MS(30), "le chronomètre a avancé en pause");
     }
 
     #[test]
     fn timer_resumes_where_it_stopped() {
-        let mut a = active(1000);
-        std::thread::sleep(Duration::from_millis(30));
-        a.pause();
-        let paused_at = a.elapsed();
-        a.resume();
-        std::thread::sleep(Duration::from_millis(30));
-        assert!(a.elapsed() > paused_at);
-        // La reprise ne repart pas de zéro.
-        assert!(a.elapsed() >= paused_at);
+        let t0 = Instant::now();
+        let mut a = active(1000, t0);
+        a.pause_at(t0 + MS(30));
+        a.resume_at(t0 + MS(100));
+        // La reprise ne repart pas de zéro, et ne compte pas la pause.
+        assert_eq!(a.elapsed_at(t0 + MS(130)), MS(60));
+    }
+
+    #[test]
+    fn the_timer_counts_synthesis_time_at_the_playback_speed() {
+        // À 2×, une seconde d'horloge fait entendre deux secondes de parole
+        // synthétisée : le surlignage doit avancer d'autant.
+        let t0 = Instant::now();
+        let mut a = active(10_000, t0);
+        a.speed = 2.0;
+        assert_eq!(a.elapsed_at(t0 + MS(100)), MS(200));
+        a.pause_at(t0 + MS(100));
+        assert_eq!(a.elapsed_at(t0 + MS(500)), MS(200));
+    }
+
+    #[test]
+    fn a_speed_change_keeps_what_was_already_heard() {
+        let t0 = Instant::now();
+        let mut a = active(10_000, t0);
+        a.set_speed_at(3.0, t0 + MS(60));
+        assert_eq!(a.elapsed_at(t0 + MS(60)), MS(60));
+        // 60 ms à 1×, puis 60 ms à 3× : 240 ms de parole.
+        assert_eq!(a.elapsed_at(t0 + MS(120)), MS(240));
+        // En pause, un changement de vitesse ne fait rien avancer.
+        a.pause_at(t0 + MS(120));
+        a.set_speed_at(0.5, t0 + MS(200));
+        assert_eq!(a.elapsed_at(t0 + MS(300)), MS(240));
+    }
+
+    /// Du lecteur jusqu'au son : la file est vidée comme le ferait la carte
+    /// son, et la vitesse change en pleine phrase.
+    #[test]
+    fn a_speed_change_reaches_the_output_without_flushing_the_queue() {
+        use crate::audio::sonic::tests::{speech_like, RATE};
+        // Sortie à 24 kHz comme la synthèse : on compare au son d'origine.
+        let (mut player, mut output) = Player::idle(RATE);
+        let speech = speech_like(3.0);
+        let audio = Arc::new(PcmBuffer::new(speech.clone(), RATE, 1));
+        player.enqueue(0, &audio, audio.duration);
+        player.enqueue(1, &audio, audio.duration);
+        player.play();
+
+        let switch_at = RATE as usize;
+        let mut out: Vec<f32> = output.by_ref().take(switch_at).collect();
+        player.set_speed(2.0);
+        assert_eq!(player.queue_len(), 2, "rien n'a été vidé");
+        out.extend(output.by_ref().take(RATE as usize * 2));
+
+        let diverges = (switch_at..out.len())
+            .find(|&i| (out[i] - speech[i]).abs() > 2e-3)
+            .expect("la vitesse n'a jamais changé");
+        let latency_ms = (diverges - switch_at) as f64 * 1000.0 / RATE as f64;
+        eprintln!("lecteur : changement de vitesse entendu après {latency_ms:.2} ms de son");
+        assert!(latency_ms <= 10.0, "{latency_ms} ms");
+    }
+
+    #[test]
+    fn the_tail_of_a_sentence_continues_its_clock() {
+        const RATE: u32 = 1000;
+        let (mut player, mut output) = Player::idle(RATE);
+        let head = Arc::new(PcmBuffer::new(vec![0.1; 1000], RATE, 1));
+        let tail = Arc::new(PcmBuffer::new(vec![0.1; 500], RATE, 1));
+        player.enqueue_part(0, &head, Duration::from_secs(1), Duration::ZERO, Duration::ZERO);
+        player.enqueue_part(0, &tail, Duration::from_millis(500), Duration::from_secs(1), Duration::ZERO);
+        player.play();
+        player.reconcile();
+        assert_eq!(player.position().unwrap().speech, Duration::from_secs(1));
+        // La tête sort entière : la suite prend la main, au même mot près.
+        let _: Vec<f32> = output.by_ref().take(1200).collect();
+        player.reconcile();
+        let p = player.position().expect("la suite sonne");
+        assert_eq!(p.sentence_id, 0);
+        assert!(p.elapsed >= Duration::from_secs(1), "{:?}", p.elapsed);
+        assert_eq!(p.speech, Duration::from_millis(1500));
+    }
+
+    #[test]
+    fn head_and_tail_join_without_a_gap_and_end_the_sentence_once() {
+        const RATE: u32 = 1000;
+        let (mut player, mut output) = Player::idle(RATE);
+        let head: Vec<f32> = (0..1000).map(|i| 0.2 + i as f32 * 1e-4).collect();
+        let tail: Vec<f32> = (0..500).map(|i| -0.2 - i as f32 * 1e-4).collect();
+        let head_audio = Arc::new(PcmBuffer::new(head.clone(), RATE, 1));
+        let tail_audio = Arc::new(PcmBuffer::new(tail.clone(), RATE, 1));
+        player.enqueue_part(0, &head_audio, head_audio.duration, Duration::ZERO, Duration::ZERO);
+        player.enqueue_part(0, &tail_audio, tail_audio.duration, head_audio.duration, Duration::ZERO);
+        player.play();
+        player.reconcile();
+
+        // Sonic, à 1×, rend le son à sa quantification près.
+        let close = |heard: &[f32], expected: &[f32]| {
+            heard.len() == expected.len() && heard.iter().zip(expected).all(|(a, b)| (a - b).abs() < 1e-3)
+        };
+        let heard: Vec<f32> = output.by_ref().take(1000).collect();
+        assert!(close(&heard, &head), "la tête telle que synthétisée");
+        assert!(player.reconcile().is_empty(), "la phrase n'est pas finie : sa suite sonne");
+        // Pas un échantillon de silence ni de raccord entre les deux.
+        let heard: Vec<f32> = output.by_ref().take(500).collect();
+        assert!(close(&heard, &tail), "la suite dès l'échantillon suivant : {:?}", &heard[..4]);
+        let _: Vec<f32> = output.by_ref().take(10).collect();
+        assert_eq!(player.reconcile(), vec![0], "finie une fois, à la fin de sa suite");
+    }
+
+    /// Plus grand saut entre deux échantillons de sortie consécutifs près de
+    /// la coupe (± 64), et ailleurs, sur un son joué en une ou deux parties —
+    /// préparées comme le fait le pool.
+    fn join_jump(split_at: Option<usize>) -> (f32, f32) {
+        const SYNTH: u32 = 24_000;
+        const OUT: u32 = 48_000;
+        let (mut player, mut output) = Player::idle(OUT);
+        // Une voyelle grave et soutenue, coupée en pleine onde.
+        let signal: Vec<f32> =
+            (0..4800).map(|i| 0.3 * (2.0 * std::f32::consts::PI * 220.0 * i as f32 / SYNTH as f32).sin()).collect();
+        match split_at {
+            Some(at) => {
+                use crate::tts::pool::{fade_edge, Edge};
+                let head = Arc::new(fade_edge(PcmBuffer::new(signal[..at].to_vec(), SYNTH, 1), Edge::End));
+                let tail = Arc::new(fade_edge(PcmBuffer::new(signal[at..].to_vec(), SYNTH, 1), Edge::Start));
+                player.enqueue_part(0, &head, head.duration, Duration::ZERO, Duration::ZERO);
+                player.enqueue_part(0, &tail, tail.duration, head.duration, Duration::ZERO);
+            }
+            None => {
+                let whole = Arc::new(PcmBuffer::new(signal, SYNTH, 1));
+                player.enqueue(0, &whole, whole.duration);
+            }
+        }
+        player.play();
+        let out: Vec<f32> = output.by_ref().take(9000).collect();
+        let jumps: Vec<f32> = out.windows(2).map(|w| (w[1] - w[0]).abs()).collect();
+        let join = 2 * split_at.unwrap_or(2400);
+        let near = jumps[join - 64..join + 64].iter().copied().fold(0.0, f32::max);
+        let elsewhere = jumps[200..join - 200].iter().copied().fold(0.0, f32::max);
+        (near, elsewhere)
+    }
+
+    #[test]
+    fn a_cut_in_mid_wave_does_not_click_when_the_card_resamples() {
+        // Synthèse à 24 kHz, carte à 48 kHz : chaque partie a sa conversion,
+        // qui part d'un silence et y retourne. Sans fondu, une tête coupée en
+        // pleine onde claquait à la jonction (saut de 0,32 contre 0,009).
+        let (whole_near, whole) = join_jump(None);
+        let (cut_near, cut) = join_jump(Some(2427));
+        assert!(whole_near <= 1.1 * whole, "{whole_near} / {whole}");
+        assert!(cut_near <= 1.5 * cut, "claquement à la jonction : {cut_near} contre {cut} ailleurs");
     }
 
     #[test]

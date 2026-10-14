@@ -1,0 +1,62 @@
+sillon
+Copyright (c) Tharsan Vishnukumar
+
+Ce logiciel contient la bibliothèque Sonic (third_party/sonic : sonic.c et
+sonic.h, sans modification), Copyright 2010 Bill Cox, distribuée sous
+licence Apache 2.0 — voir third_party/sonic/LICENSE.
+Source : https://github.com/waywardgeek/sonic, révision
+b93885dcb70aae50c6f76b0fe4e0868f029a077e (14 mars 2026).
+
+La voix Kokoro-82M (hexgrad, poids et voix sous licence Apache 2.0) est
+téléchargée à la demande depuis mlx-community/Kokoro-82M-bf16 (révision
+a71e4d38b236d968966a2002c4c895dbd12b1c3c) ou
+onnx-community/Kokoro-82M-v1.0-ONNX-timestamped (révision
+dd4401a9add81ac692d20e240d22ec9dda82cc29). La voix p-fenrir60, livrée avec
+Sillon (assets/voices), en est dérivée (Apache 2.0).
+
+L'app macOS contient, avec le texte de chaque licence dans
+Contents/Resources/licences (ce fichier compris) :
+- des fichiers de mlx-audio-swift (macos/Vendor/KokoroMLX), licence MIT,
+  Copyright (c) 2025 Prince Canuma — mlx-audio-swift-LICENSE ;
+- mlx-swift 0.32.3, licence MIT, ml-explore — mlx-swift-LICENSE ; il
+  embarque MLX (licence MIT, Apple Inc. — mlx-LICENSE), mlx-c (licence MIT,
+  ml-explore — mlx-c-LICENSE), metal-cpp (licence Apache 2.0, Apple Inc. —
+  metal-cpp-LICENSE), nlohmann/json (licence MIT, Niels Lohmann —
+  nlohmann-json-LICENSE) et {fmt} (licence MIT avec exception pour les
+  binaires, Victor Zverovich — fmt-LICENSE) ;
+- KeyboardShortcuts, licence MIT, Sindre Sorhus — KeyboardShortcuts-LICENSE ;
+- Sonic, licence Apache 2.0 (voir plus haut) — sonic-LICENSE ;
+- le moteur de Sillon (bibliothèque Rust liée statiquement), et avec lui :
+  - les crates Rust qu'il lie (licences MIT, Apache 2.0, ISC, BSD,
+    Unicode-3.0, Zlib, MPL-2.0, CDLA-Permissive-2.0), avec le texte de la
+    licence de chacune — THIRD-PARTY-RUST.txt, généré depuis Cargo.lock par
+    scripts/third-party-rust.py. Les crates sous MPL-2.0 (uniffi,
+    uniffi_core, uniffi_pipeline, option-ext) sont utilisées sans
+    modification ; leurs sources sont celles publiées sur crates.io ;
+  - Tesseract 5.5.2 (licence Apache 2.0, Google et les contributeurs de
+    Tesseract — tesseract-LICENSE) et Leptonica 1.87.0 (licence de type BSD
+    à deux clauses, Leptonica — leptonica-LICENSE), compilés par la crate
+    tesseract-rs pour la lecture des images, avec les données de langue
+    française et anglaise de Tesseract (tesseract-ocr/tessdata_fast, licence
+    Apache 2.0).
+
+L'app macOS contient sillon-espeak (Contents/Helpers/sillon-espeak), un petit
+programme de Sillon (scripts/sillon-espeak.c) lié à espeak-ng 1.52.0, avec
+les données d'espeak-ng (Contents/Resources/espeak-ng-data), sous licence GNU
+GPL version 3. C'est un programme séparé, que Sillon lance et auquel il parle
+par ses entrées et sorties : Sillon ne s'y lie pas. Le texte de la licence,
+l'adresse exacte des sources d'espeak-ng
+(https://github.com/espeak-ng/espeak-ng/archive/refs/tags/1.52.0.tar.gz) et
+les sources de sillon-espeak (sillon-espeak.c, build-espeak.sh) sont livrés
+dans Contents/Resources/espeak-ng (COPYING, SOURCE.txt).
+
+Le terminal (dossier produit par scripts/package.sh) contient ce fichier,
+THIRD-PARTY-RUST.txt (les crates Rust liées au binaire, mêmes licences que
+ci-dessus) et, dans licences/ : Sonic (sonic-LICENSE), Tesseract et
+Leptonica avec la feature ocr (tesseract-LICENSE, leptonica-LICENSE).
+La feature kokoro-onnx charge ONNX Runtime (licence MIT, Microsoft), livré à
+côté du binaire sous Linux avec sa licence et ses avis
+(LICENSE-onnxruntime, ThirdPartyNotices-onnxruntime.txt), et sillon-espeak
+(GPL-3.0, programme séparé, comme dans l'app) avec ses données
+(espeak-ng-data), sa licence, l'adresse des sources d'espeak-ng et ses
+propres sources (sillon-espeak-source/).

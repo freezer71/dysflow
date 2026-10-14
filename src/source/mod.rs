@@ -38,6 +38,25 @@ pub fn clipboard() -> Result<String> {
     board.get_text().context(absent)
 }
 
+/// Reconnaît le texte d'une image donnée par ses octets (PNG, TIFF…).
+///
+/// L'app lit elle-même l'image du presse-papiers, après en avoir vérifié le
+/// contenu : relire le presse-papiers ici pourrait tomber sur une copie
+/// arrivée entre-temps — dissimulée, peut-être. Ni presse-papiers ni repli
+/// sur du texte, donc.
+pub fn image_bytes(bytes: &[u8]) -> Result<String> {
+    #[cfg(feature = "ocr")]
+    {
+        let page = ocr::read_encoded(bytes)?;
+        Ok(layout::to_markdown(&[page]))
+    }
+    #[cfg(not(feature = "ocr"))]
+    {
+        let _ = bytes;
+        anyhow::bail!("une image demande un binaire compilé avec l'option `ocr`")
+    }
+}
+
 /// Rend le contenu d'un chemin sous forme de markdown, quelle qu'en soit
 /// l'origine.
 pub fn load(path: &Path) -> Result<String> {
@@ -159,6 +178,27 @@ mod tests {
             message.contains("ocr"),
             "l'erreur doit nommer l'option manquante : {message}"
         );
+    }
+
+    #[cfg(feature = "ocr")]
+    #[test]
+    fn image_bytes_are_recognised_without_touching_the_clipboard() {
+        let bytes = std::fs::read(fixture("capture.png")).expect("la fixture doit se lire");
+        let out = image_bytes(&bytes).expect("l'image doit se lire");
+        assert!(out.contains("Spécification"), "accents perdus : {out}");
+    }
+
+    #[cfg(feature = "ocr")]
+    #[test]
+    fn bytes_that_are_not_an_image_are_an_error() {
+        assert!(image_bytes(b"du texte, pas une image").is_err());
+    }
+
+    #[cfg(not(feature = "ocr"))]
+    #[test]
+    fn image_bytes_say_the_binary_was_built_without_ocr() {
+        let err = image_bytes(b"\x89PNG\r\n\x1a\n").unwrap_err().to_string();
+        assert!(err.contains("ocr"), "l'erreur doit nommer l'option manquante : {err}");
     }
 
     #[test]

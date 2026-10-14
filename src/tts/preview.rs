@@ -25,7 +25,11 @@ use super::{PcmBuffer, TtsEngine, TtsParams};
 /// cinq secondes — parce qu'on enchaîne dix voix pour les comparer, et qu'un
 /// extrait de dix secondes rendrait la comparaison pénible.
 pub fn sample_text(language: &str) -> &'static str {
-    match language.trim().to_ascii_lowercase().as_str() {
+    let code = crate::text::language::Lang::parse(language).map_or_else(
+        || language.trim().split(['-', '_']).next().unwrap_or("").to_ascii_lowercase(),
+        |l| l.code().to_string(),
+    );
+    match code.as_str() {
         "en" => "Hello, this is a preview of the selected voice, at the current speed.",
         "de" => "Guten Tag, dies ist eine Hörprobe der gewählten Stimme, in diesem Tempo.",
         "es" => "Hola, esta es una muestra de la voz seleccionada, a esta velocidad.",
@@ -34,6 +38,51 @@ pub fn sample_text(language: &str) -> &'static str {
         "nl" => "Goedendag, dit is een voorbeeld van de gekozen stem, op deze snelheid.",
         _ => "Bonjour, voici un aperçu de la voix sélectionnée, à cette vitesse.",
     }
+}
+
+/// Refus d'un aperçu clonant sans WAV de référence.
+pub const REFERENCE_MISSING: &str =
+    "ce modèle ne parle qu'en clonant : choisissez d'abord un fichier WAV";
+/// Refus d'un aperçu sans sortie audio.
+pub const AUDIO_MISSING: &str = "sortie audio indisponible : aucun aperçu possible";
+
+/// Pourquoi un aperçu ne peut pas partir, s'il ne le peut pas.
+///
+/// La voix clonée passe d'abord : c'est la seule à laquelle l'utilisateur
+/// peut remédier depuis l'onglet.
+pub fn refusal(requires_reference: bool, voice: &str, audio_available: bool) -> Option<String> {
+    if requires_reference {
+        let voice = crate::config::expand_tilde(voice.trim());
+        if voice.is_empty() || !std::path::Path::new(&voice).is_file() {
+            return Some(REFERENCE_MISSING.to_string());
+        }
+    }
+    if !audio_available {
+        return Some(AUDIO_MISSING.to_string());
+    }
+    None
+}
+
+/// Lance l'aperçu des réglages en cours sur la phrase d'exemple : le
+/// précédent est coupé, un refus s'explique, la lecture se met en pause pour
+/// que l'aperçu parle seul. Chemin unique de l'app (avec ou sans texte).
+pub fn start(
+    previewer: &mut Previewer,
+    player: &mut crate::audio::Player,
+    requires_reference: bool,
+    config: &crate::config::Config,
+    language: &str,
+    label: String,
+) -> Result<(), String> {
+    previewer.cancel();
+    player.stop_preview();
+    if let Some(reason) = refusal(requires_reference, &config.voice.voice, player.is_available()) {
+        return Err(reason);
+    }
+    player.pause();
+    previewer
+        .request(sample_text(language).to_string(), config.tts_params_in(language), label)
+        .map_err(|err| format!("aperçu impossible : {err}"))
 }
 
 struct Request {
@@ -206,6 +255,22 @@ fn latest(mut request: Request, requests: &Receiver<Request>) -> Request {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_regional_english_code_gets_the_english_sample() {
+        assert_eq!(sample_text("en-US"), sample_text("en"));
+        assert_ne!(sample_text("en_GB"), sample_text("fr"));
+    }
+
+    #[test]
+    fn a_cloning_model_without_a_wav_is_refused_before_the_audio_check() {
+        assert_eq!(refusal(true, "", true).as_deref(), Some(REFERENCE_MISSING));
+        assert_eq!(refusal(true, "/n/existe/pas.wav", false).as_deref(), Some(REFERENCE_MISSING));
+        let present = concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml");
+        assert_eq!(refusal(true, present, true), None);
+        assert_eq!(refusal(false, "", false).as_deref(), Some(AUDIO_MISSING));
+        assert_eq!(refusal(false, "", true), None);
+    }
     use anyhow::Result;
     use std::sync::atomic::{AtomicUsize, Ordering};
 

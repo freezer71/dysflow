@@ -34,6 +34,8 @@ struct Shared {
 /// Moteur dont le chargement se fait en arrière-plan.
 pub struct LazyEngine {
     shared: Arc<Shared>,
+    /// Le moteur chargé coupera la phrase attendue.
+    splits: bool,
 }
 
 impl LazyEngine {
@@ -65,7 +67,14 @@ impl LazyEngine {
             worker.ready.notify_all();
         });
 
-        Self { shared }
+        Self { shared, splits: false }
+    }
+
+    /// Annonce d'avance que le moteur chargé coupera la phrase attendue : le
+    /// pool en décide à sa création, avant la fin du chargement.
+    pub fn splitting_first_clause(mut self) -> Self {
+        self.splits = true;
+        self
     }
 
     /// Vrai tant que le modèle n'est pas prêt.
@@ -96,6 +105,14 @@ impl LazyEngine {
 }
 
 impl TtsEngine for LazyEngine {
+    fn readiness(&self) -> super::Readiness {
+        match &*self.shared.state.lock().unwrap() {
+            State::Loading => super::Readiness::Loading,
+            State::Ready(engine) => engine.readiness(),
+            State::Failed(err) => super::Readiness::Fallback(err.clone()),
+        }
+    }
+
     fn name(&self) -> String {
         match &*self.shared.state.lock().unwrap() {
             State::Loading => format!("{} · chargement…", self.shared.label),
@@ -130,6 +147,19 @@ impl TtsEngine for LazyEngine {
         match &*self.shared.state.lock().unwrap() {
             State::Ready(engine) => engine.requires_reference(),
             _ => false,
+        }
+    }
+
+    /// L'annonce ne vaut que pendant le chargement ; une fois chargé, seul le
+    /// moteur réel en décide, comme pour `requires_reference` — tombé sur sa
+    /// voix de repli, il ne coupe plus, et l'annonce ne doit pas le contredire.
+    /// Après un échec, c'est le repli qui parle : il répond pour lui. Le pool
+    /// le redemande à chaque phrase.
+    fn splits_first_clause(&self) -> bool {
+        match &*self.shared.state.lock().unwrap() {
+            State::Loading => self.splits,
+            State::Ready(engine) => engine.splits_first_clause(),
+            State::Failed(_) => self.shared.fallback.splits_first_clause(),
         }
     }
 }
@@ -171,7 +201,7 @@ mod tests {
     fn construction_does_not_wait_for_the_model() {
         let counter = Arc::new(AtomicUsize::new(0));
         let start = Instant::now();
-        let engine = LazyEngine::spawn("audio.cpp".into(), 3, fallback(&counter), || {
+        let engine = LazyEngine::spawn("Kokoro".into(), 3, fallback(&counter), || {
             thread::sleep(Duration::from_millis(400));
             Ok(Arc::new(Stub("réel", Arc::new(AtomicUsize::new(0)))) as Arc<dyn TtsEngine>)
         });
@@ -188,9 +218,99 @@ mod tests {
     }
 
     #[test]
+    fn the_cut_is_announced_before_the_model_is_there() {
+        let counter = Arc::new(AtomicUsize::new(0));
+        let engine = LazyEngine::spawn("Kokoro".into(), 1, fallback(&counter), || {
+            thread::sleep(Duration::from_millis(200));
+            Ok(Arc::new(Stub("réel", Arc::new(AtomicUsize::new(0)))) as Arc<dyn TtsEngine>)
+        })
+        .splitting_first_clause();
+        assert!(engine.is_loading());
+        assert!(engine.splits_first_clause());
+        let plain = LazyEngine::spawn("Kokoro".into(), 1, fallback(&counter), || {
+            Ok(Arc::new(Stub("réel", Arc::new(AtomicUsize::new(0)))) as Arc<dyn TtsEngine>)
+        });
+        assert!(!plain.splits_first_clause(), "sans annonce, pas de coupe");
+    }
+
+    /// Un moteur qui demande lui-même la coupe.
+    struct Splitting;
+    impl TtsEngine for Splitting {
+        fn name(&self) -> String {
+            "coupe".into()
+        }
+        fn open_session(&self) -> Result<Box<dyn TtsSession>> {
+            Ok(Box::new(StubSession))
+        }
+        fn max_sessions(&self) -> usize {
+            1
+        }
+        fn splits_first_clause(&self) -> bool {
+            true
+        }
+    }
+
+    #[test]
+    fn the_loaded_engine_passes_its_cut_through() {
+        let counter = Arc::new(AtomicUsize::new(0));
+        let engine = LazyEngine::spawn("Kokoro".into(), 1, fallback(&counter), || {
+            Ok(Arc::new(Splitting) as Arc<dyn TtsEngine>)
+        });
+        engine.open_session().unwrap();
+        assert!(engine.splits_first_clause());
+    }
+
+    #[test]
+    fn a_loaded_engine_that_breaks_down_stops_the_cut() {
+        // Kokoro chargé coupe ; tombé sur son repli, il ne coupe plus. L'annonce
+        // faite pendant le chargement ne doit pas le contredire (correctif T9).
+        use std::sync::atomic::AtomicBool;
+        struct Breaking(Arc<AtomicBool>);
+        impl TtsEngine for Breaking {
+            fn name(&self) -> String {
+                "kokoro".into()
+            }
+            fn open_session(&self) -> Result<Box<dyn TtsSession>> {
+                Ok(Box::new(StubSession))
+            }
+            fn max_sessions(&self) -> usize {
+                1
+            }
+            fn splits_first_clause(&self) -> bool {
+                !self.0.load(Ordering::SeqCst)
+            }
+        }
+        let broken = Arc::new(AtomicBool::new(false));
+        let flag = Arc::clone(&broken);
+        let counter = Arc::new(AtomicUsize::new(0));
+        let engine = LazyEngine::spawn("Kokoro".into(), 1, fallback(&counter), move || {
+            Ok(Arc::new(Breaking(flag)) as Arc<dyn TtsEngine>)
+        })
+        .splitting_first_clause();
+        engine.open_session().unwrap();
+        assert!(engine.splits_first_clause(), "chargé et en état : coupe");
+        broken.store(true, Ordering::SeqCst);
+        assert!(!engine.splits_first_clause(), "tombé sur son repli : plus de coupe");
+    }
+
+    #[test]
+    fn a_failed_load_cuts_as_its_fallback_does() {
+        // L'annonce valait pour le modèle attendu : le repli parle à sa façon.
+        let engine = LazyEngine::spawn("Kokoro".into(), 1, Arc::new(Splitting), || Err(anyhow!("absent")))
+            .splitting_first_clause();
+        engine.open_session().unwrap();
+        assert!(engine.splits_first_clause(), "le repli coupe");
+        let counter = Arc::new(AtomicUsize::new(0));
+        let engine = LazyEngine::spawn("Kokoro".into(), 1, fallback(&counter), || Err(anyhow!("absent")))
+            .splitting_first_clause();
+        engine.open_session().unwrap();
+        assert!(!engine.splits_first_clause(), "le repli ne coupe pas");
+    }
+
+    #[test]
     fn a_failed_load_falls_back_instead_of_going_silent() {
         let counter = Arc::new(AtomicUsize::new(0));
-        let engine = LazyEngine::spawn("audio.cpp".into(), 2, fallback(&counter), || {
+        let engine = LazyEngine::spawn("Kokoro".into(), 2, fallback(&counter), || {
             Err(anyhow!("modèle introuvable"))
         });
         engine.open_session().expect("le repli doit prendre le relais");
@@ -205,7 +325,7 @@ mod tests {
         let counted = Arc::clone(&loads);
         let counter = Arc::new(AtomicUsize::new(0));
         let engine = Arc::new(LazyEngine::spawn(
-            "audio.cpp".into(),
+            "Kokoro".into(),
             4,
             fallback(&counter),
             move || {
@@ -226,5 +346,28 @@ mod tests {
         }
         // Le modèle n'est chargé qu'une fois, quel que soit le nombre de threads.
         assert_eq!(loads.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn a_loaded_engine_that_falls_back_says_so() {
+        struct Broken;
+        impl TtsEngine for Broken {
+            fn name(&self) -> String {
+                "cassé".into()
+            }
+            fn open_session(&self) -> Result<Box<dyn TtsSession>> {
+                anyhow::bail!("non")
+            }
+            fn max_sessions(&self) -> usize {
+                1
+            }
+            fn readiness(&self) -> crate::tts::Readiness {
+                crate::tts::Readiness::Fallback("espeak-ng s'est arrêté".into())
+            }
+        }
+        let counter = Arc::new(AtomicUsize::new(0));
+        let engine = LazyEngine::spawn("Kokoro".into(), 1, fallback(&counter), || Ok(Arc::new(Broken) as Arc<dyn TtsEngine>));
+        let _ = engine.open_session();
+        assert_eq!(engine.readiness(), crate::tts::Readiness::Fallback("espeak-ng s'est arrêté".into()));
     }
 }

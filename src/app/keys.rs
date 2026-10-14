@@ -18,7 +18,7 @@ pub const HELP: &[(&str, &str)] = &[
     ("n / p", "Titre suivant / précédent"),
     ("g / Début · Fin", "Début · fin du document"),
     ("r", "Reprendre la phrase"),
-    ("+ / -", "Vitesse (resynthèse)"),
+    ("+ / -", "Vitesse (immédiate)"),
     ("1 2 3 4", "Vitesse 0,75× 1× 1,5× 2×"),
     ("[ / ]", "Volume"),
     ("m", "Couper le son"),

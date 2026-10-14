@@ -45,15 +45,15 @@ pub struct Args {
     #[arg(long)]
     pub language: Option<String>,
 
-    /// Moteur de synthèse : auto, audio_cpp ou system.
+    /// Moteur de synthèse : auto ou system.
     #[arg(long)]
     pub engine: Option<String>,
 
-    /// Chemin du modèle audio.cpp (répertoire ou GGUF).
+    /// Chemin du modèle (Kokoro).
     #[arg(long)]
     pub model: Option<String>,
 
-    /// Famille audio.cpp, par exemple supertonic.
+    /// Famille du modèle, par exemple kokoro.
     #[arg(long)]
     pub family: Option<String>,
 
@@ -126,6 +126,8 @@ pub struct Prepared {
 
 pub fn prepare(args: &Args) -> Result<Launch> {
     let (mut config, config_notice) = Config::load();
+    // Une configuration illisible n'est jamais réécrite.
+    let config_notice_is_none = config_notice.is_none();
     let mut notices: Vec<String> = config_notice.into_iter().collect();
 
     apply_overrides(&mut config, args, &mut notices)?;
@@ -149,17 +151,24 @@ pub fn prepare(args: &Args) -> Result<Launch> {
         }
     }
 
+    // Le passage à Kokoro s'écrit sur la configuration du disque, jamais sur
+    // celle que les options de la ligne de commande ont modifiée.
+    if config_notice_is_none {
+        let (on_disk, _) = Config::load();
+        let available = crate::models::available();
+        if let Some(migrated) =
+            migrate_for_launch(&mut config, on_disk, args, &mut notices, &available, crate::models::is_installed)
+        {
+            let _ = migrated.save();
+        }
+    }
+
     // Un modèle déjà installé devient le défaut, sans rien demander.
     adopt_installed_model(&mut config, &mut notices);
 
-    // Une configuration écrite pour un autre modèle peut nommer une voix que
-    // celui-ci ne connaît pas ; le moteur la rejetterait sans rien expliquer.
-    if config.align_voice_with_family() {
-        notices.push(format!(
-            "voix inconnue de {} — repli sur sa voix par défaut",
-            config.engine.family
-        ));
-    }
+    // Kokoro remplit en silence ses voix par langue manquantes. Seul Kokoro
+    // nomme ses voix : aucune autre famille n'a de voix à réaligner.
+    config.align_voice_with_family();
 
     // La redirection couvre le chargement du modèle, qui est déjà bavard, et
     // tout ce qui suit : le chargement se poursuit en fond pendant la lecture
@@ -190,15 +199,8 @@ pub fn prepare(args: &Args) -> Result<Launch> {
         anyhow::bail!("aucun contenu lisible");
     }
 
-    let mut app = App::new(
-        builder,
-        stream,
-        engine,
-        config,
-        source,
-        notices,
-        crate::audio::Player::new(),
-    );
+    let player = crate::audio::Player::with_output(&config.app.output_device);
+    let mut app = App::new(builder, stream, engine, config, source, notices, player);
     // Un fichier a une identité stable : sa lecture reprend où elle en était.
     // Un flux et un collage n'en ont pas — la même position leur désignerait
     // un autre texte.
@@ -249,16 +251,25 @@ fn extracted(args: &Args) -> Result<Option<String>> {
     }
 }
 
+/// Un document prêt à recevoir `text` : la langue vient du choix retenu pour
+/// lui, de la configuration, ou de la détection.
+fn builder_for(config: &Config, text: &str, identity: Option<&str>) -> DocumentBuilder {
+    let detected = crate::text::language::detect_markdown(text);
+    let choices = crate::reader::language::LanguageChoices::load();
+    let chosen = identity.and_then(|id| choices.get(id)).map(str::to_string);
+    let language = crate::text::language::resolve(&config.voice.language, chosen.as_deref(), detected);
+    DocumentBuilder::with_language(config.code_policy(), &language)
+}
+
 /// Ce qu'il y a à lire : le document assemblé, le flux qui l'alimente encore,
 /// et le nom sous lequel il se retient.
 fn read_input(
     args: &Args,
     config: &Config,
 ) -> Result<(DocumentBuilder, Option<Receiver<InputEvent>>, String)> {
-    let mut builder = DocumentBuilder::new(config.code_policy());
-
     if args.clip {
         let text = read_clipboard()?;
+        let mut builder = builder_for(config, &text, None);
         for block in input::split_blocks(&text) {
             builder.push_block(&block);
         }
@@ -270,15 +281,21 @@ fn read_input(
             // Un fichier est analysé d'emblée : sommaire et durée sont
             // disponibles dès l'ouverture.
             let text = crate::source::load_with_cache(path, !args.no_cache)?;
+            let identity = document_identity(path);
+            let mut builder = builder_for(config, &text, Some(&identity));
             for block in input::split_blocks(&text) {
                 builder.push_block(&block);
             }
-            Ok((builder, None, document_identity(path)))
+            Ok((builder, None, identity))
         }
         None if std::io::stdin().is_terminal() => {
             // Lancé sans rien : il n'y a rien à lire, mais tout à régler.
             // Ouvrir la configuration vaut mieux qu'un message d'erreur.
-            Ok((builder, None, "configuration".to_string()))
+            Ok((
+                DocumentBuilder::with_language(config.code_policy(), &config.default_language()),
+                None,
+                "configuration".to_string(),
+            ))
         }
         None => {
             // Le tube est mis de côté et le descripteur 0 rendu au terminal,
@@ -288,9 +305,12 @@ fn read_input(
                 Some(file) => input::spawn_reader(file),
                 None => input::spawn_reader(std::io::stdin()),
             };
-            // Le flux est lu au fil de l'eau : la lecture commence sans
-            // attendre la fin de l'entrée.
-            Ok((builder, Some(stream), "stdin".to_string()))
+            // Le flux est lu au fil de l'eau : sa langue est celle par défaut.
+            Ok((
+                DocumentBuilder::with_language(config.code_policy(), &config.default_language()),
+                Some(stream),
+                "stdin".to_string(),
+            ))
         }
     }
 }
@@ -305,6 +325,76 @@ fn read_clipboard() -> Result<String> {
     {
         anyhow::bail!("--clip exige un binaire compilé avec l'option `clipboard`")
     }
+}
+
+/// Le passage à Kokoro au terminal : un Kokoro installé est adopté, une
+/// seule fois ; installable seulement, il est signalé sans rien retenir
+/// (le terminal ne télécharge rien de lui-même). Rend l'avis.
+pub fn migrate_terminal(config: &mut Config) -> Option<String> {
+    migrate_terminal_in(config, &crate::models::available(), crate::models::is_installed)
+}
+
+fn migrate_terminal_in(
+    config: &mut Config,
+    available: &[&'static crate::models::ModelPackage],
+    installed: impl Fn(&crate::models::ModelPackage) -> bool,
+) -> Option<String> {
+    use crate::reader::migration::{former_voice, plan, Step, KOKORO_MIGRATION};
+    let former = former_voice(config);
+    match plan(config, available, installed) {
+        Step::Switch(package) => {
+            let path = crate::models::install_path(package)?;
+            config.engine.model_path = path.to_string_lossy().into_owned();
+            config.engine.family = package.family.to_string();
+            // « system » ferait parler la voix du système : l'avis mentirait.
+            if config.engine.engine == "system" {
+                config.engine.engine = "auto".to_string();
+            }
+            config.align_voice_with_family();
+            config.app.voice_migration = KOKORO_MIGRATION;
+            Some(format!("Nouvelle voix : Kokoro remplace {former}. L'ancien modèle reste installé (`s` pour y revenir)."))
+        }
+        Step::Record => {
+            config.app.voice_migration = KOKORO_MIGRATION;
+            None
+        }
+        Step::Offer(_) => Some("Nouvelle voix Kokoro disponible : `s` pour l'installer.".to_string()),
+        Step::Nothing => None,
+    }
+}
+
+/// Le passage à Kokoro au lancement du terminal, sur `on_disk` (la
+/// configuration du fichier). Rend ce qu'il faut écrire, s'il y a lieu. La
+/// configuration de ce lancement suit le passage, sauf pour ce que la ligne
+/// de commande a fixé (`--engine`, `--model`, `--family`).
+fn migrate_for_launch(
+    config: &mut Config,
+    mut on_disk: Config,
+    args: &Args,
+    notices: &mut Vec<String>,
+    available: &[&'static crate::models::ModelPackage],
+    installed: impl Fn(&crate::models::ModelPackage) -> bool,
+) -> Option<Config> {
+    let before = on_disk.app.voice_migration;
+    notices.extend(migrate_terminal_in(&mut on_disk, available, installed));
+    if on_disk.app.voice_migration == before {
+        return None;
+    }
+    config.app.voice_migration = on_disk.app.voice_migration;
+    let switched = on_disk.engine.family != config.engine.family || on_disk.engine.model_path != config.engine.model_path;
+    if switched {
+        if args.engine.is_none() {
+            config.engine.engine = on_disk.engine.engine.clone();
+        }
+        if args.model.is_none() {
+            config.engine.model_path = on_disk.engine.model_path.clone();
+        }
+        if args.family.is_none() {
+            config.engine.family = on_disk.engine.family.clone();
+        }
+        config.voice.per_language = on_disk.voice.per_language.clone();
+    }
+    Some(on_disk)
 }
 
 /// Adopte un modèle installé si la configuration n'en désigne aucun.
@@ -329,9 +419,6 @@ fn adopt_installed_model(config: &mut Config, notices: &mut Vec<String>) {
             if let Some(path) = crate::models::install_path(package) {
                 config.engine.model_path = path.to_string_lossy().into_owned();
                 config.engine.family = package.family.to_string();
-                if config.engine.engine == "auto" {
-                    config.engine.engine = "audio_cpp".to_string();
-                }
             }
         }
         None => {
@@ -365,7 +452,7 @@ fn apply_overrides(config: &mut Config, args: &Args, notices: &mut Vec<String>) 
     }
     if let Some(v) = &args.engine {
         if tts::EnginePreference::parse(v).is_none() {
-            anyhow::bail!("moteur inconnu : {v} (attendu : auto, audio_cpp ou system)");
+            anyhow::bail!("moteur inconnu : {v} (attendu : auto ou system)");
         }
         config.engine.engine = v.clone();
     }
@@ -410,6 +497,91 @@ fn apply_overrides(config: &mut Config, args: &Args, notices: &mut Vec<String>) 
 mod tests {
     use super::*;
 
+    fn kokoro_int8() -> &'static crate::models::ModelPackage {
+        crate::models::CATALOG.iter().find(|p| p.id == "kokoro_82m_int8").unwrap()
+    }
+
+    fn on_supertonic() -> Config {
+        let mut config = Config::default();
+        config.engine.family = "supertonic".into();
+        config.engine.model_path = "/m/supertonic/supertonic-3-f16.gguf".into();
+        config
+    }
+
+    #[test]
+    fn the_terminal_never_downloads_and_records_nothing_then() {
+        let mut config = on_supertonic();
+        let notice = migrate_terminal_in(&mut config, &[kokoro_int8()], |_| false);
+        assert!(notice.is_some_and(|n| n.contains("`s`")));
+        assert_eq!(config.app.voice_migration, 0, "rien de retenu sans adoption");
+        assert_eq!(config.engine.family, "supertonic");
+    }
+
+    #[test]
+    fn the_terminal_adopts_an_installed_kokoro_once() {
+        let mut config = on_supertonic();
+        let notice = migrate_terminal_in(&mut config, &[kokoro_int8()], |_| true).expect("un avis");
+        assert!(notice.starts_with("Nouvelle voix : Kokoro remplace supertonic."), "{notice}");
+        assert_eq!(config.engine.family, "kokoro");
+        assert!(config.engine.model_path.ends_with("kokoro/model_quantized.onnx"), "{}", config.engine.model_path);
+        assert_eq!(config.voice.per_language["fr"], "p-fenrir60");
+        assert_eq!(config.app.voice_migration, crate::reader::migration::KOKORO_MIGRATION);
+        assert_eq!(migrate_terminal_in(&mut config, &[kokoro_int8()], |_| true), None, "une seule fois");
+    }
+
+    /// Une configuration du disque sur Supertonic, Kokoro int8 installé :
+    /// ce que la ligne de commande garde pour ce lancement, ce qui s'écrit.
+    fn migrated_with(args: &Args) -> (Config, Option<Config>, Vec<String>) {
+        let mut config = on_supertonic();
+        apply_overrides(&mut config, args, &mut Vec::new()).unwrap();
+        let mut notices = Vec::new();
+        let to_save = migrate_for_launch(&mut config, on_supertonic(), args, &mut notices, &[kokoro_int8()], |_| true);
+        (config, to_save, notices)
+    }
+
+    #[test]
+    fn the_command_line_keeps_its_engine_through_the_migration() {
+        let args = Args { engine: Some("system".into()), ..Args::default() };
+        let (config, to_save, notices) = migrated_with(&args);
+        assert_eq!(config.engine.engine, "system", "--engine system tient pour ce lancement");
+        let saved = to_save.expect("la migration s'écrit sur le disque");
+        assert_eq!(saved.engine.family, "kokoro");
+        assert_eq!(saved.app.voice_migration, crate::reader::migration::KOKORO_MIGRATION);
+        assert_eq!(notices.len(), 1);
+        // Sans option, le lancement prend Kokoro.
+        let (config, _, _) = migrated_with(&Args::default());
+        assert_eq!(config.engine.family, "kokoro");
+    }
+
+    #[test]
+    fn the_command_line_keeps_its_model_and_family_through_the_migration() {
+        let args = Args {
+            model: Some("/ailleurs/magpie.gguf".into()),
+            family: Some("magpie_tts".into()),
+            ..Args::default()
+        };
+        let (config, to_save, _) = migrated_with(&args);
+        assert_eq!(config.engine.model_path, "/ailleurs/magpie.gguf");
+        assert_eq!(config.engine.family, "magpie_tts");
+        assert_eq!(config.app.voice_migration, crate::reader::migration::KOKORO_MIGRATION);
+        assert_eq!(to_save.expect("écrite").engine.family, "kokoro");
+    }
+
+    #[test]
+    fn a_system_engine_on_disk_leaves_it_for_kokoro() {
+        let mut config = on_supertonic();
+        config.engine.engine = "system".into();
+        migrate_terminal_in(&mut config, &[kokoro_int8()], |_| true).expect("un avis");
+        assert_ne!(config.engine.engine, "system", "l'avis dit vrai : Kokoro parle");
+    }
+
+    #[test]
+    fn the_terminal_without_kokoro_records_nothing() {
+        let mut config = on_supertonic();
+        assert_eq!(migrate_terminal_in(&mut config, &[], |_| true), None);
+        assert_eq!(config.app.voice_migration, 0);
+    }
+
     fn scratch(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("sillon-launch-{}-{name}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
@@ -447,5 +619,22 @@ mod tests {
         let args = Args { sessions: Some(0), ..Args::default() };
         apply_overrides(&mut config, &args, &mut Vec::new()).unwrap();
         assert_eq!(config.engine.sessions, 0);
+    }
+
+    #[test]
+    fn aligning_at_launch_fills_only_kokoros_voices() {
+        // Kokoro remplit ses voix par langue en silence : rien d'inconnu.
+        let mut config = Config::default();
+        config.engine.family = "kokoro".into();
+        config.voice.per_language.clear();
+        assert!(config.align_voice_with_family());
+        assert!(config.voice.per_language.contains_key("fr"), "rempli quand même");
+
+        // Une famille hors catalogue ne nomme aucune voix : rien à réaligner.
+        let mut config = Config::default();
+        config.engine.family = "supertonic".into();
+        config.voice.voice = "voix-qui-n-existe-pas".into();
+        assert!(!config.align_voice_with_family());
+        assert_eq!(config.voice.voice, "voix-qui-n-existe-pas");
     }
 }

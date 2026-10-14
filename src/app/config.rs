@@ -2,8 +2,9 @@
 //!
 //! Tout ce qui se règle est ici : les modèles installables, la voix, les
 //! paramètres d'échantillonnage du modèle, la lecture et le moteur. Les valeurs
-//! s'appliquent immédiatement — la synthèse en cours est régénérée — et `w` les
-//! écrit dans `config.toml` pour les sessions suivantes.
+//! s'appliquent immédiatement — vitesse et volume au son, sur-le-champ ; les
+//! autres réglages de voix en régénérant la synthèse — et `w` les écrit dans
+//! `config.toml` pour les sessions suivantes.
 
 use crate::config::Config;
 use crate::models;
@@ -168,9 +169,8 @@ pub enum Field {
 }
 
 const EMOTIONS: &[&str] = &["", "neutre", "calme", "chaleureux", "sérieux", "enjoué", "posé"];
-const LANGUAGES: &[&str] = &["fr", "en", "de", "es", "it", "pt", "nl"];
 const CODE_POLICIES: &[&str] = &["announce", "skip", "read"];
-const ENGINES: &[&str] = &["auto", "audio_cpp", "system"];
+const ENGINES: &[&str] = &["auto", "system"];
 const COMPUTES: &[&str] = &["cpu", "metal", "cuda", "vulkan", "auto"];
 
 impl Field {
@@ -243,13 +243,13 @@ impl Field {
     pub fn hint(&self) -> &'static str {
         match self {
             Field::Speed => {
-                "Appliquée à la synthèse : la voix accélère sans monter dans les aigus. \
-                 t pour l'entendre."
+                "Immédiate, sans resynthèse : appliquée au son, la voix accélère sans \
+                 monter dans les aigus. t pour l'entendre."
             }
             Field::Pitch => "Décalage de hauteur transmis au modèle, de -1 à +1.",
             Field::Energy => "Intensité de la diction.",
             Field::Volume => "Volume de sortie, sans effet sur la synthèse.",
-            Field::Language => "Langue du texte, transmise au modèle.",
+            Field::Language => "Langue des documents : « auto » suit chacun d'eux.",
             Field::Emotion => "Intonation demandée, si la famille la prend en charge.",
             Field::Voice => "Voix du modèle.",
             Field::Instruction => "Consigne de style en langage naturel.",
@@ -268,7 +268,7 @@ impl Field {
             }
             Field::LineSpacing => "Lignes vides entre deux lignes de texte.",
             Field::ReadingRuler => "Souligne d'un fond la ligne en cours de lecture.",
-            Field::EnginePref => "auto essaie audio.cpp puis se replie sur la voix système.",
+            Field::EnginePref => "auto lit avec le modèle installé (Kokoro), sinon la voix du système.",
             Field::Compute => "Backend de calcul du modèle.",
             Field::Threads => "Threads alloués au modèle.",
             Field::Sessions => {
@@ -277,7 +277,7 @@ impl Field {
             }
             Field::Prefetch => "Profondeur d'avance de la synthèse.",
             Field::ModelPath => "Renseigné automatiquement à l'installation d'un modèle.",
-            Field::Family => "Famille audio.cpp du modèle chargé.",
+            Field::Family => "Famille du modèle chargé (kokoro).",
         }
     }
 
@@ -295,11 +295,11 @@ impl Field {
 
     /// Nom de l'option de synthèse correspondante, s'il y en a une.
     ///
-    /// Sert à signaler les réglages qu'une famille n'honore pas. Le volume n'en
-    /// a pas : il agit sur la sortie, jamais sur le modèle.
+    /// Sert à signaler les réglages qu'une famille n'honore pas. Volume et
+    /// vitesse n'en ont pas : ils agissent sur le son, jamais sur le modèle,
+    /// et valent donc pour toutes les voix.
     pub fn option_key(&self) -> Option<&'static str> {
         match self {
-            Field::Speed => Some("speaking_rate"),
             Field::Pitch => Some("pitch_shift"),
             Field::Energy => Some("energy"),
             Field::Language => Some("language"),
@@ -351,7 +351,8 @@ impl Field {
             Field::Emotion => text(&config.voice.emotion),
             Field::Voice => {
                 let voices = models::voices_for_family(&config.engine.family);
-                match voices.iter().find(|v| v.id == config.voice.voice) {
+                let shown = voice_in_use(config);
+                match voices.iter().find(|v| v.id == shown) {
                     Some(voice) => voice.label.to_string(),
                     None if config.voice.voice.is_empty() && !voices.is_empty() => {
                         format!("{} (défaut)", voices[0].label)
@@ -443,7 +444,7 @@ impl Field {
         match self {
             Field::Speed => {
                 config.voice.speed = (config.voice.speed + 0.05 * step).clamp(0.5, 3.0);
-                Effect::Resynthesize
+                Effect::Speed
             }
             Field::Pitch => {
                 config.voice.pitch = (config.voice.pitch + 0.05 * step).clamp(-1.0, 1.0);
@@ -455,8 +456,12 @@ impl Field {
             }
             Field::Volume => Effect::Volume(0.05 * step),
             Field::Language => {
-                cycle_string(&mut config.voice.language, LANGUAGES, delta);
-                Effect::Resynthesize
+                // « auto » d'abord : chaque document prend alors sa langue.
+                // La normalisation en dépend : effet à la prochaine ouverture.
+                let mut languages = vec![crate::text::language::AUTO];
+                languages.extend(models::languages_for_family(&config.engine.family));
+                cycle_string(&mut config.voice.language, &languages, delta);
+                Effect::Reparse
             }
             Field::Emotion => {
                 cycle_string(&mut config.voice.emotion, EMOTIONS, delta);
@@ -512,7 +517,7 @@ impl Field {
             }
             Field::SeekStep => {
                 config.reading.seek_step =
-                    config.reading.seek_step.saturating_add_signed(delta).clamp(1, 100);
+                    config.reading.seek_step.saturating_add_signed(delta).clamp(1, 50);
                 Effect::None
             }
             // Le plein écran, noté zéro, prolonge la course vers le haut : il
@@ -531,7 +536,7 @@ impl Field {
             }
             Field::LineSpacing => {
                 config.reading.line_spacing =
-                    config.reading.line_spacing.saturating_add_signed(delta).min(2);
+                    config.reading.line_spacing.saturating_add_signed(delta).min(3);
                 Effect::None
             }
             Field::ReadingRuler => {
@@ -567,18 +572,42 @@ impl Field {
                     // Champ libre : il s'édite avec Entrée.
                     return Effect::None;
                 }
-                let current = voices
-                    .iter()
-                    .position(|v| v.id == config.voice.voice)
-                    .unwrap_or(0) as i32;
-                let next = (current + delta).rem_euclid(voices.len() as i32) as usize;
-                config.voice.voice = voices[next].id.to_string();
+                // Seul Kokoro nomme ses voix, une par langue. Le champ défile
+                // parmi celles de la langue par défaut et écrit sa ligne de
+                // `[voice.per_language]`, que seule `tts_params_in` lit.
+                let language = config.default_language();
+                let code = crate::text::language::Lang::parse(&language)
+                    .map_or_else(|| language.clone(), |l| l.code().to_string());
+                let own: Vec<&models::VoiceOption> =
+                    voices.iter().filter(|v| v.language.is_empty() || v.language == code).collect();
+                if own.is_empty() {
+                    return Effect::None;
+                }
+                let shown = voice_in_use(config);
+                let current = own.iter().position(|v| v.id == shown).unwrap_or(0) as i32;
+                let next = (current + delta).rem_euclid(own.len() as i32) as usize;
+                // Une seule voix dans la langue (le français) : rien ne change,
+                // rien à écrire ni à resynthétiser.
+                if own[next].id == shown {
+                    return Effect::None;
+                }
+                config.voice.per_language.insert(code, own[next].id.to_string());
                 Effect::Resynthesize
             }
             // Les autres champs textuels s'éditent avec Entrée, pas aux flèches.
             Field::Instruction | Field::ModelPath | Field::Family => Effect::None,
         }
     }
+}
+
+/// La voix réellement parlée par le champ « Voix » : pour Kokoro, celle de la
+/// langue par défaut dans `[voice.per_language]` (ou son défaut) ; pour les
+/// autres familles, `voice.voice`.
+fn voice_in_use(config: &Config) -> String {
+    if models::voices_follow_language(&config.engine.family) {
+        return config.tts_params().voice;
+    }
+    config.voice.voice.clone()
 }
 
 /// Raccourcit un chemin pour qu'il tienne dans une colonne.
@@ -881,11 +910,32 @@ pub enum Effect {
     Reparse,
     /// Ajuster le volume de sortie du delta indiqué.
     Volume(f32),
+    /// Appliquer la vitesse de la configuration au son, sur-le-champ.
+    Speed,
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn languages_cycle_through_those_of_the_model() {
+        let mut config = Config::default();
+        config.engine.family = "kokoro".into();
+        config.voice.language = "fr".into();
+        Field::Language.adjust(&mut config, 1);
+        assert_eq!(config.voice.language, "en");
+        Field::Language.adjust(&mut config, 1);
+        assert_eq!(config.voice.language, "auto");
+        Field::Language.adjust(&mut config, 1);
+        assert_eq!(config.voice.language, "fr", "deux langues et « auto », un tour complet");
+        // Famille hors catalogue : les sept langues du terminal.
+        config.engine.family = "inconnue".into();
+        for _ in 0..8 {
+            Field::Language.adjust(&mut config, 1);
+        }
+        assert_eq!(config.voice.language, "fr", "sept langues et « auto »");
+    }
 
     #[test]
     fn every_section_but_models_exposes_fields() {
@@ -917,10 +967,10 @@ mod tests {
     }
 
     #[test]
-    fn speed_is_bounded_and_triggers_resynthesis() {
+    fn speed_is_bounded_and_applies_at_once() {
         let mut config = Config::default();
         for _ in 0..200 {
-            assert_eq!(Field::Speed.adjust(&mut config, 1), Effect::Resynthesize);
+            assert_eq!(Field::Speed.adjust(&mut config, 1), Effect::Speed);
         }
         assert_eq!(config.voice.speed, 3.0);
         for _ in 0..200 {
@@ -945,7 +995,7 @@ mod tests {
     #[test]
     fn sessions_can_be_left_to_the_family() {
         let mut config = Config::default();
-        config.engine.family = "supertonic".to_string();
+        config.engine.family = "kokoro".to_string();
         // « auto » dit ce qu'il vaut : un réglage muet ne se comprend pas.
         assert_eq!(Field::Sessions.value(&config, 1.0), "auto · 1");
         Field::Sessions.adjust(&mut config, 1);
@@ -976,28 +1026,42 @@ mod tests {
     }
 
     #[test]
-    fn built_in_voices_cycle_with_the_arrows() {
+    fn kokoro_voice_field_cycles_the_voices_of_the_default_language() {
         let mut config = Config::default();
-        config.engine.family = "supertonic".into();
-
-        // Champ à défilement, pas de saisie, dès lors que la famille en expose.
+        config.engine.family = "kokoro".into();
+        config.voice.voice = "M3".into();
         assert!(!Field::Voice.is_text(&config));
-
+        // Français par défaut : une seule voix, les flèches ne changent rien
+        // et ne relancent pas la synthèse.
+        assert_eq!(Field::Voice.value(&config, 1.0), "p-fenrir60 · française, recommandée");
+        assert_eq!(Field::Voice.adjust(&mut config, 1), Effect::None);
+        assert_eq!(Field::Voice.adjust(&mut config, -1), Effect::None);
+        assert!(!config.voice.per_language.contains_key("fr"), "rien d'écrit");
+        assert_eq!(config.tts_params().voice, "p-fenrir60");
+        assert_eq!(config.voice.voice, "M3", "la voix de l'ancien modèle reste");
+        // Langue imposée en anglais : les trois voix anglaises, on boucle.
+        config.voice.language = "en".into();
         assert_eq!(Field::Voice.adjust(&mut config, 1), Effect::Resynthesize);
-        assert_eq!(config.voice.voice, "M2");
-        Field::Voice.adjust(&mut config, -1);
-        assert_eq!(config.voice.voice, "M1");
-        // Le défilement boucle vers la dernière voix.
-        Field::Voice.adjust(&mut config, -1);
-        assert_eq!(config.voice.voice, "F5");
-        assert!(Field::Voice.value(&config, 1.0).contains("féminine"));
+        assert_eq!(config.voice.per_language["en"], "am_fenrir");
+        assert_eq!(config.tts_params().voice, "am_fenrir");
+        Field::Voice.adjust(&mut config, -2);
+        assert_eq!(config.voice.per_language["en"], "af_heart");
     }
 
     #[test]
-    fn supertonic_presets_are_never_flagged() {
+    fn language_cycle_starts_with_auto_and_reparses() {
         let mut config = Config::default();
-        config.engine.family = "supertonic".into();
-        config.voice.voice = "F1".into();
+        config.engine.family = "kokoro".into();
+        config.voice.language = "fr".into();
+        assert_eq!(Field::Language.adjust(&mut config, -1), Effect::Reparse);
+        assert_eq!(config.voice.language, "auto");
+    }
+
+    #[test]
+    fn kokoro_voices_are_never_flagged() {
+        let mut config = Config::default();
+        config.engine.family = "kokoro".into();
+        config.voice.voice = "p-fenrir60".into();
         assert!(!Field::Voice.is_ignored(&config));
         assert!(!Field::Speed.is_ignored(&config));
         assert!(Field::Instruction.is_ignored(&config));
@@ -1037,15 +1101,14 @@ mod tests {
     #[test]
     fn ineffective_settings_are_hidden_until_asked_for() {
         let mut config = Config::default();
-        config.engine.family = "supertonic".into();
+        config.engine.family = "kokoro".into();
         let mut screen = ConfigScreen::new();
         screen.section = 2; // Échantillonnage
 
-        // Supertonic ne lit que la graine et le nombre d'étapes : les cinq
-        // autres réglages noyaient les deux qui agissent.
-        let visibles = screen.visible_fields(&config);
-        assert_eq!(visibles, vec![Field::InferenceSteps, Field::Seed]);
-        assert_eq!(screen.hidden_count(&config), 5);
+        // Kokoro ne lit aucun réglage d'échantillonnage : tous attendent
+        // qu'on les demande.
+        assert!(screen.visible_fields(&config).is_empty());
+        assert_eq!(screen.hidden_count(&config), 7);
 
         screen.toggle_show_all(&config);
         assert_eq!(screen.visible_fields(&config).len(), 7);
@@ -1171,18 +1234,29 @@ mod tests {
     }
 
     #[test]
-    fn line_spacing_stays_between_none_and_two() {
+    fn line_spacing_stays_between_none_and_three() {
+        // Les bornes de `Config::normalised`, partout : trois au plus.
         let mut config = Config::default();
         assert_eq!(config.reading.line_spacing, 1);
         for _ in 0..5 {
             Field::LineSpacing.adjust(&mut config, 1);
         }
-        assert_eq!(config.reading.line_spacing, 2);
+        assert_eq!(config.reading.line_spacing, 3);
         for _ in 0..5 {
             Field::LineSpacing.adjust(&mut config, -1);
         }
         assert_eq!(config.reading.line_spacing, 0);
         assert_eq!(Field::LineSpacing.value(&config, 1.0), "aucun");
+    }
+
+    #[test]
+    fn the_seek_step_stops_at_fifty() {
+        let mut config = Config::default();
+        config.reading.seek_step = 48;
+        for _ in 0..5 {
+            Field::SeekStep.adjust(&mut config, 1);
+        }
+        assert_eq!(config.reading.seek_step, 50);
     }
 
     #[test]

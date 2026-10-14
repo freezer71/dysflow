@@ -56,32 +56,33 @@ permanence.
 ## Installation
 
 ```bash
-./scripts/install.sh            # voix audio.cpp + reconnaissance de texte, dans ~/.local
+./scripts/install.sh            # Kokoro + reconnaissance de texte, dans ~/.local
 cargo install --path .          # voix du système seule, build en quelques secondes
 ```
 
-`install.sh` construit le binaire puis le pose dans `$PREFIX/bin` et son shim
-audio.cpp dans `$PREFIX/lib` — `~/.local` par défaut, sans droits ;
-`PREFIX=/usr/local sudo -E ./scripts/install.sh` pour toute la machine. Il
-vérifie ensuite que `sillon` démarre depuis la racine, et dit s'il manque le
-`bin/` au `PATH`. Rien d'autre à copier : modèles et configuration vivent dans
-le répertoire de données. Pour désinstaller, `rm $PREFIX/bin/sillon
-$PREFIX/lib/libaudiocpp_shim.*`.
+`install.sh` construit le binaire puis le pose dans `$PREFIX/bin` — `~/.local`
+par défaut, sans droits ; `PREFIX=/usr/local sudo -E ./scripts/install.sh`
+pour toute la machine. Il vérifie ensuite que `sillon` démarre depuis la
+racine, et dit s'il manque le `bin/` au `PATH`. Rien d'autre à copier : modèles
+et configuration vivent dans le répertoire de données. Pour désinstaller,
+`rm $PREFIX/bin/sillon`.
+
+Sur Mac, avec l'app dans `/Applications`, `./scripts/install-app-command.sh`
+pose à la place une commande `sillon` qui ouvre l'app : `sillon document.pdf`
+ouvre le panneau sur le document et le lit (reprise à la dernière position),
+`sillon` seul ouvre la page de notes. Le lecteur au terminal n'est alors plus
+installé.
 
 ### Distribuer le binaire
 
-Le shim audio.cpp est une bibliothèque partagée, que le binaire charge au
-démarrage. `scripts/package.sh` assemble les deux dans `dist/` et vérifie que
+`scripts/package.sh` assemble dans `dist/` le binaire et ce qu'il charge —
+ONNX Runtime et sillon-espeak pour Kokoro —, avec les licences, et vérifie que
 l'ensemble s'exécute hors de l'arbre de compilation :
 
 ```bash
-./scripts/package.sh                 # audio-cpp + ocr par défaut
-FEATURES=audio-cpp ./scripts/package.sh
+./scripts/package.sh                 # ocr + kokoro-onnx par défaut
+FEATURES=kokoro-onnx ./scripts/package.sh
 ```
-
-Distribuez le dossier entier : le binaire cherche la bibliothèque à côté de
-lui, puis dans un `lib/` voisin — c'est cette seconde disposition
-qu'`install.sh` adopte. Un binaire copié seul ne démarre pas.
 
 Pour la **reconnaissance de texte** — images, dossiers de scans, images
 collées —, Tesseract est compilé dans le binaire. Comptez une minute au
@@ -92,31 +93,6 @@ premier build ; ensuite rien n'est à installer, les données de langue
 cargo build --release --features ocr
 ```
 
-Pour la synthèse par **audio.cpp**, liée directement dans le binaire :
-
-```bash
-git submodule add https://github.com/0xShug0/audio.cpp vendor/audio.cpp
-git submodule update --init --recursive
-cargo build --release --features audio-cpp
-```
-
-Le build **corrige ggml au passage** : `build.rs` remplace, dans
-`vendor/audio.cpp/external/ggml/src/gguf.cpp`, la lecture élément par élément
-des tableaux GGUF par une lecture en bloc — neuf lignes, qui ramènent le
-chargement d'un modèle de trois secondes à un quart. Le correctif se réapplique
-tout seul après un `git submodule update`, et `git status` montre depuis le
-sous-module comme modifié : c'est attendu. Si ggml change au point que le
-correctif ne s'applique plus, le build le dit et continue — le lecteur
-fonctionne alors, en chargeant lentement.
-
-Le build ne compile que les familles de modèles utiles — `supertonic,pocket_tts`
-par défaut, sur les 62 que porte le projet :
-
-```bash
-SILLON_TTS_FAMILIES=supertonic,magpie_tts cargo build --release --features audio-cpp
-SILLON_AUDIOCPP_DIR=/chemin/vers/audio.cpp cargo build --features audio-cpp
-```
-
 ### Installer un modèle
 
 Lancez `sillon` sans argument : l'écran s'ouvre sur la rubrique **Modèles**, qui
@@ -125,97 +101,44 @@ installe, puis sélectionne. Rien n'est jamais téléchargé sans cette action.
 
 | Modèle | Taille | Langues | Voix |
 |---|---|---|---|
-| MagpieTTS Multilingual · Q8_0 | 1,6 Go | 11, dont le français | Aria · Jason · John · Leo · Sofia |
-| Supertonic 3 · F16 | 298 Mo | 31, dont le français | `M1`–`M5`, `F1`–`F5` |
-| Supertonic 3 · Q8_0 | 433 Mo | 31, dont le français | idem |
+| Kokoro 82M · int8 (terminal, feature `kokoro-onnx`) | 108 Mo | français, anglais | `p-fenrir60` · `af_bella`, `am_fenrir`, `af_heart` |
+| Kokoro 82M · MLX (app macOS seulement) | 342 Mo | français, anglais | idem |
 
-Le catalogue ne retient que des modèles **à voix nommées** : aucun n'exige qu'on
-lui fabrique une voix — enregistrement à cloner ou description à composer —
-avant de pouvoir l'écouter. Un test le vérifie à chaque compilation.
+Le catalogue ne propose **que Kokoro** : une voix française (`p-fenrir60`,
+livrée avec Sillon) et trois anglaises (`af_bella`, recommandée, `am_fenrir`,
+`af_heart`). Sans lui, la voix du système lit. Supertonic 3 et MagpieTTS en
+sont sortis le 14 octobre 2026, et leur moteur, audio.cpp, avec eux : une
+configuration qui les nomme encore fait lire la voix du système, et le dit.
+Le correctif local d'audio.cpp (lecture des GGUF en bloc) est gardé dans
+`patches/`.
 
 Les modèles vont dans `~/.local/share/sillon/models/<famille>/` (sur macOS,
 `~/Library/Application Support/sillon/models/`). Un modèle déjà installé est
 adopté automatiquement au lancement suivant.
 
-Le binaire ne sait charger que les familles compilées en lui — `supertonic` et
-`magpie_tts` par défaut. Pour en ajouter une autre parmi la soixantaine que porte
-audio.cpp :
-
-```bash
-SILLON_TTS_FAMILIES=supertonic,magpie_tts,qwen3_tts \
-  cargo build --release --features audio-cpp
-```
-
-Le catalogue ne propose que ce que le binaire sait charger : une famille absente
-n'apparaît pas dans la liste.
-
 Le modèle se charge **en arrière-plan** : l'interface s'ouvre en 0,05 s, le
-document s'analyse pendant que les poids montent sur le GPU, et la barre de
-lecture annonce l'étape en cours — `⠹ chargement du modèle supertonic… 0,2 s`,
-puis `synthèse de la première phrase…` — jusqu'à ce que le son démarre, où elle
+document s'analyse pendant que les poids se chargent, et la barre de lecture
+annonce l'étape en cours — `⠹ chargement du modèle kokoro… 0,2 s`, puis
+`synthèse de la première phrase…` — jusqu'à ce que le son démarre, où elle
 redevient la barre de progression.
-
-**Le chargement a longtemps coûté trois secondes, et c'était un défaut de
-lecture, pas un coût du modèle.** Un GGUF d'audio.cpp embarque ses fichiers
-annexes en un tableau de 54 Mo dans ses métadonnées, que le lecteur GGUF de
-ggml parcourait par un `fread` verrouillé **par octet** — 57 millions d'appels,
-et le fichier s'ouvre quatre fois au chargement. Le build applique un correctif
-de neuf lignes qui lit ces tableaux en bloc : voir *Installation*.
-
-Mesuré sur un Apple M5 en Metal, sur la même phrase française :
-
-| | Supertonic 3 | MagpieTTS Q8_0 |
-|---|---|---|
-| Chargement du modèle | **0,25 s** | **0,25 s** |
-| Ouverture d'une session | **0,1 s** | 0,4 s |
-| Synthèse | **21× le temps réel** | **0,75×** |
-| Premier son, tout compris | **0,6 s** | 6,3 s |
-| Échantillonnage | **44,1 kHz** | 22,05 kHz |
-| Contrôle du débit | **oui** | aucun |
-
-Ces chiffres valent à chaud. Au tout premier lancement, cache disque vide, le
-chargement est plus long — d'où le chrono affiché plutôt qu'une estimation, qui
-se tromperait au moment où elle compterait le plus. L'ouverture de session paie
-une fois par binaire la spécialisation des noyaux Metal — 1,1 s pour Supertonic,
-2,3 s pour MagpieTTS —, que macOS met ensuite en cache d'un lancement à l'autre.
 
 Le budget jusqu'au premier son se mesure :
 
 ```bash
-cargo test --release --features audio-cpp --test startup_timing -- --ignored --nocapture
+cargo test --release --features kokoro-onnx --test startup_timing -- --ignored --nocapture
 ```
 
-Les deux modèles ne jouent pas dans la même catégorie. Supertonic reste
-largement en avance sur la lecture avec une seule session. MagpieTTS, à 0,6× le
-temps réel sur une session, est **plus lent que la parole** : il lui en faut
-plusieurs pour lire d'un trait, et chaque saut coûte près de deux fois la durée
-de la phrase visée avant que le son reprenne. Il n'expose par ailleurs aucun
-réglage de débit.
-
-Choisissez donc MagpieTTS pour ses voix, Supertonic pour parcourir un long
-document.
-
-**Le nombre de sessions suit la famille.** Une session pèse environ 460 Mo —
-deux fois le modèle — et s'ouvre après les autres, derrière le verrou décrit
-plus bas : chacune de trop coûte de la mémoire *et* retarde le premier son.
-*Sessions simultanées* vaut donc `auto` par défaut : une pour Supertonic, une
-pour MagpieTTS aussi. Mesuré sur Supertonic, passer de trois sessions à une
-ramène le premier son de 0,85 s à 0,56 s, et la mémoire de 1,5 Go à 700 Mo en
-lecture. Mesuré sur MagpieTTS (M5, Metal), trois sessions ne produisent pas
-plus vite qu'une — six phrases en 29,4 s contre 29,6 — mais se partagent le
-GPU, et la phrase dont la lecture a besoin arrive plus tard : la deuxième à
-29 s au lieu de 13. MagpieTTS reste plus lent que la parole sur cette machine
-(1,4 fois le temps réel) ; la liste des modèles le dit. Un nombre posé à la
+**Le nombre de sessions suit la famille.** Kokoro calcule en série : une
+session, *Sessions simultanées* valant `auto` par défaut. Un nombre posé à la
 main l'emporte toujours — y compris celui qu'une version antérieure a pu
 écrire dans `config.toml` : remettez-le à `auto` dans la rubrique **Moteur**
 pour en profiter.
 
 ### Ce qui est dit au moteur
 
-Supertonic lit **caractère par caractère** : il n'a aucune normalisation de
-nombres, et « 1 » lui parvient comme un signe dont il doit deviner la
-prononciation. Le lecteur écrit donc en toutes lettres, avant la synthèse, tout
-ce qui se lit autrement qu'il ne s'écrit :
+Un modèle de voix devine mal la prononciation d'un signe : « 1 » lui parvient
+comme un caractère, pas comme un nombre. Le lecteur écrit donc en toutes
+lettres, avant la synthèse, tout ce qui se lit autrement qu'il ne s'écrit :
 
 | Écrit | Dit |
 |---|---|
@@ -287,13 +210,13 @@ lit donc comme il s'écrit.
 
 ### Choisir une voix
 
-Rubrique **Voix**, champ *Voix*, `←` `→` pour parcourir les voix du modèle, `t`
-pour écouter celle qui est retenue. Rien d'autre à faire.
+Rubrique **Voix**, champ *Voix*, `←` `→` pour parcourir les voix de la langue
+par défaut, `t` pour écouter celle qui est retenue. Rien d'autre à faire.
 
-Supertonic 3 en propose dix, `M1`–`M5` et `F1`–`F5`. MagpieTTS en propose cinq,
-nommés — Aria, Jason, John, Leo, Sofia — relevés dans le `speakers.json`
-embarqué de son paquet. Je ne les ai pas écoutés : `t` le dira mieux qu'une
-étiquette.
+Kokoro a une voix par langue de document : `p-fenrir60` en français (la seule),
+`af_bella`, `am_fenrir` ou `af_heart` en anglais. Une voix écrite à la main qui
+n'est plus proposée parle avec la recommandée de sa langue, sans que le fichier
+soit réécrit.
 
 Sans modèle installé — ou sans la feature — le lecteur se replie sur la voix du
 système (`say` sur macOS, `espeak-ng` ailleurs). La barre d'état affiche alors
@@ -326,8 +249,13 @@ système (`say` sur macOS, `espeak-ng` ailleurs). La barre d'état affiche alors
 | `?` | Aide |
 | `q` · `Échap` | Quitter — `Échap` referme d'abord un panneau ouvert |
 
-La vitesse agit **à la synthèse**, pas par ré-échantillonnage : la voix accélère
-sans monter dans les aigus. Changer de vitesse relance donc la phrase en cours.
+La vitesse agit **sur le son, à la lecture**, sans changer la hauteur : la voix
+accélère sans monter dans les aigus. La synthèse se fait toujours à 1×, et
+[Sonic](https://github.com/waywardgeek/sonic) étire le son pendant qu'il sonne.
+Changer de vitesse s'entend en quelques millisecondes, au milieu de la phrase,
+sans resynthèse ni coupure, et avec toutes les voix. Le modèle ne reçoit jamais
+la vitesse : la lui donner lui faisait avaler des mots à 2× et plus. Les pauses
+entre blocs raccourcissent moins vite que la parole (÷ √vitesse).
 
 
 ## Lire en écoutant
@@ -426,7 +354,7 @@ un menu qui n'affiche que les cinq rubriques et leur état :
      2  Voix               Aria · 1.00×
      3  Échantillonnage    défauts
      4  Lecture            plein écran · announce
-     5  Moteur             magpie_tts
+     5  Moteur             kokoro
 ```
 
 Un chiffre ouvre sa rubrique en plein écran ; `Échap` ramène au menu, `Échap`
@@ -443,64 +371,25 @@ encore ferme l'écran. Les flèches n'ont donc qu'un sens à la fois.
 | `a` | Montrer les réglages sans effet |
 | `w` | Enregistrer |
 
-**Les réglages inertes sont masqués par défaut.** Sur Supertonic, cinq des sept
-réglages d'échantillonnage ne servent à rien : les afficher noyait les deux qui
-agissent. Une ligne discrète dit combien sont cachés, et `a` les rend visibles,
-marqués `(ignoré par ce modèle)`. Le relevé vient du code de chaque famille :
+**Les réglages inertes sont masqués par défaut.** Kokoro ne lit que la voix
+et la langue : les sept réglages d'échantillonnage n'agissent pas sur lui. Une
+ligne discrète dit combien sont cachés, et `a` les rend visibles, marqués
+`(ignoré par ce modèle)`. Un réglage marqué inerte le dit aussi dans son
+explication, au lieu de décrire ce qu'il ferait s'il agissait.
 
-| | Supertonic 3 | MagpieTTS |
-|---|---|---|
-| Voix | dix préréglages | cinq locuteurs nommés |
-| Langue · graine | honorées | honorées |
-| Vitesse | **honorée** | aucun contrôle |
-| Étapes d'inférence | honorée | — |
-| Température · top-k · guidage | ignorés | **honorés** |
-| Hauteur · énergie · intonation · style | ignorés | ignorés |
+Vitesse et volume agissent sur le son et valent pour toutes les voix.
 
-Un réglage marqué inerte le dit aussi dans son explication, au lieu de décrire
-ce qu'il ferait s'il agissait.
-
-Les options sont **filtrées par famille** avant d'atteindre le modèle. Ce n'est
-pas cosmétique : MagpieTTS valide sa requête et refuse tout net une option qu'il
-ne connaît pas — « unknown MagpieTTS request option: speaking_rate » — au lieu
-de l'ignorer.
-
-Le filtrage par famille ne suffit pourtant pas, parce que la liste des options
-acceptées est portée par le **paquet** et non par la famille : deux variantes du
-même modèle n'embarquent pas la même spécification. La session **négocie** donc.
-Quand le modèle refuse une option en la nommant, elle est écartée et la requête
-repart, jusqu'à quatre fois. La voix, elle, a plusieurs orthographes connues —
-`voice_id`, `speaker` — essayées l'une après l'autre : renoncer ferait parler
-tous les locuteurs de la même voix, en silence.
-
-Les préréglages, eux, sont propres à chaque modèle : `F1` ne veut rien dire pour
-MagpieTTS, qui n'y voit ni un locuteur ni un index et le laisse descendre
-jusqu'à `std::stoll` — d'où un « stoll: no conversion » pour toute explication.
-**La voix suit donc la famille** : changer de modèle la remplace par celle du
-nouveau, et une voix inconnue n'atteint jamais le moteur.
-
-C'est aussi pourquoi la variante MagpieTTS en précision d'origine n'est pas au
-catalogue. Sa spécification nomme l'option `speaker`, alors que le code
-d'audio.cpp ne lit que `voice_id` : le paquet se charge, parle, et rend un
-signal identique au bit près pour ses cinq locuteurs. La variante Supertonic
-« origine » n'y est pas non plus : sur le dépôt, c'est le même fichier que la
-Q8_0, à l'octet près.
-
-Le nom de l'option de débit diffère d'une famille à l'autre — `speaking_rate`
-chez Supertonic, `speed` ailleurs. Les deux clés sont émises quand la famille
-les accepte.
-
-Les valeurs prennent effet immédiatement : la synthèse déjà préparée est
-régénérée au besoin.
+Les valeurs prennent effet immédiatement : vitesse et volume sur-le-champ, les
+autres réglages de voix en régénérant la synthèse déjà préparée.
 
 Le fichier vit dans `~/.config/sillon/config.toml`, et peut aussi être écrit
 par `sillon --write-config`.
 
 ```toml
 [engine]
-engine = "auto"           # auto | audio_cpp | system
-model_path = "~/modeles/supertonic"
-family = "supertonic"
+engine = "auto"           # auto | system
+model_path = "~/Library/Application Support/sillon/models/kokoro/kokoro-v1_0.safetensors"
+family = "kokoro"
 compute = "metal"         # cpu | metal | cuda | vulkan
 threads = 8
 sessions = 0              # synthèses simultanées ; 0 = ce que la famille demande
@@ -531,6 +420,12 @@ line_width = 0            # largeur de la colonne de texte ; 0 = plein écran
 line_spacing = 1          # lignes vides entre deux lignes de texte
 reading_ruler = true      # fond sous la ligne en cours de lecture
 
+[app]
+keep_voice_minutes = 10   # voix gardée chargée après la lecture ; -1 = toujours
+output_device = ""        # sortie audio par son nom ; "" = celle du système.
+                          # Choisie, le son n'en sort jamais : débranchée, la
+                          # lecture se met en pause au lieu de passer ailleurs.
+
 # Tout paramètre propre à une famille, transmis tel quel au modèle.
 [extra]
 cfg_scale = "2.5"
@@ -554,29 +449,17 @@ entrée ──▶ doc ──▶ tts ──▶ audio ──▶ app ──▶ tui
 - `logging` — détourne les sorties natives vers `sillon.log`.
 - `doc` — hiérarchie append-only : sections, blocs, phrases, mots.
 - `text` — nettoyage du formatage et découpage en phrases (`sanitize`), mise en mots des dates, des nombres et des sigles pour la voix seule (`verbalize`).
-- `tts` — contrat moteur/session, pool parallèle, FFI audio.cpp, repli système.
+- `tts` — contrat moteur/session, pool parallèle, Kokoro (MLX ou ONNX Runtime), repli système.
 - `audio` — file de sortie et position déduite du son réellement joué.
 - `app` — le contrôleur : document, lecture, recherche, signets, écran de configuration. Il ne connaît aucun écran.
 - `tui` — rendu ratatui du contrôleur, adaptation des touches.
 
-Les sorties de ggml sont détournées vers
+Les sorties natives (ONNX Runtime, espeak-ng) sont détournées vers
 `~/.local/share/sillon/sillon.log` : en plein écran, elles disloqueraient le
 rendu.
 
-Le FFI vit dans `native/` : `audiocpp_shim.{h,cpp}` referme l'API C++ d'audio.cpp
-derrière une façade C, sans laisser passer d'exception.
-
-L'ouverture et la fermeture des sessions sont sérialisées par un verrou.
-audio.cpp partage les poids entre sessions derrière un `shared_ptr<const>`,
-mais ce `const` ne rend rien thread-safe : le lecteur de tenseurs porte un cache
-rempli paresseusement (`mutable BinaryBlob bytes_`). Deux sessions qui
-téléversent leurs poids en même temps mutent le même cache sans verrou, et le
-`memmove` de `BackendWeightStore::upload` part hors de la mémoire cartographiée.
-
-Mesuré : sans verrou, trois plantages sur vingt fermetures ; avec un verrou
-laissant les ouvertures concurrentes, six sur vingt-cinq ; avec le verrou
-exclusif, aucun sur quatre-vingt-douze. La synthèse, elle, ne prend aucun verrou
-— chaque session a son propre graphe.
+L'ouverture et la fermeture des sessions sont sérialisées par un verrou ; la
+synthèse, elle, n'en prend aucun — chaque session a son propre état.
 
 ## Tests
 
@@ -590,17 +473,13 @@ sous `#![cfg(feature = "ocr")]`, comme le test du PDF photocopié de
 `tests/pdf_input.rs`. Sans elle, ces chemins ne sont pas *ignorés* — ils
 n'existent pas dans le binaire de test, et rien ne signale leur absence.
 
-Trois sondes ne tournent qu'à la demande, faute d'être vérifiables par une
+Deux sondes ne tournent qu'à la demande, faute d'être vérifiables par une
 assertion : elles rendent un son ou une mesure, à écouter ou à lire.
 
 ```bash
 # Ce qu'un document donne à l'oreille, phrase par phrase
 DOC=chemin.md cargo test --test document_probe -- --ignored --nocapture
 
-# Un sigle avant et après sa mise en mots, dans un seul WAV
-OUT=/tmp/sigles.wav cargo test --release --features audio-cpp \
-    --test acronym_probe -- --ignored --nocapture
-
 # Le temps du premier son, du lancement à la voix
-cargo test --release --features audio-cpp --test startup_timing -- --ignored --nocapture
+cargo test --release --features kokoro-onnx --test startup_timing -- --ignored --nocapture
 ```

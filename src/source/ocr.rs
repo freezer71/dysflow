@@ -170,6 +170,12 @@ pub fn read_rgba(pixels: &[u8], width: u32, height: u32) -> Result<Page> {
     Ocr::new()?.read(&image::DynamicImage::ImageRgba8(buffer))
 }
 
+/// Reconnaît une image encodée (PNG, TIFF…), donnée par ses octets.
+pub fn read_encoded(bytes: &[u8]) -> Result<Page> {
+    let image = image::load_from_memory(bytes).context("ces octets ne forment pas une image lisible")?;
+    Ocr::new()?.read(&image)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

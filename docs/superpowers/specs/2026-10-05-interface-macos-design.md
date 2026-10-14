@@ -114,7 +114,8 @@ Ce qui s'ouvre au raccourci : un `NSPanel` non activant, comme Spotlight.
 - Il prend le clavier tant qu'il est affiché.
 - Sa hauteur suit le texte jusqu'à une limite ; au-delà, le texte défile tout
   seul avec la lecture.
-- Contenu : le texte, le mot surligné, la ligne soulignée ; une barre (lecture,
+- Contenu : le texte, le mot lu et le trait sous sa ligne (voir
+  « Fluidité ») ; une barre (lecture,
   progression, temps, vitesse) ; trois aides (`⏎` agrandir, `esc` masquer,
   `?` raccourcis).
 
@@ -196,6 +197,24 @@ capture ouvre une session ; la position de la précédente est retenue.
 | Première phrase prête | +0,35 s | ~580 Mo |
 | Après déchargement | — | 185–200 Mo (≈ 90 Mo au premier essai) |
 
+### Dix cycles (banc `examples/voice_cycles.rs`, M5, 2026-10-05)
+
+| Modèle | Chargé (moyenne) | Relâché cycle 1 | Relâché cycle 3 | Relâché cycle 10 | Verdict |
+|---|---|---|---|---|---|
+| `supertonic-3-orig` | 638 Mo | 256 Mo | 284 Mo | 289 Mo | Pas de fuite : plafond ~290 Mo |
+| `supertonic-3-f16` | 479 Mo | 51 Mo | 272 Mo | 268 Mo | Pas de fuite : plafond ~270 Mo |
+
+- Écart cycle 3 → cycle 10 : 5 Mo (orig), 4 Mo (f16). Sous le seuil de 20 Mo.
+- Le relevé « relâché » ne monte pas à chaque cycle : il oscille (orig 32 à
+  289 Mo, f16 47 à 272 Mo). Cache Metal ou allocateur, pas une fuite.
+- **Le palier dépasse 120 Mo** (~270 à 290 Mo, pointes basses à 32–51 Mo). Le
+  seuil « < 120 Mo au repos » devra être revu avec l'utilisateur à la
+  Tâche 21.
+- Chargement 0,25–0,4 s, première phrase ~0,5 s à chaud (1,3–1,5 s au premier
+  cycle).
+- **Modèle par défaut : `f16`**, ~160 Mo de moins une fois chargé, même temps
+  de chargement et de première phrase. Qualité égale à confirmer à l'écoute.
+
 ### Politique
 
 - **Voix par défaut : Supertonic** (20× le temps réel, saut en 0,25 s).
@@ -225,9 +244,28 @@ déchargement ne sert à rien tant qu'elle n'est pas corrigée. Comparer aussi
 | Fond du panneau | crème `#fbf8f1` | brun très sombre `#1e1b17` |
 | Texte | `#2a2722` | crème atténué `#e8e1d4` |
 | Texte déjà lu | `#9a948a` | `#8a8276` |
-| Mot surligné | fond `#cfe3ff`, texte `#1b2a44` | fond `#2c4a75`, texte `#e6efff` |
-| Ligne lue | soulignée `#7aa7e8` | soulignée `#7aa7e8` |
+| Mot lu | encre `#1b2a44`, sans fond | encre `#e6efff`, sans fond |
+| Ligne lue | trait de 2 pt `#7aa7e8` jusqu'au point de la voix | idem |
+| Règle de lecture | bande `#cfe3ff` à 25 % | bande `#2c4a75` à 25 % |
+| Texte des contrôles | `#575249` | `#9a9286` |
 | Police de lecture | **Literata** (embarquée, OFL) | idem |
+
+*(Révisé le 2026-10-05 : le texte des contrôles (temps, vitesse, aides,
+messages) passe de `#8a847a` à `#6e685e` en clair — 3,5:1 sur le fond, sous
+le minimum de 4,5:1, contre 5,2:1 désormais. Les citations prennent la
+couleur du texte, non plus celle des contrôles, et se distinguent par leur
+retrait.)*
+
+*(Révisé le 2026-10-05, audit d'accessibilité de macOS : en clair, le texte
+des contrôles passe de `#6e685e` (5,2:1) à `#575249` (7,3:1) ; à 13 pt, les
+traits fins du temps (« –:–– / ~–:–– ») paraissaient plus pâles que leur
+couleur et l'audit les refusait. Le temps est aussi en graisse moyenne, ce
+qui suffit en nuit (`#9a9286`, 5,6:1, inchangé).)*
+
+*(Révisé le 2026-10-06, curseur « encre calme » : le mot lu n'a plus de
+fond, seulement une encre plus sombre ; la phrase n'est plus soulignée, un
+trait sous la ligne la remplace. En contraste élevé, le mot lu est blanc et
+le trait jaune `#ffe600`. Voir « Fluidité ».)*
 
 - Polices de lecture proposées : Literata (défaut), Atkinson Hyperlegible,
   OpenDyslexic. Elles sont embarquées dans l'app.
@@ -253,8 +291,26 @@ déchargement ne sert à rien tant qu'elle n'est pas corrigée. Comparer aussi
 
 ## Fluidité
 
-- Le surlignage **glisse** d'un mot au suivant en moins de 80 ms. Il est
-  immédiat si « réduire les animations » est actif.
+- **Curseur « encre calme »** : le mot lu prend une encre plus sombre (la
+  couleur seule, jamais la graisse, qui referait la ligne) ; le déjà-lu
+  s'atténue mot par mot ; un trait fin de 2 pt court sous la ligne lue, de
+  son début jusqu'au point où en est la voix dans le mot (début du mot +
+  largeur × part dite), **en continu** à la cadence de l'écran, et repart à
+  chaque nouvelle ligne. Il n'existe que pendant la lecture : en pause, le
+  trait disparaît et son lien d'affichage s'arrête. La bande de la règle de
+  lecture reste sous la ligne quand la règle est active.
+- Si « réduire les animations » est actif, le trait avance **mot par mot**
+  (jusqu'à la fin du mot lu), sans mouvement continu.
+- Un bloc annoncé (code, tableau) garde sa bande sur tout le bloc, le
+  déjà-lu atténué avant lui, et pas de trait.
+
+*(Révisé le 2026-10-06 : remplace le surlignage en pastille qui glissait en
+80 ms d'un mot au suivant et le soulignement de la phrase, trouvés saccadés
+et grossiers à l'usage. Choisi sur démonstration (option C, « encre
+calme »). La part du mot dite vient de Rust (`word_progress` dans
+l'instantané, même répartition par poids que le mot lu) ; elle ne republie
+pas l'instantané SwiftUI : la vue de lecture la relit elle-même, image par
+image, pendant la lecture.)*
 - **La ligne lue reste à hauteur fixe** : le texte défile, pas le regard.
 - Rendu par TextKit 2, à la fréquence de l'écran.
 
@@ -281,13 +337,15 @@ déchargement ne sert à rien tant qu'elle n'est pas corrigée. Comparer aussi
 
 ## Critères d'acceptation mesurés
 
-| Mesure | Seuil |
-|---|---|
-| Raccourci → premier son, voix chargée | < 0,5 s |
-| Raccourci → premier son, à froid | < 0,9 s |
-| Saut de mot ou de phrase | < 0,3 s |
-| Images perdues pendant la lecture (Instruments) | aucune |
-| Mémoire au repos, voix déchargée | < 120 Mo, stable sur dix cycles |
+| Mesure | Seuil | Mesuré le 2026-10-05 (M5, Release) |
+|---|---|---|
+| Raccourci → premier son, voix chargée | < 0,5 s | Médiane 377 ms (5 essais 372–381). Atteint. |
+| Raccourci → premier son, à froid | < 0,9 s | Médiane 594 ms (essais 8973, 696, 594, 594, 561). Atteint en médiane, mais premier essai à 8,97 s, cause non établie. Hypothèse : premier chargement du modèle et compilation des noyaux Metal après une construction neuve. À mesurer après redémarrage. |
+| Saut de mot ou de phrase | < 0,3 s | Saut de phrase : médiane 21 ms (premier 192 ms). Saut de mot : médiane 20 ms. Atteint. |
+| Images perdues pendant la lecture (Instruments) | aucune | Non mesuré. Enregistrement Instruments interactif à faire. |
+| Mémoire au repos, voix déchargée | < 120 Mo, stable sur dix cycles | Voix relâchée (phys_footprint), dix cycles : 95, 305, 318, 293, 215, 211, 212, 227, 303, 341 Mo. Manqué : seuil dépassé et série non stable. Seuil à revoir avec l'utilisateur, ou cause à chercher. |
+
+Le « premier son » mesuré exclut la latence de sortie du périphérique audio.
 
 ## Construction
 

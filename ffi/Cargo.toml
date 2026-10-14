@@ -1,0 +1,26 @@
+[package]
+name = "sillon-ffi"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Liaison UniFFI du lecteur sillon pour l'app macOS"
+
+[lib]
+name = "sillon_ffi"
+# staticlib pour l'app, cdylib pour que uniffi-bindgen lise les métadonnées.
+crate-type = ["staticlib", "cdylib", "lib"]
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "src/bin/uniffi-bindgen.rs"
+required-features = ["bindgen"]
+
+[dependencies]
+sillon = { path = "..", default-features = false, features = ["clipboard"] }
+uniffi = "0.32"
+thiserror = "2"
+anyhow = "1.0"
+
+[features]
+ocr = ["sillon/ocr"]
+bindgen = ["uniffi/cli"]

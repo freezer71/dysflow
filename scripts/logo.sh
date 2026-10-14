@@ -13,8 +13,8 @@
 # Le rendu passe par sips et non par Quick Look : ce dernier aplatit l'image
 # sur du blanc, ce qui cerclait l'icône d'un carré opaque dans le Dock.
 #
-# Sous 32 points, trois tours de sillon virent à la tache : les petites tuiles
-# reçoivent la marque à deux tours. C'est le même logo, redessiné pour tenir.
+# Sous 32 points, le trait fin se bouche : les petites tuiles
+# reçoivent la marque au trait gras. C'est le même logo, redessiné pour tenir.
 set -e
 cd "$(dirname "$0")/.."
 
@@ -57,6 +57,27 @@ tuile "$TMP/grande.png" 1024 icon_512x512@2x.png
 
 iconutil -c icns "$TMP/icon.iconset" -o "$LOGO/sillon.icns"
 echo "  $LOGO/sillon.icns"
+
+# L'app macOS : les mêmes tuiles, en catalogue d'actifs (AppIcon).
+SET=macos/Resources/Assets.xcassets/AppIcon.appiconset
+mkdir -p "$SET"
+cp "$TMP"/icon.iconset/*.png "$SET/"
+{
+    printf '{\n  "images" : [\n'
+    sep=""
+    for t in 16 32 128 256 512; do
+        for e in 1 2; do
+            if [ "$e" = 1 ]; then f="icon_${t}x${t}.png"; else f="icon_${t}x${t}@2x.png"; fi
+            printf '%b    { "filename" : "%s", "idiom" : "mac", "scale" : "%sx", "size" : "%sx%s" }' \
+                "$sep" "$f" "$e" "$t" "$t"
+            sep=",\n"
+        done
+    done
+    printf '\n  ],\n  "info" : { "author" : "xcode", "version" : 1 }\n}\n'
+} > "$SET/Contents.json"
+printf '{\n  "info" : { "author" : "xcode", "version" : 1 }\n}\n' \
+    > macos/Resources/Assets.xcassets/Contents.json
+echo "  $SET"
 
 # Linux : un seul PNG, à la taille que réclament les thèmes d'icônes.
 cp "$TMP/grande.png" "$LOGO/sillon.png"

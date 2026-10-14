@@ -1,0 +1,24 @@
+# Patch local d'audio.cpp (lecture gguf par bloc), jamais versionné en amont (push refusé, 403).
+# Base : https://github.com/0xShug0/audio.cpp @ 8ceb9832d7c4fed188e57231f11c3732634d0e5c
+# Appliquer : git -C <clone d'audio.cpp> apply audio.cpp-gguf-lecture-par-bloc.patch
+
+diff --git a/external/ggml/src/gguf.cpp b/external/ggml/src/gguf.cpp
+index 46381f4..728bf6c 100644
+--- a/external/ggml/src/gguf.cpp
++++ b/external/ggml/src/gguf.cpp
+@@ -287,6 +287,15 @@ struct gguf_reader {
+             }
+         }
+         dst.resize(n);
++        if constexpr (!std::is_same<T, bool>::value && !std::is_same<T, std::string>::value) {
++            // sillon: one fread instead of one per element. Plain arrays are
++            // contiguous on disk and in memory; a 54 MB uint8 blob otherwise
++            // costs 57 million locked fread calls.
++            const size_t size = n * sizeof(T);
++            const size_t nread = fread(dst.data(), 1, size, file);
++            nbytes_remain -= nread;
++            return nread == size;
++        }
+         for (size_t i = 0; i < dst.size(); ++i) {
+             if constexpr (std::is_same<T, bool>::value) {
+                 bool tmp;
