@@ -16,53 +16,71 @@ struct VoiceTab: View {
     @State private var answeringOffer = false
 
     var body: some View {
-        Form {
+        SettingsPage(title: "Voix", subtitle: "La voix qui lit, sa vitesse et son volume.") {
             ErrorText(store.error, identifier: "erreur-reglages")
-            VoiceStateLine(state: model.snapshot.voice, preparing: model.voicePreparation.isRunning)
-            if Self.suggestsModels(model.snapshot.voice) {
-                Button("Voir les modèles") { SettingsNavigation.shared.select(.models) }
+            if let line = VoiceTab.voiceLine(model.snapshot.voice, preparing: model.voicePreparation.isRunning) {
+                Callout(symbol: Self.suggestsModels(model.snapshot.voice) ? "exclamationmark.triangle" : "waveform",
+                        text: line, identifier: "etat-voix") {
+                    if Self.suggestsModels(model.snapshot.voice) {
+                        Button("Voir les modèles") { SettingsNavigation.shared.select(.models) }
+                            .buttonStyle(.notion)
+                    }
+                }
             }
             if let notice = model.snapshot.notice {
-                HStack {
-                    Text(notice).accessibilityIdentifier("avis-voix")
-                    Spacer()
+                Callout(symbol: "info.circle", text: notice, identifier: "avis-voix") {
                     Button("Compris") { Task { await model.dismissNotice() } }
+                        .buttonStyle(.notion)
                         .accessibilityLabel("Compris, fermer l'avis de la nouvelle voix")
                 }
             }
             offer
             ErrorText(modelError.text, identifier: "erreur-modele-actif")
-            Section {
-                if Self.showsKokoroVoices(store.capabilities, voice: model.snapshot.voice) {
+            if Self.showsKokoroVoices(store.capabilities, voice: model.snapshot.voice) {
+                SettingsGroup(title: "Voix par langue") {
                     languageVoicePicker("fr", title: "Voix française", identifier: "voix-francaise")
                     languageVoicePicker("en", title: "Voix anglaise", identifier: "voix-anglaise")
                     if let line = Self.previewLine(model.snapshot.preview, refusal: store.previewNote) {
                         HStack {
-                            Text(line).accessibilityIdentifier("etat-ecoute")
+                            Text(line)
+                                .font(Typo.detail)
+                                .foregroundStyle(Palette.muted)
+                                .accessibilityIdentifier("etat-ecoute")
                             Spacer()
                             Button("Arrêter") { Task { await store.stopListening() } }
+                                .buttonStyle(.notionPlain)
                                 .disabled(!(model.snapshot.preview.pending || model.snapshot.preview.playing))
                                 .accessibilityLabel("Arrêter l'écoute")
                         }
+                        .padding(.vertical, 4)
                     }
                     documentLanguage
                 }
-                // Vitesse et volume s'appliquent au son, tout de suite et avec
-                // toutes les voix, celle du système comprise.
-                Slider(value: rounded(\.speed), in: 0.5...3, step: 0.05) {
-                    Text("Vitesse : \(SettingFormat.decimal(store.values.speed))×")
+            }
+            // Vitesse et volume s'appliquent au son, tout de suite et avec
+            // toutes les voix, celle du système comprise.
+            SettingsGroup(title: "Son") {
+                SettingRow(title: "Vitesse", detail: "Raccourcis du panneau : + et −") {
+                    Slider(value: rounded(\.speed), in: 0.5...3, step: 0.05) {
+                        Text("Vitesse : \(SettingFormat.decimal(store.values.speed))×")
+                    }
+                    .notionSlider()
+                    .accessibilityLabel("Vitesse de lecture")
+                    .accessibilityIdentifier("vitesse")
+                    .accessibilityValue("\(SettingFormat.decimal(store.values.speed)) fois")
+                    ValueText("\(SettingFormat.decimal(store.values.speed))×")
                 }
-                .accessibilityLabel("Vitesse de lecture")
-                .accessibilityIdentifier("vitesse")
-                .accessibilityValue("\(SettingFormat.decimal(store.values.speed)) fois")
-                Slider(value: rounded(\.volume), in: 0...2, step: 0.05) {
-                    Text("Volume : \(SettingFormat.percent(store.values.volume))")
+                SettingRow(title: "Volume", detail: "Raccourcis du panneau : ⌥↑ et ⌥↓") {
+                    Slider(value: rounded(\.volume), in: 0...2, step: 0.05) {
+                        Text("Volume : \(SettingFormat.percent(store.values.volume))")
+                    }
+                    .notionSlider()
+                    .accessibilityLabel("Volume")
+                    .accessibilityValue(SettingFormat.percent(store.values.volume))
+                    ValueText(SettingFormat.percent(store.values.volume))
                 }
-                .accessibilityLabel("Volume")
-                .accessibilityValue(SettingFormat.percent(store.values.volume))
             }
         }
-        .formStyle(.grouped)
         .accessibilityIdentifier("onglet-voix")
         // Un aperçu qui échoue après coup (synthèse refusée) se dit aussi.
         .onChange(of: model.snapshot.preview.error) { _, error in
@@ -92,11 +110,11 @@ struct VoiceTab: View {
             ErrorText(failure, identifier: "erreur-nouvelle-voix")
         }
         if let offer = model.snapshot.offer {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Nouvelle voix disponible : Kokoro, plus naturelle, en français et en anglais.")
-                    .accessibilityIdentifier("offre-voix")
-                HStack {
+            Callout(symbol: "sparkles", text: "Nouvelle voix disponible : Kokoro, plus naturelle, en français et en anglais.",
+                    identifier: "offre-voix", tint: Palette.accent) {
+                HStack(spacing: 8) {
                     Button(Self.offerTitle(offer)) { accept(offer) }
+                        .buttonStyle(.notionPrimary)
                         .accessibilityIdentifier("passer-nouvelle-voix")
                     Button("Plus tard") {
                         answeringOffer = true
@@ -105,6 +123,7 @@ struct VoiceTab: View {
                             answeringOffer = false
                         }
                     }
+                    .buttonStyle(.notionPlain)
                     .accessibilityLabel("Plus tard : garder la voix actuelle")
                     .accessibilityIdentifier("plus-tard")
                     if answeringOffer { ProgressView().controlSize(.small).accessibilityLabel("Réponse en cours") }
@@ -112,8 +131,10 @@ struct VoiceTab: View {
                 .disabled(answeringOffer)
             }
         } else if let id = acceptedOffer, let d = model.snapshot.download, d.id == id, d.failed == nil {
-            LabeledContent("Téléchargement de la nouvelle voix") {
+            SettingRow(title: "Téléchargement de la nouvelle voix",
+                       detail: "\(SizeFormat.bytes(d.received)) sur \(SizeFormat.bytes(d.total))") {
                 ProgressView(value: Double(d.received), total: Double(max(d.total, 1)))
+                    .tint(Palette.accent)
                     .frame(width: 160)
                     .accessibilityLabel("Téléchargement de la nouvelle voix")
                     .accessibilityValue(SettingFormat.percent(Float(d.received) / Float(max(d.total, 1))))
@@ -139,15 +160,25 @@ struct VoiceTab: View {
 
     /// Une voix par langue (Kokoro), chacune avec son « Écouter ».
     @ViewBuilder private func languageVoicePicker(_ language: String, title: String, identifier: String) -> some View {
-        LabeledContent(title) {
-            HStack {
+        SettingRow(title: title, detail: language == "fr" ? "Lit les passages en français" : "Lit les passages en anglais") {
+            HStack(spacing: 8) {
                 PopUpPicker(label: title, identifier: identifier,
                             options: Self.voiceOptions(store.capabilities, language: language),
                             selection: Binding(get: { Self.voice(for: language, in: store.values, store.capabilities) },
                                                set: { store.setVoice($0, language: language) }))
-                    .fixedSize()
-                Button("Écouter") { Task { await store.listen(language: language) } }
-                    .accessibilityLabel("Écouter la \(title.lowercased())")
+                    // Le nom de la voix se tronque plutôt que de pousser la page.
+                    .frame(width: 240)
+                Button {
+                    Task { await store.listen(language: language) }
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "play.fill").font(.system(size: 10))
+                        Text("Écouter")
+                    }
+                }
+                .buttonStyle(.notion)
+                .fixedSize()
+                .accessibilityLabel("Écouter la \(title.lowercased())")
                     .accessibilityIdentifier("ecouter-\(language)")
             }
         }
@@ -156,7 +187,7 @@ struct VoiceTab: View {
     /// La langue du document ouvert, et la mention d'un document mêlé.
     @ViewBuilder private var documentLanguage: some View {
         if let language = model.snapshot.documentLanguage {
-            LabeledContent("Langue de ce document") {
+            SettingRow(title: "Langue de ce document", detail: "Détectée à l'ouverture ; à changer si elle se trompe") {
                 PopUpPicker(label: "Langue de ce document", identifier: "langue-document",
                             options: Self.documentLanguageOptions(language),
                             selection: Binding(get: { language.chosen ?? "" }, set: { value in
@@ -172,7 +203,7 @@ struct VoiceTab: View {
                     .fixedSize()
             }
             if let line = Self.mixedLine(language) {
-                Text(line).accessibilityIdentifier("document-mele")
+                SettingNote(line, identifier: "document-mele")
             }
         }
     }
@@ -275,17 +306,5 @@ struct VoiceTab: View {
         if preview.pending { return "Synthèse de l'aperçu…" }
         if preview.playing { return "Écoute…" }
         return nil
-    }
-}
-
-/// L'état de la voix (chargement, repli), dans les onglets qui la rechargent.
-struct VoiceStateLine: View {
-    let state: VoiceState
-    var preparing = false
-
-    var body: some View {
-        if let line = VoiceTab.voiceLine(state, preparing: preparing) {
-            Text(line).accessibilityIdentifier("etat-voix")
-        }
     }
 }

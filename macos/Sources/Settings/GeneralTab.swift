@@ -12,17 +12,20 @@ struct GeneralTab: View {
     @State private var pendingRemoval: StoredBookmarkView?
 
     var body: some View {
-        Form {
+        SettingsPage(title: "Général", subtitle: "Démarrage, mémoire de la voix, données et signets.") {
             ErrorText(store.error, identifier: "erreur-reglages")
-            Section("Démarrage") {
-                Toggle("Ouvrir sillon à la connexion", isOn: $login)
-                    .onAppear { login = LoginItem.isEnabled }
-                    .onChange(of: login) { _, on in
-                        // L'inscription peut être refusée : l'interrupteur dit l'état réel.
-                        if LoginItem.isEnabled != on, !LoginItem.set(on) { login = LoginItem.isEnabled }
-                    }
-                    .accessibilityLabel("Ouvrir sillon à la connexion")
-                LabeledContent("Garder la voix chargée") {
+            SettingsGroup(title: "Démarrage") {
+                SettingRow(title: "Ouvrir sillon à la connexion", detail: "Dans la barre des menus, prêt à lire") {
+                    Toggle("Ouvrir sillon à la connexion", isOn: $login)
+                        .notionSwitch()
+                        .onAppear { login = LoginItem.isEnabled }
+                        .onChange(of: login) { _, on in
+                            // L'inscription peut être refusée : l'interrupteur dit l'état réel.
+                            if LoginItem.isEnabled != on, !LoginItem.set(on) { login = LoginItem.isEnabled }
+                        }
+                        .accessibilityLabel("Ouvrir sillon à la connexion")
+                }
+                SettingRow(title: "Garder la voix chargée", detail: "Après la dernière lecture, avant de libérer la mémoire") {
                     PopUpPicker(label: "Garder la voix chargée", identifier: "garder-voix",
                                 options: KeepVoiceChoice.options(stored: store.values.keepVoiceMinutes)
                                     .map { ($0.label, $0) },
@@ -30,37 +33,36 @@ struct GeneralTab: View {
                         .fixedSize()
                 }
             }
-            Section("Données") {
-                HStack {
-                    Button("Vider le cache des documents") { clearCache() }
-                    if let cacheReport { Text(cacheReport) }
+            SettingsGroup(title: "Données") {
+                SettingRow(title: "Cache des documents",
+                           detail: cacheReport ?? "Les documents se reconstruisent à la prochaine ouverture") {
+                    Button("Vider le cache") { clearCache() }
+                        .buttonStyle(.notion)
+                        .accessibilityLabel("Vider le cache des documents")
                 }
-                Text("Les documents se reconstruisent à la prochaine ouverture")
-                Button("Ouvrir le dossier de configuration") { openConfigFolder() }
-                    .disabled(model.configDirectory == nil)
+                SettingRow(title: "Dossier de configuration", detail: "config.toml, signets, modèles") {
+                    Button("Ouvrir le dossier") { openConfigFolder() }
+                        .buttonStyle(.notion)
+                        .accessibilityLabel("Ouvrir le dossier de configuration")
+                        .disabled(model.configDirectory == nil)
+                }
                 ErrorText(dataError.text, identifier: "erreur-donnees")
             }
-            Section("Signets") {
-                if bookmarks.isEmpty { Text("Aucun signet") }
+            SettingsGroup(title: "Signets") {
+                if bookmarks.isEmpty { SettingNote("Aucun signet") }
                 ForEach(BookmarkGroups.group(bookmarks), id: \.document) { group in
-                    Text(group.label).fontWeight(.semibold)
-                    .accessibilityAddTraits(.isHeader)
+                    Label(group.label, systemImage: "doc.text")
+                        .font(Typo.caption)
+                        .foregroundStyle(Palette.muted)
+                        .padding(.top, 12)
+                        .padding(.bottom, 2)
+                        .accessibilityAddTraits(.isHeader)
                     ForEach(group.items, id: \.self) { b in
-                        HStack {
-                            VStack(alignment: .leading) {
-                                Text(b.snippet)
-                                Text("\(b.sectionTitle) · \(b.when)")
-                            }
-                            Spacer()
-                            Button("Supprimer") { pendingRemoval = b }
-                                .accessibilityLabel("Supprimer le signet « \(b.snippet) » de \(b.label)")
-                        }
-                        .accessibilityElement(children: .contain)
+                        BookmarkRow(bookmark: b) { pendingRemoval = b }
                     }
                 }
             }
         }
-        .formStyle(.grouped)
         .accessibilityIdentifier("onglet-general")
         .task { await reload() }
         .onAppear { cacheReport = nil; Task { await reload() } }
@@ -127,6 +129,43 @@ struct GeneralTab: View {
         if NSWorkspace.shared.open(url) { dataError.clear() } else {
             dataError.fail("Le dossier de configuration ne s'ouvre pas")
         }
+    }
+}
+
+/// Un signet : l'extrait, la section et la date ; « Supprimer » au survol
+/// comme au clavier (le bouton reste toujours là pour VoiceOver).
+private struct BookmarkRow: View {
+    let bookmark: StoredBookmarkView
+    let remove: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "bookmark")
+                .font(.system(size: 12))
+                .foregroundStyle(Palette.faint)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(bookmark.snippet)
+                    .font(Typo.body)
+                    .foregroundStyle(Palette.ink)
+                    .lineLimit(2)
+                Text("\(bookmark.sectionTitle) · \(bookmark.when)")
+                    .font(Typo.detail)
+                    .foregroundStyle(Palette.muted)
+            }
+            Spacer()
+            Button("Supprimer") { remove() }
+                .buttonStyle(.notionPlain)
+                .opacity(hovering ? 1 : 0.6)
+                .accessibilityLabel("Supprimer le signet « \(bookmark.snippet) » de \(bookmark.label)")
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(RoundedRectangle(cornerRadius: 6).fill(hovering ? Palette.hover : .clear))
+        .padding(.horizontal, -8)
+        .onHover { hovering = $0 }
+        .accessibilityElement(children: .contain)
     }
 }
 

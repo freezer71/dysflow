@@ -96,13 +96,13 @@ struct Timeline: View {
     var body: some View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
-                Capsule().fill(Color(nsColor: theme.border)).frame(height: 3)
-                Capsule().fill(Color(nsColor: theme.line))
-                    .frame(width: geo.size.width * Self.clamped(progress), height: 3)
+                Capsule().fill(Color(nsColor: theme.text).opacity(0.1)).frame(height: 4)
+                Capsule().fill(Color(nsColor: theme.text))
+                    .frame(width: geo.size.width * Self.clamped(progress), height: 4)
                 ForEach(markers, id: \.self) { m in
-                    Rectangle().fill(Color(nsColor: theme.chrome))
-                        .frame(width: 1, height: 9)
-                        .offset(x: geo.size.width * m)
+                    Capsule().fill(Color(nsColor: theme.background))
+                        .frame(width: 2, height: 4)
+                        .offset(x: geo.size.width * m - 1)
                 }
             }
             .frame(maxHeight: .infinity)
@@ -146,8 +146,9 @@ enum BarButtonMetrics {
 }
 
 /// Le style de tous les boutons de barre : une cible confortable, un fond
-/// arrondi léger au survol, plus marqué à l'appui. Le disque de lecture
-/// (couleur d'accent) s'assombrit au survol et à l'appui.
+/// arrondi léger au survol, plus marqué à l'appui. Le disque de lecture,
+/// à l'encre du texte (monochrome, comme Notion), s'éclaircit au survol et
+/// à l'appui.
 struct BarButtonStyle: ButtonStyle {
     var disc = false
 
@@ -161,21 +162,22 @@ private struct BarButtonBody: View {
     let disc: Bool
     @State private var hovering = false
     @Environment(\.isEnabled) private var enabled
+    @Environment(\.panelTheme) private var theme
 
     var body: some View {
         let pressed = configuration.isPressed
         let size = disc ? BarButtonMetrics.disc : BarButtonMetrics.target
         let hover = BarButtonMetrics.showsHover(hovering: hovering, enabled: enabled)
         configuration.label
-            .foregroundStyle(disc ? AnyShapeStyle(Color(nsColor: .alternateSelectedControlTextColor)) : AnyShapeStyle(.foreground))
+            .foregroundStyle(disc ? AnyShapeStyle(Color(nsColor: theme.background)) : AnyShapeStyle(.foreground))
             .frame(minWidth: size, minHeight: size)
             .background {
                 if disc {
-                    Circle().fill(Color.accentColor)
-                        .brightness(pressed ? -0.2 : (hover ? -0.1 : 0))
+                    Circle().fill(Color(nsColor: theme.text))
+                        .opacity(pressed ? 0.7 : (hover ? 0.85 : 1))
                 } else {
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(Color.primary.opacity(pressed ? 0.2 : (hover ? 0.1 : 0)))
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(Color(nsColor: theme.text).opacity(pressed ? 0.14 : (hover ? 0.07 : 0)))
                 }
             }
             .contentShape(Rectangle())

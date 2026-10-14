@@ -238,13 +238,14 @@ final class ReaderModel {
         if changed {
             snapshot = next
         }
-        if newDocument {
+        if newDocument || (pendingResume != nil && !document.complete) {
             document = reader.document()   // recalcule sommaire, repères et fil
         } else if newSection {
             breadcrumb = SectionMarkers.breadcrumb(document, section: snapshot.section)
         }
         if changed { onChange?(snapshot, document) }
         if downloadEnded { onVoiceMayHaveChanged?() }
+        if pendingResume != nil { resumeIfReady() }
         updateTicking()
     }
 
@@ -260,14 +261,61 @@ final class ReaderModel {
 
     func open(text: String, source: String) {
         message = nil
+        sourceText = text
+        sourceName = source
+        pendingResume = nil
         reader.openText(markdown: text, source: source)
         wake()
+    }
+
+    /// Le texte ouvert, tel qu'il est arrivé : le mode édition le reprend.
+    /// Nil pour une image (l'OCR) : le document est alors réécrit.
+    @ObservationIgnored private(set) var sourceText: String?
+    @ObservationIgnored private var sourceName = "presse-papiers"
+
+    /// Ce que le mode édition montre : le texte ouvert, sinon le document
+    /// réécrit en Markdown.
+    var editableText: String {
+        sourceText ?? EditableText.markdown(from: document)
+    }
+
+    /// Le texte modifié remplace le document. La voix reprend à la même
+    /// phrase (ou à la dernière, si le texte a raccourci), et repart si
+    /// elle lisait.
+    func reopen(edited text: String, play: Bool) {
+        let sentence = snapshot.sentence
+        let revision = snapshot.revision
+        open(text: text, source: sourceName)
+        pendingResume = Resume(sentence: sentence, play: play, after: revision)
+        resumeIfReady()
+    }
+
+    /// Où reprendre après une modification, appliqué dès que le nouveau
+    /// document a ses phrases.
+    struct Resume: Equatable {
+        let sentence: UInt32
+        let play: Bool
+        /// La révision de l'ancien document : on attend la suivante.
+        let after: UInt64
+    }
+    @ObservationIgnored private(set) var pendingResume: Resume?
+
+    private func resumeIfReady() {
+        guard let resume = pendingResume, snapshot.revision > resume.after, document.sentenceCount > 0,
+              resume.sentence < document.sentenceCount || document.complete else { return }
+        pendingResume = nil
+        let target = min(resume.sentence, document.sentenceCount - 1)
+        if target > 0 { send(.seekTo(sentence: target)) }
+        if resume.play != snapshot.playing { send(resume.play ? .togglePlay : .pause) }
     }
 
     /// Une image copiée, déjà vérifiée : le moteur la passe à l'OCR
     /// (plusieurs secondes), hors du fil principal.
     func openImage(_ data: Data) async throws {
         message = nil
+        sourceText = nil
+        sourceName = "image"
+        pendingResume = nil
         let reader = reader
         try await Task.detached { try reader.openImage(bytes: data) }.value
         wake()

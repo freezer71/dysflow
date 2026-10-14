@@ -8,6 +8,8 @@ final class ReadingTextView: NSTextView {
     var theme: Theme = .paper { didSet { if theme != oldValue { needsDisplay = true } } }
     var ruler = true
     var onContentHeight: ((CGFloat) -> Void)?
+    /// Un double clic : le mode édition (le texte n'est pas sélectionnable).
+    var onDoubleClick: (() -> Void)?
     /// L'horloge du suivi, remplaçable pour les tests.
     var now: () -> Date = Date.init
     /// Réduire les animations, remplaçable pour les tests.
@@ -84,6 +86,14 @@ final class ReadingTextView: NSTextView {
                          height: CGFloat.greatestFiniteMagnitude)
         textContainer?.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
         setAccessibilityLabel("Texte lu")
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        if event.clickCount == 2, let onDoubleClick {
+            onDoubleClick()
+            return
+        }
+        super.mouseDown(with: event)
     }
 
     deinit {

@@ -32,6 +32,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// tests (il prendrait les touches média de l'utilisateur).
     private(set) var nowPlaying: NowPlaying?
     private var menuObserver: NSObjectProtocol?
+    /// Les pages de notes ; leur fenêtre s'ouvre quand on lance sillon soi-même.
+    private(set) var notes: NotesWindowController?
+    /// Lancé par macOS à l'ouverture de session : la fenêtre des notes ne
+    /// s'impose pas.
+    private var launchedAtLogin = false
+
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        // L'événement Apple du lancement n'est lisible qu'ici.
+        launchedAtLogin = LaunchKind.launchedAtLogin()
+    }
+
+    /// sillon déjà lancé, rouvert depuis le Dock, le Finder, Spotlight ou un
+    /// lanceur : la page de notes.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        notes?.show()
+        return false
+    }
 
     /// Le modèle ne suit rien en pause et en arrière-plan : à l'ouverture
     /// d'un menu (celui de la barre des menus compris), l'état est relu une
@@ -48,6 +65,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Un réglage qui attend sa pause part avant la fin, attente bornée.
     func applicationWillTerminate(_ notification: Notification) {
+        notes?.store.flush()
         guard let store = settingsStore else { return }
         var done = false
         Task { @MainActor in await store.flush(); done = true }
@@ -95,6 +113,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model.refresh()
         panel = PanelController(model: model)
         transport = Transport(model: model)
+        // Sous les tests, un dossier jetable : jamais les notes de l'utilisateur.
+        let notesDirectory = readerIsSilent
+            ? FileManager.default.temporaryDirectory.appendingPathComponent("sillon-notes-\(UUID().uuidString)")
+            : NotesStore.userDirectory
+        notes = NotesWindowController(store: NotesStore(directory: notesDirectory)) { [model, panel] page in
+            guard let model, let panel else { return }
+            model.open(text: page.markdown, source: "note")
+            panel.apply(.readSelection)
+        }
         menuObserver = Self.refreshWhenAMenuOpens { [model] in model?.refresh() }
         if !readerIsSilent { installNowPlaying() }
         // Le mode laissé à la dernière fermeture (sous les tests : suite
@@ -107,6 +134,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // L'icône de la barre des menus donne l'action dès qu'elle paraît.
                 SettingsOpener.shared.open()
             }
+            if ProcessInfo.processInfo.arguments.contains("--show-notes") { notes?.show() }
         }
         guard !isUITesting, !isUnitTesting else { return }
         // Les raccourcis d'abord : l'alerte d'accessibilité bloque (runModal).
@@ -114,6 +142,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         LoginItem.enableOnFirstLaunch()
         Onboarding.runIfNeeded()
         startKokoro()
+        // Lancé à la main : la page de notes, comme une app ordinaire.
+        if !launchedAtLogin { notes?.show() }
     }
 
     /// sillon-espeak (la phonétisation de Kokoro) livré dans l'app : le

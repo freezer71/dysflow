@@ -37,8 +37,12 @@ struct Sidebar: View {
         }
 
         VStack(alignment: .leading, spacing: 6) {
-            Text(showingBookmarks ? "Signets" : "Sommaire")
-                .font(.system(size: 13, weight: .semibold))
+            Label(showingBookmarks ? "Signets" : "Sommaire",
+                  systemImage: showingBookmarks ? "bookmark" : "list.bullet")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Color(nsColor: theme.chrome))
+                .padding(.leading, 8)
+                .accessibilityAddTraits(.isHeader)
             List(items, selection: $selection) { item in
                 Text(item.title)
                     .font(.system(size: 13))

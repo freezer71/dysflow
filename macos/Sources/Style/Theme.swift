@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 
 extension NSColor {
     convenience init(hex: UInt32) {
@@ -16,8 +17,9 @@ extension NSColor {
     }
 }
 
-/// Les couleurs du lecteur. « Papier » le jour, sa version de nuit le soir,
-/// le contraste élevé dès que macOS le demande.
+/// Les couleurs du lecteur, celles de Notion (14 oct. 2026) : une encre
+/// chaude sur blanc le jour, sur gris très sombre le soir, le bleu de Notion
+/// pour le mot lu ; le contraste élevé dès que macOS le demande.
 struct Theme: Equatable {
     var background: NSColor
     var text: NSColor
@@ -34,16 +36,16 @@ struct Theme: Equatable {
     var border: NSColor
 
     static let paper = Theme(
-        background: NSColor(hex: 0xFBF8F1), text: NSColor(hex: 0x2A2722),
-        past: NSColor(hex: 0x9A948A), wordFill: NSColor(hex: 0xCFE3FF),
-        wordText: NSColor(hex: 0x1B2A44), line: NSColor(hex: 0x7AA7E8),
-        chrome: NSColor(hex: 0x575249), border: NSColor(hex: 0xE6E0D3))
+        background: NSColor(hex: 0xFFFFFF), text: NSColor(hex: 0x37352F),
+        past: NSColor(hex: 0x9B9A97), wordFill: NSColor(hex: 0x6AA7EC),
+        wordText: NSColor(hex: 0x183347), line: NSColor(hex: 0x2383E2),
+        chrome: NSColor(hex: 0x55534E), border: NSColor(hex: 0xE9E9E7))
 
     static let night = Theme(
-        background: NSColor(hex: 0x1E1B17), text: NSColor(hex: 0xE8E1D4),
-        past: NSColor(hex: 0x8A8276), wordFill: NSColor(hex: 0x2C4A75),
-        wordText: NSColor(hex: 0xE6EFFF), line: NSColor(hex: 0x7AA7E8),
-        chrome: NSColor(hex: 0x9A9286), border: NSColor(hex: 0x3A342C))
+        background: NSColor(hex: 0x191919), text: NSColor(hex: 0xD4D4D4),
+        past: NSColor(hex: 0x7F7F7F), wordFill: NSColor(hex: 0x2383E2),
+        wordText: NSColor(hex: 0xE6F1FF), line: NSColor(hex: 0x529CCA),
+        chrome: NSColor(hex: 0xA6A6A6), border: NSColor(hex: 0x2F2F2F))
 
     static let contrast = Theme(
         background: .black, text: .white, past: NSColor(hex: 0xB0B0B0),
@@ -69,4 +71,10 @@ struct Theme: Equatable {
         if increaseContrast { return .contrast }
         return dark ? .night : .paper
     }
+}
+
+extension EnvironmentValues {
+    /// Les couleurs du panneau, pour les contrôles qui ne les reçoivent pas
+    /// en paramètre (le disque de lecture).
+    @Entry var panelTheme: Theme = .paper
 }

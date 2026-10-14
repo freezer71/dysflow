@@ -10,6 +10,8 @@ struct ReadingView: NSViewRepresentable {
     /// Copie invisible (mode petit) : elle ne sert qu'à ↑ ↓. Ni trait animé,
     /// ni VoiceOver (une vue cachée sort de l'arbre d'accessibilité).
     var shadow = false
+    /// Un double clic sur le texte : le mode édition.
+    var onDoubleClick: (() -> Void)?
     var onContentHeight: (CGFloat) -> Void = { _ in }
 
     final class Coordinator {
@@ -40,6 +42,7 @@ struct ReadingView: NSViewRepresentable {
         let snapshot = model.snapshot
         // La fermeture change avec la vue SwiftUI : on garde la dernière.
         text.onContentHeight = onContentHeight
+        text.onDoubleClick = onDoubleClick
         text.theme = style.theme
         text.ruler = style.ruler
         text.playing = snapshot.playing && !shadow

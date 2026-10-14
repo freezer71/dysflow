@@ -45,6 +45,8 @@ enum ReaderAction: Equatable {
     /// ⌘1, ⌘2, ⌘3 : petit, moyen, grand.
     case display(DisplayMode)
     case toggleSidebar, toggleBookmarks, showHelp, openSettings, openVoiceSettings
+    /// Le texte devient modifiable (double clic, ou « e »).
+    case edit
 }
 
 /// Les touches du terminal, plus les gestes propres à la fenêtre.
@@ -109,6 +111,7 @@ enum KeyMap {
         case "/": return .openSearch
         case "?", "h": return .showHelp
         case "v": return .openVoiceSettings
+        case "e": return .edit
         default: return nil
         }
     }

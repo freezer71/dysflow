@@ -74,7 +74,7 @@ final class SettingsUITests: XCTestCase {
         let window = app.windows["Réglages"]
         XCTAssertTrue(window.waitForExistence(timeout: 5))
         for (title, marker) in tabs {
-            window.toolbars.buttons[title].click()
+            window.buttons[title].click()
             waitForContent(of: title, marker: marker, in: window)
             try app.performAccessibilityAuditOutsideTouchBar(visibleIn: window)
             let form = window.scrollViews.firstMatch
@@ -95,7 +95,7 @@ final class SettingsUITests: XCTestCase {
         let window = app.windows["Réglages"]
         XCTAssertTrue(window.waitForExistence(timeout: 5))
         for (title, marker) in tabs {
-            window.toolbars.buttons[title].click()
+            window.buttons[title].click()
             waitForContent(of: title, marker: marker, in: window)
             // Le catalogue peut ne rien proposer : rien à parcourir alors.
             if title == "Modèles", modelButtons(in: window) == 0 { continue }
@@ -143,7 +143,7 @@ final class SettingsUITests: XCTestCase {
         let app = launch(["--show-panel", "--show-settings"])
         let window = app.windows["Réglages"]
         XCTAssertTrue(window.waitForExistence(timeout: 5))
-        window.toolbars.buttons["Avancé"].click()
+        window.buttons["Avancé"].click()
         XCTAssertTrue(window.descendants(matching: .any)["onglet-avance"].waitForExistence(timeout: 3))
         window.typeKey("w", modifierFlags: .command)
         XCTAssertTrue(window.waitForNonExistence(timeout: 3))

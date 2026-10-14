@@ -11,7 +11,7 @@ final class KokoroVoiceUITests: XCTestCase {
         app.launch()
         let window = app.windows["Réglages"]
         XCTAssertTrue(window.waitForExistence(timeout: 5))
-        window.toolbars.buttons["Voix"].click()
+        window.buttons["Voix"].click()
         return (app, window)
     }
 
@@ -92,7 +92,7 @@ final class KokoroNoticesUITests: XCTestCase {
         app.launch()
         let window = app.windows["Réglages"]
         XCTAssertTrue(window.waitForExistence(timeout: 5))
-        window.toolbars.buttons["Voix"].click()
+        window.buttons["Voix"].click()
         let any = window.descendants(matching: .any)
         XCTAssertTrue(any["configuration-illisible"].waitForExistence(timeout: 3), "bandeau absent")
         XCTAssertTrue(any["avis-voix"].exists, "avis absent")

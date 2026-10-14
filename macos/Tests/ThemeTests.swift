@@ -10,9 +10,9 @@ final class ThemeTests: XCTestCase {
     }
 
     func testPaperColorsMatchTheSpec() {
-        XCTAssertEqual(Theme.paper.background.hex, "#FBF8F1")
-        XCTAssertEqual(Theme.paper.wordFill.hex, "#CFE3FF")
-        XCTAssertEqual(Theme.night.background.hex, "#1E1B17")
+        XCTAssertEqual(Theme.paper.background.hex, "#FFFFFF")
+        XCTAssertEqual(Theme.paper.wordFill.hex, "#6AA7EC")
+        XCTAssertEqual(Theme.night.background.hex, "#191919")
         XCTAssertEqual(Theme.contrast.wordFill.hex, "#FFE600")
     }
 
@@ -20,8 +20,8 @@ final class ThemeTests: XCTestCase {
     /// en contraste élevé, le mot reste blanc (il n'a plus de fond jaune) et
     /// le trait est jaune.
     func testCursorInkAndLine() {
-        XCTAssertEqual(Theme.paper.wordText.hex, "#1B2A44")
-        XCTAssertEqual(Theme.night.wordText.hex, "#E6EFFF")
+        XCTAssertEqual(Theme.paper.wordText.hex, "#183347")
+        XCTAssertEqual(Theme.night.wordText.hex, "#E6F1FF")
         XCTAssertEqual(Theme.contrast.wordText.hex, "#FFFFFF")
         XCTAssertEqual(Theme.contrast.line.hex, "#FFE600")
         for (name, theme) in [("papier", Theme.paper), ("nuit", .night), ("contraste", .contrast)] {
@@ -35,10 +35,12 @@ final class ThemeTests: XCTestCase {
         for (name, theme) in [("papier", Theme.paper), ("nuit", .night), ("contraste", .contrast)] {
             XCTAssertGreaterThanOrEqual(Theme.contrastRatio(theme.chrome, theme.background), 4.5, name)
         }
-        // 7,3:1 en clair : à 13 pt, les traits fins du temps (« –:–– »)
-        // paraissent plus pâles que leur couleur, et 5,2:1 échouait à
-        // l'audit d'accessibilité de macOS.
-        XCTAssertEqual(Theme.paper.chrome.hex, "#575249")
+        // 7:1 au moins, en clair comme en sombre : à 13 pt, les traits fins
+        // du temps (« –:–– ») paraissent plus pâles que leur couleur, et
+        // 5,2:1 échouait à l'audit d'accessibilité de macOS.
+        for (name, theme) in [("papier", Theme.paper), ("nuit", .night)] {
+            XCTAssertGreaterThanOrEqual(Theme.contrastRatio(theme.chrome, theme.background), 7, name)
+        }
     }
 
     func testBundledFontsResolve() {

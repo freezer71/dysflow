@@ -1,26 +1,10 @@
 import Foundation
 import SwiftUI
 
-/// Un réglage que le modèle actif ignore, montré sur demande : il le dit.
-/// VoiceOver l'entend en indice de chaque contrôle, pas comme un texte à
-/// part ; les enfants ne sont pas fusionnés, un curseur reste réglable.
-struct IgnorableNote<Content: View>: View {
-    let ignored: Bool
-    @ViewBuilder let content: Content
-
-    static var hint: String { "sans effet sur ce modèle" }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            if ignored {
-                // Un `Group` porte l'indice jusqu'à chacun de ses enfants.
-                Group { content }.accessibilityHint(Self.hint)
-                Text(Self.hint).accessibilityHidden(true)
-            } else {
-                content
-            }
-        }
-    }
+/// Un réglage que le modèle actif ignore, montré sur demande : il le dit,
+/// en description de sa ligne, et VoiceOver l'entend en indice du contrôle.
+enum IgnoredSetting {
+    static let hint = "sans effet sur ce modèle"
 }
 
 /// Nombres à la française, à l'écran comme pour VoiceOver.
@@ -91,17 +75,37 @@ struct OptionalSlider: View {
     var onEditingChanged: (Bool) -> Void = { _ in }
 
     var body: some View {
-        IgnorableNote(ignored: ignored) {
-            Toggle("\(title) : laisser le modèle décider",
-                   isOn: Binding(get: { value == nil }, set: { value = $0 ? nil : fallback }))
-            if let current = value {
-                Slider(value: Binding(get: { current }, set: { value = SettingFormat.rounded($0) }), in: range, step: step) {
-                    Text("\(title) : \(SettingFormat.decimal(current))")
-                } onEditingChanged: { onEditingChanged($0) }
-                .accessibilityLabel(title)
-                .accessibilityValue(SettingFormat.decimal(current))
+        SettingRow(title: title, detail: ignored ? IgnoredSetting.hint : nil) {
+            Group {
+                if let current = value {
+                    Slider(value: Binding(get: { current }, set: { value = SettingFormat.rounded($0) }),
+                           in: range, step: step) {
+                        Text("\(title) : \(SettingFormat.decimal(current))")
+                    } onEditingChanged: { onEditingChanged($0) }
+                    .notionSlider(width: 150)
+                    .accessibilityLabel(title)
+                    .accessibilityValue(SettingFormat.decimal(current))
+                    ValueText(SettingFormat.decimal(current), width: 36)
+                }
+                AutoToggle(title: title, isAuto: Binding(get: { value == nil },
+                                                         set: { value = $0 ? nil : fallback }))
             }
+            .accessibilityHint(ignored ? IgnoredSetting.hint : "")
         }
+    }
+}
+
+/// « Auto » : le modèle décide. Une case, à droite du réglage ; VoiceOver
+/// entend « Température : laisser le modèle décider ».
+struct AutoToggle: View {
+    let title: String
+    @Binding var isAuto: Bool
+
+    var body: some View {
+        Toggle(isOn: $isAuto) { Text("Auto").font(Typo.body).foregroundStyle(Palette.muted) }
+            .toggleStyle(.checkbox)
+            .controlSize(.small)
+            .accessibilityLabel("\(title) : laisser le modèle décider")
     }
 }
 
@@ -114,15 +118,20 @@ struct OptionalStepper: View {
     let fallback: UInt32
 
     var body: some View {
-        IgnorableNote(ignored: ignored) {
-            Toggle("\(title) : laisser le modèle décider",
-                   isOn: Binding(get: { value == nil }, set: { value = $0 ? nil : fallback }))
-            if let current = value {
-                Stepper("\(title) : \(current)",
-                        value: Binding(get: { current }, set: { value = $0 }), in: range)
-                    .accessibilityLabel(title)
-                    .accessibilityValue("\(current)")
+        SettingRow(title: title, detail: ignored ? IgnoredSetting.hint : nil) {
+            Group {
+                if let current = value {
+                    ValueText("\(current)", width: 30)
+                    Stepper("\(title) : \(current)",
+                            value: Binding(get: { current }, set: { value = $0 }), in: range)
+                        .labelsHidden()
+                        .accessibilityLabel(title)
+                        .accessibilityValue("\(current)")
+                }
+                AutoToggle(title: title, isAuto: Binding(get: { value == nil },
+                                                         set: { value = $0 ? nil : fallback }))
             }
+            .accessibilityHint(ignored ? IgnoredSetting.hint : "")
         }
     }
 }
@@ -134,16 +143,25 @@ struct SeedField: View {
     @Binding var seed: UInt64?
 
     var body: some View {
-        IgnorableNote(ignored: ignored) {
-            Toggle("Graine : aléatoire",
-                   isOn: Binding(get: { seed == nil }, set: { seed = $0 ? nil : 0 }))
-            if seed != nil {
-                TextField("Graine", value: Binding(get: { seed ?? 0 }, set: { seed = $0 }),
-                          format: IntegerFormatStyle<UInt64>().grouping(.never))
-                    .accessibilityLabel("Graine")
-                    .accessibilityHint("Entrée pour valider")
-                Text("Entrée pour valider")
+        SettingRow(title: "Graine", detail: ignored ? IgnoredSetting.hint
+                   : (seed != nil ? "Entrée pour valider" : "Un tirage différent à chaque phrase")) {
+            Group {
+                if seed != nil {
+                    TextField("Graine", value: Binding(get: { seed ?? 0 }, set: { seed = $0 }),
+                              format: IntegerFormatStyle<UInt64>().grouping(.never))
+                        .textFieldStyle(.notion)
+                        .frame(width: 120)
+                        .accessibilityLabel("Graine")
+                        .accessibilityHint("Entrée pour valider")
+                }
+                Toggle(isOn: Binding(get: { seed == nil }, set: { seed = $0 ? nil : 0 })) {
+                    Text("Aléatoire").font(Typo.body).foregroundStyle(Palette.muted)
+                }
+                .toggleStyle(.checkbox)
+                .controlSize(.small)
+                .accessibilityLabel("Graine : aléatoire")
             }
+            .accessibilityHint(ignored ? IgnoredSetting.hint : "")
         }
     }
 }

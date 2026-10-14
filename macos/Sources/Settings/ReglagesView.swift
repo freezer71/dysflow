@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// La fenêtre des réglages : six onglets et un magasin de réglages commun.
+/// La fenêtre des réglages, à la manière de Notion : une barre latérale de
+/// six pages, la page ouverte à droite, un magasin de réglages commun.
 /// Le nom `SettingsView` est pris par l'enregistrement du moteur (UniFFI).
 struct ReglagesView: View {
     let model: ReaderModel
@@ -24,24 +25,39 @@ struct ReglagesView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            ConfigUnreadableBanner(model: model, store: store)
-            tabs
+        HStack(spacing: 0) {
+            SettingsSidebar(navigation: SettingsNavigation.shared)
+            Rectangle().fill(Palette.divider).frame(width: 1).accessibilityHidden(true)
+            VStack(spacing: 0) {
+                ConfigUnreadableBanner(model: model, store: store)
+                page
+            }
+            .background(Palette.page)
         }
-        .navigationTitle("Réglages")
-        .frame(width: 600, height: 540)
-        .font(.system(size: 13))
+        // La barre de titre est transparente : la barre latérale monte
+        // jusqu'en haut, sous les boutons de la fenêtre.
+        .ignoresSafeArea()
+        .modifier(HiddenWindowToolbar())
+        .navigationTitle(SettingsNavigation.shared.tab.label)
+        .frame(width: 820, height: 600)
+        .font(Typo.body)
     }
 
-    private var tabs: some View {
-        TabView(selection: SettingsNavigation.shared.binding) {
-            VoiceTab(model: model, store: store).settingsTab(.voice)
-            ReadingTab(store: store).settingsTab(.reading)
-            ModelsTab(model: model, store: models, settings: store).settingsTab(.models)
-            ShortcutsTab().settingsTab(.shortcuts)
-            AdvancedTab(model: model, store: store).settingsTab(.advanced)
-            GeneralTab(model: model, store: store).settingsTab(.general)
+    /// La page ouverte, choisie dans la barre latérale.
+    @ViewBuilder private var pageContent: some View {
+        switch SettingsNavigation.shared.tab {
+        case .voice: VoiceTab(model: model, store: store)
+        case .reading: ReadingTab(store: store)
+        case .models: ModelsTab(model: model, store: models, settings: store)
+        case .shortcuts: ShortcutsTab()
+        case .advanced: AdvancedTab(model: model, store: store)
+        case .general: GeneralTab(model: model, store: store)
         }
+    }
+
+    private var page: some View {
+        pageContent
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         .task {
             AppDelegate.shared?.settingsStore = store
             await store.load()
@@ -91,12 +107,15 @@ struct ConfigUnreadableBanner: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("configuration-illisible")
                 Button("Remplacer config.toml par les réglages actuels…") { confirming = true }
+                    .buttonStyle(.notion)
                     .accessibilityIdentifier("remplacer-configuration")
                 ErrorText(error.text, identifier: "erreur-remplacement")
             }
-            .padding(12)
+            .padding(.horizontal, 40)
+            .padding(.top, 40)
+            .padding(.bottom, 14)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.quaternary)
+            .background(Color(nsColor: .adaptive(light: 0xFBF3DB, dark: 0x3A3220)))
             .accessibilityElement(children: .contain)
             .onAppear { AnnounceOnce.post(line) }
             .alert("Remplacer config.toml ?", isPresented: $confirming) {
@@ -125,5 +144,19 @@ struct ConfigUnreadableBanner: View {
         guard unreadable else { return nil }
         return "Configuration illisible : config.toml n'a pas pu être lu. Les réglages s'appliquent, "
             + "mais ne sont pas enregistrés tant qu'il n'est pas corrigé ou remplacé."
+    }
+}
+
+/// La barre de titre de la fenêtre, effacée (macOS 15 et plus ; avant,
+/// `SettingsWindowName` la rend transparente).
+private struct HiddenWindowToolbar: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(macOS 15, *) {
+            content
+                .toolbar(removing: .title)
+                .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
+        } else {
+            content
+        }
     }
 }

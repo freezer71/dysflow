@@ -17,13 +17,17 @@ struct ExpandedReader: View {
             }
             VStack(alignment: .leading, spacing: 14) {
                 HStack {
-                    Text(model.breadcrumb)
+                    Label(model.breadcrumb, systemImage: "doc.text")
+                        .labelStyle(.titleAndIcon)
                         .lineLimit(1)
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel(model.breadcrumb)
+                        .accessibilityAddTraits(.isStaticText)
                         .accessibilityIdentifier("fil-ariane")
                     Spacer()
                     if controller.searchActive {
                         TextField("Chercher", text: $query)
-                            .textFieldStyle(.roundedBorder)
+                            .textFieldStyle(.notion)
                             .frame(width: 220)
                             .focused($searchFocused)
                             .accessibilityIdentifier("recherche")
@@ -54,9 +58,14 @@ struct ExpandedReader: View {
                     if !active { query = "" }
                 }
 
-                ReadingView(model: model, style: style, lines: controller.lines)
-                PlayerBar(model: model, theme: style.theme,
-                          markers: model.sectionPositions)
+                if controller.editing {
+                    TextEditingView(controller: controller, style: style)
+                } else {
+                    ReadingView(model: model, style: style, lines: controller.lines,
+                                onDoubleClick: { controller.beginEditing() })
+                    PlayerBar(model: model, theme: style.theme,
+                              markers: model.sectionPositions)
+                }
             }
         }
     }

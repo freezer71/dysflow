@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Les six onglets de la fenêtre des réglages.
+/// Les six pages de la fenêtre des réglages.
 enum SettingsTab: String, CaseIterable {
     case voice = "voix"
     case reading = "lecture"
@@ -66,15 +66,89 @@ final class SettingsNavigation {
         self.tab = tab
         defaults.set(tab.rawValue, forKey: Self.key)
     }
+}
 
-    var binding: Binding<SettingsTab> {
-        Binding(get: { self.tab }, set: { self.select($0) })
+/// La barre latérale des réglages, à la manière de Notion : la marque en
+/// tête, une ligne par page, la page ouverte sur fond gris.
+struct SettingsSidebar: View {
+    let navigation: SettingsNavigation
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            HStack(spacing: 8) {
+                LogoMark(small: true)
+                    .frame(width: 18, height: 18)
+                    .foregroundStyle(Palette.ink)
+                Text("sillon")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Palette.ink)
+            }
+            .padding(.horizontal, 8)
+            // La barre de titre est transparente : les boutons de la fenêtre
+            // occupent le haut.
+            .padding(.top, 48)
+            .padding(.bottom, 18)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("sillon")
+
+            Text("Réglages")
+                .font(Typo.caption)
+                .foregroundStyle(Palette.muted)
+                .padding(.horizontal, 8)
+                .padding(.bottom, 6)
+                .accessibilityHidden(true)
+
+            ForEach(SettingsTab.allCases, id: \.self) { tab in
+                SettingsSidebarItem(tab: tab, selected: navigation.tab == tab) {
+                    navigation.select(tab)
+                }
+            }
+            Spacer(minLength: 0)
+            if let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String {
+                Text("Version \(version)")
+                    .font(Typo.detail)
+                    .foregroundStyle(Palette.muted)
+                    .padding(.horizontal, 8)
+                    .padding(.bottom, 14)
+            }
+        }
+        .padding(.horizontal, 8)
+        .frame(width: 200)
+        .frame(maxHeight: .infinity, alignment: .top)
+        .background(Palette.sidebar)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Pages des réglages")
     }
 }
 
-extension View {
-    /// L'étiquette et l'étiquette de sélection d'un onglet.
-    func settingsTab(_ tab: SettingsTab) -> some View {
-        tabItem { Label(tab.label, systemImage: tab.symbol) }.tag(tab)
+private struct SettingsSidebarItem: View {
+    let tab: SettingsTab
+    let selected: Bool
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 9) {
+                Image(systemName: tab.symbol)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(selected ? Palette.ink : Palette.faint)
+                    .frame(width: 18)
+                Text(tab.label)
+                    .font(.system(size: 13, weight: selected ? .semibold : .medium))
+                    .foregroundStyle(selected ? Palette.ink : Palette.muted)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 8)
+            .frame(height: 30)
+            .background(RoundedRectangle(cornerRadius: 6)
+                .fill(selected ? Palette.selected : (hovering ? Palette.hover : .clear)))
+            .contentShape(RoundedRectangle(cornerRadius: 6))
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .accessibilityLabel(tab.label)
+        .accessibilityIdentifier("page-\(tab.rawValue)")
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }

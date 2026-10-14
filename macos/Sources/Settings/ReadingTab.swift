@@ -7,39 +7,54 @@ struct ReadingTab: View {
     @AppStorage(DisplayDefaults.sizeKey) private var size = DisplayDefaults.defaultSize
 
     var body: some View {
-        Form {
+        SettingsPage(title: "Lecture", subtitle: "L'affichage du texte et la façon de le parcourir.") {
             ErrorText(store.error, identifier: "erreur-reglages")
-            Section("Texte") {
-                LabeledContent("Police de lecture") {
+            SettingsGroup(title: "Texte") {
+                SettingRow(title: "Police de lecture", detail: "Le texte lu, dans le panneau") {
                     PopUpPicker(label: "Police de lecture", identifier: "police-lecture",
                                 options: ReadingFont.allCases.map { ($0.label, $0.rawValue) },
                                 selection: $fontName)
                         .fixedSize()
                 }
-                Slider(value: $size, in: 14...40, step: 1) { Text("Taille : \(Int(size)) pt") }
-                    .accessibilityLabel("Taille du texte")
-                    .accessibilityValue("\(Int(size)) points")
-                Stepper("Interlignage : \(store.values.lineSpacing)",
-                        value: count(\.lineSpacing), in: 0...3)
-                    .accessibilityLabel("Interlignage")
-                    .accessibilityValue("\(store.values.lineSpacing)")
-                Toggle("Règle de lecture", isOn: store.binding(\.readingRuler))
+                SettingRow(title: "Taille") {
+                    Slider(value: $size, in: 14...40, step: 1) { Text("Taille : \(Int(size)) pt") }
+                        .notionSlider()
+                        .accessibilityLabel("Taille du texte")
+                        .accessibilityValue("\(Int(size)) points")
+                    ValueText("\(Int(size)) pt")
+                }
+                SettingRow(title: "Interlignage", detail: "L'air entre deux lignes") {
+                    ValueText("\(store.values.lineSpacing)", width: 20)
+                    Stepper("Interlignage : \(store.values.lineSpacing)",
+                            value: count(\.lineSpacing), in: 0...3)
+                        .labelsHidden()
+                        .accessibilityLabel("Interlignage")
+                        .accessibilityValue("\(store.values.lineSpacing)")
+                }
+                SettingRow(title: "Règle de lecture", detail: "Une bande sous la ligne lue, pour ne pas la perdre") {
+                    Toggle("Règle de lecture", isOn: store.binding(\.readingRuler)).notionSwitch()
+                }
             }
-            Section("Lecture") {
-                LabeledContent("Blocs de code") {
+            SettingsGroup(title: "Parcours") {
+                SettingRow(title: "Blocs de code", detail: "Ce que la voix fait d'un bloc de code") {
                     PopUpPicker(label: "Blocs de code", identifier: "blocs-code",
                                 options: Self.codeOptions(current: store.values.codeBlocks),
                                 selection: store.binding(\.codeBlocks))
                         .fixedSize()
                 }
-                Toggle("Lire dès l'ouverture", isOn: store.binding(\.autoplay))
-                Stepper("Pas de l'avance rapide : \(Self.seekText(Int(store.values.seekStep)))",
-                        value: count(\.seekStep), in: 1...50)
-                    .accessibilityLabel("Pas de l'avance rapide")
-                    .accessibilityValue(Self.seekText(Int(store.values.seekStep)))
+                SettingRow(title: "Lire dès l'ouverture", detail: "La voix part dès qu'un texte arrive") {
+                    Toggle("Lire dès l'ouverture", isOn: store.binding(\.autoplay)).notionSwitch()
+                }
+                SettingRow(title: "Pas de l'avance rapide", detail: "Ce que sautent ⇧← et ⇧→") {
+                    ValueText(Self.seekText(Int(store.values.seekStep)), width: 70)
+                    Stepper("Pas de l'avance rapide : \(Self.seekText(Int(store.values.seekStep)))",
+                            value: count(\.seekStep), in: 1...50)
+                        .labelsHidden()
+                        .accessibilityLabel("Pas de l'avance rapide")
+                        .accessibilityValue(Self.seekText(Int(store.values.seekStep)))
+                }
             }
         }
-        .formStyle(.grouped)
         .accessibilityIdentifier("onglet-lecture")
     }
 

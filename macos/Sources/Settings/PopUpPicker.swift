@@ -22,6 +22,9 @@ struct PopUpPicker<Value: Hashable>: NSViewRepresentable {
         button.action = #selector(Coordinator.changed(_:))
         button.setAccessibilityLabel(label)
         button.setAccessibilityIdentifier(identifier)
+        // Sous une largeur imposée, le titre se tronque au lieu de déborder.
+        button.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        (button.cell as? NSPopUpButtonCell)?.lineBreakMode = .byTruncatingTail
         return button
     }
 

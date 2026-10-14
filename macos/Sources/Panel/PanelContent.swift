@@ -24,11 +24,12 @@ struct PanelContent: View {
 
     var body: some View {
         content(controller.model)
+            .environment(\.panelTheme, theme)
             .background(
-                RoundedRectangle(cornerRadius: 14)
+                RoundedRectangle(cornerRadius: 12)
                     .fill(Color(nsColor: theme.background))
-                    .overlay(RoundedRectangle(cornerRadius: 14)
-                        .stroke(Color(nsColor: theme.border), lineWidth: 1))
+                    .overlay(RoundedRectangle(cornerRadius: 12)
+                        .strokeBorder(Color(nsColor: theme.border), lineWidth: 1))
             )
             .overlay { if controller.helpVisible { HelpOverlay(theme: theme) } }
             // La barre de titre est transparente et invisible : sans cela, sa
@@ -71,20 +72,30 @@ struct PanelContent: View {
             // 30 fois en 10 s de lecture), et la vue hôte agrandirait la
             // fenêtre cachée à la taille du moyen.
             Color.clear
+        case .medium where controller.editing:
+            TextEditingView(controller: controller, style: style)
+                .padding(.horizontal, PanelGeometry.horizontalPadding)
+                .padding(.vertical, 18)
         case .medium:
             VStack(alignment: .leading, spacing: 14) {
-                ReadingView(model: model, style: style, lines: controller.lines) { height in
+                ReadingView(model: model, style: style, lines: controller.lines,
+                            onDoubleClick: { controller.beginEditing() }) { height in
                     controller.contentHeightChanged(height)
                 }
                 // Sans document, l'invitation occupe la zone du texte, au
                 // centre, à la taille des contrôles.
                 .overlay {
                     if !model.snapshot.hasDocument {
-                        Text(PanelInvitation.text(for: KeyboardShortcuts.getShortcut(for: .readSelection)))
-                            .font(.system(size: 13))
-                            .multilineTextAlignment(.center)
-                            .foregroundStyle(Color(nsColor: theme.chrome))
-                            .accessibilityIdentifier("invitation")
+                        VStack(spacing: 10) {
+                            LogoMark()
+                                .frame(width: 28, height: 28)
+                                .foregroundStyle(Color(nsColor: theme.past))
+                            Text(PanelInvitation.text(for: KeyboardShortcuts.getShortcut(for: .readSelection)))
+                                .font(.system(size: 13))
+                                .multilineTextAlignment(.center)
+                                .foregroundStyle(Color(nsColor: theme.chrome))
+                                .accessibilityIdentifier("invitation")
+                        }
                     }
                 }
                 PlayerBar(model: model, theme: theme)
@@ -111,11 +122,9 @@ struct PanelContent: View {
     }
 
     private func hint(_ key: String, _ label: String) -> some View {
-        HStack(spacing: 5) {
-            Text(key)
-                .font(.system(size: 13, design: .monospaced))
-                .padding(.horizontal, 5).padding(.vertical, 1)
-                .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color(nsColor: theme.border)))
+        HStack(spacing: 6) {
+            Keycap(key: key, color: Color(nsColor: theme.chrome),
+                   fill: Color(nsColor: theme.text).opacity(0.07))
             Text(label)
         }
         .font(.system(size: 13))
@@ -137,23 +146,35 @@ struct HelpOverlay: View {
         ("/ · N P", "Chercher · résultat suivant / précédent"),
         ("t · B · b", "Sommaire · signets · poser un signet"),
         ("⏎", "Agrandir"), ("⌘1 ⌘2 ⌘3", "Petit · moyen · grand"),
-        ("⌘C", "Copier la phrase"), ("⌘,", "Réglages"),
+        ("⌘C", "Copier la phrase"), ("e · double clic", "Modifier le texte"),
+        ("⌘,", "Réglages"),
         ("v", "Réglages de la voix"),
         ("Échap", "Revenir · arrière-plan"),
     ]
 
     var body: some View {
-        Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 6) {
-            ForEach(Self.rows, id: \.0) { row in
-                GridRow {
-                    Text(row.0).font(.system(size: 13, design: .monospaced))
-                    Text(row.1).font(.system(size: 13))
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Raccourcis")
+                .font(.system(size: 14, weight: .semibold))
+                .accessibilityAddTraits(.isHeader)
+            Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 7) {
+                ForEach(Self.rows, id: \.0) { row in
+                    GridRow {
+                        Keycap(key: row.0, color: Color(nsColor: theme.text),
+                               fill: Color(nsColor: theme.text).opacity(0.07))
+                        Text(row.1).font(.system(size: 13))
+                            .foregroundStyle(Color(nsColor: theme.chrome))
+                    }
                 }
             }
+            Text("Une touche pour fermer")
+                .font(.system(size: 12))
+                .foregroundStyle(Color(nsColor: theme.chrome))
         }
         .padding(20)
         .background(RoundedRectangle(cornerRadius: 10).fill(Color(nsColor: theme.background)))
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color(nsColor: theme.border)))
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color(nsColor: theme.border)))
+        .shadow(color: .black.opacity(0.12), radius: 18, y: 8)
         .foregroundStyle(Color(nsColor: theme.text))
         .accessibilityIdentifier("aide-raccourcis")
     }

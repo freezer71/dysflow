@@ -37,6 +37,13 @@ final class PanelController {
     /// Compte les « / » : chacun rend le focus au champ, même déjà ouvert.
     private(set) var openSearchRequests = 0
     var helpVisible = false
+    /// Le mode édition : le texte du panneau devient modifiable.
+    private(set) var editing = false
+    /// Le texte en cours de modification.
+    var draft = ""
+    /// Le texte au début de la modification : inchangé, rien ne se recharge.
+    @ObservationIgnored private var draftOrigin = ""
+    @ObservationIgnored private var resumeAfterEditing = false
 
     init(model: ReaderModel, store: DisplayModeStore? = nil) {
         self.model = model
@@ -110,6 +117,9 @@ final class PanelController {
 
     private func present(_ target: DisplayMode, takeKey: Bool = true) {
         guard target.isVisible else { hideWindow(); return }
+        // La barre du mode petit n'a pas de place pour écrire : la
+        // modification s'applique avant.
+        if editing, target == .small { finishEditing() }
         // Lu hors du fil principal : s'applique dès qu'il revient.
         reloadReading()
         let wasHidden = mode == .background || !window.isVisible
@@ -135,6 +145,8 @@ final class PanelController {
     /// ne relit plus l'état qu'une fois par seconde, et seulement s'il lit.
     private func hideWindow() {
         guard mode != .background else { return }
+        // Une modification en cours n'est pas perdue : elle s'applique.
+        if editing { finishEditing() }
         // Une recherche en cours ne survit pas : sinon le grand mode reviendrait
         // avec un champ vide et un compteur « n / m » périmé.
         if searchActive { searchActive = false; model.send(.searchCancel) }
@@ -301,7 +313,8 @@ final class PanelController {
         case .expand: expand()
         case .display(let target): apply(.choose(target))
         case .collapseOrHide:
-            if helpVisible { helpVisible = false }
+            if editing { finishEditing() }
+            else if helpVisible { helpVisible = false }
             else if searchActive { searchActive = false; model.send(.searchCancel) }
             else { collapseOrHide() }
         case .copySentence:
@@ -330,7 +343,49 @@ final class PanelController {
             SettingsOpener.shared.open()
         case .openVoiceSettings:
             SettingsOpener.shared.open(tab: .voice)
+        case .edit:
+            beginEditing()
         }
+    }
+
+    // MARK: - Édition
+
+    /// Double clic ou « e » : la lecture se met en pause et le texte devient
+    /// modifiable. Le mode petit n'a pas la place : le panneau passe au moyen.
+    func beginEditing() {
+        guard !editing, model.snapshot.hasDocument else { return }
+        resumeAfterEditing = model.snapshot.playing
+        if resumeAfterEditing { model.send(.pause) }
+        if searchActive { searchActive = false; model.send(.searchCancel) }
+        helpVisible = false
+        if mode == .small || mode == .background { apply(.choose(.medium)) }
+        draftOrigin = model.editableText
+        draft = draftOrigin
+        editing = true
+        // Le panneau moyen prend la place d'écrire.
+        if mode == .medium { contentHeightChanged(.greatestFiniteMagnitude) }
+    }
+
+    /// Échap, ⌘↩ ou « Terminé » : le texte modifié remplace le document, la
+    /// voix reprend à la même phrase. Rien de changé : la lecture reprend
+    /// telle quelle.
+    func finishEditing() {
+        guard editing else { return }
+        editing = false
+        if draft != draftOrigin, !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            model.reopen(edited: draft, play: resumeAfterEditing)
+            flash("Texte modifié")
+        } else if resumeAfterEditing {
+            model.send(.togglePlay)
+        }
+        window.makeFirstResponder(nil)
+    }
+
+    /// « Annuler » : les modifications sont oubliées.
+    func cancelEditing() {
+        guard editing else { return }
+        draft = draftOrigin
+        finishEditing()
     }
 
     /// La voix reprend au premier mot de la ligne affichée voisine ; rien
@@ -377,6 +432,11 @@ final class PanelController {
         guard keyMonitor == nil else { return }
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self, event.window === self.window else { return event }
+            // En édition, ⌘↩ valide comme Échap.
+            if self.editing, event.keyCode == KeyCode.enter, event.modifierFlags.contains(.command) {
+                self.finishEditing()
+                return nil
+            }
             // Un champ de saisie garde ses touches, sauf Échap.
             if self.window.firstResponder is NSTextView,
                !(self.window.firstResponder is ReadingTextView),

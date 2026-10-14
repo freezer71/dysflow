@@ -10,7 +10,7 @@ struct SillonApp: App {
         } label: {
             // Toujours présente : c'est elle qui donne l'action d'ouverture
             // des réglages, panneau masqué compris.
-            Image(systemName: "text.line.first.and.arrowtriangle.forward")
+            Image(nsImage: LogoMark.templateImage())
                 .accessibilityLabel("sillon")
                 .providesSettingsOpener()
         }
@@ -32,7 +32,7 @@ private struct SettingsRoot: View {
     }
 }
 
-/// Le titre de la fenêtre suit l'onglet (« Lecture », « Voix »…), comme le
+/// Le titre de la fenêtre (masqué, mais lu par Mission Control) suit la page (« Lecture », « Voix »…), comme le
 /// veut macOS ; l'identifiant d'accessibilité, lui, la nomme « Réglages »,
 /// et son contenu porte ce nom pour VoiceOver. `NSWindow.identifier` reste
 /// à SwiftUI, qui retrouve sa fenêtre par lui. Les boutons réduire et
@@ -47,10 +47,23 @@ private struct SettingsWindowName: NSViewRepresentable {
             super.viewDidMoveToWindow()
             guard let window else { return }
             window.setAccessibilityIdentifier("Réglages")
+            Self.hideTitlebar(window)
+            // SwiftUI règle la fenêtre après l'avoir posée : on repasse au
+            // tour suivant.
+            DispatchQueue.main.async { Self.hideTitlebar(window) }
             window.contentView?.setAccessibilityLabel("Réglages")
             for button in [NSWindow.ButtonType.miniaturizeButton, .zoomButton] {
                 window.standardWindowButton(button)?.isHidden = true
             }
+        }
+
+        /// À la manière de Notion : pas de barre de titre visible, la barre
+        /// latérale monte jusqu'au bouton de fermeture.
+        static func hideTitlebar(_ window: NSWindow) {
+            window.styleMask.insert(.fullSizeContentView)
+            window.titlebarAppearsTransparent = true
+            window.titleVisibility = .hidden
+            window.titlebarSeparatorStyle = .none
         }
     }
 }
