@@ -183,7 +183,7 @@ fn split_text_at_word(text: &str, split: Split) -> Option<Split> {
     // Début de chaque jeton de `text`, pour couper au blanc qui précède.
     let starts: Vec<usize> = text
         .char_indices()
-        .filter(|&(i, c)| !c.is_whitespace() && text[..i].chars().next_back().map_or(true, char::is_whitespace))
+        .filter(|&(i, c)| !c.is_whitespace() && text[..i].chars().next_back().is_none_or(char::is_whitespace))
         .map(|(i, _)| i)
         .collect();
     let tokens: Vec<&str> = text.split_whitespace().collect();
@@ -201,7 +201,7 @@ fn split_text_at_word(text: &str, split: Split) -> Option<Split> {
 fn cut_marks(text: &str) -> impl Iterator<Item = (usize, char)> + '_ {
     text.char_indices().filter(move |&(i, c)| {
         matches!(c, ',' | ';' | ':')
-            && text[i + c.len_utf8()..].chars().next().map_or(true, char::is_whitespace)
+            && text[i + c.len_utf8()..].chars().next().is_none_or(char::is_whitespace)
     })
 }
 

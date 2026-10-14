@@ -32,8 +32,8 @@ pub fn to_markdown(pages: &[Page]) -> String {
             continue;
         }
         // Un titre se tient seul : entouré de blanc, ou en bord de document.
-        let alone = lines[..i].last().map_or(true, |l| l.is_empty())
-            && lines.get(i + 1).map_or(true, |l| l.is_empty());
+        let alone = lines[..i].last().is_none_or(|l| l.is_empty())
+            && lines.get(i + 1).is_none_or(|l| l.is_empty());
         if alone {
             if let Some(level) = heading_level(line) {
                 flush(&mut para, &mut out);
