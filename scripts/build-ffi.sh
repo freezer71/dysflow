@@ -49,7 +49,5 @@ cargo build --release -p sillon-ffi ${FEATURES:+--features "$FEATURES"}
 cp target/release/libsillon_ffi.a "$LIB/"
 
 FLAGS="-lsillon_ffi -lc++ -framework CoreAudio -framework AudioToolbox -framework AudioUnit -framework CoreFoundation -framework Security -framework Metal -framework Accelerate"
-# Un ancien shim audio.cpp (retiré le 14 oct. 2026) ne doit plus être joint.
-rm -f "$LIB/libaudiocpp_shim.dylib"
 echo "OTHER_LDFLAGS = $FLAGS" > "$GEN/Link.xcconfig"
 echo "Liaison prête dans $GEN et $LIB"

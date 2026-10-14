@@ -132,8 +132,6 @@ targets:
           joindre "$SRCROOT/../THIRD-PARTY-RUST.txt" THIRD-PARTY-RUST.txt
           joindre "$SRCROOT/../third_party/licences/tesseract-LICENSE" tesseract-LICENSE
           joindre "$SRCROOT/../third_party/licences/leptonica-LICENSE" leptonica-LICENSE
-          # audio.cpp n'est plus joint (14 oct. 2026) : ses licences non plus.
-          rm -f "$L/audiocpp-LICENSE" "$L/ggml-LICENSE" "$L/cJSON-LICENSE" "$L/libyaml-LICENSE"
   SillonTests:
     type: bundle.unit-test
     platform: macOS
