@@ -5,7 +5,14 @@ import MediaPlayer
 /// Point d'entrée AppKit : le lecteur vit aussi longtemps que l'app.
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    static private(set) var shared: AppDelegate!
+    /// Gardé pour la fenêtre des réglages seulement (`ReglagesView` y
+    /// dépose son magasin, `Announcement` y lit `isUnitTesting`). Le reste
+    /// de l'app reçoit ce qu'il lui faut : `services` par l'environnement
+    /// SwiftUI, le reste en paramètre.
+    static private(set) weak var shared: AppDelegate?
+
+    /// Ce que les scènes SwiftUI lisent (`.environment(services)`).
+    let services = AppServices()
 
     /// Lancée par les tests d'interface : lecteur muet, texte d'exemple.
     /// Toujours faux dans l'app livrée (Release).
@@ -172,7 +179,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         #endif
         model = ReaderModel(reader: reader)
         model.refresh()
-        panel = PanelController(model: model)
+        let settings = SettingsOpener.shared
+        panel = PanelController(model: model, openSettings: { settings.open(tab: $0) })
         transport = Transport(model: model)
         // Sous les tests, un dossier jetable : jamais les notes de l'utilisateur.
         let notesDirectory = readerIsSilent
@@ -183,6 +191,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             model.open(text: page.markdown, source: "note")
             panel.apply(.readSelection)
         }, closed: { [weak self] in self?.notesClosed() })
+        services.model = model
+        services.panel = panel
+        services.transport = transport
+        services.notes = notes
+        services.read = { [weak self] in await self?.read() }
         menuObserver = Self.refreshWhenAMenuOpens { [model] in model?.refresh() }
         outputWatcher = AudioDeviceWatcher { [weak model] in model?.refreshOutputs() }
         Task { [model] in await model?.loadOutput() }
@@ -195,7 +208,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if ProcessInfo.processInfo.arguments.contains("--show-panel") { panel.apply(.choose(.medium)) }
             if ProcessInfo.processInfo.arguments.contains("--show-settings") {
                 // L'icône de la barre des menus donne l'action dès qu'elle paraît.
-                SettingsOpener.shared.open()
+                settings.open()
             }
             if ProcessInfo.processInfo.arguments.contains("--show-notes") { notes?.show() }
         }

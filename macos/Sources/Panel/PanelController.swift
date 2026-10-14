@@ -45,8 +45,14 @@ final class PanelController {
     @ObservationIgnored private var draftOrigin = ""
     @ObservationIgnored private var resumeAfterEditing = false
 
-    init(model: ReaderModel, store: DisplayModeStore? = nil) {
+    /// Ouvre la fenêtre des réglages (un onglet, ou le dernier ouvert) :
+    /// `,` et `v` au clavier, l'écrou de la barre.
+    @ObservationIgnored let openSettings: @MainActor (SettingsTab?) -> Void
+
+    init(model: ReaderModel, store: DisplayModeStore? = nil,
+         openSettings: @escaping @MainActor (SettingsTab?) -> Void = { _ in }) {
         self.model = model
+        self.openSettings = openSettings
         self.store = store ?? DisplayModeStore(defaults: Self.processDefaults)
         let host = NSHostingView(rootView: PanelContent(controller: self))
         window.contentView = host
@@ -340,9 +346,9 @@ final class PanelController {
                 helpVisible.toggle()
             }
         case .openSettings:
-            SettingsOpener.shared.open()
+            openSettings(nil)
         case .openVoiceSettings:
-            SettingsOpener.shared.open(tab: .voice)
+            openSettings(.voice)
         case .edit:
             beginEditing()
         }

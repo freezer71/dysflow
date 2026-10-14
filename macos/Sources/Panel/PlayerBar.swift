@@ -200,9 +200,11 @@ struct SpeedLabel: View {
 
 /// L'écrou : les réglages de la voix (onglet Voix).
 struct VoiceSettingsButton: View {
+    @Environment(\.openSettingsTab) private var openSettings
+
     var body: some View {
         Button {
-            SettingsOpener.shared.open(tab: .voice)
+            openSettings(.voice)
         } label: {
             Image(systemName: "gearshape")
                 .font(.system(size: BarButtonMetrics.glyph))
