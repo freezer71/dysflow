@@ -20,7 +20,9 @@ réglages ni l'aide ; chaque action n'a qu'un endroit évident.
 ### 1.1 Lancer une lecture
 
 - **⌃⌥Espace** : lit la sélection ; à défaut, le presse-papiers (chaîne de
-  capture actuelle, inchangée). C'est le seul raccourci global.
+  capture actuelle, inchangée).
+- **⌃⌥S** (modifiable) : affiche le lecteur dans sa dernière taille, ou le
+  masque s'il est affiché. Ce sont les deux seuls raccourcis globaux.
 - **Ouvrir l'app** à la main (Dock, Finder, Spotlight, réouverture) : le
   lecteur s'ouvre. Vide, il affiche « Collez un texte (⌘V) ou déposez un
   fichier ». Remplace la fenêtre Notes.
@@ -61,8 +63,18 @@ temps restant, sortie audio, état de la voix, « Mettre la voix au repos ».
 - ⏮ ▶ ⏭ par **phrase** (corrige l'incohérence ligne/mot actuelle),
   progression, bouton « agrandir ».
 
-**Fermer** (Échap, ⌘W, bouton) = masqué ; la lecture continue. Échap en mini
-masque ; Échap dans le lecteur ferme d'abord la recherche ou le sommaire.
+**Réduire / agrandir** : le bouton de la barre, ou **⌘M**, fait passer du
+lecteur au mini et inversement, avec une transition animée (le cadre du
+panneau se resserre vers la position du mini). La lecture continue.
+
+**Fermer** (⌘W, Échap, ou le bouton fermer) : le panneau disparaît **et la
+lecture s'arrête** (pause ; le document et la position restent, la
+réouverture reprend là). Fermer ne transforme jamais le lecteur en mini.
+Échap dans le lecteur ferme d'abord la recherche ou le sommaire.
+
+**Taille à l'ouverture** : toujours la dernière utilisée (mini ou lecteur),
+pour ⌃⌥Espace, ⌃⌥S, ⌘V, l'ouverture d'un fichier et le lancement manuel.
+Pas de réglage dédié. Lecteur vide au lancement manuel : toujours en grand.
 
 ### 1.4 Sélectionner et copier, distinct de l'édition
 
@@ -91,7 +103,9 @@ jamais perdre une saisie). Annuler : seulement par le bouton.
 | e | modifier |
 | + / − | vitesse ±0,1 |
 | ⌘C · ⌘V · ⌘O | copier · lire le presse-papiers · ouvrir |
-| Échap | fermer recherche/sommaire, sinon masquer |
+| ⌘M | réduire en mini / agrandir |
+| ⌘W | fermer (arrête la lecture) |
+| Échap | fermer recherche/sommaire, sinon fermer (comme ⌘W) |
 | ? | aide (liste **toutes** ces touches) |
 
 Retirés : signets (b, B), volume ([ ] m ⌥↑↓), préréglages 1–4, mot (⌥← →),
@@ -105,7 +119,7 @@ Fenêtre unique, sans barre latérale ni onglets :
 - **Voix** : voix française (menu + ▶ écouter), voix anglaise (idem),
   vitesse, sortie audio.
 - **Lecture** : police, taille, interlignage, règle de lecture.
-- **Raccourci** : lire la sélection.
+- **Raccourcis** : lire la sélection, afficher / masquer le lecteur.
 - **Ouvrir sillon à la connexion**.
 - En bas, discret : état de la voix si elle n'est pas prête, et le
   téléchargement en cours le cas échéant.
@@ -133,7 +147,8 @@ réglages. En cas d'échec : un bouton « Réessayer » à ces deux endroits.
   choix « ouvrir le lecteur au lancement manuel »). Les fichiers
   `~/Library/Application Support/sillon/Notes/` ne sont **pas** supprimés.
 - **Onglets** Voix, Lecture, Modèles, Raccourcis, Avancé, Général → une vue.
-- **Raccourcis globaux** autres que « Lire la sélection » ; les touches média
+- **Raccourcis globaux** autres que « Lire la sélection » et « Afficher /
+  masquer le lecteur » (lecture/pause et phrase ± globaux) ; les touches média
   et AirPods restent.
 - L'app reste sans icône de Dock (`LSUIElement`), sans exception : le
   passage en `.regular` n'existait que pour Notes.
@@ -177,8 +192,9 @@ réglages. En cas d'échec : un bouton « Réessayer » à ces deux endroits.
   l'enregistrement automatique des réglages et le lancement sans argument.
 - macOS : tests unitaires adaptés ; tests d'interface pour : lecteur vide au
   lancement manuel, ⌘V lit, sélection + ⌘C copie sans entrer en édition,
-  bouton Modifier entre en édition, double clic n'y entre pas, mini ↔
-  lecteur, réglages sur une page.
+  bouton Modifier entre en édition, double clic n'y entre pas, ⌘M bascule
+  mini ↔ lecteur, ⌘W ferme et met en pause (jamais de mini), réouverture
+  dans la dernière taille, ⌃⌥S affiche/masque, réglages sur une page.
 - Vérification manuelle : les quatre chemins de lecture de bout en bout.
 
 ## Ordre de livraison
