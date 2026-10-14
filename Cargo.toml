@@ -14,8 +14,8 @@ description = "Lecteur audio TUI en streaming : lit du markdown pipé ou un fich
 license = "MIT"
 
 [dependencies]
-ratatui = "0.28.0"
-crossterm = "0.28.1"
+ratatui = "0.30"
+crossterm = "0.29"
 pulldown-cmark = "0.12.0"
 pdf-extract = "0.12.0"
 tesseract-rs = { version = "0.4", optional = true }
@@ -27,22 +27,30 @@ image = { version = "0.25", optional = true, default-features = false, features 
     "bmp",
 ] }
 arboard = { version = "3.6", optional = true }
+# rodio 0.19 : les versions 0.20 à 0.23 refondent la sortie (OutputStream,
+# Sink, choix du périphérique) sur laquelle reposent la sortie fixe et la
+# pause au débranchement ; la montée se fera avec une écoute sur matériel.
 rodio = { version = "0.19.0", default-features = false }
 crossbeam-channel = "0.5.13"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-toml = "0.8"
+toml = "1"
 clap = { version = "4.5", features = ["derive"] }
 regex = "1.10"
-dirs = "5.0"
+dirs = "7"
 anyhow = "1.0"
 hound = "3.5"
+# ureq 2 et pas 3 : le téléchargement des modèles s'appuie sur un délai par
+# lecture (`timeout_read`), que ureq 3 remplace par une limite sur tout le
+# corps — incompatible avec 342 Mo sur une connexion lente.
 ureq = "2.10"
 unicode-width = "0.2"
 # Langue d'un document (français ou anglais), MIT.
 whatlang = "0.18"
 # Kokoro au terminal : ONNX Runtime chargé dynamiquement (≥ 1.31, livré à
-# côté du binaire par package.sh), MIT/Apache.
+# côté du binaire par package.sh), MIT/Apache. Épinglé exactement : les
+# versions candidates changent d'API (rc.14 : `EnvironmentBuilder::commit`,
+# `Session::builder`) ; passer directement à la 2.0 stable.
 ort = { version = "=2.0.0-rc.13", optional = true, default-features = false, features = ["load-dynamic", "ndarray", "std", "api-22"] }
 libloading = { version = "0.8", optional = true }
 
