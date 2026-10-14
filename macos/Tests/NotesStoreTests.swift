@@ -81,4 +81,22 @@ final class NotesStoreTests: XCTestCase {
         XCTAssertTrue(LaunchKind.launchedAtLogin(event: nil, uptime: 30))
         XCTAssertFalse(LaunchKind.launchedAtLogin(event: nil, uptime: 3600))
     }
+
+    func testALaunchToOpenFilesIsRecognised() {
+        let open = NSAppleEventDescriptor(eventClass: kCoreEventClass, eventID: kAEOpenDocuments,
+                                          targetDescriptor: nil, returnID: AEReturnID(kAutoGenerateReturnID),
+                                          transactionID: AETransactionID(kAnyTransactionID))
+        let plain = NSAppleEventDescriptor(eventClass: kCoreEventClass, eventID: kAEOpenApplication,
+                                           targetDescriptor: nil, returnID: AEReturnID(kAutoGenerateReturnID),
+                                           transactionID: AETransactionID(kAnyTransactionID))
+        XCTAssertTrue(LaunchKind.launchedWithFiles(event: open))
+        XCTAssertFalse(LaunchKind.launchedWithFiles(event: plain))
+        XCTAssertFalse(LaunchKind.launchedWithFiles(event: nil))
+    }
+
+    /// Fermer les notes quitte sillon, sauf en pleine lecture.
+    func testClosingTheNotesQuitsUnlessReading() {
+        XCTAssertTrue(AppDelegate.quitsWhenNotesClose(playing: false))
+        XCTAssertFalse(AppDelegate.quitsWhenNotesClose(playing: true))
+    }
 }

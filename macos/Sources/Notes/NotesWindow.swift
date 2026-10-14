@@ -3,17 +3,20 @@ import SwiftUI
 
 /// La fenêtre des notes : ouverte quand on lance sillon soi-même (Dock,
 /// Spotlight, un lanceur), ou depuis le menu. Tant qu'elle est ouverte,
-/// sillon a son icône dans le Dock et passe au ⌘Tab ; fermée, il redevient
-/// discret dans la barre des menus.
+/// sillon a son icône dans le Dock et passe au ⌘Tab. Fermée, sillon quitte
+/// s'il ne lit rien ; s'il lit, il reste dans la barre des menus.
 @MainActor
 final class NotesWindowController: NSObject, NSWindowDelegate {
     let store: NotesStore
     private let read: (NotePage) -> Void
+    /// Après la fermeture de la fenêtre (l'app décide s'il faut quitter).
+    private let closed: () -> Void
     private var window: NSWindow?
 
-    init(store: NotesStore, read: @escaping (NotePage) -> Void) {
+    init(store: NotesStore, read: @escaping (NotePage) -> Void, closed: @escaping () -> Void = {}) {
         self.store = store
         self.read = read
+        self.closed = closed
     }
 
     var isVisible: Bool { window?.isVisible ?? false }
@@ -49,6 +52,7 @@ final class NotesWindowController: NSObject, NSWindowDelegate {
         // Plus de fenêtre à montrer : l'icône quitte le Dock. Les réglages,
         // s'ils sont ouverts, restent accessibles par la barre des menus.
         NSApp.setActivationPolicy(.accessory)
+        closed()
     }
 }
 
@@ -66,5 +70,14 @@ enum LaunchKind {
             return true
         }
         return uptime < 120
+    }
+
+    /// Lancé pour ouvrir des fichiers (`sillon fichier.pdf`, « Ouvrir
+    /// avec ») : le panneau les montre, la page de notes ne s'impose pas.
+    /// Les fichiers eux-mêmes arrivent par `application(_:open:)`, parfois
+    /// après la fin du lancement.
+    @MainActor
+    static func launchedWithFiles(event: NSAppleEventDescriptor? = NSAppleEventManager.shared().currentAppleEvent) -> Bool {
+        event?.eventID == kAEOpenDocuments
     }
 }

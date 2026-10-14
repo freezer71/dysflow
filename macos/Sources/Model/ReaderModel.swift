@@ -321,6 +321,20 @@ final class ReaderModel {
         wake()
     }
 
+    /// Un fichier donné à sillon (`sillon fichier.pdf`, « Ouvrir avec ») : le
+    /// moteur l'extrait (PDF, texte, image) et reprend où on s'était arrêté.
+    /// L'extraction peut durer : hors du fil principal.
+    func openFile(_ url: URL) async throws {
+        message = nil
+        sourceText = nil
+        sourceName = url.lastPathComponent
+        pendingResume = nil
+        let reader = reader
+        let path = url.path
+        try await Task.detached { try reader.openFile(path: path) }.value
+        wake()
+    }
+
     func prepareVoice() {
         reader.prepareVoice()
         wake()

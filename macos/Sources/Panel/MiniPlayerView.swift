@@ -77,7 +77,7 @@ struct MiniPlayerBar: View {
 
 enum MiniBarMetrics {
     static let margin: CGFloat = 14
-    /// La largeur réservée à la vitesse et à l'écrou, de chaque côté : le
+    /// La largeur réservée de chaque côté (vitesse ; sortie et écrou) : le
     /// transport reste centré quelle que soit la vitesse.
     static let side: CGFloat = 64
 }
@@ -141,7 +141,7 @@ struct MiniControlsRow: View {
             .disabled(!transportEnabled)
             Spacer(minLength: 0)
             HStack(spacing: 0) {
-                OutputMenu(model: model)
+                OutputMenu(model: model, compact: true)
                 VoiceSettingsButton()
             }
             .frame(width: MiniBarMetrics.side, alignment: .trailing)

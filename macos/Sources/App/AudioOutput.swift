@@ -27,6 +27,13 @@ enum AudioOutputChoices {
         return "Sortie du système (\(system))"
     }
 
+    /// Le nom court montré sur le bouton du panneau : la sortie choisie,
+    /// sinon celle que le système utilise.
+    static func buttonTitle(_ outputs: AudioOutputsView, chosen: String) -> String {
+        guard chosen.isEmpty else { return chosen }
+        return outputs.system ?? "Système"
+    }
+
     /// Le symbole de la sortie choisie, pour le bouton du panneau.
     static func symbol(for chosen: String) -> String {
         guard !chosen.isEmpty else { return "speaker.wave.2" }

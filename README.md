@@ -67,6 +67,12 @@ racine, et dit s'il manque le `bin/` au `PATH`. Rien d'autre à copier : modèle
 et configuration vivent dans le répertoire de données. Pour désinstaller,
 `rm $PREFIX/bin/sillon`.
 
+Sur Mac, avec l'app dans `/Applications`, `./scripts/install-app-command.sh`
+pose à la place une commande `sillon` qui ouvre l'app : `sillon document.pdf`
+ouvre le panneau sur le document et le lit (reprise à la dernière position),
+`sillon` seul ouvre la page de notes. Le lecteur au terminal n'est alors plus
+installé.
+
 ### Distribuer le binaire
 
 `scripts/package.sh` assemble dans `dist/` le binaire et ce qu'il charge —

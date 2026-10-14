@@ -40,9 +40,52 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// s'impose pas.
     private var launchedAtLogin = false
 
+    /// Fichiers reçus avant que le lecteur soit prêt (au lancement, macOS
+    /// les donne avant `applicationDidFinishLaunching`).
+    private var pendingFiles: [URL] = []
+    private var launchedWithFiles = false
+
+    /// `sillon fichier.pdf`, « Ouvrir avec », un fichier posé sur l'icône :
+    /// le panneau s'ouvre sur lui. Un seul document à la fois : le dernier.
+    func application(_ application: NSApplication, open urls: [URL]) {
+        let files = urls.filter(\.isFileURL)
+        guard !files.isEmpty else { return }
+        guard model != nil, panel != nil else {
+            pendingFiles = files
+            return
+        }
+        openFile(files.last!)
+    }
+
+    /// La fenêtre des notes fermée : rien à lire, sillon quitte tout ; en
+    /// pleine lecture, il reste (le panneau ou le mini-lecteur).
+    private func notesClosed() {
+        guard !isUITesting, !isUnitTesting, let model else { return }
+        model.refresh()
+        if Self.quitsWhenNotesClose(playing: model.snapshot.playing) { NSApp.terminate(nil) }
+    }
+
+    nonisolated static func quitsWhenNotesClose(playing: Bool) -> Bool { !playing }
+
+    private func openFile(_ url: URL) {
+        guard let model, let panel else { return }
+        Task { @MainActor in
+            await readGate.run {
+                model.prepareVoice()
+                do {
+                    try await model.openFile(url)
+                } catch {
+                    model.message = "Impossible d'ouvrir « \(url.lastPathComponent) »"
+                }
+                panel.apply(.readSelection)
+            }
+        }
+    }
+
     func applicationWillFinishLaunching(_ notification: Notification) {
         // L'événement Apple du lancement n'est lisible qu'ici.
         launchedAtLogin = LaunchKind.launchedAtLogin()
+        launchedWithFiles = LaunchKind.launchedWithFiles()
     }
 
     /// sillon déjà lancé, rouvert depuis le Dock, le Finder, Spotlight ou un
@@ -119,11 +162,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let notesDirectory = readerIsSilent
             ? FileManager.default.temporaryDirectory.appendingPathComponent("sillon-notes-\(UUID().uuidString)")
             : NotesStore.userDirectory
-        notes = NotesWindowController(store: NotesStore(directory: notesDirectory)) { [model, panel] page in
+        notes = NotesWindowController(store: NotesStore(directory: notesDirectory), read: { [model, panel] page in
             guard let model, let panel else { return }
             model.open(text: page.markdown, source: "note")
             panel.apply(.readSelection)
-        }
+        }, closed: { [weak self] in self?.notesClosed() })
         menuObserver = Self.refreshWhenAMenuOpens { [model] in model?.refresh() }
         outputWatcher = AudioDeviceWatcher { [weak model] in model?.refreshOutputs() }
         Task { [model] in await model?.loadOutput() }
@@ -146,8 +189,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         LoginItem.enableOnFirstLaunch()
         Onboarding.runIfNeeded()
         startKokoro()
-        // Lancé à la main : la page de notes, comme une app ordinaire.
-        if !launchedAtLogin { notes?.show() }
+        // Lancé avec un fichier : le panneau sur lui. Lancé à la main : la
+        // page de notes, comme une app ordinaire.
+        if let file = pendingFiles.last {
+            pendingFiles = []
+            openFile(file)
+        } else if !launchedAtLogin, !launchedWithFiles {
+            notes?.show()
+        }
     }
 
     /// sillon-espeak (la phonétisation de Kokoro) livré dans l'app : le

@@ -25,4 +25,13 @@ final class AudioOutputTests: XCTestCase {
         XCTAssertEqual(AudioOutputChoices.symbol(for: "AirPods Pro de Tharsan"), "headphones")
         XCTAssertEqual(AudioOutputChoices.symbol(for: "Haut-parleurs MacBook Pro"), "hifispeaker")
     }
+
+    /// Le bouton du panneau nomme la sortie : celle choisie, sinon celle du système.
+    func testTheButtonNamesTheOutput() {
+        XCTAssertEqual(AudioOutputChoices.buttonTitle(outputs, chosen: ""), "AirPods Pro")
+        XCTAssertEqual(AudioOutputChoices.buttonTitle(outputs, chosen: "Haut-parleurs MacBook Pro"),
+                       "Haut-parleurs MacBook Pro")
+        XCTAssertEqual(AudioOutputChoices.buttonTitle(AudioOutputsView(devices: [], system: nil), chosen: ""),
+                       "Système")
+    }
 }
