@@ -25,7 +25,7 @@ if ort_tree=$(cargo tree -p sillon-ffi ${FEATURES:+--features "$FEATURES"} -e no
     echo "Erreur : ONNX Runtime (ort) entrerait dans l'app :" >&2
     echo "$ort_tree" >&2
     exit 1
-elif ! grep -q 'package ID specification `ort` did not match any packages' <<<"$ort_tree"; then
+elif ! grep -q "package ID specification \`ort\` did not match any packages" <<<"$ort_tree"; then
     echo "Erreur : impossible de vérifier l'absence d'ONNX Runtime (cargo tree a échoué) :" >&2
     echo "$ort_tree" >&2
     exit 1
