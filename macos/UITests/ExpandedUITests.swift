@@ -1,5 +1,6 @@
 import XCTest
 
+@MainActor
 final class ExpandedUITests: XCTestCase {
     // La vue hôte SwiftUI se présente comme un groupe ; les touches vont à
     // l'app, donc à la fenêtre clé (voir PanelUITests).
@@ -122,6 +123,7 @@ final class ExpandedUITests: XCTestCase {
     }
 }
 
+@MainActor
 extension XCUIElement {
     func waitForText(timeout: TimeInterval = 2, _ ok: @escaping (String) -> Bool) -> Bool {
         let predicate = NSPredicate { object, _ in

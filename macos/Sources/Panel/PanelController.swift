@@ -188,16 +188,18 @@ final class PanelController {
         let center = NotificationCenter.default
         settingsObservers = [
             center.addObserver(forName: NSWindow.didBecomeKeyNotification, object: nil, queue: .main) { [weak self] note in
+                let window = note.object as? NSWindow
                 MainActor.assumeIsolated {
-                    guard let self, let w = note.object as? NSWindow, PanelLevel.isSettingsWindow(w) else { return }
+                    guard let self, let w = window, PanelLevel.isSettingsWindow(w) else { return }
                     self.settingsVisibilityChanged(true)
                     // Devant le panneau, sans passer au-dessus des autres apps.
                     w.orderFront(nil)
                 }
             },
             center.addObserver(forName: NSWindow.willCloseNotification, object: nil, queue: .main) { [weak self] note in
+                let window = note.object as? NSWindow
                 MainActor.assumeIsolated {
-                    guard let self, let w = note.object as? NSWindow, PanelLevel.isSettingsWindow(w) else { return }
+                    guard let self, let w = window, PanelLevel.isSettingsWindow(w) else { return }
                     self.settingsVisibilityChanged(false)
                 }
             },

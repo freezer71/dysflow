@@ -17,6 +17,8 @@ configFiles:
 settings:
   base:
     SWIFT_VERSION: "5.0"
+    # Toutes les vérifications de concurrence de Swift 6, en avertissements.
+    SWIFT_STRICT_CONCURRENCY: complete
     ARCHS: arm64
     MACOSX_DEPLOYMENT_TARGET: "14.0"
     # CFBundleShortVersionString et CFBundleVersion (clé de la préparation

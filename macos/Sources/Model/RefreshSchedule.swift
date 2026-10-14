@@ -68,9 +68,11 @@ final class RefreshSchedule {
     var refresh: @MainActor () -> Void = {}
     private var keepAliveUntil = Date.distantPast
     private(set) var cadence: Cadence = .none
-    private var pollTimer: Timer?
+    // Lues par `deinit`, qui n'est pas isolé : seul endroit hors de
+    // l'acteur principal, quand plus rien d'autre ne tient le rythme.
+    nonisolated(unsafe) private var pollTimer: Timer?
     /// La fin de la grâce d'une commande (voir `scheduleGraceEnd`).
-    private var graceTimer: Timer?
+    nonisolated(unsafe) private var graceTimer: Timer?
 
     init(frames: FrameSource, now: @escaping () -> Date) {
         self.frames = frames

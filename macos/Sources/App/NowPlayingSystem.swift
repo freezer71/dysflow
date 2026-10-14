@@ -12,7 +12,7 @@ extension MPNowPlayingInfoCenter: NowPlayingCenter {}
 /// Les commandes média (clavier, AirPods, Centre de contrôle).
 protocol RemoteCommandSource: AnyObject {
     /// Branche les commandes ; `handler` rend vrai si la commande a servi.
-    func install(_ handler: @escaping @MainActor (RemoteAction) -> Bool)
+    func install(_ handler: @escaping @MainActor @Sendable (RemoteAction) -> Bool)
     func setEnabled(_ enabled: Bool)
 }
 
@@ -25,7 +25,7 @@ final class SystemRemoteCommands: RemoteCommandSource {
          center.nextTrackCommand, center.previousTrackCommand, center.changePlaybackPositionCommand]
     }
 
-    func install(_ handler: @escaping @MainActor (RemoteAction) -> Bool) {
+    func install(_ handler: @escaping @MainActor @Sendable (RemoteAction) -> Bool) {
         let pairs: [(MPRemoteCommand, RemoteAction)] = [
             (center.playCommand, .play), (center.pauseCommand, .pause),
             (center.togglePlayPauseCommand, .toggle),
@@ -48,7 +48,7 @@ final class SystemRemoteCommands: RemoteCommandSource {
     }
 
     /// macOS appelle les commandes sur le fil principal ; sinon on l'y attend.
-    private static func onMain(_ body: @MainActor () -> Bool) -> Bool {
+    private static func onMain(_ body: @MainActor @Sendable () -> Bool) -> Bool {
         if Thread.isMainThread { return MainActor.assumeIsolated { body() } }
         return DispatchQueue.main.sync { MainActor.assumeIsolated { body() } }
     }

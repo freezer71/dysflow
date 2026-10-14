@@ -10,6 +10,7 @@ final class HelpOverlayTests: XCTestCase {
     }
 }
 
+@MainActor
 final class HelpOverlayKeysTests: XCTestCase {
     func testTheHelpedCommandDigitsAreTheOnesTheKeyMapHandles() {
         let help = HelpOverlay.rows.first { $0.1 == "Petit · moyen · grand" }?.0

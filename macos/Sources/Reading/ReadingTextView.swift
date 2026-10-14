@@ -43,11 +43,13 @@ final class ReadingTextView: NSTextView {
     private var spoken: NSRange?
     private var lastLineY: CGFloat?
     private var followPolicy = FollowPolicy()
-    private var liveScrollObserver: NSObjectProtocol?
+    // Retirés par `deinit` (non isolé) : NotificationCenter l'accepte de
+    // n'importe quel fil, et plus rien d'autre ne tient la vue.
+    nonisolated(unsafe) private var liveScrollObserver: NSObjectProtocol?
     /// La fenêtre entièrement cachée par d'autres (ou l'écran verrouillé) :
     /// su par la notification d'occultation, qui arrive en différé.
     private var occluded = false
-    private var occlusionObserver: NSObjectProtocol?
+    nonisolated(unsafe) private var occlusionObserver: NSObjectProtocol?
     /// La fenêtre retirée ou remise (l'arrière-plan la garde, la vue
     /// dedans) : su tout de suite, en observant `isVisible`.
     private var visibilityObservation: NSKeyValueObservation?
@@ -325,8 +327,9 @@ final class ReadingTextView: NSTextView {
             occlusionObserver = NotificationCenter.default.addObserver(
                 forName: NSWindow.didChangeOcclusionStateNotification, object: window, queue: .main
             ) { [weak self] note in
+                let window = note.object as? NSWindow
                 MainActor.assumeIsolated {
-                    guard let self, let w = note.object as? NSWindow else { return }
+                    guard let self, let w = window else { return }
                     self.occluded = !w.occlusionState.contains(.visible)
                     self.updateCursorLine()
                 }

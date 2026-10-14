@@ -1,9 +1,10 @@
 import XCTest
 
+@MainActor
 final class PanelUITests: XCTestCase {
     private var app: XCUIApplication!
 
-    override func setUp() {
+    override func setUp() async throws {
         continueAfterFailure = false
         app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--show-panel"]
@@ -33,6 +34,7 @@ final class PanelUITests: XCTestCase {
     }
 }
 
+@MainActor
 extension XCUIElement {
     func waitForLabel(_ label: String, timeout: TimeInterval = 2) -> Bool {
         let predicate = NSPredicate(format: "label == %@", label)

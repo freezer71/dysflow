@@ -119,7 +119,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// fois. Aucune minuterie, rien entre deux ouvertures.
     @discardableResult
     static func refreshWhenAMenuOpens(center: NotificationCenter = .default,
-                                      refresh: @escaping @MainActor () -> Void) -> NSObjectProtocol {
+                                      refresh: @escaping @MainActor @Sendable () -> Void) -> NSObjectProtocol {
         center.addObserver(forName: NSMenu.didBeginTrackingNotification, object: nil, queue: .main) { _ in
             MainActor.assumeIsolated { refresh() }
         }
@@ -127,16 +127,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Le magasin de la fenêtre des réglages tant qu'elle existe.
     weak var settingsStore: SettingsStore?
 
-    /// Un réglage qui attend sa pause part avant la fin, attente bornée.
+    /// Un réglage qui attend sa pause part avant la fin : macOS attend
+    /// (`.terminateLater`) que son écriture finisse, 1,5 s au plus, sans que
+    /// la boucle principale tourne à la main. Pendant l'attente, AppKit fait
+    /// tourner la boucle dans un mode où l'acteur principal est servi.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard let store = settingsStore else { return .terminateNow }
+        terminationPending = true
+        Task { @MainActor [weak self] in
+            await store.flush()
+            self?.allowTermination()
+        }
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: Self.terminationDeadline)
+            self?.allowTermination()
+        }
+        return .terminateLater
+    }
+
+    static let terminationDeadline: Duration = .milliseconds(1500)
+    private var terminationPending = false
+
+    /// L'écriture finie ou le délai passé, le premier des deux : la fin reprend.
+    private func allowTermination() {
+        guard terminationPending else { return }
+        terminationPending = false
+        NSApp.reply(toApplicationShouldTerminate: true)
+    }
+
+    /// Les notes s'écrivent d'un coup (synchrone), à la toute fin.
     func applicationWillTerminate(_ notification: Notification) {
         notes?.store.flush()
-        guard let store = settingsStore else { return }
-        var done = false
-        Task { @MainActor in await store.flush(); done = true }
-        let deadline = Date().addingTimeInterval(1.5)
-        while !done, Date() < deadline {
-            RunLoop.main.run(until: Date().addingTimeInterval(0.01))
-        }
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -324,13 +345,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.nowPlaying = nowPlaying
     }
 
+    /// La sélection, sinon la copie simulée : ce que le raccourci « Lire » capture.
+    private var captureChain: CaptureChain?
+
     private func installShortcuts() {
-        let chain = CaptureChain(sources: [
+        captureChain = CaptureChain(sources: [
             SelectionSource(),
             CopySource(pasteboard: SystemPasteboard(), keys: SystemKeystrokes()),
         ])
         KeyboardShortcuts.onKeyUp(for: .readSelection) { [unowned self] in
-            Task { @MainActor in await self.read(capture: { await chain.capture() }) }
+            Task { @MainActor in
+                guard let chain = self.captureChain else { return }
+                await self.read(capture: { await chain.capture() })
+            }
         }
         KeyboardShortcuts.onKeyUp(for: .showPanel) { [unowned self] in self.panel.show() }
         // Sans document, rien ne part (Transport).

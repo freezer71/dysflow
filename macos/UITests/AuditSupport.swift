@@ -1,5 +1,6 @@
 import XCTest
 
+@MainActor
 extension XCUIApplication {
     /// L'audit d'accessibilité de macOS, sans ce que le système ajoute lui-même.
     ///
