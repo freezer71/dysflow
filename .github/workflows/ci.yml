@@ -1,0 +1,127 @@
+# Intégration continue : tests et lint Rust sur les trois plateformes visées
+# (Linux x86_64 et ARM64, macOS Apple Silicon), paquet du terminal sous Linux,
+# MSRV, licences, scripts, et tests de l'app macOS.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  rust:
+    name: Rust (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-24.04-arm, macos-14]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dépendances système (Linux)
+        if: runner.os == 'Linux'
+        # ALSA pour rodio/cpal ; cmake et clang pour Tesseract (feature ocr)
+        # et espeak-ng (build-espeak.sh).
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libasound2-dev pkg-config cmake clang
+      - name: Chaîne Rust stable
+        run: |
+          rustup update stable --no-self-update
+          rustup default stable
+          rustup component add clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Tests
+        run: cargo test --workspace --locked
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Clippy (Kokoro au terminal)
+        run: cargo clippy -p sillon --all-targets --features kokoro-onnx --locked -- -D warnings
+      - name: Paquet et installation du terminal (ocr, kokoro-onnx)
+        if: runner.os == 'Linux'
+        # install.sh lance package.sh (build --features ocr,kokoro-onnx,
+        # ONNX Runtime vérifié, sillon-espeak), installe sous PREFIX, puis
+        # vérifie depuis / que le binaire démarre et que Kokoro se charge.
+        run: PREFIX="$RUNNER_TEMP/prefix" ./scripts/install.sh
+      - name: Paquet joint
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: sillon-${{ runner.os }}-${{ runner.arch }}
+          path: dist/
+          retention-days: 7
+
+  msrv:
+    name: MSRV
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dépendances système
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libasound2-dev pkg-config cmake clang
+      - name: Chaînes Rust du MSRV
+        # 1.88 : rust-version de sillon (Cargo.toml). 1.91 : le moteur de
+        # l'app (ffi/, cargo-platform 0.3.3 par uniffi).
+        run: rustup toolchain install 1.88 1.91 --profile minimal --no-self-update
+      - uses: Swatinem/rust-cache@v2
+      - name: sillon en 1.88, toutes features
+        run: cargo +1.88 check -p sillon --all-features --all-targets --locked
+      - name: Espace de travail en 1.91
+        run: cargo +1.91 check --workspace --all-targets --locked
+
+  lint:
+    name: Licences et scripts
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: THIRD-PARTY-RUST.txt à jour
+        run: python3 -I scripts/third-party-rust.py --check
+      - name: shellcheck
+        run: shellcheck scripts/*.sh
+
+  macos-app:
+    name: App macOS
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Xcode le plus récent
+        run: |
+          xcode=$(find /Applications -maxdepth 1 -name 'Xcode_*.app' | sort -V | tail -1)
+          sudo xcode-select -s "$xcode"
+          xcodebuild -version
+      - name: Outils
+        run: |
+          brew install xcodegen
+          rustup update stable --no-self-update
+          rustup default stable
+      - name: Metal Toolchain (noyaux MLX)
+        run: |
+          if ! xcrun -sdk macosx metal -v >/dev/null 2>&1; then
+            xcodebuild -downloadComponent MetalToolchain
+          fi
+      - uses: Swatinem/rust-cache@v2
+      - name: sillon-espeak
+        run: ./scripts/build-espeak.sh
+      - name: Moteur et liaison Swift
+        run: ./scripts/build-ffi.sh
+      - name: Tests de l'app
+        # Les tests d'interface (SillonUITests) pilotent l'app à l'écran et
+        # demandent l'accès Accessibilité : hors CI.
+        working-directory: macos
+        run: |
+          xcodegen generate
+          xcodebuild -project Sillon.xcodeproj -scheme Sillon \
+            -destination 'platform=macOS,arch=arm64' -derivedDataPath build/derived \
+            test -only-testing:SillonTests
