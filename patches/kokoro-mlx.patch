@@ -1,0 +1,658 @@
+mlx-audio-swift 244458d7b61e54ff135073ddc9ed76782bb20758
+(Sources/MLXAudioTTS/Models/StyleTTS2 : Kokoro/*.swift, SharedConfigs.swift,
+Albert.swift, Blocks/*.swift) → macos/Vendor/KokoroMLX.
+a/ : l'amont, rangé comme le dossier de Sillon ; b/ : macos/Vendor/KokoroMLX.
+Voir macos/Vendor/KokoroMLX/ORIGINE.md. Appliquer : patch -p1, depuis a/.
+
+diff -ruN a/Blocks/ResidualBlocks.swift b/Blocks/ResidualBlocks.swift
+--- a/Blocks/ResidualBlocks.swift
++++ b/Blocks/ResidualBlocks.swift
+@@ -29,7 +29,7 @@
+             conv1x1 = WeightNormedConv(inChannels: dimIn, outChannels: dimOut, kernelSize: 1, padding: 0, bias: false)
+         }
+         if upsample {
+-            pool = WeightNormedConv(inChannels: 1, outChannels: dimIn, kernelSize: 3, stride: 2, padding: 1, groups: dimIn)
++            pool = WeightNormedConv(inChannels: 1, outChannels: dimIn, kernelSize: 3, stride: 2, padding: 0, groups: dimIn)
+         }
+     }
+ 
+@@ -48,8 +48,12 @@
+         h = leakyRelu(h, negativeSlope: 0.2)
+ 
+         if upsampleType != "none", let pool {
+-            h = pool(h.swappedAxes(2, 1), op: .convTranspose1d)
+-            h = MLX.padded(h, widths: [.init((0, 0)), .init((0, 1)), .init((0, 0))])
++            // torch ConvTranspose1d(k=3, stride=2, padding=1, output_padding=1) :
++            // T → 2T en ôtant un échantillon à GAUCHE de la sortie sans
++            // marge (2T + 1). Une marge de 1 complétée d'un zéro à droite
++            // remplaçait la dernière trame calculée par 0 et faussait la
++            // normalisation du bloc (mlx-audio Python, même correction).
++            h = pool(h.swappedAxes(2, 1), op: .convTranspose1d)[0..., 1..., 0...]
+             h = h.swappedAxes(2, 1)
+         }
+ 
+diff -ruN a/Blocks/SineGenerator.swift b/Blocks/SineGenerator.swift
+--- a/Blocks/SineGenerator.swift
++++ b/Blocks/SineGenerator.swift
+@@ -29,7 +29,9 @@
+ 
+         let radValues = (fn / Float(samplingRate)) % MLXArray(Float(1))
+ 
+-        let randIni = MLXRandom.normal([f0.shape[0], harmonicNum + 1])
++        // Décalages de phase des harmoniques : uniformes sur [0, 1) comme
++        // `torch.rand` de la référence (mlx-audio Python, même correction).
++        let randIni = MLXRandom.uniform(low: Float(0), high: Float(1), [f0.shape[0], harmonicNum + 1])
+         randIni[0..., 0] = MLXArray(Float(0))
+         radValues[0..., 0, 0...] = radValues[0..., 0, 0...] + randIni
+ 
+diff -ruN a/KokoroConfig.swift b/KokoroConfig.swift
+--- a/KokoroConfig.swift
++++ b/KokoroConfig.swift
+@@ -1,5 +1,4 @@
+ import Foundation
+-@preconcurrency import MLXLMCommon
+ 
+ public struct KokoroConfig: Decodable {
+     let modelType: String
+@@ -25,7 +24,6 @@
+     let speedPriors: [String: Float]?
+     let voiceAliases: [String: String]?
+ 
+-    let quantization: BaseConfiguration.Quantization?
+ 
+     enum CodingKeys: String, CodingKey {
+         case modelType = "model_type"
+@@ -48,8 +46,6 @@
+         case voicesPath = "voices_path"
+         case speedPriors = "speed_priors"
+         case voiceAliases = "voice_aliases"
+-        case quantization
+-        case quantizationAlt = "quantization_config"
+     }
+ 
+     public init(from decoder: Decoder) throws {
+@@ -74,8 +70,5 @@
+         voicesPath = try container.decodeIfPresent(String.self, forKey: .voicesPath)
+         speedPriors = try container.decodeIfPresent([String: Float].self, forKey: .speedPriors)
+         voiceAliases = try container.decodeIfPresent([String: String].self, forKey: .voiceAliases)
+-        quantization =
+-            try container.decodeIfPresent(BaseConfiguration.Quantization.self, forKey: .quantization)
+-            ?? container.decodeIfPresent(BaseConfiguration.Quantization.self, forKey: .quantizationAlt)
+     }
+ }
+diff -ruN a/KokoroDecoder.swift b/KokoroDecoder.swift
+--- a/KokoroDecoder.swift
++++ b/KokoroDecoder.swift
+@@ -1,6 +1,7 @@
+ import Foundation
+ @preconcurrency import MLX
+ import MLXNN
++import MLXFFT
+ 
+ // MARK: - STFT / iSTFT Utilities
+ 
+@@ -209,7 +210,8 @@
+         )
+     }
+ 
+-    func callAsFunction(_ x: MLXArray, _ s: MLXArray, _ f0: MLXArray) -> MLXArray {
++    func callAsFunction(_ x: MLXArray, _ s: MLXArray, _ f0: MLXArray,
++                        shouldStop: (() -> Bool)? = nil) -> MLXArray? {
+         let f0Up = f0Upsamp(f0[.newAxis].transposed(0, 2, 1))
+         let (harSource, _, _) = mSource(f0Up)
+         let harFlat = harSource.transposed(0, 2, 1).squeezed(axis: 1)
+@@ -234,6 +236,8 @@
+                 xs = xs.map { $0 + blockOut } ?? blockOut
+             }
+             h = xs! / Float(numKernels)
++            // Sillon : point d'arrêt après chaque étage.
++            if stopsHere(h, shouldStop) { return nil }
+         }
+ 
+         h = leakyRelu(h, negativeSlope: 0.01)
+@@ -294,7 +298,8 @@
+         _generator = ModuleInfo(wrappedValue: KokoroGenerator(styleDim: styleDim, config: config.istftnet))
+     }
+ 
+-    func callAsFunction(_ asr: MLXArray, _ f0: MLXArray, _ n: MLXArray, _ s: MLXArray) -> MLXArray {
++    func callAsFunction(_ asr: MLXArray, _ f0: MLXArray, _ n: MLXArray, _ s: MLXArray,
++                        shouldStop: (() -> Bool)? = nil) -> MLXArray? {
+         let f0Curve = f0
+         let f0Exp = f0.expandedDimensions(axis: 1).swappedAxes(2, 1)
+         let f0Down = f0Conv(f0Exp, op: .conv1d).swappedAxes(2, 1)
+@@ -303,6 +308,7 @@
+ 
+         var x = MLX.concatenated([asr, f0Down, nDown], axis: 1)
+         x = encode(x, s)
++        if stopsHere(x, shouldStop) { return nil }   // Sillon
+ 
+         let asrResOut = asrRes[0](asr.swappedAxes(2, 1), op: .conv1d).swappedAxes(2, 1)
+ 
+@@ -315,7 +321,20 @@
+             if block.upsampleType != "none" {
+                 res = false
+             }
++            if stopsHere(x, shouldStop) { return nil }   // Sillon
+         }
+-        return generator(x, s, f0Curve)
++        return generator(x, s, f0Curve, shouldStop: shouldStop)
+     }
++}
++
++// MARK: - Points d'arrêt (ajout de Sillon)
++
++/// MLX est paresseux : sans évaluation, rien n'a encore tourné et le test
++/// ne vaudrait rien. Avec un test d'abandon, `x` est évalué (une
++/// synchronisation) puis le test consulté ; sans test (`nil` : préparation,
++/// défaut), ni synchronisation ni test — le chemin d'origine.
++func stopsHere(_ x: MLXArray, _ shouldStop: (() -> Bool)?) -> Bool {
++    guard let shouldStop else { return false }
++    MLX.eval(x)
++    return shouldStop()
+ }
+diff -ruN a/KokoroModel.swift b/KokoroModel.swift
+--- a/KokoroModel.swift
++++ b/KokoroModel.swift
+@@ -1,14 +1,13 @@
+ import Foundation
+-import HuggingFace
+ @preconcurrency import MLX
+-import MLXAudioCore
+-@preconcurrency import MLXLMCommon
+ import MLXNN
+ 
+-public final class KokoroModel: Module, SpeechGenerationModel, @unchecked Sendable {
++/// Kokoro-82M (StyleTTS2), repris de mlx-audio-swift (MIT, Prince Canuma,
++/// commit 244458d) : le passage avant seul. Phonétisation, voix, vitesse et
++/// minutage sont côté Sillon ; la vitesse reste 1.
++public final class KokoroModel: Module, @unchecked Sendable {
+     public let config: KokoroConfig
+     public let sampleRate: Int
+-    public let defaultGenerationParameters: GenerateParameters
+ 
+     @ModuleInfo var bert: Albert
+     @ModuleInfo(key: "bert_encoder") var bertEncoder: Linear
+@@ -16,21 +15,9 @@
+     @ModuleInfo(key: "text_encoder") var textEncoder: KokoroTextEncoder
+     @ModuleInfo var decoder: KokoroDecoder
+ 
+-    private let modelDirectory: URL?
+-    private var voiceCache: [String: MLXArray] = [:]
+-    private let voiceCacheLock = NSLock()
+-    private let maxTokenCount = 510
+-    public private(set) var textProcessor: TextProcessor?
+-
+-    /// Speed multiplier for speech rate. Higher = faster.
+-    public var speed: Float = 1.0
+-
+-    private init(config: KokoroConfig, modelDirectory: URL? = nil, textProcessor: TextProcessor? = nil) {
++    private init(config: KokoroConfig) {
+         self.config = config
+-        self.modelDirectory = modelDirectory
+-        self.textProcessor = textProcessor
+         self.sampleRate = config.sampleRate
+-        self.defaultGenerationParameters = GenerateParameters(temperature: 0, topP: 1)
+ 
+         _bert = ModuleInfo(wrappedValue: Albert(config: config.plbert, vocabSize: config.nToken))
+         _bertEncoder = ModuleInfo(
+@@ -48,16 +35,17 @@
+         _decoder = ModuleInfo(wrappedValue: KokoroDecoder(config: config))
+     }
+ 
+-    /// For testing: create model from config without loading weights
+-    static func testInit(config: KokoroConfig) -> KokoroModel {
+-        KokoroModel(config: config)
+-    }
++    // MARK: - Passage avant
+ 
+-    // MARK: - Forward Pass
+-
+-    func callAsFunction(
+-        inputIds: MLXArray, refS: MLXArray, speed: Float = 1.0
+-    ) -> (audio: MLXArray, predDur: MLXArray) {
++    /// `shouldStop` (ajout de Sillon) : consulté quand les durées sont
++    /// calculées, puis dans le décodeur après `encode`, après chaque bloc de
++    /// `decode` et après chaque étage du générateur (chaque fois après une
++    /// évaluation) ; s'il dit vrai, le passage s'arrête là et rend `nil`.
++    /// `nil` : aucun point d'arrêt, aucune synchronisation de plus.
++    public func callAsFunction(
++        inputIds: MLXArray, refS: MLXArray, speed: Float = 1.0,
++        shouldStop: (() -> Bool)? = nil
++    ) -> (audio: MLXArray, predDur: MLXArray)? {
+         let seqLen = inputIds.shape[inputIds.ndim - 1]
+         let inputLengths = MLXArray([Int32(seqLen)])
+         var textMask = MLXArray(Array(0..<Int32(seqLen))).reshaped([1, -1])
+@@ -73,8 +61,7 @@
+         let d = predictor.textEncoder(dEn, style: globalStyle, textLengths: inputLengths, mask: textMask)
+         let (x, _) = predictor.lstm(d)
+         let duration = predictor.durationProj(x)
+-        // Defensive: quantized encoders may produce NaN durations for certain inputs.
+-        // Cap at maxFramesPerPhoneme to prevent OOM from garbage int32 casts.
++        // Défensif : une durée NaN donnerait un entier absurde ; bornée.
+         let maxFramesPerPhoneme = 100
+         let durRaw = MLX.sigmoid(duration).sum(axis: -1) / speed
+         let durSafe = nanToNum(durRaw, nan: 1.0)
+@@ -82,6 +69,8 @@
+             .asType(.int32)[0]
+ 
+         let durArray: [Int32] = predDur.asArray(Int32.self)
++        // Sillon : point d'arrêt, après la synchronisation des durées.
++        if shouldStop?() == true { return nil }
+         var indices = [MLXArray]()
+         for (i, n) in durArray.enumerated() {
+             let count = min(max(Int(n), 0), maxFramesPerPhoneme)
+@@ -90,7 +79,6 @@
+             }
+         }
+ 
+-        // All durations collapsed to zero — return silence instead of crashing on empty concat
+         guard !indices.isEmpty else {
+             let silence = MLXArray.zeros([1, 1])
+             return (silence, predDur)
+@@ -107,243 +95,26 @@
+         let tEn = textEncoder(inputIds, inputLengths: inputLengths, mask: textMask)
+         let asr = MLX.matmul(tEn, predAln)
+ 
+-        let audio = decoder(asr, f0Pred, nPred, acousticStyle)
++        guard let audio = decoder(asr, f0Pred, nPred, acousticStyle, shouldStop: shouldStop) else { return nil }
+         return (audio[0], predDur)
+     }
+ 
+-    // MARK: - Tokenizer
++    // MARK: - Chargement
+ 
+-    func tokenize(_ text: String) -> [Int] {
+-        // Iterate Unicode scalars, not Characters. Swift's `for ch in String`
+-        // returns extended grapheme clusters, which fuse combining marks into
+-        // their base character. The IPA lexicon emits French nasal vowels as
+-        // base vowel + U+0303 COMBINING TILDE (e.g. "ɔ" + "̃"), which Swift
+-        // collapses into a single Character "ɔ̃" that isn't in `config.vocab`
+-        // — so `compactMap` silently drops the entire nasal vowel and
+-        // "bonjour" comes out as "bjour". Iterating scalars preserves the
+-        // base + combining pair as two separate tokens, both of which exist
+-        // in the vocab. See https://github.com/Blaizzy/mlx-audio-swift/issues/187
+-        text.unicodeScalars.compactMap { config.vocab[String($0)] }
+-    }
+-
+-    // MARK: - SpeechGenerationModel
+-
+-    public func generate(
+-        text: String,
+-        voice: String?,
+-        refAudio: sending MLXArray?,
+-        refText: String?,
+-        language: String?,
+-        generationParameters: GenerateParameters
+-    ) async throws -> sending MLXArray {
+-        try await generateWithDurations(
+-            text: text, voice: voice, refAudio: refAudio, refText: refText,
+-            language: language, generationParameters: generationParameters
+-        ).audio
+-    }
+-
+-    /// `generate`, plus the per-phoneme durations the model already predicts.
+-    ///
+-    /// `callAsFunction` computes `predDur` on every synthesis and returns it,
+-    /// but `generate` discards it — so callers doing lip-sync, subtitle
+-    /// alignment or viseme animation have to re-derive timing from the
+-    /// waveform, which is strictly less accurate than the alignment the model
+-    /// used to produce that waveform in the first place.
+-    ///
+-    /// - Returns:
+-    ///   - `audio`: identical to what `generate` returns.
+-    ///   - `phonemes`: the phonemized string that was tokenized, so callers can
+-    ///     line each duration up with the phoneme it belongs to.
+-    ///   - `durations`: one entry per input token, in acoustic frames.
+-    ///
+-    /// Frames are converted to seconds without needing a hop-length constant:
+-    /// the whole utterance spans `durations.sum()` frames and
+-    /// `audio.count / sampleRate` seconds, so
+-    /// `secondsPerFrame = (audio.count / sampleRate) / durations.sum()`.
+-    ///
+-    /// Note the token sequence is padded with a leading and trailing `0`
+-    /// (see below), so `durations` is two longer than the phoneme count and
+-    /// the first and last entries are the padding.
+-    public func generateWithDurations(
+-        text: String,
+-        voice: String?,
+-        refAudio: sending MLXArray?,
+-        refText: String?,
+-        language: String?,
+-        generationParameters: GenerateParameters
+-    ) async throws -> sending (audio: MLXArray, phonemes: String, durations: MLXArray) {
+-        let voiceName = voice ?? "af_heart"
+-        let voiceEmb: MLXArray
+-        if let refAudio {
+-            voiceEmb = refAudio
+-        } else {
+-            voiceEmb = try loadVoice(named: voiceName)
+-        }
+-
+-        let inferredLang = language ?? KokoroMultilingualProcessor.languageForVoice(voiceName)
+-
+-        if let multilingual = textProcessor as? KokoroMultilingualProcessor,
+-            let lang = inferredLang
+-        {
+-            try await multilingual.prepare(for: lang)
+-        }
+-
+-        let phonemized: String
+-        if let textProcessor {
+-            phonemized = try textProcessor.process(text: text, language: inferredLang)
+-        } else {
+-            phonemized = text
+-        }
+-
+-        let tokens = tokenize(phonemized)
+-        guard tokens.count <= maxTokenCount else {
+-            throw AudioGenerationError.invalidInput(
+-                "Input too long: \(tokens.count) tokens exceeds max \(maxTokenCount)")
+-        }
+-
+-        var tokenArray = [Int32(0)]
+-        tokenArray.append(contentsOf: tokens.map { Int32($0) })
+-        tokenArray.append(0)
+-
+-        let inputIds = MLXArray(tokenArray).reshaped([1, -1])
+-        let refIdx = min(tokens.count, voiceEmb.shape[0] - 1)
+-        let refS = voiceEmb[refIdx..<(refIdx + 1)]
+-
+-        try Task.checkCancellation()
+-        let (audio, predDur) = self.callAsFunction(inputIds: inputIds, refS: refS, speed: speed)
+-        try Task.checkCancellation()
+-        return (audio.reshaped([-1]), phonemized, predDur)
+-    }
+-
+-    public func generateStream(
+-        text: String,
+-        voice: String?,
+-        refAudio: sending MLXArray?,
+-        refText: String?,
+-        language: String?,
+-        generationParameters: GenerateParameters
+-    ) -> sending AsyncThrowingStream<AudioGeneration, Error> {
+-        let (stream, continuation) = AsyncThrowingStream<AudioGeneration, Error>.makeStream()
+-        let refAudio = SendingBox(refAudio)
+-        let task = Task { @Sendable [weak self] in
+-            let refAudio = refAudio.take()
+-            guard let self else {
+-                continuation.finish(throwing: AudioGenerationError.modelNotInitialized("Model deallocated"))
+-                return
+-            }
+-            do {
+-                let audio = try await self.generate(
+-                    text: text, voice: voice, refAudio: refAudio,
+-                    refText: refText, language: language,
+-                    generationParameters: generationParameters
+-                )
+-                continuation.yield(.audio(audio))
+-                continuation.finish()
+-            } catch {
+-                continuation.finish(throwing: error)
+-            }
+-        }
+-        continuation.onTermination = { @Sendable _ in task.cancel() }
+-        return stream
+-    }
+-
+-    // MARK: - Voice Loading
+-
+-    public func loadVoice(named name: String) throws -> MLXArray {
+-        if let cached = voiceCacheLock.withLock({ voiceCache[name] }) { return cached }
+-
+-        guard let dir = modelDirectory else {
+-            throw AudioGenerationError.invalidInput("Voice '\(name)' not available: no model directory")
+-        }
+-
+-        let voicePath = dir.appendingPathComponent("voices/\(name).safetensors")
+-        guard FileManager.default.fileExists(atPath: voicePath.path) else {
+-            let available = availableVoices().joined(separator: ", ")
+-            throw AudioGenerationError.invalidInput(
+-                "Voice '\(name)' not found. Available: \(available)")
+-        }
+-
+-        let voiceWeights = try MLX.loadArrays(url: voicePath)
+-        guard let voiceArray = voiceWeights["voice"] ?? voiceWeights.values.first else {
+-            throw AudioGenerationError.invalidInput("Voice '\(name)' file has no voice data")
+-        }
+-
+-        var voice = voiceArray.asType(.float32)
+-        if voice.ndim == 3 { voice = voice.squeezed(axis: 1) }
+-        voiceCacheLock.withLock { voiceCache[name] = voice }
+-        return voice
+-    }
+-
+-    public func availableVoices() -> [String] {
+-        guard let dir = modelDirectory else { return [] }
+-        let voicesDir = dir.appendingPathComponent("voices")
+-        guard let files = try? FileManager.default.contentsOfDirectory(atPath: voicesDir.path) else {
+-            return []
+-        }
+-        return files
+-            .filter { $0.hasSuffix(".safetensors") }
+-            .map { String($0.dropLast(".safetensors".count)) }
+-            .sorted()
+-    }
+-
+-    public func setTextProcessor(_ processor: TextProcessor?) {
+-        self.textProcessor = processor
+-    }
+-
+-    // MARK: - Loading
+-
+-    public static func fromPretrained(
+-        _ modelRepo: String,
+-        textProcessor: TextProcessor? = nil,
+-        cache: HubCache = .default
+-    ) async throws -> KokoroModel {
+-        let hfToken: String? = ProcessInfo.processInfo.environment["HF_TOKEN"]
+-            ?? Bundle.main.object(forInfoDictionaryKey: "HF_TOKEN") as? String
+-
+-        guard let repoID = Repo.ID(rawValue: modelRepo) else {
+-            throw AudioGenerationError.invalidInput("Invalid repository ID: \(modelRepo)")
+-        }
+-
+-        let modelDir = try await ModelUtils.resolveOrDownloadModel(
+-            repoID: repoID,
+-            requiredExtension: ".safetensors",
+-            hfToken: hfToken,
+-            cache: cache
+-        )
+-
+-        return try await fromModelDirectory(modelDir, textProcessor: textProcessor)
+-    }
+-
+-    public static func fromModelDirectory(
+-        _ modelDir: URL,
+-        textProcessor: TextProcessor? = nil
+-    ) async throws -> KokoroModel {
+-        let configURL = modelDir.appendingPathComponent("config.json")
+-        let configData = try Data(contentsOf: configURL)
++    /// `config.json` et les poids `*.safetensors` du dossier (les voix, dans
++    /// `voices/`, n'en font pas partie).
++    public static func load(directory: URL) throws -> KokoroModel {
++        let configData = try Data(contentsOf: directory.appendingPathComponent("config.json"))
+         let config = try JSONDecoder().decode(KokoroConfig.self, from: configData)
+-        let model = KokoroModel(config: config, modelDirectory: modelDir, textProcessor: textProcessor)
+-
+-        let weights = try loadWeights(modelDir: modelDir)
++        let model = KokoroModel(config: config)
++        let weights = try loadWeights(modelDir: directory)
+         let sanitized = model.sanitize(weights: weights)
+-
+-        if let quant = config.quantization?.asTuple {
+-            quantizeTree(
+-                module: model, weights: sanitized,
+-                quantization: quant
+-            )
+-        }
+-
+         try model.update(parameters: ModuleParameters.unflattened(sanitized), verify: .noUnusedKeys)
+-
+-        try await model.textProcessor?.prepare()
+-
+         model.train(false)
+         MLX.eval(model.parameters())
+         return model
+     }
+ 
+-    // MARK: - Weight Sanitization
+-
+     func sanitize(weights: [String: MLXArray]) -> [String: MLXArray] {
+         let hasPackedQuantizedWeights = weights.keys.contains {
+             $0.hasSuffix(".scales") || $0.hasSuffix(".biases")
+@@ -356,7 +127,7 @@
+ 
+             var nk = k
+ 
+-            // LSTM: remap reverse FIRST to avoid partial match with forward keys
++            // LSTM : l'inverse d'abord, pour ne pas toucher aux clés avant.
+             nk = nk.replacingOccurrences(of: ".weight_ih_l0_reverse", with: ".Wx_backward")
+             nk = nk.replacingOccurrences(of: ".weight_hh_l0_reverse", with: ".Wh_backward")
+             nk = nk.replacingOccurrences(of: ".bias_ih_l0_reverse", with: ".bias_ih_backward")
+@@ -390,89 +161,19 @@
+         return result
+     }
+ 
+-    // MARK: - Weight Loading
+-
+     private static func loadWeights(modelDir: URL) throws -> [String: MLXArray] {
+         let url = modelDir.appendingPathComponent("model.safetensors")
+         if FileManager.default.fileExists(atPath: url.path) {
+             return try MLX.loadArrays(url: url)
+         }
+         var allWeights = [String: MLXArray]()
+-        let fm = FileManager.default
+-        let files = try fm.contentsOfDirectory(at: modelDir, includingPropertiesForKeys: nil)
+-            .filter { $0.pathExtension == "safetensors"
+-                && !$0.lastPathComponent.contains("voices") }
++        let files = try FileManager.default.contentsOfDirectory(at: modelDir, includingPropertiesForKeys: nil)
++            .filter { $0.pathExtension == "safetensors" && !$0.lastPathComponent.contains("voices") }
+         for file in files {
+             for (k, v) in try MLX.loadArrays(url: file) {
+                 allWeights[k] = v
+             }
+         }
+         return allWeights
+-    }
+-
+-    // MARK: - Tree-Walking Quantization
+-
+-    private static func quantizeTree(
+-        module: Module,
+-        weights: [String: MLXArray],
+-        quantization: (groupSize: Int, bits: Int, mode: QuantizationMode),
+-        path: String = ""
+-    ) {
+-        var replacements = [(String, Module)]()
+-
+-        for (key, child) in module.items() {
+-            let childPath = path.isEmpty ? key : "\(path).\(key)"
+-
+-            switch child {
+-            case .value(.module(let childModule)):
+-                if childModule is Quantizable,
+-                   weights["\(childPath).scales"] != nil,
+-                   let quantized = quantizeSingle(
+-                       layer: childModule,
+-                       groupSize: quantization.groupSize,
+-                       bits: quantization.bits,
+-                       mode: quantization.mode
+-                   )
+-                {
+-                    replacements.append((key, quantized))
+-                } else {
+-                    quantizeTree(
+-                        module: childModule, weights: weights,
+-                        quantization: quantization, path: childPath
+-                    )
+-                }
+-
+-            case .array(let items):
+-                for (index, item) in items.enumerated() {
+-                    let indexPath = "\(childPath).\(index)"
+-                    switch item {
+-                    case .value(.module(let childModule)):
+-                        quantizeTree(
+-                            module: childModule, weights: weights,
+-                            quantization: quantization, path: indexPath
+-                        )
+-                    case .array(let nestedItems):
+-                        for (nestedIndex, nestedItem) in nestedItems.enumerated() {
+-                            if case .value(.module(let nestedModule)) = nestedItem {
+-                                quantizeTree(
+-                                    module: nestedModule, weights: weights,
+-                                    quantization: quantization,
+-                                    path: "\(indexPath).\(nestedIndex)"
+-                                )
+-                            }
+-                        }
+-                    default:
+-                        break
+-                    }
+-                }
+-
+-            default:
+-                break
+-            }
+-        }
+-
+-        if !replacements.isEmpty {
+-            module.update(modules: ModuleChildren.unflattened(replacements))
+-        }
+     }
+ }
+diff -ruN a/KokoroRunner.swift b/KokoroRunner.swift
+--- a/KokoroRunner.swift
++++ b/KokoroRunner.swift
+@@ -0,0 +1,41 @@
++import Foundation
++@preconcurrency import MLX
++
++/// L'entrée de Sillon dans ce framework : MLX ne se lie qu'ici, une seule
++/// copie dans l'app. Ajouté par Sillon, hors des fichiers repris.
++public final class KokoroRunner: @unchecked Sendable {
++    private let model: KokoroModel
++
++    /// Charge le modèle sous un plafond mémoire et un cache réduit.
++    public static func load(directory: URL, memoryLimit: Int, cacheLimit: Int) throws -> KokoroRunner {
++        GPU.set(memoryLimit: memoryLimit)
++        GPU.set(cacheLimit: cacheLimit)
++        return KokoroRunner(model: try KokoroModel.load(directory: directory))
++    }
++
++    private init(model: KokoroModel) {
++        self.model = model
++    }
++
++    /// Un passage avant à vitesse 1 : l'audio à 24 kHz et une durée par jeton.
++    /// `nil` si `shouldStop`, consulté aux points d'arrêt du modèle (durées,
++    /// puis dans le décodeur), dit vrai : le décodeur n'est pas allé au
++    /// bout. `shouldStop` nil : aucun point d'arrêt (préparation).
++    public func run(ids: [Int32], style: [Float],
++                    shouldStop: (() -> Bool)?) -> (samples: [Float], durations: [Int32])? {
++        let input = MLXArray(ids).reshaped([1, -1])
++        let refS = MLXArray(style, [1, style.count])
++        guard let sortie = model(inputIds: input, refS: refS, speed: 1, shouldStop: shouldStop) else {
++            return nil
++        }
++        let (audio, durations) = sortie
++        eval(audio, durations)
++        return (audio.reshaped([-1]).asType(.float32).asArray(Float.self),
++                durations.reshaped([-1]).asType(.int32).asArray(Int32.self))
++    }
++
++    /// Vide le cache de MLX : la voix part au repos.
++    public static func clearCache() {
++        GPU.clearCache()
++    }
++}
+diff -ruN a/SharedConfigs.swift b/SharedConfigs.swift
+--- a/SharedConfigs.swift
++++ b/SharedConfigs.swift
+@@ -1,5 +1,4 @@
+ import Foundation
+-import MLXLMCommon
+ 
+ public struct ISTFTNetConfig: Codable {
+     public let resblockKernelSizes: [Int]
