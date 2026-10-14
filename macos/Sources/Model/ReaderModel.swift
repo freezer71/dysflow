@@ -4,17 +4,15 @@ import Observation
 /// L'état du lecteur, relu à chaque image affichée.
 ///
 /// Swift ne garde rien de propre : l'instantané vient de Rust, le document
-/// n'est relu que lorsque sa révision change.
+/// n'est relu que lorsque sa révision change. Le rythme de relecture vit
+/// dans `RefreshSchedule`, les sorties audio dans `AudioOutputs`, les appels
+/// au moteur hors du fil principal dans `ReaderModel+Engine.swift`.
 @MainActor
 @Observable
 final class ReaderModel {
-    @ObservationIgnored private let reader: SillonReader
-    @ObservationIgnored private let frames: FrameSource
-    @ObservationIgnored private let now: () -> Date
-    /// Après une commande, l'effet n'arrive que quelques ms plus tard : le suivi
-    /// ne peut pas s'arrêter avant cette échéance.
-    @ObservationIgnored private var keepAliveUntil = Date.distantPast
-    static let gracePeriod: TimeInterval = 0.5
+    @ObservationIgnored let reader: SillonReader
+    @ObservationIgnored private let schedule: RefreshSchedule
+    static let gracePeriod = RefreshSchedule.gracePeriod
 
     private(set) var snapshot: Snapshot
     private(set) var document: DocView {
@@ -39,23 +37,18 @@ final class ReaderModel {
     /// La préparation des noyaux Metal de Kokoro (`KokoroWarmUp`), observée
     /// par l'onglet Voix.
     @ObservationIgnored let voicePreparation = VoicePreparation()
+    /// La sortie audio choisie et les sorties branchées.
+    @ObservationIgnored let audioOutputs: AudioOutputs
 
     init(reader: SillonReader, now: @escaping () -> Date = Date.init,
          frames: FrameSource? = nil) {
         self.reader = reader
-        self.now = now
-        self.frames = frames ?? DisplayLinkFrames()
+        schedule = RefreshSchedule(frames: frames ?? DisplayLinkFrames(), now: now)
+        audioOutputs = AudioOutputs(list: { reader.audioOutputs() })
         snapshot = Self.published(reader.snapshot())
         document = reader.document()
         outline()
-        self.frames.onFrame = { [weak self] in self?.refresh() }
-    }
-
-    /// La boucle principale retient les minuteries : elles partent avec le
-    /// modèle.
-    deinit {
-        pollTimer?.invalidate()
-        graceTimer?.invalidate()
+        schedule.refresh = { [weak self] in self?.refresh() }
     }
 
     private func outline() {
@@ -64,9 +57,8 @@ final class ReaderModel {
         breadcrumb = SectionMarkers.breadcrumb(document, section: snapshot.section)
     }
 
-    /// Ce que la fenêtre montre de l'état : rien (arrière-plan), la barre
-    /// du mode petit, ou le texte (moyen, grand).
-    enum Presence: Equatable { case hidden, bar, full }
+    typealias Presence = RefreshSchedule.Presence
+    typealias Cadence = RefreshSchedule.Cadence
 
     /// Posé par le panneau à chaque mode : il règle la cadence de relecture.
     var presence: Presence = .hidden {
@@ -78,30 +70,9 @@ final class ReaderModel {
     }
 
     /// Le suivi à la cadence de l'écran tourne-t-il ?
-    var isTicking: Bool { frames.isRunning }
-
-    /// Le rythme auquel l'état est relu.
-    enum Cadence: Equatable {
-        /// Rien : en pause, sans texte affiché.
-        case none
-        /// Une fois par seconde : la lecture avance en arrière-plan ; seuls
-        /// la phrase et le temps à la seconde comptent (« À l'écoute »).
-        case second
-        /// Un coup d'œil, 4 fois par seconde : texte affiché en pause (un
-        /// message s'efface, la voix change d'état), ou barre du mode petit
-        /// pendant la lecture (temps à la seconde, avancement au millième).
-        case glance
-        /// À chaque image : le texte est affiché et la lecture avance, une
-        /// commande vient de partir, la voix se charge ou un téléchargement
-        /// progresse.
-        case screen
-    }
-    @ObservationIgnored private(set) var cadence: Cadence = .none
-    @ObservationIgnored private var pollTimer: Timer?
-    /// La fin de la grâce d'une commande (voir `scheduleGraceEnd`).
-    @ObservationIgnored private var graceTimer: Timer?
-    static let glanceInterval: TimeInterval = 0.25
-    static let secondInterval: TimeInterval = 1
+    var isTicking: Bool { schedule.isTicking }
+    /// Le rythme de relecture en cours.
+    var cadence: Cadence { schedule.cadence }
 
     /// Un téléchargement est en cours (un échec resté là ne compte pas).
     static func isDownloading(_ d: DownloadView?) -> Bool { d.map { $0.failed == nil } ?? false }
@@ -110,70 +81,17 @@ final class ReaderModel {
         isDownloading(old) && !isDownloading(new)
     }
 
-    /// La décision de suivi, sans état : testable. Quelque chose avance
-    /// (lecture, commande récente, voix qui se charge, téléchargement) : à
-    /// chaque image si le texte est affiché, au coup d'œil pour la barre,
-    /// à la seconde en arrière-plan. En pause, seul le texte affiché garde un
-    /// coup d'œil — le panneau flotte, il peut rester visible des heures.
-    static func cadence(presence: Presence, playing: Bool, grace: Bool, loading: Bool,
-                        download: DownloadView?) -> Cadence {
-        if playing || grace || loading || isDownloading(download) {
-            switch presence {
-            case .full: return .screen
-            case .bar: return .glance
-            case .hidden: return .second
-            }
-        }
-        return presence == .full ? .glance : .none
-    }
-
     private func updateTicking() {
-        let loading: Bool
-        if case .loading = snapshot.voice { loading = true } else { loading = false }
-        let next = Self.cadence(presence: presence, playing: snapshot.playing,
-                                grace: now() < keepAliveUntil, loading: loading,
-                                download: snapshot.download)
-        cadence = next
-        if next == .screen { start() } else { stop() }
-        if let interval = Self.pollInterval(for: next) { startPolling(every: interval) } else { stopPolling() }
+        schedule.update(presence: presence, snapshot: snapshot)
     }
 
     /// Le suivi à la cadence de l'écran.
     func start() {
-        frames.start()
+        schedule.start()
     }
 
     func stop() {
-        frames.stop()
-    }
-
-    /// L'intervalle de la minuterie de relecture pour une cadence. À la
-    /// cadence de l'écran, la seconde reste en filet : un écran en veille
-    /// n'envoie plus d'images, et l'état doit pourtant être relu.
-    static func pollInterval(for cadence: Cadence) -> TimeInterval? {
-        switch cadence {
-        case .none: return nil
-        case .glance: return glanceInterval
-        case .second, .screen: return secondInterval
-        }
-    }
-
-    /// Une seule minuterie de relecture, remplacée si le rythme change.
-    private func startPolling(every interval: TimeInterval) {
-        if let pollTimer, pollTimer.timeInterval == interval { return }
-        stopPolling()
-        let timer = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.refresh() }
-        }
-        // Le système peut regrouper les réveils : une marge d'un cinquième.
-        timer.tolerance = interval * 0.2
-        RunLoop.main.add(timer, forMode: .common)
-        pollTimer = timer
-    }
-
-    private func stopPolling() {
-        pollTimer?.invalidate()
-        pollTimer = nil
+        schedule.stop()
     }
 
     /// L'instantané tel que l'écran le montre : temps à la seconde,
@@ -197,28 +115,11 @@ final class ReaderModel {
     }
 
     /// Relance le suivi et relit tout de suite l'état.
-    private func wake() {
-        keepAliveUntil = now().addingTimeInterval(Self.gracePeriod)
-        scheduleGraceEnd()
+    func wake() {
+        schedule.wake()
         // La cadence (écran, coup d'œil ou seconde) se décide selon la
         // présence de la fenêtre.
         refresh()
-    }
-
-    /// La fin de la grâce, à l'heure : sans image (écran en veille), rien
-    /// d'autre ne la verrait, et la cadence de l'écran resterait. Une seule
-    /// minuterie, sans répétition, remplacée à chaque commande.
-    private func scheduleGraceEnd() {
-        graceTimer?.invalidate()
-        let timer = Timer(timeInterval: Self.gracePeriod + 0.01, repeats: false) { [weak self] _ in
-            MainActor.assumeIsolated {
-                self?.graceTimer = nil
-                self?.refresh()
-            }
-        }
-        timer.tolerance = 0.05
-        RunLoop.main.add(timer, forMode: .common)
-        graceTimer = timer
     }
 
     func refresh() {
@@ -338,13 +239,8 @@ final class ReaderModel {
         wake()
     }
 
-    // Ces appels passent par le fil du lecteur et bloquent jusqu'à 5 s :
-    // pas de long travail sur le fil principal.
-    /// Les signets, lus hors du fil principal.
-    func loadBookmarks() async -> [BookmarkView] {
-        let reader = reader
-        return await Task.detached { reader.bookmarks() }.value
-    }
+    // MARK: - Réglages
+
     /// Les réglages, lus hors du fil principal.
     func loadSettings() async -> SettingsView {
         let reader = reader
@@ -352,43 +248,6 @@ final class ReaderModel {
     }
     /// Change à chaque réglage écrit : le panneau relit son affichage.
     private(set) var settingsRevision = 0
-
-    // MARK: - Sortie audio
-
-    /// La sortie choisie (vide : celle du système), et les sorties branchées.
-    /// Le menu, les réglages et le panneau la lisent et la changent ici.
-    private(set) var outputDevice = ""
-    private(set) var outputs = AudioOutputsView(devices: [], system: nil)
-
-    /// Relit les sorties branchées (environ 2 ms) : à chaque sortie branchée
-    /// ou retirée (`AudioDeviceWatcher`), jamais à chaque image.
-    func refreshOutputs() {
-        let next = reader.audioOutputs()
-        if next != outputs { outputs = next }
-    }
-
-    /// La sortie retenue dans `config.toml`, relue au lancement.
-    func loadOutput() async {
-        outputDevice = await loadSettings().outputDevice
-        refreshOutputs()
-    }
-
-    /// Choisit la sortie : le son y passe tout de suite et n'en sort plus.
-    func chooseOutput(_ name: String) {
-        guard name != outputDevice else { return }
-        let previous = outputDevice
-        outputDevice = name
-        var patch = SettingsPatch.empty
-        patch.outputDevice = name
-        Task {
-            do {
-                _ = try await updateSettings(patch)
-            } catch {
-                outputDevice = previous
-                message = "Sortie audio non enregistrée : \(error.localizedDescription)"
-            }
-        }
-    }
 
     /// Applique un patch et l'écrit, hors du fil principal ; rend les
     /// valeurs telles qu'appliquées (bornes comprises).
@@ -399,110 +258,42 @@ final class ReaderModel {
         wake()
         return applied
     }
-    /// Voix, langues et réglages honorés par le modèle actif.
-    func loadCapabilities() async -> ModelCapabilities {
-        let reader = reader
-        return await Task.detached { reader.capabilities() }.value
+
+    // MARK: - Sortie audio
+
+    /// La sortie choisie (vide : celle du système), et les sorties branchées.
+    /// Le menu, les réglages et le panneau la lisent et la changent ici.
+    var outputDevice: String { audioOutputs.device }
+    var outputs: AudioOutputsView { audioOutputs.available }
+
+    /// Relit les sorties branchées, hors du fil principal : à chaque sortie
+    /// branchée ou retirée (`AudioDeviceWatcher`), jamais à chaque image.
+    func refreshOutputs() {
+        audioOutputs.refresh()
     }
-    /// Les voix du catalogue, lues hors du fil principal.
-    func loadVoices() async -> [VoiceModel] {
-        let reader = reader
-        return await Task.detached { reader.voices() }.value
+
+    /// La sortie retenue dans `config.toml`, relue au lancement.
+    func loadOutput() async {
+        audioOutputs.select(await loadSettings().outputDevice)
+        await audioOutputs.reload()
     }
-    func installVoiceAsync(_ id: String) async throws {
-        let reader = reader
-        try await Task.detached { try reader.installVoice(id: id) }.value
-        wake()
+
+    /// Choisit la sortie : le son y passe tout de suite et n'en sort plus.
+    func chooseOutput(_ name: String) {
+        guard name != outputDevice else { return }
+        let previous = outputDevice
+        audioOutputs.select(name)
+        var patch = SettingsPatch.empty
+        patch.outputDevice = name
+        Task {
+            do {
+                _ = try await updateSettings(patch)
+            } catch {
+                audioOutputs.select(previous)
+                message = "Sortie audio non enregistrée : \(error.localizedDescription)"
+            }
+        }
     }
-    /// Change de modèle : la voix se recharge, le suivi montre le chargement.
-    func useVoiceAsync(_ id: String) async throws {
-        let reader = reader
-        try await Task.detached { try reader.useVoice(id: id) }.value
-        wake()
-        onVoiceMayHaveChanged?()
-    }
-    func cancelDownloadAsync() async throws {
-        let reader = reader
-        try await Task.detached { try reader.cancelDownload() }.value
-        wake()
-    }
-    func removeModelAsync(_ id: String) async throws {
-        let reader = reader
-        try await Task.detached { try reader.removeModel(id: id) }.value
-    }
-    func freeSpace() async -> UInt64? {
-        let reader = reader
-        return await Task.detached { reader.freeSpace() }.value
-    }
-    func stopPreview() async {
-        let reader = reader
-        await Task.detached { reader.stopPreview() }.value
-        wake()
-    }
-    /// La langue du document gardé (`nil` : automatique), hors du fil principal.
-    func setDocumentLanguage(_ language: String?) async throws {
-        let reader = reader
-        try await Task.detached { try reader.setDocumentLanguage(language: language) }.value
-        wake()
-    }
-    /// « Écouter » une voix dans sa langue.
-    func previewVoice(in language: String) async throws {
-        let reader = reader
-        try await Task.detached { try reader.previewVoiceIn(language: language) }.value
-        wake()
-    }
-    /// Le passage unique à Kokoro : appelé une fois au lancement. Rend
-    /// l'avis à montrer (passage fait, ou proposition dans `snapshot.offer`).
-    func migrateVoice() async -> String? {
-        let reader = reader
-        let notice = await Task.detached { reader.migrateVoice() }.value
-        wake()
-        return notice
-    }
-    /// « Passer à Kokoro » : le téléchargement démarre, hors du fil principal.
-    func acceptVoiceOffer() async throws {
-        let reader = reader
-        try await Task.detached { try reader.acceptVoiceOffer() }.value
-        wake()
-        onVoiceMayHaveChanged?()
-    }
-    /// « Plus tard » : le refus est retenu.
-    /// Le refus s'écrit dans `config.toml` : hors du fil principal.
-    func dismissVoiceOffer() async {
-        let reader = reader
-        await Task.detached { reader.dismissVoiceOffer() }.value
-        wake()
-    }
-    /// « Remplacer » un `config.toml` illisible (une copie est gardée à
-    /// côté), hors du fil principal.
-    func replaceUnreadableConfig() async throws {
-        let reader = reader
-        try await Task.detached { try reader.replaceUnreadableConfig() }.value
-        wake()
-    }
-    /// « Compris » : l'appel attend le verrou du lecteur, hors du fil
-    /// principal comme les autres réponses à l'offre.
-    func dismissNotice() async {
-        let reader = reader
-        await Task.detached { reader.dismissNotice() }.value
-        wake()
-    }
-    /// Vide le cache des documents ; rend les octets libérés.
-    func clearDocumentCache() async throws -> UInt64 {
-        let reader = reader
-        return try await Task.detached { try reader.clearDocumentCache() }.value
-    }
-    /// Tous les signets, tous documents confondus.
-    func loadAllBookmarks() async -> [StoredBookmarkView] {
-        let reader = reader
-        return await Task.detached { reader.allBookmarks() }.value
-    }
-    func removeBookmarkAsync(document: String, sentence: UInt32) async throws {
-        let reader = reader
-        try await Task.detached { try reader.removeBookmark(document: document, sentence: sentence) }.value
-    }
-    /// Le dossier de `config.toml` (lecture directe, sans le fil du lecteur).
-    var configDirectory: String? { reader.configDir() }
 
     /// La phrase en cours telle qu'elle est écrite.
     var currentSentenceText: String {
