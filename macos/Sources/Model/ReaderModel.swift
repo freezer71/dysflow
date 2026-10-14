@@ -346,6 +346,43 @@ final class ReaderModel {
     /// Change à chaque réglage écrit : le panneau relit son affichage.
     private(set) var settingsRevision = 0
 
+    // MARK: - Sortie audio
+
+    /// La sortie choisie (vide : celle du système), et les sorties branchées.
+    /// Le menu, les réglages et le panneau la lisent et la changent ici.
+    private(set) var outputDevice = ""
+    private(set) var outputs = AudioOutputsView(devices: [], system: nil)
+
+    /// Relit les sorties branchées (environ 2 ms) : à chaque sortie branchée
+    /// ou retirée (`AudioDeviceWatcher`), jamais à chaque image.
+    func refreshOutputs() {
+        let next = reader.audioOutputs()
+        if next != outputs { outputs = next }
+    }
+
+    /// La sortie retenue dans `config.toml`, relue au lancement.
+    func loadOutput() async {
+        outputDevice = await loadSettings().outputDevice
+        refreshOutputs()
+    }
+
+    /// Choisit la sortie : le son y passe tout de suite et n'en sort plus.
+    func chooseOutput(_ name: String) {
+        guard name != outputDevice else { return }
+        let previous = outputDevice
+        outputDevice = name
+        var patch = SettingsPatch.empty
+        patch.outputDevice = name
+        Task {
+            do {
+                _ = try await updateSettings(patch)
+            } catch {
+                outputDevice = previous
+                message = "Sortie audio non enregistrée : \(error.localizedDescription)"
+            }
+        }
+    }
+
     /// Applique un patch et l'écrit, hors du fil principal ; rend les
     /// valeurs telles qu'appliquées (bornes comprises).
     func updateSettings(_ patch: SettingsPatch) async throws -> SettingsView {

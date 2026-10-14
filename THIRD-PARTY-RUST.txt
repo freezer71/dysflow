@@ -2,8 +2,8 @@ Sillon — licences des crates Rust liées statiquement
 ====================================================
 
 Généré par scripts/third-party-rust.py à partir de Cargo.lock. Livrables :
-  [app] bibliothèque de l'app macOS (sillon-ffi, features audio-cpp,ocr), cibles : aarch64-apple-darwin
-  [terminal] binaire du terminal (sillon, features audio-cpp,ocr,kokoro-onnx), cibles : x86_64-unknown-linux-gnu, aarch64-unknown-linux-gnu, aarch64-apple-darwin
+  [app] bibliothèque de l'app macOS (sillon-ffi, features ocr), cibles : aarch64-apple-darwin
+  [terminal] binaire du terminal (sillon, features ocr,kokoro-onnx), cibles : x86_64-unknown-linux-gnu, aarch64-unknown-linux-gnu, aarch64-apple-darwin
 
 216 crates. Chaque crate est marquée du ou des livrables qui la
 contiennent. Les crates sous MPL-2.0 sont utilisées sans modification ;

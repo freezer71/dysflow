@@ -79,7 +79,7 @@ enum MiniBarMetrics {
     static let margin: CGFloat = 14
     /// La largeur réservée à la vitesse et à l'écrou, de chaque côté : le
     /// transport reste centré quelle que soit la vitesse.
-    static let side: CGFloat = 56
+    static let side: CGFloat = 64
 }
 
 /// Rangée 1 : temps écoulé, timeline, temps restant.
@@ -140,8 +140,11 @@ struct MiniControlsRow: View {
             }
             .disabled(!transportEnabled)
             Spacer(minLength: 0)
-            VoiceSettingsButton()
-                .frame(width: MiniBarMetrics.side, alignment: .trailing)
+            HStack(spacing: 0) {
+                OutputMenu(model: model)
+                VoiceSettingsButton()
+            }
+            .frame(width: MiniBarMetrics.side, alignment: .trailing)
         }
         .frame(height: BarButtonMetrics.disc + 4)
     }

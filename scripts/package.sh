@@ -1,11 +1,7 @@
 #!/bin/sh
 # Assemble un dossier distribuable : le binaire et les bibliothèques et
-# programmes qu'il charge (shim audio.cpp ; pour Kokoro, ONNX Runtime et
-# sillon-espeak avec ses données et ses sources GPL).
-#
-# Le shim audio.cpp est une bibliothèque partagée — c'est un choix assumé, qui
-# laisse CMake résoudre les dépendances transitives. Le binaire la cherche donc
-# à côté de lui, puis dans un `lib/` voisin. Ce script met le premier en place.
+# programmes qu'il charge (pour Kokoro, ONNX Runtime et sillon-espeak avec ses
+# données et ses sources GPL).
 set -e
 cd "$(dirname "$0")/.."
 
@@ -28,7 +24,7 @@ sha256_ok() {
     fi
 }
 
-FEATURES="${FEATURES:-audio-cpp,ocr,kokoro-onnx}"
+FEATURES="${FEATURES:-ocr,kokoro-onnx}"
 OUT="${OUT:-dist}"
 
 # Les licences des crates Rust liées : THIRD-PARTY-RUST.txt doit suivre
@@ -43,22 +39,6 @@ cargo build --release --features "$FEATURES"
 rm -rf "$OUT"
 mkdir -p "$OUT"
 cp target/release/sillon "$OUT/"
-
-# Le nom du répertoire de build porte une empreinte, il faut le retrouver —
-# et chaque jeu de features laisse le sien : on prend le plus récent, sans
-# quoi un shim d'un build antérieur pouvait être livré à la place de celui
-# qu'on vient de compiler.
-for ext in dylib so; do
-    shim=$(find target/release/build -path "*out/lib/libaudiocpp_shim.$ext" -print0 2>/dev/null \
-        | xargs -0 ls -t 2>/dev/null | head -1)
-    [ -n "$shim" ] && cp "$shim" "$OUT/" && break
-done
-
-if [ -z "$shim" ]; then
-    echo "Aucun shim trouvé : binaire compilé sans audio-cpp, rien à joindre." >&2
-else
-    echo "Joint : $(basename "$shim")"
-fi
 
 # Kokoro au terminal : ONNX Runtime 1.31 à côté du binaire, et la
 # phonétisation sillon-espeak (GPL-3.0, programme séparé que Sillon lance) avec
@@ -123,7 +103,7 @@ case ",$FEATURES," in
 esac
 
 # Les avis : NOTICE, les crates Rust, Sonic, et Tesseract et Leptonica
-# (feature ocr) ; audio.cpp et ce qu'il compile si le shim est joint. ONNX
+# (feature ocr). ONNX
 # Runtime (LICENSE-onnxruntime, ThirdPartyNotices-onnxruntime.txt) et
 # sillon-espeak (sillon-espeak-source/) ont été joints plus haut.
 cp NOTICE THIRD-PARTY-RUST.txt "$OUT/"
@@ -133,12 +113,6 @@ case ",$FEATURES," in
 *,ocr,*)
     cp third_party/licences/tesseract-LICENSE third_party/licences/leptonica-LICENSE "$OUT/licences/" ;;
 esac
-if [ -n "$shim" ]; then
-    cp vendor/audio.cpp/LICENSE "$OUT/licences/audiocpp-LICENSE"
-    cp vendor/audio.cpp/external/ggml/LICENSE "$OUT/licences/ggml-LICENSE"
-    cp vendor/audio.cpp/external/cJSON/LICENSE "$OUT/licences/cJSON-LICENSE"
-    cp vendor/audio.cpp/external/libyaml/License "$OUT/licences/libyaml-LICENSE"
-fi
 echo "Joint : NOTICE, THIRD-PARTY-RUST.txt et licences/"
 
 echo "Vérification hors de l'arbre de compilation…"

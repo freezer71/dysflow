@@ -2,8 +2,7 @@
 //!
 //! Le fichier est optionnel : tous les champs ont un défaut et `#[serde(default)]`
 //! permet d'ouvrir une configuration écrite par une version antérieure sans la
-//! casser. Les réglages de voix reprennent le vocabulaire d'audio.cpp, si bien
-//! qu'ils atteignent réellement le modèle au lieu de rester décoratifs.
+//! casser.
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -37,22 +36,26 @@ pub struct AppConfig {
     pub keep_voice_minutes: i64,
     /// Migrations de voix déjà faites ou refusées (1 : le passage à Kokoro).
     pub voice_migration: u32,
+    /// La sortie audio, par son nom ; vide : celle du système, qui suit
+    /// macOS. Choisie, le son n'en sort jamais : retirée, la lecture se met
+    /// en pause au lieu de passer aux haut-parleurs.
+    pub output_device: String,
 }
 
 impl Default for AppConfig {
     fn default() -> Self {
-        Self { keep_voice_minutes: 10, voice_migration: 0 }
+        Self { keep_voice_minutes: 10, voice_migration: 0, output_device: String::new() }
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct EngineConfig {
-    /// `auto`, `audio_cpp` ou `system`.
+    /// `auto` ou `system` (`audio_cpp`, ancienne valeur, vaut `auto`).
     pub engine: String,
     /// Chemin du modèle (répertoire ou fichier GGUF).
     pub model_path: String,
-    /// Famille audio.cpp, par exemple `supertonic` ou `pocket_tts`.
+    /// Famille du modèle : `kokoro`.
     pub family: String,
     /// Backend de calcul : `cpu`, `metal`, `cuda`, `vulkan`.
     pub compute: String,
@@ -74,8 +77,8 @@ impl Default for EngineConfig {
             family: String::new(),
             compute: if cfg!(target_os = "macos") { "metal" } else { "cpu" }.to_string(),
             threads: cores.clamp(1, 8),
-            // Ce que la famille demande : une session pour Supertonic comme
-            // pour MagpieTTS. Voir `models::sessions_for_family`.
+            // Ce que la famille demande : une session pour Kokoro. Voir
+            // `models::sessions_for_family`.
             sessions: 0,
             prefetch: 6,
         }
@@ -231,6 +234,11 @@ impl Config {
         self.engine.threads = self.engine.threads.clamp(1, 64);
         self.engine.sessions = self.engine.sessions.min(16);
         self.engine.prefetch = self.engine.prefetch.clamp(2, 64);
+        // audio.cpp n'est plus (14 oct. 2026) : son nom devient « auto », ce
+        // qu'il valait déjà, et l'écran des réglages ne le montre plus.
+        if matches!(self.engine.engine.to_ascii_lowercase().as_str(), "audio_cpp" | "audio-cpp" | "audiocpp") {
+            self.engine.engine = "auto".to_string();
+        }
         // L'échantillonnage suit les bornes de l'écran ; un nombre sans
         // valeur rend la main au modèle plutôt que d'atteindre le moteur.
         let bounded = |value: Option<f32>, low: f32, high: f32| {
@@ -392,20 +400,22 @@ mod tests {
     }
 
     #[test]
+    fn the_former_audio_cpp_engine_reads_as_auto() {
+        let parsed: Config = toml::from_str("[engine]\nengine = \"audio_cpp\"\n").unwrap();
+        assert_eq!(parsed.normalised().engine.engine, "auto");
+        let system: Config = toml::from_str("[engine]\nengine = \"system\"\n").unwrap();
+        assert_eq!(system.normalised().engine.engine, "system");
+    }
+
+    #[test]
     fn sessions_follow_the_family_when_left_to_auto() {
-        // Supertonic synthétise à vingt fois le temps réel : une session
-        // suffit, et chacune de plus coûte 460 Mo — deux fois le modèle.
+        // Kokoro calcule en série : une session.
         let mut config = Config::default();
         assert_eq!(config.engine.sessions, 0, "le défaut est « auto »");
-        config.engine.family = "supertonic".to_string();
-        assert_eq!(config.sessions(), 1);
-        // MagpieTTS sature le GPU à lui seul : une session, sinon la phrase
-        // attendue arrive après les autres.
-        config.engine.family = "magpie_tts".to_string();
+        config.engine.family = "kokoro".to_string();
         assert_eq!(config.sessions(), 1);
         // Un nombre posé à la main l'emporte, quelle que soit la famille.
         config.engine.sessions = 3;
-        config.engine.family = "supertonic".to_string();
         assert_eq!(config.sessions(), 3);
         assert_eq!(config.engine_settings().sessions, 3);
     }
@@ -427,25 +437,6 @@ mod tests {
         assert_eq!(params.pitch_shift, 0.3);
         assert_eq!(params.energy, 1.2);
 
-        // Famille non répertoriée : rien n'est filtré, tout passe.
-        let options = params.model_options("inconnue");
-        assert_eq!(options.get("temperature").map(String::as_str), Some("0.7"));
-        assert_eq!(options.get("seed").map(String::as_str), Some("42"));
-        assert_eq!(options.get("cfg_scale").map(String::as_str), Some("3"));
-        assert_eq!(options.get("instruction").map(String::as_str), Some("ton posé"));
-
-        // MagpieTTS valide sa requête et refuse toute option étrangère : il ne
-        // doit recevoir que ce qu'il sait lire.
-        let magpie = params.model_options("magpie_tts");
-        assert_eq!(magpie.get("seed").map(String::as_str), Some("42"));
-        assert_eq!(magpie.get("temperature").map(String::as_str), Some("0.7"));
-        assert!(!magpie.contains_key("speaking_rate"), "{magpie:?}");
-        assert!(!magpie.contains_key("instruction"), "{magpie:?}");
-        assert!(!magpie.contains_key("cfg_scale"), "{magpie:?}");
-
-        // Le débit n'est plus une option du modèle : la vitesse s'applique au son.
-        let supertonic = params.model_options("supertonic");
-        assert!(!supertonic.contains_key("speaking_rate"));
     }
 
     /// Hors Kokoro, plus aucune famille ne nomme ses voix : la voix
@@ -478,25 +469,6 @@ mod tests {
     }
 
     #[test]
-    fn the_voice_is_posed_by_the_session_not_by_the_parameters() {
-        // Son orthographe dépend du paquet chargé, pas de la famille : c'est la
-        // session qui la pose, une fois qu'elle sait laquelle passe.
-        let mut config = Config::default();
-        config.engine.family = "magpie_tts".into();
-        config.voice.voice = "Sofia".into();
-        let options = config.tts_params().model_options("magpie_tts");
-        assert!(!options.contains_key("voice_id"));
-        assert!(!options.contains_key("speaker"));
-        assert_eq!(config.tts_params().voice, "Sofia");
-        // Les deux orthographes connues restent proposées à la session.
-        assert_eq!(
-            crate::models::voice_option_keys("magpie_tts"),
-            ["voice_id", "speaker"]
-        );
-        assert!(crate::models::voice_option_keys("supertonic").is_empty());
-    }
-
-    #[test]
     fn the_reading_speed_never_reaches_the_model() {
         // La vitesse s'applique au son, à la lecture : passée au modèle, elle
         // compressait la durée prévue de la phrase et lui faisait avaler des
@@ -506,11 +478,6 @@ mod tests {
         let mut fast = slow.clone();
         fast.voice.speed = 2.5;
         assert_eq!(fast.tts_params(), slow.tts_params(), "la vitesse ne change pas la requête");
-        for family in ["supertonic", "magpie_tts", "inconnue"] {
-            let options = fast.tts_params().model_options(family);
-            assert!(!options.contains_key("speaking_rate"), "{family} : {options:?}");
-            assert!(!options.contains_key("speed"), "{family} : {options:?}");
-        }
     }
 
     #[test]

@@ -192,7 +192,7 @@ mod tests {
         Reader::new(
             config,
             Box::new(|_| Arc::new(SilentEngine) as Arc<dyn TtsEngine>),
-            Box::new(Player::silent),
+            Box::new(|_: &str| Player::silent()),
             Instant::now(),
         )
     }

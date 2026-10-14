@@ -1416,7 +1416,7 @@ fn render_model_list(frame: &mut Frame, app: &App, area: Rect) {
         )));
         lines.push(Line::from(""));
         lines.push(Line::from(Span::styled(
-            " Ce binaire a été compilé sans audio.cpp ; la lecture",
+            " Ce binaire a été compilé sans Kokoro ; la lecture",
             Style::default().fg(DIM),
         )));
         lines.push(Line::from(Span::styled(
@@ -1425,7 +1425,7 @@ fn render_model_list(frame: &mut Frame, app: &App, area: Rect) {
         )));
         lines.push(Line::from(""));
         lines.push(Line::from(Span::styled(
-            "   cargo build --release --features audio-cpp",
+            "   cargo build --release --features kokoro-onnx",
             Style::default().fg(ACCENT),
         )));
         // `trim` rognerait l'indentation : la valeur du champ sélectionné se

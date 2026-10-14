@@ -87,7 +87,7 @@ mod tests {
 
     #[test]
     fn announces_the_model_while_the_engine_says_it_is_loading() {
-        let phase = phase("audio.cpp · chargement…", stats(0, 12, 0), false);
+        let phase = phase("Kokoro · chargement…", stats(0, 12, 0), false);
         assert_eq!(phase, Some(Phase::LoadingModel));
     }
 
@@ -114,7 +114,7 @@ mod tests {
     #[test]
     fn stays_quiet_without_a_document() {
         // Écran de configuration : il n'y a rien à préparer.
-        assert_eq!(phase("audio.cpp · chargement…", stats(0, 0, 0), false), None);
+        assert_eq!(phase("Kokoro · chargement…", stats(0, 0, 0), false), None);
     }
 
     #[test]

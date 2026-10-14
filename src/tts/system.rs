@@ -1,9 +1,8 @@
 //! Moteur de repli fondé sur la synthèse fournie par le système.
 //!
 //! Il existe pour que le lecteur soit utilisable immédiatement — avant tout
-//! téléchargement de modèle, et sur une machine sans CMake. La qualité et les
-//! réglages fins (émotion, guidage, échantillonnage) relèvent d'audio.cpp ;
-//! ici seuls la voix, le débit et la hauteur sont honorés.
+//! téléchargement de modèle. La qualité relève de Kokoro ; ici seuls la voix,
+//! le débit et la hauteur sont honorés.
 
 use anyhow::{anyhow, Context, Result};
 use std::path::{Path, PathBuf};

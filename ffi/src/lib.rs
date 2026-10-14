@@ -91,6 +91,15 @@ impl SynthesisCancel {
     }
 }
 
+/// Les sorties audio de la machine.
+#[derive(uniffi::Record, Debug, Clone, PartialEq)]
+pub struct AudioOutputsView {
+    /// Les sorties branchées, par nom, dans l'ordre du système.
+    pub devices: Vec<String>,
+    /// Celle que le système choisit en ce moment.
+    pub system: Option<String>,
+}
+
 #[derive(uniffi::Record)]
 pub struct KokoroOutput {
     pub samples: Vec<f32>,
@@ -148,7 +157,7 @@ fn app_reader(loaded: (Config, Option<String>), mlx: Option<Arc<kokoro::SharedCo
         Box::new(move |config: &Config| {
             tts::build_engine_with(config.engine_preference(), &config.engine_settings(), mlx.clone()).0
         }),
-        Box::new(Player::new),
+        Box::new(Player::with_output),
         Instant::now(),
     );
     reader.set_mlx_compute(available);
@@ -409,6 +418,8 @@ pub struct SettingsView {
     pub line_spacing: u32,
     pub reading_ruler: bool,
     pub keep_voice_minutes: i64,
+    /// La sortie audio choisie ; vide : celle du système.
+    pub output_device: String,
     pub extra: Vec<ExtraOption>,
     pub voices_by_language: Vec<LanguageVoice>,
 }
@@ -463,6 +474,7 @@ pub struct SettingsPatch {
     pub line_spacing: Option<u32>,
     pub reading_ruler: Option<bool>,
     pub keep_voice_minutes: Option<i64>,
+    pub output_device: Option<String>,
     pub extra_set: Vec<ExtraOption>,
     pub extra_remove: Vec<String>,
     /// La voix d'une langue (Kokoro : une voix par langue).
@@ -521,7 +533,7 @@ pub struct SillonReader {
 
 #[uniffi::export]
 impl SillonReader {
-    /// Le lecteur réel : configuration de l'utilisateur, voix audio.cpp.
+    /// Le lecteur réel : configuration de l'utilisateur, voix Kokoro.
     #[uniffi::constructor]
     pub fn new() -> Arc<Self> {
         Arc::new(Self { handle: ReaderHandle::spawn(|| app_reader(Config::load(), None)) })
@@ -546,7 +558,7 @@ impl SillonReader {
                 let mut reader = Reader::new(
                     config,
                     Box::new(|_| Arc::new(SilentEngine) as Arc<dyn TtsEngine>),
-                    Box::new(Player::silent),
+                    Box::new(|_: &str| Player::silent()),
                     Instant::now(),
                 );
                 // L'app de test ne touche pas au disque de l'utilisateur.
@@ -804,6 +816,15 @@ impl SillonReader {
         sillon::models::free_space()
     }
 
+    /// Les sorties audio branchées, et celle que le système choisit. Ne passe
+    /// pas par le fil du lecteur (environ 2 ms).
+    pub fn audio_outputs(&self) -> AudioOutputsView {
+        AudioOutputsView {
+            devices: sillon::audio::player::output_devices(),
+            system: sillon::audio::player::system_output(),
+        }
+    }
+
     /// Le dossier de `config.toml`. Ne passe pas par le fil du lecteur.
     pub fn config_dir(&self) -> Option<String> {
         sillon::paths::config_dir().map(|d| d.to_string_lossy().into_owned())
@@ -880,6 +901,7 @@ fn settings_of(s: settings::SettingsView) -> SettingsView {
         line_spacing: s.line_spacing,
         reading_ruler: s.reading_ruler,
         keep_voice_minutes: s.keep_voice_minutes,
+        output_device: s.output_device,
         extra: s
             .extra
             .into_iter()
@@ -939,6 +961,7 @@ fn patch_from(p: SettingsPatch) -> settings::SettingsPatch {
         line_spacing: p.line_spacing,
         reading_ruler: p.reading_ruler,
         keep_voice_minutes: p.keep_voice_minutes,
+        output_device: p.output_device,
         extra_set: p.extra_set.into_iter().map(|o| (o.key, o.value)).collect(),
         extra_remove: p.extra_remove,
         voice_for_language: p.voice_for_language.map(|v| (v.language, v.voice)),

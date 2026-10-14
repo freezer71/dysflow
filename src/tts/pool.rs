@@ -1061,7 +1061,7 @@ mod tests {
         assert!(synth.open_failure().is_some(), "le moteur reste le même d'un texte à l'autre");
     }
 
-    /// La première session s'ouvre, les suivantes échouent (audio.cpp à
+    /// La première session s'ouvre, les suivantes échouent (un moteur à
     /// plusieurs sessions, l'une refusée).
     struct OneSessionOnly {
         opens: AtomicUsize,

@@ -17,8 +17,8 @@ final class MeasureChargeTests: XCTestCase {
         XCTAssertTrue(arrive, "la phrase 50 doit exister dans le texte de charge")
     }
 
-    /// Une voix « prête » d'un autre moteur (audio.cpp sur un
-    /// `.safetensors`, muette) ne passe pas pour Kokoro MLX.
+    /// Une voix « prête » d'un autre moteur (un moteur qui ne
+    /// sait pas lire le `.safetensors`, muet) ne passe pas pour Kokoro MLX.
     func testOnlyAReadyKokoroMLXVoiceIsAccepted() async {
         let reader = SillonReader.silent()
         reader.openText(markdown: "Un. Deux.", source: "test-kokoro")

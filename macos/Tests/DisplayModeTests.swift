@@ -67,6 +67,28 @@ final class DisplayModeTests: XCTestCase {
         XCTAssertEqual(opened.lastVisible, .medium)
     }
 
+    /// Fermer pendant la lecture garde la barre du mode petit : on garde
+    /// la main sur le son sans rouvrir le lecteur.
+    func testClosingWhilePlayingLeavesTheMiniPlayer() {
+        let medium = start.applying(.choose(.medium))
+        XCTAssertEqual(medium.applying(.escape, playing: true).current, .small)
+        XCTAssertEqual(medium.applying(.hide, playing: true).current, .small)
+        let large = start.applying(.choose(.large))
+        XCTAssertEqual(large.applying(.hide, playing: true).current, .small)
+        // Échap depuis le grand passe d'abord au moyen, comme sans lecture.
+        XCTAssertEqual(large.applying(.escape, playing: true).current, .medium)
+        // « Afficher sillon » rend le mode fermé, pas la barre.
+        XCTAssertEqual(medium.applying(.hide, playing: true).applying(.showLast).current, .medium)
+    }
+
+    func testTheMiniPlayerClosesForGoodAndPauseClosesAsBefore() {
+        let small = start.applying(.choose(.small))
+        XCTAssertEqual(small.applying(.escape, playing: true).current, .background)
+        XCTAssertEqual(small.applying(.hide, playing: true).current, .background)
+        let medium = start.applying(.choose(.medium))
+        XCTAssertEqual(medium.applying(.hide, playing: false).current, .background)
+    }
+
     func testOnlyTheBackgroundIsInvisible() {
         XCTAssertEqual(DisplayMode.allCases.filter { !$0.isVisible }, [.background])
     }

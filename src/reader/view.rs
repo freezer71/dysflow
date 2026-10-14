@@ -323,7 +323,7 @@ mod tests {
         let mut r = Reader::new(
             config,
             Box::new(|_| Arc::new(SilentEngine) as Arc<dyn TtsEngine>),
-            Box::new(Player::silent),
+            Box::new(|_: &str| Player::silent()),
             Instant::now(),
         );
         r.open_text(markdown, "test", Instant::now());
@@ -335,7 +335,7 @@ mod tests {
         let r = Reader::new(
             Config::default(),
             Box::new(|_| Arc::new(SilentEngine) as Arc<dyn TtsEngine>),
-            Box::new(Player::silent),
+            Box::new(|_: &str| Player::silent()),
             Instant::now(),
         );
         let s = snapshot(&r);
@@ -412,7 +412,7 @@ mod tests {
         let mut r = Reader::new(
             config,
             Box::new(|_| Arc::new(NoSession) as Arc<dyn TtsEngine>),
-            Box::new(Player::silent),
+            Box::new(|_: &str| Player::silent()),
             Instant::now(),
         );
         r.open_text("Un. Deux.", "test", Instant::now());

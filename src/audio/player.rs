@@ -120,9 +120,53 @@ pub struct Player {
 /// Fréquence que rodio choisira pour la sortie par défaut : celle de la
 /// configuration par défaut du périphérique (`OutputStream::try_default`).
 fn default_output_rate() -> Option<u32> {
-    use rodio::cpal::traits::{DeviceTrait, HostTrait};
+    use rodio::cpal::traits::HostTrait;
     let device = rodio::cpal::default_host().default_output_device()?;
+    device_rate(&device)
+}
+
+fn device_rate(device: &rodio::cpal::Device) -> Option<u32> {
+    use rodio::cpal::traits::DeviceTrait;
     Some(device.default_output_config().ok()?.sample_rate().0)
+}
+
+/// Les sorties audio de la machine, par nom, sans doublon, dans l'ordre du
+/// système.
+pub fn output_devices() -> Vec<String> {
+    use rodio::cpal::traits::{DeviceTrait, HostTrait};
+    let mut names: Vec<String> = Vec::new();
+    if let Ok(devices) = rodio::cpal::default_host().output_devices() {
+        for name in devices.filter_map(|d| d.name().ok()) {
+            if !names.contains(&name) {
+                names.push(name);
+            }
+        }
+    }
+    names
+}
+
+/// La sortie que macOS (ou le système) choisit en ce moment.
+pub fn system_output() -> Option<String> {
+    use rodio::cpal::traits::{DeviceTrait, HostTrait};
+    rodio::cpal::default_host().default_output_device()?.name().ok()
+}
+
+/// La sortie de ce nom est-elle branchée ?
+pub fn output_present(name: &str) -> bool {
+    find_output(name).is_some()
+}
+
+fn find_output(name: &str) -> Option<rodio::cpal::Device> {
+    use rodio::cpal::traits::{DeviceTrait, HostTrait};
+    rodio::cpal::default_host()
+        .output_devices()
+        .ok()?
+        .find(|d| d.name().is_ok_and(|n| n == name))
+}
+
+/// Le message d'une sortie choisie mais absente.
+pub fn missing_output(name: &str) -> String {
+    format!("sortie « {name} » absente")
 }
 
 impl Default for Player {
@@ -132,20 +176,46 @@ impl Default for Player {
 }
 
 impl Player {
+    /// La sortie du système : celle que macOS choisit, et qui suit ses
+    /// changements (des écouteurs retirés, et le son passe aux haut-parleurs).
     pub fn new() -> Self {
-        let (stream, handle, sink, error) = match OutputStream::try_default() {
+        Self::open(OutputStream::try_default().map_err(|e| e.to_string()), default_output_rate)
+    }
+
+    /// Une sortie choisie par son nom, ou celle du système pour un nom vide.
+    /// Le son ne va jamais ailleurs : la sortie absente, le lecteur reste
+    /// sans son (`error`) plutôt que de passer aux haut-parleurs.
+    pub fn with_output(name: &str) -> Self {
+        let name = name.trim();
+        if name.is_empty() {
+            return Self::new();
+        }
+        match find_output(name) {
+            Some(device) => {
+                let rate = device_rate(&device);
+                Self::open(OutputStream::try_from_device(&device).map_err(|e| e.to_string()), || rate)
+            }
+            None => Self::open(Err(missing_output(name)), || None),
+        }
+    }
+
+    fn open(
+        stream: Result<(OutputStream, OutputStreamHandle), String>,
+        rate: impl FnOnce() -> Option<u32>,
+    ) -> Self {
+        let (stream, handle, sink, error) = match stream {
             Ok((stream, handle)) => match Sink::try_new(&handle) {
                 Ok(sink) => (Some(stream), Some(handle), Some(sink), None),
                 Err(err) => (Some(stream), None, None, Some(err.to_string())),
             },
-            Err(err) => (None, None, None, Some(err.to_string())),
+            Err(err) => (None, None, None, Some(err)),
         };
         // La file démarre en pause : rien ne doit sortir avant le premier
         // buffer, sans quoi la position partirait avant le son.
         if let Some(sink) = &sink {
             sink.pause();
         }
-        let output_rate = stream.as_ref().and_then(|_| default_output_rate());
+        let output_rate = stream.as_ref().and_then(|_| rate());
         // Le fil qui libère les phrases finies naît ici, pas dans le fil audio.
         super::tempo::prepare();
         Self {

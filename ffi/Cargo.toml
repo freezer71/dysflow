@@ -22,6 +22,5 @@ thiserror = "2"
 anyhow = "1.0"
 
 [features]
-audio-cpp = ["sillon/audio-cpp"]
 ocr = ["sillon/ocr"]
 bindgen = ["uniffi/cli"]

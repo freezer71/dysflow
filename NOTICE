@@ -38,17 +38,7 @@ Contents/Resources/licences (ce fichier compris) :
     à deux clauses, Leptonica — leptonica-LICENSE), compilés par la crate
     tesseract-rs pour la lecture des images, avec les données de langue
     française et anglaise de Tesseract (tesseract-ocr/tessdata_fast, licence
-    Apache 2.0) ;
-- libaudiocpp_shim.dylib (Contents/Frameworks), quand l'app est construite
-  avec audio.cpp : audio.cpp (licence Apache 2.0 — audiocpp-LICENSE), utilisé
-  avec des modifications locales (un correctif de lecture des fichiers GGUF
-  dans ggml, src/gguf.cpp, appliqué par build.rs), et ce qu'il y compile :
-  ggml (licence MIT, les auteurs de ggml — ggml-LICENSE), cJSON (licence
-  MIT, Dave Gamble et les contributeurs de cJSON — cJSON-LICENSE) et libyaml
-  (licence MIT, Kirill Simonov et Ingy döt Net — libyaml-LICENSE).
-  sentencepiece et le découpage BPE tiré de llama.cpp sont compilés par
-  audio.cpp mais absents de la bibliothèque jointe avec les familles
-  retenues (supertonic, magpie_tts) ; cpp-httplib n'est pas compilé.
+    Apache 2.0).
 
 L'app macOS contient sillon-espeak (Contents/Helpers/sillon-espeak), un petit
 programme de Sillon (scripts/sillon-espeak.c) lié à espeak-ng 1.52.0, avec
@@ -63,9 +53,7 @@ dans Contents/Resources/espeak-ng (COPYING, SOURCE.txt).
 Le terminal (dossier produit par scripts/package.sh) contient ce fichier,
 THIRD-PARTY-RUST.txt (les crates Rust liées au binaire, mêmes licences que
 ci-dessus) et, dans licences/ : Sonic (sonic-LICENSE), Tesseract et
-Leptonica avec la feature ocr (tesseract-LICENSE, leptonica-LICENSE), et,
-quand le shim audio.cpp est joint (libaudiocpp_shim), audio.cpp avec ses
-modifications locales, ggml, cJSON et libyaml (mêmes fichiers que l'app).
+Leptonica avec la feature ocr (tesseract-LICENSE, leptonica-LICENSE).
 La feature kokoro-onnx charge ONNX Runtime (licence MIT, Microsoft), livré à
 côté du binaire sous Linux avec sa licence et ses avis
 (LICENSE-onnxruntime, ThirdPartyNotices-onnxruntime.txt), et sillon-espeak

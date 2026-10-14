@@ -642,7 +642,7 @@ mod tests {
                 let (engine, _) = engine(Arc::clone(&shared), false, "lecteur");
                 Arc::new(engine) as Arc<dyn TtsEngine>
             }),
-            Box::new(Player::silent),
+            Box::new(|_: &str| Player::silent()),
             std::time::Instant::now(),
         );
         reader.open_text("Une phrase.", "test", std::time::Instant::now());

@@ -142,7 +142,7 @@ struct AdvancedTab: View {
     }
 
     static func engineOptions(current: String) -> [(title: String, value: String)] {
-        Choices.including([("Automatique", "auto"), ("audio.cpp", "audio_cpp"), ("Voix du système", "system")],
+        Choices.including([("Automatique", "auto"), ("Voix du système", "system")],
                           current: current) { "\($0) (écrit à la main)" }
     }
 

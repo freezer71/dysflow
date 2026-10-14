@@ -170,7 +170,7 @@ pub enum Field {
 
 const EMOTIONS: &[&str] = &["", "neutre", "calme", "chaleureux", "sérieux", "enjoué", "posé"];
 const CODE_POLICIES: &[&str] = &["announce", "skip", "read"];
-const ENGINES: &[&str] = &["auto", "audio_cpp", "system"];
+const ENGINES: &[&str] = &["auto", "system"];
 const COMPUTES: &[&str] = &["cpu", "metal", "cuda", "vulkan", "auto"];
 
 impl Field {
@@ -268,7 +268,7 @@ impl Field {
             }
             Field::LineSpacing => "Lignes vides entre deux lignes de texte.",
             Field::ReadingRuler => "Souligne d'un fond la ligne en cours de lecture.",
-            Field::EnginePref => "auto essaie audio.cpp puis se replie sur la voix système.",
+            Field::EnginePref => "auto lit avec le modèle installé (Kokoro), sinon la voix du système.",
             Field::Compute => "Backend de calcul du modèle.",
             Field::Threads => "Threads alloués au modèle.",
             Field::Sessions => {
@@ -277,7 +277,7 @@ impl Field {
             }
             Field::Prefetch => "Profondeur d'avance de la synthèse.",
             Field::ModelPath => "Renseigné automatiquement à l'installation d'un modèle.",
-            Field::Family => "Famille audio.cpp du modèle chargé.",
+            Field::Family => "Famille du modèle chargé (kokoro).",
         }
     }
 
@@ -995,7 +995,7 @@ mod tests {
     #[test]
     fn sessions_can_be_left_to_the_family() {
         let mut config = Config::default();
-        config.engine.family = "supertonic".to_string();
+        config.engine.family = "kokoro".to_string();
         // « auto » dit ce qu'il vaut : un réglage muet ne se comprend pas.
         assert_eq!(Field::Sessions.value(&config, 1.0), "auto · 1");
         Field::Sessions.adjust(&mut config, 1);
@@ -1058,10 +1058,10 @@ mod tests {
     }
 
     #[test]
-    fn supertonic_presets_are_never_flagged() {
+    fn kokoro_voices_are_never_flagged() {
         let mut config = Config::default();
-        config.engine.family = "supertonic".into();
-        config.voice.voice = "F1".into();
+        config.engine.family = "kokoro".into();
+        config.voice.voice = "p-fenrir60".into();
         assert!(!Field::Voice.is_ignored(&config));
         assert!(!Field::Speed.is_ignored(&config));
         assert!(Field::Instruction.is_ignored(&config));
@@ -1101,15 +1101,14 @@ mod tests {
     #[test]
     fn ineffective_settings_are_hidden_until_asked_for() {
         let mut config = Config::default();
-        config.engine.family = "supertonic".into();
+        config.engine.family = "kokoro".into();
         let mut screen = ConfigScreen::new();
         screen.section = 2; // Échantillonnage
 
-        // Supertonic ne lit que la graine et le nombre d'étapes : les cinq
-        // autres réglages noyaient les deux qui agissent.
-        let visibles = screen.visible_fields(&config);
-        assert_eq!(visibles, vec![Field::InferenceSteps, Field::Seed]);
-        assert_eq!(screen.hidden_count(&config), 5);
+        // Kokoro ne lit aucun réglage d'échantillonnage : tous attendent
+        // qu'on les demande.
+        assert!(screen.visible_fields(&config).is_empty());
+        assert_eq!(screen.hidden_count(&config), 7);
 
         screen.toggle_show_all(&config);
         assert_eq!(screen.visible_fields(&config).len(), 7);

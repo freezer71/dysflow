@@ -25,7 +25,8 @@ pub mod settings;
 pub mod view;
 
 pub type VoiceFactory = Box<dyn Fn(&Config) -> Arc<dyn TtsEngine>>;
-pub type PlayerFactory = Box<dyn Fn() -> Player>;
+/// Ouvre la sortie audio de ce nom (vide : celle du système).
+pub type PlayerFactory = Box<dyn Fn(&str) -> Player>;
 
 /// Le texte en cours, gardé pour le rouvrir après une mise au repos.
 #[derive(Clone)]
@@ -82,7 +83,22 @@ pub struct Reader {
     switch_when_downloaded: Option<(String, String)>,
     /// Lance un téléchargement (jamais le réseau sous test).
     start_download: fn(&'static crate::models::ModelPackage) -> anyhow::Result<crate::models::Download>,
+    /// La sortie choisie, vue une fois par seconde au plus (`watch_output`).
+    output_watch: Option<OutputWatch>,
+    /// Une sortie de ce nom est-elle branchée ? Remplaçable sous test.
+    output_present: fn(&str) -> bool,
 }
+
+/// Le dernier coup d'œil sur la sortie choisie.
+#[derive(Debug, Clone, Copy)]
+struct OutputWatch {
+    checked: Instant,
+    present: bool,
+}
+
+/// L'intervalle entre deux coups d'œil : l'énumération des sorties coûte
+/// environ 2 ms (mesuré sur M5, 14 oct. 2026).
+const OUTPUT_WATCH_INTERVAL: Duration = Duration::from_secs(1);
 
 impl Reader {
     pub fn new(config: Config, voices: VoiceFactory, players: PlayerFactory, now: Instant) -> Self {
@@ -111,6 +127,59 @@ impl Reader {
             offer: None,
             switch_when_downloaded: None,
             start_download: crate::models::Download::start,
+            output_watch: None,
+            output_present: crate::audio::player::output_present,
+        }
+    }
+
+    /// Sous test : la présence des sorties est décidée par l'essai.
+    #[cfg(test)]
+    pub(crate) fn set_output_presence(&mut self, present: fn(&str) -> bool) {
+        self.output_present = present;
+    }
+
+    /// Le son ne sort que par la sortie choisie. Retirée (écouteurs
+    /// débranchés, partis vers un autre appareil), la lecture se met en
+    /// pause au lieu de passer aux haut-parleurs ; rebranchée, la sortie est
+    /// rouverte et la lecture attend qu'on la reprenne. `force` regarde tout
+    /// de suite, sans attendre la seconde (une commande vient d'arriver).
+    fn watch_output(&mut self, now: Instant, force: bool) {
+        let Some(app) = self.session.as_mut() else { return };
+        let name = app.config.app.output_device.trim().to_string();
+        if name.is_empty() {
+            self.output_watch = None;
+            return;
+        }
+        if let Some(watch) = self.output_watch {
+            if !force && now.saturating_duration_since(watch.checked) < OUTPUT_WATCH_INTERVAL {
+                return;
+            }
+        }
+        let present = (self.output_present)(&name);
+        let was = self.output_watch.map_or(app.player.is_available(), |w| w.present);
+        self.output_watch = Some(OutputWatch { checked: now, present });
+        if was && !present {
+            if app.player.is_playing() {
+                app.player.pause();
+            }
+            app.notify(&format!("{name} débranché : lecture en pause"));
+        } else if present && !was {
+            app.replace_player((self.players)(&name), false);
+            app.notify(&format!("{name} de retour : Espace pour reprendre"));
+        }
+    }
+
+    /// La sortie choisie change : le son y passe tout de suite, la lecture
+    /// continue si elle tournait.
+    fn switch_output(&mut self) {
+        self.output_watch = None;
+        let Some(app) = self.session.as_mut() else { return };
+        let playing = app.player.is_playing();
+        let player = (self.players)(&app.config.app.output_device);
+        let missing = player.error().map(str::to_string);
+        app.replace_player(player, playing && missing.is_none());
+        if let Some(err) = missing {
+            app.notify(&format!("sortie audio indisponible : {err}"));
         }
     }
 
@@ -315,6 +384,7 @@ impl Reader {
     pub fn with_session(&mut self, now: Instant, f: impl FnOnce(&mut App)) {
         self.last_activity = now;
         self.wake(now);
+        self.watch_output(now, true);
         if let Some(app) = self.session.as_mut() {
             f(app);
         }
@@ -341,6 +411,8 @@ impl Reader {
             return;
         };
         app.tick();
+        self.watch_output(now, false);
+        let Some(app) = self.session.as_mut() else { return };
         // Le délai ne court qu'à l'arrêt : avec « relâchée dès l'arrêt »
         // (0 min), il serait sinon écoulé à chaque tour, lecture comprise.
         if app.player.is_playing() && !app.is_finished() {
@@ -415,7 +487,7 @@ impl Reader {
                     self.config.sessions() as usize,
                     self.config.engine.prefetch as usize,
                 ),
-                (self.players)(),
+                (self.players)(&self.config.app.output_device),
             ),
         };
         synth.reset();
@@ -480,7 +552,7 @@ mod tests {
                 counter.fetch_add(1, Ordering::SeqCst);
                 Arc::new(SilentEngine) as Arc<dyn TtsEngine>
             }),
-            Box::new(Player::silent),
+            Box::new(|_: &str| Player::silent()),
             t0,
         );
         (reader, loads, t0)
@@ -491,6 +563,84 @@ mod tests {
     }
 
     const MIN: Duration = Duration::from_secs(60);
+
+    /// Un lecteur dont la sortie est « Casque », branché selon `present`, et
+    /// des lecteurs audio qui ont une file (sans carte son).
+    fn on_headphones(present: fn(&str) -> bool) -> (Reader, Arc<AtomicUsize>, Instant) {
+        let opened = Arc::new(AtomicUsize::new(0));
+        let counter = Arc::clone(&opened);
+        let mut config = Config::default();
+        config.reading.autoplay = false;
+        config.app.output_device = "Casque".into();
+        let t0 = Instant::now();
+        let mut r = Reader::new(
+            config,
+            Box::new(|_| Arc::new(SilentEngine) as Arc<dyn TtsEngine>),
+            Box::new(move |name: &str| {
+                assert_eq!(name, "Casque");
+                counter.fetch_add(1, Ordering::SeqCst);
+                Player::idle(48_000).0
+            }),
+            t0,
+        );
+        r.set_output_presence(present);
+        (r, opened, t0)
+    }
+
+    static CASQUE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+
+    #[test]
+    fn unplugged_headphones_pause_instead_of_switching_to_the_speakers() {
+        let (mut r, opened, t0) = on_headphones(|_| CASQUE.load(Ordering::SeqCst));
+        r.open_text("Une phrase. Une autre.", "t", t0);
+        r.with_session(t0, |app| app.player.play());
+        assert_eq!(opened.load(Ordering::SeqCst), 1);
+
+        CASQUE.store(false, Ordering::SeqCst);
+        // Pas avant la seconde : l'énumération des sorties a un coût.
+        r.tick(t0 + Duration::from_millis(300));
+        assert!(r.session().unwrap().player.is_playing());
+        r.tick(t0 + Duration::from_millis(1100));
+        assert!(!r.session().unwrap().player.is_playing(), "en pause, jamais aux haut-parleurs");
+        assert!(r.session().unwrap().status().contains("Casque débranché"), "{}", r.session().unwrap().status());
+
+        // De retour : la sortie est rouverte, la lecture attend qu'on la reprenne.
+        CASQUE.store(true, Ordering::SeqCst);
+        r.tick(t0 + Duration::from_millis(2200));
+        assert_eq!(opened.load(Ordering::SeqCst), 2);
+        assert!(!r.session().unwrap().player.is_playing());
+        assert!(r.session().unwrap().status().contains("Casque de retour"));
+        // Une fois rouverte, plus rien à refaire.
+        r.tick(t0 + Duration::from_millis(3300));
+        assert_eq!(opened.load(Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn the_system_output_is_never_watched() {
+        let (mut r, _, t0) = reader(10);
+        r.set_output_presence(|_| panic!("aucune sortie choisie : rien à surveiller"));
+        r.open_text("Une phrase.", "t", t0);
+        r.tick(t0 + Duration::from_secs(5));
+    }
+
+    #[test]
+    fn choosing_another_output_moves_the_sound_and_keeps_reading() {
+        let (mut r, opened, t0) = on_headphones(|_| true);
+        r.open_text("Une phrase. Une autre.", "t", t0);
+        r.with_session(t0, |app| app.player.play());
+        // La même sortie choisie de nouveau : rien ne se rouvre.
+        let same = settings::SettingsPatch { output_device: Some("Casque".into()), ..Default::default() };
+        r.apply_patch(&same, t0);
+        assert_eq!(opened.load(Ordering::SeqCst), 1);
+        // Une autre valeur (ici rendue par la même fabrique) : rouverte, lecture continue.
+        r.config.app.output_device = "Autre".into();
+        if let Some(app) = r.session.as_mut() {
+            app.config.app.output_device = "Autre".into();
+        }
+        r.apply_patch(&same, t0);
+        assert_eq!(opened.load(Ordering::SeqCst), 2);
+        assert!(r.session().unwrap().player.is_playing());
+    }
 
     #[test]
     fn two_texts_share_one_voice() {

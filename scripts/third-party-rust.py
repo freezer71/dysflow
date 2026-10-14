@@ -7,9 +7,9 @@ statiquement dans ce que Sillon distribue.
 
 Deux livrables :
   (a) la bibliothèque de l'app macOS : sillon-ffi, avec les features de
-      build-ffi.sh (audio-cpp,ocr), pour aarch64-apple-darwin ;
+      build-ffi.sh (ocr), pour aarch64-apple-darwin ;
   (b) le binaire du terminal : sillon, avec les features de package.sh
-      (audio-cpp,ocr,kokoro-onnx), pour Linux x86_64 et ARM64 et macOS.
+      (ocr,kokoro-onnx), pour Linux x86_64 et ARM64 et macOS.
 
 Le graphe vient de `cargo tree -e normal,no-proc-macro` (dépendances liées
 seulement : ni build, ni dev, ni macros procédurales, avec la résolution
@@ -35,18 +35,18 @@ OUT = ROOT / "THIRD-PARTY-RUST.txt"
 DELIVERABLES = [
     {
         "key": "app",
-        "title": "bibliothèque de l'app macOS (sillon-ffi, features audio-cpp,ocr)",
+        "title": "bibliothèque de l'app macOS (sillon-ffi, features ocr)",
         "package": "sillon-ffi",
-        "features": "audio-cpp,ocr",
-        "metadata_features": "sillon-ffi/audio-cpp,sillon-ffi/ocr",
+        "features": "ocr",
+        "metadata_features": "sillon-ffi/ocr",
         "targets": ["aarch64-apple-darwin"],
     },
     {
         "key": "terminal",
-        "title": "binaire du terminal (sillon, features audio-cpp,ocr,kokoro-onnx)",
+        "title": "binaire du terminal (sillon, features ocr,kokoro-onnx)",
         "package": "sillon",
-        "features": "audio-cpp,ocr,kokoro-onnx",
-        "metadata_features": "sillon/audio-cpp,sillon/ocr,sillon/kokoro-onnx",
+        "features": "ocr,kokoro-onnx",
+        "metadata_features": "sillon/ocr,sillon/kokoro-onnx",
         "targets": ["x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu", "aarch64-apple-darwin"],
     },
 ]

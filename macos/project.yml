@@ -82,16 +82,6 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         INFOPLIST_KEY_NSHumanReadableCopyright: ""
     postBuildScripts:
-      - name: Joindre le shim audio.cpp
-        basedOnDependencyAnalysis: false
-        script: |
-          SHIM="$SRCROOT/Libraries/libaudiocpp_shim.dylib"
-          if [ -f "$SHIM" ]; then
-            DEST="$TARGET_BUILD_DIR/$FRAMEWORKS_FOLDER_PATH"
-            mkdir -p "$DEST"
-            cp "$SHIM" "$DEST/"
-            codesign --force --sign - "$DEST/libaudiocpp_shim.dylib"
-          fi
       - name: Joindre sillon-espeak (GPL-3.0, programme séparé)
         basedOnDependencyAnalysis: false
         script: |
@@ -142,17 +132,8 @@ targets:
           joindre "$SRCROOT/../THIRD-PARTY-RUST.txt" THIRD-PARTY-RUST.txt
           joindre "$SRCROOT/../third_party/licences/tesseract-LICENSE" tesseract-LICENSE
           joindre "$SRCROOT/../third_party/licences/leptonica-LICENSE" leptonica-LICENSE
-          # Le shim audio.cpp, quand il est joint : audio.cpp (avec un
-          # correctif local) et ce qu'il y compile — ggml, cJSON, libyaml.
-          if [ -f "$SRCROOT/Libraries/libaudiocpp_shim.dylib" ]; then
-            AUDIOCPP="$SRCROOT/../vendor/audio.cpp"
-            joindre "$AUDIOCPP/LICENSE" audiocpp-LICENSE
-            joindre "$AUDIOCPP/external/ggml/LICENSE" ggml-LICENSE
-            joindre "$AUDIOCPP/external/cJSON/LICENSE" cJSON-LICENSE
-            joindre "$AUDIOCPP/external/libyaml/License" libyaml-LICENSE
-          else
-            rm -f "$L/audiocpp-LICENSE" "$L/ggml-LICENSE" "$L/cJSON-LICENSE" "$L/libyaml-LICENSE"
-          fi
+          # audio.cpp n'est plus joint (14 oct. 2026) : ses licences non plus.
+          rm -f "$L/audiocpp-LICENSE" "$L/ggml-LICENSE" "$L/cJSON-LICENSE" "$L/libyaml-LICENSE"
   SillonTests:
     type: bundle.unit-test
     platform: macOS

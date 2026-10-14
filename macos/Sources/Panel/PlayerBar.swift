@@ -45,6 +45,7 @@ struct PlayerBar: View {
                 Text(skipped)
                     .accessibilityIdentifier("phrases-sautees")
             }
+            OutputMenu(model: model)
             // L'écrou : les réglages de la voix, pour en essayer une autre.
             VoiceSettingsButton()
         }
@@ -210,5 +211,47 @@ struct VoiceSettingsButton: View {
         .help("Réglages de la voix (v)")
         .accessibilityLabel("Réglages de la voix")
         .accessibilityIdentifier("reglages-voix")
+    }
+}
+
+/// Les sorties, en liste à cocher : la même dans la barre des menus et dans
+/// le bouton du panneau.
+struct OutputPicker: View {
+    let model: ReaderModel
+
+    var body: some View {
+        Picker("Sortie audio", selection: Binding(get: { model.outputDevice },
+                                                  set: { model.chooseOutput($0) })) {
+            ForEach(AudioOutputChoices.choices(model.outputs, chosen: model.outputDevice)) { choice in
+                Text(choice.title).tag(choice.value)
+            }
+        }
+        .pickerStyle(.inline)
+        .labelsHidden()
+    }
+}
+
+/// Le bouton de sortie audio du panneau : une icône (écouteurs, enceinte,
+/// sortie du système), la liste au clic.
+struct OutputMenu: View {
+    let model: ReaderModel
+
+    var body: some View {
+        Menu {
+            OutputPicker(model: model)
+        } label: {
+            Image(systemName: AudioOutputChoices.symbol(for: model.outputDevice))
+                .font(.system(size: BarButtonMetrics.glyph))
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .frame(width: BarButtonMetrics.target, height: BarButtonMetrics.target)
+        .focusable(false)
+        .help("Sortie audio")
+        .accessibilityLabel("Sortie audio")
+        .accessibilityValue(model.outputDevice.isEmpty
+                            ? AudioOutputChoices.systemTitle(model.outputs) : model.outputDevice)
+        .accessibilityIdentifier("sortie-audio")
     }
 }

@@ -6,7 +6,7 @@ name = "sillon"
 version = "0.2.0"
 edition = "2021"
 rust-version = "1.80"
-description = "Lecteur audio TUI en streaming : lit du markdown pipé ou un fichier, le hiérarchise et le synthétise via audio.cpp"
+description = "Lecteur audio TUI en streaming : lit du markdown pipé ou un fichier, le hiérarchise et le lit à voix haute (Kokoro, ou la voix du système)"
 license = "MIT"
 
 [dependencies]
@@ -46,15 +46,12 @@ libloading = { version = "0.8", optional = true }
 libc = "0.2"
 
 [build-dependencies]
-cmake = { version = "0.1", optional = true }
 # Sonic (accélération de la parole) se compile toujours : deux fichiers C.
 cc = "1.1"
 
 [features]
 # Par défaut le binaire se construit en secondes et se replie sur le TTS système.
 default = ["clipboard"]
-# Compile et lie audio.cpp dans le binaire (nécessite CMake + le submodule vendor/audio.cpp).
-audio-cpp = ["dep:cmake"]
 # Donne accès au presse-papiers : coller du texte ne demande rien de plus.
 clipboard = ["dep:arboard"]
 # Compile Tesseract dans le binaire pour lire images et scans, presse-papiers
@@ -78,29 +75,6 @@ strip = true
 # Le rendu TUI et la synthèse restent fluides même en debug.
 [profile.dev.package."*"]
 opt-level = 2
-
-
-
-
-[[example]]
-name = "switch"
-required-features = ["audio-cpp"]
-
-[[example]]
-name = "switch_app"
-required-features = ["audio-cpp"]
-
-[[example]]
-name = "magpie_bench"
-required-features = ["audio-cpp"]
-
-[[example]]
-name = "voice_cycles"
-required-features = ["audio-cpp"]
-
-[[example]]
-name = "speed_headroom"
-required-features = ["audio-cpp"]
 
 [[example]]
 name = "kokoro_serve"

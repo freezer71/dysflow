@@ -716,6 +716,24 @@ impl App {
 
     // -------------------------------------------------------------- commandes
 
+    /// La sortie audio change (choisie, retirée, rebranchée) : un nouveau
+    /// lecteur, au volume, à la vitesse et au muet de l'ancien, repart de la
+    /// phrase en cours. `resume` : il reprend la lecture, sinon il attend.
+    pub fn replace_player(&mut self, mut player: Player, resume: bool) {
+        let at = self.current_sentence();
+        player.set_volume(self.player.volume());
+        player.set_speed(self.player.speed());
+        if self.player.is_muted() {
+            player.toggle_mute();
+        }
+        self.stop_preview();
+        self.player = player;
+        self.seek_to(at);
+        if resume {
+            self.player.play();
+        }
+    }
+
     pub fn toggle_play(&mut self) {
         // Reprendre la lecture met fin à l'aperçu : les deux ne doivent pas se
         // superposer.
@@ -1331,7 +1349,7 @@ impl App {
     fn activate_model(&mut self) {
         let Some(package) = self.screen.current_package() else {
             self.screen.notice =
-                "aucun modèle disponible : binaire compilé sans audio.cpp".to_string();
+                "aucun modèle disponible : binaire compilé sans `kokoro-onnx`".to_string();
             return;
         };
         if self.screen.download.is_some() {
@@ -1396,7 +1414,7 @@ impl App {
         let Some(path) = models::install_path(package) else { return };
         self.config.engine.model_path = path.to_string_lossy().into_owned();
         self.config.engine.family = package.family.to_string();
-        self.config.engine.engine = "audio_cpp".to_string();
+        self.config.engine.engine = "auto".to_string();
         // Le choix doit survivre au relancement : sans écriture, le premier
         // modèle installé revenait à la place de celui qu'on avait pris.
         self.config_dirty = true;

@@ -86,7 +86,7 @@ final class PanelController {
     /// Une transition (⌘1/2/3, Échap, ⌃⌥S, ⌃⌥Espace, fermeture), retenue
     /// puis appliquée.
     func apply(_ event: DisplayEvent) {
-        let next = store.state.applying(event)
+        let next = store.state.applying(event, playing: model.snapshot.playing)
         store.state = next
         present(next.current)
     }

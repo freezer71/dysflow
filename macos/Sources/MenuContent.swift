@@ -42,6 +42,11 @@ struct MenuContent: View {
         if hasDocument, let line = PlaybackTime.menuLine(elapsed: s?.elapsed, total: s?.total) {
             Text(line)
         }
+        Menu("Sortie audio") {
+            if let model {
+                OutputPicker(model: model)
+            }
+        }
         Divider()
         Text(voiceLine)
         if Onboarding.needsReminder {

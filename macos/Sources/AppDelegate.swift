@@ -32,6 +32,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// tests (il prendrait les touches média de l'utilisateur).
     private(set) var nowPlaying: NowPlaying?
     private var menuObserver: NSObjectProtocol?
+    /// Les sorties audio branchées ou retirées : la liste se relit.
+    private var outputWatcher: AudioDeviceWatcher?
     /// Les pages de notes ; leur fenêtre s'ouvre quand on lance sillon soi-même.
     private(set) var notes: NotesWindowController?
     /// Lancé par macOS à l'ouverture de session : la fenêtre des notes ne
@@ -123,6 +125,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             panel.apply(.readSelection)
         }
         menuObserver = Self.refreshWhenAMenuOpens { [model] in model?.refresh() }
+        outputWatcher = AudioDeviceWatcher { [weak model] in model?.refreshOutputs() }
+        Task { [model] in await model?.loadOutput() }
         if !readerIsSilent { installNowPlaying() }
         // Le mode laissé à la dernière fermeture (sous les tests : suite
         // vidée, donc l'arrière-plan).

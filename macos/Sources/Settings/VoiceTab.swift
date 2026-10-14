@@ -60,6 +60,14 @@ struct VoiceTab: View {
             // Vitesse et volume s'appliquent au son, tout de suite et avec
             // toutes les voix, celle du système comprise.
             SettingsGroup(title: "Son") {
+                SettingRow(title: "Sortie audio",
+                           detail: "Le son ne sort que par là : débranchée, la lecture se met en pause") {
+                    PopUpPicker(label: "Sortie audio", identifier: "sortie-audio",
+                                options: AudioOutputChoices.choices(model.outputs, chosen: model.outputDevice)
+                                    .map { ($0.title, $0.value) },
+                                selection: Binding(get: { model.outputDevice }, set: { model.chooseOutput($0) }))
+                        .frame(width: 240)
+                }
                 SettingRow(title: "Vitesse", detail: "Raccourcis du panneau : + et −") {
                     Slider(value: rounded(\.speed), in: 0.5...3, step: 0.05) {
                         Text("Vitesse : \(SettingFormat.decimal(store.values.speed))×")

@@ -5,7 +5,7 @@
 //! configuration de la machine. Diagnostic, pas régression : ignoré par défaut.
 //!
 //! ```sh
-//! cargo test --release --features audio-cpp --test startup_timing -- --ignored --nocapture
+//! cargo test --release --features kokoro-onnx --test startup_timing -- --ignored --nocapture
 //! ```
 
 use sillon::config::Config;
@@ -144,7 +144,7 @@ fn what_the_parsing_costs_before_the_model_starts_loading() {
 /// mesure par processus, à comparer entre lancements.
 ///
 /// ```sh
-/// WORKERS=1 cargo test --release --features audio-cpp --test startup_timing \
+/// WORKERS=1 cargo test --release --features kokoro-onnx --test startup_timing \
 ///     -- --ignored --nocapture what_the_pool
 /// ```
 #[test]

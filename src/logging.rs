@@ -1,6 +1,6 @@
 //! Journalisation des sorties natives.
 //!
-//! ggml et audio.cpp écrivent copieusement sur `stderr` — initialisation Metal,
+//! Les bibliothèques natives (ONNX Runtime, espeak-ng) écrivent sur `stderr` — initialisation Metal,
 //! compilation des noyaux, allocations. En plein écran, ces lignes se mêleraient
 //! au rendu et le disloqueraient. Elles sont donc détournées vers un fichier, où
 //! elles restent consultables, plutôt que supprimées.

@@ -4,7 +4,7 @@ import XCTest
 final class AdvancedTabTests: XCTestCase {
     func testEnginesAndComputeAreNamedAndKeepAHandWrittenValue() {
         XCTAssertEqual(AdvancedTab.engineOptions(current: "auto").map(\.title),
-                       ["Automatique", "audio.cpp", "Voix du système"])
+                       ["Automatique", "Voix du système"])
         XCTAssertEqual(AdvancedTab.computeOptions(current: "metal").map(\.value), ["metal", "cpu"])
         XCTAssertEqual(AdvancedTab.computeOptions(current: "cuda").map(\.value), ["metal", "cpu", "cuda"])
     }

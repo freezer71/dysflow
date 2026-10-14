@@ -313,7 +313,7 @@ mod tests {
         Reader::new(
             config,
             Box::new(|_| Arc::new(SilentEngine) as Arc<dyn TtsEngine>),
-            Box::new(Player::silent),
+            Box::new(|_: &str| Player::silent()),
             Instant::now(),
         )
     }
@@ -351,8 +351,7 @@ mod tests {
         let mut r = offline_reader(on_supertonic());
         assert!(r.migrate_voice(Instant::now()).is_some());
         assert_eq!(r.config().engine.family, "kokoro");
-        // Le retour tel que « Modèle actif » l'écrit (le paquet Supertonic
-        // n'est proposé qu'avec audio.cpp compilé).
+        // Le retour tel qu'une ancienne version l'écrivait (Supertonic).
         let mut back = r.config().clone();
         back.engine.family = "supertonic".into();
         back.engine.model_path = on_supertonic().engine.model_path;

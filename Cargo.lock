@@ -2704,7 +2704,6 @@ dependencies = [
  "arboard",
  "cc",
  "clap",
- "cmake",
  "crossbeam-channel",
  "crossterm",
  "dirs",

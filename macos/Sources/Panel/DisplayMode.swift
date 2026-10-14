@@ -39,19 +39,34 @@ struct DisplayState: Equatable {
         }
     }
 
-    func applying(_ event: DisplayEvent) -> DisplayState {
+    /// `playing` : la voix lit. Fermer le moyen ou le grand ne retire alors
+    /// pas la fenêtre : la barre du mode petit reste, pour garder la main sur
+    /// le son. Depuis la barre, la fermeture la retire, lecture comprise.
+    func applying(_ event: DisplayEvent, playing: Bool = false) -> DisplayState {
         switch event {
         case .choose(let mode):
             return DisplayState(current: mode, lastVisible: lastVisible)
         case .escape:
-            let next: DisplayMode = current == .large ? .medium : .background
-            return DisplayState(current: next, lastVisible: lastVisible)
+            if current == .large { return DisplayState(current: .medium, lastVisible: lastVisible) }
+            return closing(playing: playing)
         case .hide:
-            return DisplayState(current: .background, lastVisible: lastVisible)
+            return closing(playing: playing)
         case .showLast:
             return DisplayState(current: lastVisible, lastVisible: lastVisible)
         case .readSelection:
             return current.isVisible ? self : DisplayState(current: .medium, lastVisible: lastVisible)
         }
+    }
+
+    /// La fenêtre se ferme : l'arrière-plan, sauf pendant la lecture depuis
+    /// le moyen ou le grand, où la barre prend sa place. « Afficher sillon »
+    /// rendra ensuite le mode fermé, pas la barre.
+    private func closing(playing: Bool) -> DisplayState {
+        guard playing, current == .medium || current == .large else {
+            return DisplayState(current: .background, lastVisible: lastVisible)
+        }
+        var next = DisplayState(current: .small, lastVisible: lastVisible)
+        next.lastVisible = current
+        return next
     }
 }

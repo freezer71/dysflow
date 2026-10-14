@@ -33,6 +33,7 @@ enum SettingsDiff {
         if new.lineSpacing != old.lineSpacing { p.lineSpacing = new.lineSpacing }
         if new.readingRuler != old.readingRuler { p.readingRuler = new.readingRuler }
         if new.keepVoiceMinutes != old.keepVoiceMinutes { p.keepVoiceMinutes = new.keepVoiceMinutes }
+        if new.outputDevice != old.outputDevice { p.outputDevice = new.outputDevice }
         let before = Dictionary(old.extra.map { ($0.key, $0.value) }, uniquingKeysWith: { $1 })
         let after = Dictionary(new.extra.map { ($0.key, $0.value) }, uniquingKeysWith: { $1 })
         p.extraSet = new.extra.filter { before[$0.key] != $0.value }

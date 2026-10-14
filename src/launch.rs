@@ -45,15 +45,15 @@ pub struct Args {
     #[arg(long)]
     pub language: Option<String>,
 
-    /// Moteur de synthèse : auto, audio_cpp ou system.
+    /// Moteur de synthèse : auto ou system.
     #[arg(long)]
     pub engine: Option<String>,
 
-    /// Chemin du modèle audio.cpp (répertoire ou GGUF).
+    /// Chemin du modèle (Kokoro).
     #[arg(long)]
     pub model: Option<String>,
 
-    /// Famille audio.cpp, par exemple supertonic.
+    /// Famille du modèle, par exemple kokoro.
     #[arg(long)]
     pub family: Option<String>,
 
@@ -199,15 +199,8 @@ pub fn prepare(args: &Args) -> Result<Launch> {
         anyhow::bail!("aucun contenu lisible");
     }
 
-    let mut app = App::new(
-        builder,
-        stream,
-        engine,
-        config,
-        source,
-        notices,
-        crate::audio::Player::new(),
-    );
+    let player = crate::audio::Player::with_output(&config.app.output_device);
+    let mut app = App::new(builder, stream, engine, config, source, notices, player);
     // Un fichier a une identité stable : sa lecture reprend où elle en était.
     // Un flux et un collage n'en ont pas — la même position leur désignerait
     // un autre texte.
@@ -354,8 +347,8 @@ fn migrate_terminal_in(
             config.engine.model_path = path.to_string_lossy().into_owned();
             config.engine.family = package.family.to_string();
             // « system » ferait parler la voix du système : l'avis mentirait.
-            if config.engine.engine == "auto" || config.engine.engine == "system" {
-                config.engine.engine = "audio_cpp".to_string();
+            if config.engine.engine == "system" {
+                config.engine.engine = "auto".to_string();
             }
             config.align_voice_with_family();
             config.app.voice_migration = KOKORO_MIGRATION;
@@ -426,9 +419,6 @@ fn adopt_installed_model(config: &mut Config, notices: &mut Vec<String>) {
             if let Some(path) = crate::models::install_path(package) {
                 config.engine.model_path = path.to_string_lossy().into_owned();
                 config.engine.family = package.family.to_string();
-                if config.engine.engine == "auto" {
-                    config.engine.engine = "audio_cpp".to_string();
-                }
             }
         }
         None => {
@@ -462,7 +452,7 @@ fn apply_overrides(config: &mut Config, args: &Args, notices: &mut Vec<String>) 
     }
     if let Some(v) = &args.engine {
         if tts::EnginePreference::parse(v).is_none() {
-            anyhow::bail!("moteur inconnu : {v} (attendu : auto, audio_cpp ou system)");
+            anyhow::bail!("moteur inconnu : {v} (attendu : auto ou system)");
         }
         config.engine.engine = v.clone();
     }

@@ -201,7 +201,7 @@ mod tests {
     fn construction_does_not_wait_for_the_model() {
         let counter = Arc::new(AtomicUsize::new(0));
         let start = Instant::now();
-        let engine = LazyEngine::spawn("audio.cpp".into(), 3, fallback(&counter), || {
+        let engine = LazyEngine::spawn("Kokoro".into(), 3, fallback(&counter), || {
             thread::sleep(Duration::from_millis(400));
             Ok(Arc::new(Stub("réel", Arc::new(AtomicUsize::new(0)))) as Arc<dyn TtsEngine>)
         });
@@ -227,7 +227,7 @@ mod tests {
         .splitting_first_clause();
         assert!(engine.is_loading());
         assert!(engine.splits_first_clause());
-        let plain = LazyEngine::spawn("audio.cpp".into(), 1, fallback(&counter), || {
+        let plain = LazyEngine::spawn("Kokoro".into(), 1, fallback(&counter), || {
             Ok(Arc::new(Stub("réel", Arc::new(AtomicUsize::new(0)))) as Arc<dyn TtsEngine>)
         });
         assert!(!plain.splits_first_clause(), "sans annonce, pas de coupe");
@@ -310,7 +310,7 @@ mod tests {
     #[test]
     fn a_failed_load_falls_back_instead_of_going_silent() {
         let counter = Arc::new(AtomicUsize::new(0));
-        let engine = LazyEngine::spawn("audio.cpp".into(), 2, fallback(&counter), || {
+        let engine = LazyEngine::spawn("Kokoro".into(), 2, fallback(&counter), || {
             Err(anyhow!("modèle introuvable"))
         });
         engine.open_session().expect("le repli doit prendre le relais");
@@ -325,7 +325,7 @@ mod tests {
         let counted = Arc::clone(&loads);
         let counter = Arc::new(AtomicUsize::new(0));
         let engine = Arc::new(LazyEngine::spawn(
-            "audio.cpp".into(),
+            "Kokoro".into(),
             4,
             fallback(&counter),
             move || {

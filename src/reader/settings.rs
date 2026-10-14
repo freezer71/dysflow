@@ -54,6 +54,8 @@ pub struct SettingsView {
     pub reading_ruler: bool,
     // [app]
     pub keep_voice_minutes: i64,
+    /// La sortie audio choisie ; vide : celle du système.
+    pub output_device: String,
     // [extra]
     pub extra: BTreeMap<String, String>,
     /// `[voice.per_language]` : la voix de chaque langue (Kokoro).
@@ -92,6 +94,7 @@ impl SettingsView {
             line_spacing: c.reading.line_spacing,
             reading_ruler: c.reading.reading_ruler,
             keep_voice_minutes: c.app.keep_voice_minutes,
+            output_device: c.app.output_device.clone(),
             extra: c.extra.clone(),
             voices_by_language: c.voice.per_language.clone(),
         }
@@ -132,6 +135,7 @@ pub struct SettingsPatch {
     pub line_spacing: Option<u32>,
     pub reading_ruler: Option<bool>,
     pub keep_voice_minutes: Option<i64>,
+    pub output_device: Option<String>,
     /// Options libres posées ou remplacées.
     pub extra_set: Vec<(String, String)>,
     /// Options libres retirées.
@@ -176,6 +180,7 @@ impl SettingsPatch {
         set(&mut c.reading.line_spacing, &self.line_spacing);
         set(&mut c.reading.reading_ruler, &self.reading_ruler);
         set(&mut c.app.keep_voice_minutes, &self.keep_voice_minutes);
+        set(&mut c.app.output_device, &self.output_device);
         if let Some((language, voice)) = &self.voice_for_language {
             c.voice.per_language.insert(language.clone(), voice.clone());
         }
@@ -350,7 +355,11 @@ impl Reader {
                 app.apply_effect(Effect::Resynthesize);
             }
         }
+        let output_changed = before.app.output_device != next.app.output_device;
         self.config = next;
+        if output_changed {
+            self.switch_output();
+        }
         match effect {
             SettingsEffect::Reload => self.reload_voice(now),
             SettingsEffect::Reparse => self.reparse(now),
@@ -620,30 +629,19 @@ mod tests {
         Reader::new(
             config,
             Box::new(|_| Arc::new(SilentEngine) as Arc<dyn TtsEngine>),
-            Box::new(Player::silent),
+            Box::new(|_: &str| Player::silent()),
             Instant::now(),
         )
     }
 
     #[test]
     fn capabilities_follow_the_active_family() {
-        // Supertonic, retiré du catalogue : plus de voix nommées ni de langues
-        // propres, mais ce que le moteur lit reste dit (`model_path` à la main).
+        // Supertonic, retiré avec audio.cpp : une famille inconnue.
         let supertonic = reader_on("supertonic").capabilities();
         assert_eq!(supertonic.family, "supertonic");
         assert!(supertonic.voices.is_empty());
-        assert_eq!(supertonic.languages.len(), 7);
-        assert!(supertonic.honoured.contains(&"speaking_rate".to_string()));
-        assert!(!supertonic.honoured.contains(&"temperature".to_string()));
+        assert!(supertonic.honoured.is_empty());
         assert!(!supertonic.requires_reference);
-
-        // MagpieTTS : température, top-k et guidage restent honorés.
-        let magpie = reader_on("magpie_tts").capabilities();
-        assert!(magpie.voices.is_empty());
-        for key in ["temperature", "top_k", "guidance_scale"] {
-            assert!(magpie.honoured.contains(&key.to_string()), "{key}");
-        }
-        assert!(!magpie.honoured.contains(&"speaking_rate".to_string()));
 
         // Famille inconnue : rien n'est affirmé.
         let unknown = reader_on("").capabilities();
@@ -709,7 +707,7 @@ mod tests {
         Reader::new(
             config,
             Box::new(|_| Arc::new(SilentEngine) as Arc<dyn TtsEngine>),
-            Box::new(Player::silent),
+            Box::new(|_: &str| Player::silent()),
             Instant::now(),
         )
     }
@@ -726,7 +724,7 @@ mod tests {
                 counter.fetch_add(1, Ordering::SeqCst);
                 Arc::new(SilentEngine) as Arc<dyn TtsEngine>
             }),
-            Box::new(Player::silent),
+            Box::new(|_: &str| Player::silent()),
             Instant::now(),
         );
         (r, loads)
@@ -780,6 +778,7 @@ mod tests {
             line_spacing: Some(2),
             reading_ruler: Some(false),
             keep_voice_minutes: Some(30),
+            output_device: Some("Casque".into()),
             extra_set: vec![("cfg_scale".into(), "3".into())],
             extra_remove: vec![],
             voice_for_language: Some(("en".into(), "am_fenrir".into())),
@@ -814,6 +813,7 @@ mod tests {
             line_spacing: 2,
             reading_ruler: false,
             keep_voice_minutes: 30,
+            output_device: "Casque".into(),
             extra: BTreeMap::from([("cfg_scale".to_string(), "3".to_string())]),
             voices_by_language: BTreeMap::from([("en".to_string(), "am_fenrir".to_string())]),
         };
@@ -886,7 +886,7 @@ mod tests {
         let mut r = Reader::new(
             config,
             Box::new(|_| Arc::new(SilentEngine) as Arc<dyn TtsEngine>),
-            Box::new(Player::silent),
+            Box::new(|_: &str| Player::silent()),
             Instant::now(),
         );
         let before = r.settings();
@@ -1187,7 +1187,7 @@ mod tests {
                 log.lock().unwrap().push(c.engine.model_path.clone());
                 Arc::new(SilentEngine) as Arc<dyn TtsEngine>
             }),
-            Box::new(Player::silent),
+            Box::new(|_: &str| Player::silent()),
             Instant::now(),
         );
         r.open_text("Un. Deux.", "a", Instant::now());

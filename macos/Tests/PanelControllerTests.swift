@@ -59,7 +59,12 @@ final class PanelControllerTests: XCTestCase {
         XCTAssertTrue(waitUntil { c.model.refresh(); return c.model.snapshot.playing })
         c.announce(c.model.snapshot)  // sans effet si la vue l'a déjà dit
         XCTAssertEqual(posted, ["Lecture"], "« Lecture » dit une fois")
-        c.collapseOrHide()  // arrière-plan : la lecture continue
+        // Pendant la lecture, la fermeture laisse la barre ; fermée à son
+        // tour, la fenêtre part en arrière-plan, la lecture continue.
+        c.collapseOrHide()
+        XCTAssertEqual(c.mode, .small)
+        c.collapseOrHide()
+        XCTAssertEqual(c.mode, .background)
         XCTAssertNil(c.announcementText(for: c.model.snapshot), "rien en arrière-plan")
         c.model.send(.pause)
         XCTAssertTrue(waitUntil { c.model.refresh(); return !c.model.snapshot.playing })
@@ -248,14 +253,20 @@ final class PanelControllerTests: XCTestCase {
         XCTAssertTrue(c.window.titlebarAppearsTransparent)
     }
 
-    func testEscapeGoesFromLargeToMediumThenToTheBackgroundWithoutPausing() {
+    /// Pendant la lecture, Échap mène du grand au moyen, puis à la barre du
+    /// mode petit (on garde la main sur le son), puis à l'arrière-plan.
+    func testEscapeGoesFromLargeToMediumThenToTheMiniPlayerWithoutPausing() {
         let c = shownPanel("Un. Deux.")
         c.perform(.display(.large))
         settle(c)
         c.perform(.command(.togglePlay))
+        XCTAssertTrue(waitUntil { c.model.refresh(); return c.model.snapshot.playing })
         let commands = c.model.commandCount
         c.perform(.collapseOrHide)
         XCTAssertEqual(c.mode, .medium)
+        settle(c)
+        c.perform(.collapseOrHide)
+        XCTAssertEqual(c.mode, .small)
         settle(c)
         c.perform(.collapseOrHide)
         XCTAssertEqual(c.mode, .background)

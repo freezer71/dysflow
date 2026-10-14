@@ -43,7 +43,7 @@ impl Reader {
         }
         let engine = self.ensure_engine();
         if self.lone_preview.is_none() {
-            let player = (self.players)();
+            let player = (self.players)(&self.config.app.output_device);
             self.lone_preview = Some(LonePreview { previewer: Previewer::new(Arc::clone(&engine)), player });
         }
         let lone = self.lone_preview.as_mut().expect("posé juste au-dessus");
@@ -152,7 +152,7 @@ mod tests {
                 counter.fetch_add(1, Ordering::SeqCst);
                 engine()
             }),
-            Box::new(Player::silent),
+            Box::new(|_: &str| Player::silent()),
             Instant::now(),
         );
         (r, loads)
@@ -251,7 +251,7 @@ mod tests {
         let mut config = Config::default();
         config.app.keep_voice_minutes = 0;
         let voice = Arc::clone(&engine);
-        let mut r = Reader::new(config, Box::new(move |_| Arc::clone(&voice)), Box::new(Player::silent), Instant::now());
+        let mut r = Reader::new(config, Box::new(move |_| Arc::clone(&voice)), Box::new(|_: &str| Player::silent()), Instant::now());
         r.set_persistent(false);
         let t0 = Instant::now();
         r.ensure_engine();

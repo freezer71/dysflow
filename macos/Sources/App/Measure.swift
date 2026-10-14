@@ -282,8 +282,8 @@ enum Measure {
     }
 
     /// Attend que la voix demandée soit prête (60 s au plus). Une voix de repli,
-    /// un modèle absent, ou une voix « prête » d'un autre moteur (audio.cpp sur
-    /// un `.safetensors`, muette) n'est pas Kokoro MLX : la mesure s'arrête,
+    /// un modèle absent, ou une voix « prête » d'un autre moteur (un moteur qui
+    /// ne sait pas lire le `.safetensors`, muet) n'est pas Kokoro MLX : la mesure s'arrête,
     /// elle ne mesurerait pas ce que la spec demande.
     private static func attendreVoixKokoro(_ reader: SillonReader) async throws {
         let debut = ContinuousClock.now

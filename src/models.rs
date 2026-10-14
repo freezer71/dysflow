@@ -34,8 +34,6 @@ impl Companion {
 /// Ce qu'un paquet demande pour se charger.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Runtime {
-    /// Une famille compilée dans audio.cpp.
-    AudioCpp,
     /// Kokoro en MLX : seulement dans l'app, qui fournit le calcul.
     KokoroMlx,
     /// Kokoro par ONNX Runtime : seulement avec la feature `kokoro-onnx`.
@@ -175,12 +173,9 @@ const KOKORO_VOICES_LABEL: &str = "Française : p-fenrir60 · Anglaise : af_bell
 /// Modèles proposés à l'installation : Kokoro seul, en MLX (l'app) ou en
 /// int8 par ONNX Runtime (le terminal). Sans lui, la voix du système lit.
 ///
-/// Supertonic et MagpieTTS n'y sont plus (14 oct. 2026) : un seul modèle,
-/// c'est un choix de moins à faire. Le moteur audio.cpp reste compilable, et
-/// un `model_path` posé à la main le charge encore.
-///
-/// Restreint aux familles réellement compilées dans le binaire : proposer un
-/// modèle que le moteur ne saurait pas charger n'aiderait personne.
+/// Supertonic et MagpieTTS n'y sont plus (14 oct. 2026), et leur moteur,
+/// audio.cpp, est sorti du projet le même jour : un seul modèle, c'est un
+/// choix de moins à faire.
 pub const CATALOG: &[ModelPackage] = &[
     ModelPackage {
         id: "kokoro_82m_mlx",
@@ -222,27 +217,15 @@ pub const CATALOG: &[ModelPackage] = &[
     },
 ];
 
-/// Familles compilées dans ce binaire, renseignées par `build.rs`.
-pub fn compiled_families() -> Vec<&'static str> {
-    option_env!("SILLON_COMPILED_FAMILIES")
-        .unwrap_or("")
-        .split(',')
-        .map(str::trim)
-        .filter(|f| !f.is_empty())
-        .collect()
-}
-
 /// Catalogue restreint à ce que ce binaire sait charger.
 ///
-/// audio.cpp : les familles compilées. Kokoro MLX : seulement quand l'app
-/// fournit le calcul (`mlx`), et alors jamais le paquet ONNX à côté. Kokoro
-/// int8 : seulement avec la feature `kokoro-onnx`.
+/// Kokoro MLX : seulement quand l'app fournit le calcul (`mlx`), et alors
+/// jamais le paquet ONNX à côté. Kokoro int8 : seulement avec la feature
+/// `kokoro-onnx`.
 pub fn available_with(mlx: bool) -> Vec<&'static ModelPackage> {
-    let families = compiled_families();
     CATALOG
         .iter()
         .filter(|p| match p.runtime {
-            Runtime::AudioCpp => families.contains(&p.family),
             Runtime::KokoroMlx => mlx,
             Runtime::KokoroOnnx => !mlx && cfg!(feature = "kokoro-onnx"),
         })
@@ -795,15 +778,6 @@ pub fn sessions_for_family(family: &str) -> u32 {
         .map(|n| n.get() as u32)
         .unwrap_or(4);
     match family {
-        // Mesuré à vingt fois le temps réel sur une session : elle reste loin
-        // devant la lecture, et les sauts n'attendent que 0,25 s.
-        "supertonic" => 1,
-        // MagpieTTS sature le GPU à lui seul : trois sessions produisent six
-        // phrases en 29,4 s, une seule en 29,6 s (M5, Metal). Le débit est le
-        // même, mais à trois les phrases se partagent le GPU et celle dont la
-        // lecture a besoin arrive tard — la deuxième à 29 s au lieu de 13.
-        // Une session : le silence après la première phrase passe de 23 s à 7.
-        "magpie_tts" => 1,
         // Kokoro calcule en série (MLX comme ORT) : une session.
         "kokoro" => 1,
         // Les familles inconnues sont supposées lentes et parallélisables, la
@@ -819,29 +793,6 @@ pub fn sessions_for_family(family: &str) -> u32 {
 /// ment pas : mieux vaut dire d'avance ce qui restera sans suite.
 pub fn honoured_options(family: &str) -> &'static [&'static str] {
     match family {
-        // Relevé sur `generation_options_from_request` de Supertonic : tout le
-        // reste — hauteur, énergie, intonation, consigne — est ignoré.
-        "supertonic" => &[
-            "voice",
-            "language",
-            "speaking_rate",
-            "seed",
-            "num_inference_steps",
-        ],
-        // Relevé sur les options de requête de MagpieTTS. Il n'expose aucun
-        // contrôle de débit — la vitesse de lecture, appliquée au son, y vaut
-        // quand même. Il valide par ailleurs
-        // sa requête et refuse toute clé absente de cette liste.
-        "magpie_tts" => &[
-            "voice",
-            "voice_id",
-            "speaker",
-            "language",
-            "temperature",
-            "top_k",
-            "guidance_scale",
-            "seed",
-        ],
         // Kokoro : la voix et la langue ; la vitesse s'applique au son.
         "kokoro" => &["voice", "language"],
         // Famille inconnue : on n'affirme rien, tout est présenté comme possible.
@@ -888,26 +839,6 @@ pub fn voice_for_language(family: &str, language: &str, configured: Option<&str>
         .map_or_else(|| default_voice_for_language(family, code), |v| v.id)
 }
 
-/// Orthographes possibles de l'option qui porte le nom de la voix.
-///
-/// La plupart des familles reçoivent la voix par le conditionnement de
-/// locuteur du shim (`cached_voice_id`). MagpieTTS fait exception : il ne la
-/// lit que dans les options de requête, et l'y omettre fait parler ses cinq
-/// locuteurs d'une seule et même voix, sans le moindre message d'erreur.
-///
-/// Le nom exact dépend du **paquet** et non de la famille — deux variantes du
-/// même modèle n'embarquent pas la même spécification — d'où une liste de
-/// candidats plutôt qu'une valeur unique.
-pub fn voice_option_keys(family: &str) -> &'static [&'static str] {
-    match family {
-        // Deux orthographes coexistent selon la version du paquet : la
-        // variante quantifiée attend `voice_id`, celle en précision d'origine
-        // `speaker`. La session essaie l'une puis l'autre.
-        "magpie_tts" => &["voice_id", "speaker"],
-        _ => &[],
-    }
-}
-
 /// Vrai si la famille prend en compte ce réglage.
 pub fn honours(family: &str, option: &str) -> bool {
     let honoured = honoured_options(family);
@@ -922,7 +853,7 @@ pub const FALLBACK_LANGUAGES: &[&str] = &["fr", "en", "de", "es", "it", "pt", "n
 ///
 /// Toutes les variantes d'une famille partagent la même liste ; le catalogue
 /// entier est consulté, pas seulement ce que ce binaire sait charger, pour
-/// que l'écran dise juste même compilé sans audio.cpp.
+/// que l'écran dise juste même compilé sans Kokoro.
 pub fn languages_for_family(family: &str) -> Vec<&'static str> {
     CATALOG
         .iter()
@@ -938,8 +869,6 @@ mod tests {
     #[test]
     fn languages_follow_the_family() {
         assert_eq!(languages_for_family("kokoro"), ["fr", "en"]);
-        // Une famille retirée du catalogue est une famille inconnue.
-        assert_eq!(languages_for_family("supertonic"), FALLBACK_LANGUAGES.to_vec());
         // Famille inconnue : les sept que le terminal proposait.
         assert_eq!(languages_for_family(""), FALLBACK_LANGUAGES.to_vec());
     }
@@ -954,9 +883,8 @@ mod tests {
     }
 
     #[test]
-    fn magpie_gets_a_single_session_and_supertonic_too() {
-        assert_eq!(sessions_for_family("magpie_tts"), 1);
-        assert_eq!(sessions_for_family("supertonic"), 1);
+    fn kokoro_gets_a_single_session() {
+        assert_eq!(sessions_for_family("kokoro"), 1);
         assert!(sessions_for_family("inconnue") >= 2);
     }
 
@@ -1141,18 +1069,6 @@ mod tests {
     }
 
     #[test]
-    fn magpie_admits_what_it_leaves_untouched() {
-        for honoured in ["voice", "language", "temperature", "top_k", "guidance_scale", "seed"] {
-            assert!(honours("magpie_tts", honoured), "{honoured}");
-        }
-        // Comme Supertonic pour l'instruction, il reçoit sans consulter.
-        assert!(!honours("magpie_tts", "speaking_rate"));
-        for ignored in ["pitch_shift", "energy", "emotion", "instruction", "top_p"] {
-            assert!(!honours("magpie_tts", ignored), "{ignored}");
-        }
-    }
-
-    #[test]
     fn sizes_are_formatted_readably() {
         assert_eq!(human_size(512), "512 o");
         assert_eq!(human_size(2 * 1024), "2,0 Ko");
@@ -1168,35 +1084,16 @@ mod tests {
     #[test]
     fn unknown_families_offer_no_named_voice() {
         assert!(voices_for_family("inconnue").is_empty());
-        // Retirées du catalogue, Supertonic et MagpieTTS n'en nomment plus.
-        assert!(voices_for_family("supertonic").is_empty());
-        assert!(voices_for_family("magpie_tts").is_empty());
     }
 
     #[test]
     fn setting_support_is_reported_per_family() {
-        // Supertonic ignore la température : il ne faut pas la présenter
+        // Kokoro ignore la température : il ne faut pas la présenter
         // comme agissante.
-        assert!(!honours("supertonic", "temperature"));
-        assert!(honours("supertonic", "seed"));
-        assert!(honours("supertonic", "num_inference_steps"));
+        assert!(!honours("kokoro", "temperature"));
         // Famille inconnue : aucune affirmation, tout reste proposé.
         assert!(honours("inconnue", "temperature"));
     }
-
-    #[test]
-    fn supertonic_admits_what_it_leaves_untouched() {
-        // Ce que le modèle lit vraiment.
-        for honoured in ["voice", "language", "speaking_rate", "seed", "num_inference_steps"] {
-            assert!(honours("supertonic", honoured), "{honoured}");
-        }
-        // Ce qu'il reçoit sans jamais le consulter : l'annoncer évite de
-        // régler pendant dix minutes une hauteur qui ne bougera pas.
-        for ignored in ["pitch_shift", "energy", "emotion", "instruction"] {
-            assert!(!honours("supertonic", ignored), "{ignored}");
-        }
-    }
-
 
     #[test]
     fn no_two_packages_of_a_family_are_the_same_file() {
