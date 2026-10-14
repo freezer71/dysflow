@@ -1,5 +1,7 @@
 # Des réglages complets dans l'app macOS
 
+> **Document historique** — état au 6 oct. 2026 ; audio.cpp, Supertonic et MagpieTTS ont été retirés le 14 oct. 2026.
+
 Conception validée le 2026-10-06. Elle prolonge
 `2026-10-05-interface-macos-design.md` : l'app expose désormais **tout** ce que
 le moteur sait régler, au lieu de 8 réglages sur une quarantaine.

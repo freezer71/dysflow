@@ -1,5 +1,7 @@
 # Une interface macOS : lire d'un raccourci
 
+> **Document historique** — état au 5 oct. 2026 ; audio.cpp, Supertonic et MagpieTTS ont été retirés le 14 oct. 2026.
+
 Conception validée section par section le 2026-10-05. Elle remplace
 l'interface egui retirée le 18 septembre (`5c2a0fe`).
 
