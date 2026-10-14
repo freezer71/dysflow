@@ -5,7 +5,9 @@ func text(_ s: String) -> SavedItem {
     SavedItem(types: [SavedType(type: "public.utf8-plain-text", data: Data(s.utf8))])
 }
 
-final class FakePasteboard: PasteboardAccess {
+/// Envoyé à la tâche de la copie tardive (`FakeKeys.delay`) : le test ne
+/// le touche plus pendant ce temps.
+final class FakePasteboard: PasteboardAccess, @unchecked Sendable {
     private var count = 0
     private var reads = 0
     /// Simule une copie qui arrive pile entre la fin de l'attente et le dernier coup d'œil.

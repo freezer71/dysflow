@@ -54,21 +54,21 @@ struct PlayerBar: View {
     }
 
     /// La vitesse à la française, virgule décimale, à l'écran comme à l'oral.
-    static func speedText(_ speed: Float) -> String { decimal(speed) + "×" }
-    static func speedSpoken(_ speed: Float) -> String { decimal(speed) + " fois" }
-    private static func decimal(_ speed: Float) -> String {
+    nonisolated static func speedText(_ speed: Float) -> String { decimal(speed) + "×" }
+    nonisolated static func speedSpoken(_ speed: Float) -> String { decimal(speed) + " fois" }
+    nonisolated private static func decimal(_ speed: Float) -> String {
         String(format: "%.1f", speed).replacingOccurrences(of: ".", with: ",")
     }
 
     /// Le volume, seulement s'il n'est pas plein : « Muet » ou « 60 % ».
-    static func volumeText(volume: Float, muted: Bool) -> String? {
+    nonisolated static func volumeText(volume: Float, muted: Bool) -> String? {
         if muted { return "Muet" }
         let percent = Int((volume * 100).rounded())
         return percent >= 100 ? nil : "\(percent) %"
     }
 
     /// Les phrases que la voix n'a pas su dire, comme au terminal.
-    static func skippedText(_ count: UInt32) -> String? {
+    nonisolated static func skippedText(_ count: UInt32) -> String? {
         switch count {
         case 0: return nil
         case 1: return "1 phrase sautée"
@@ -76,7 +76,7 @@ struct PlayerBar: View {
         }
     }
 
-    static func time(_ seconds: Double?) -> String {
+    nonisolated static func time(_ seconds: Double?) -> String {
         guard let seconds, seconds.isFinite else { return "–:––" }
         let t = Int(max(0, seconds).rounded())
         return String(format: "%d:%02d", t / 60, t % 60)
@@ -90,7 +90,7 @@ struct Timeline: View {
     let theme: Theme
 
     /// La part lue, bornée à 0…1 (0 si la valeur n'a pas de sens).
-    static func clamped(_ p: Double) -> Double {
+    nonisolated static func clamped(_ p: Double) -> Double {
         p.isFinite ? min(max(p, 0), 1) : 0
     }
 
@@ -200,9 +200,11 @@ struct SpeedLabel: View {
 
 /// L'écrou : les réglages de la voix (onglet Voix).
 struct VoiceSettingsButton: View {
+    @Environment(\.openSettingsTab) private var openSettings
+
     var body: some View {
         Button {
-            SettingsOpener.shared.open(tab: .voice)
+            openSettings(.voice)
         } label: {
             Image(systemName: "gearshape")
                 .font(.system(size: BarButtonMetrics.glyph))

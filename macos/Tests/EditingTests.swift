@@ -5,11 +5,11 @@ import XCTest
 final class EditingTests: XCTestCase {
     private var controller: PanelController!
 
-    override func tearDown() {
+    override func tearDown() async throws {
         controller?.collapseOrHide()
         controller?.collapseOrHide()
         controller = nil
-        super.tearDown()
+        try await super.tearDown()
     }
 
     private func shownPanel(_ text: String) -> PanelController {

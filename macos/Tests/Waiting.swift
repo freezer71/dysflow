@@ -35,3 +35,32 @@ final class ManualFrames: FrameSource {
     func stop() { isRunning = false }
     func tick() { if isRunning { onFrame?() } }
 }
+
+/// Une porte qu'un test ouvre à la main : ce qui l'attend reste suspendu
+/// jusque-là, sans dépendre d'une durée.
+@MainActor
+final class TestGate {
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+    private var isOpen = false
+    /// Combien de tâches attendent la porte.
+    var waiting: Int { waiters.count }
+
+    func wait() async {
+        if isOpen { return }
+        await withCheckedContinuation { waiters.append($0) }
+    }
+
+    func open() {
+        isOpen = true
+        let resumed = waiters
+        waiters = []
+        resumed.forEach { $0.resume() }
+    }
+}
+
+/// Laisse passer ce qui est déjà en file sur l'acteur principal : sa file est
+/// servie dans l'ordre, une tâche ajoutée après passe donc après elles.
+@MainActor
+func drainMainActor() async {
+    for _ in 0..<3 { await Task { @MainActor in }.value }
+}

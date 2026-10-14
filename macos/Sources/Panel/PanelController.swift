@@ -2,8 +2,10 @@ import AppKit
 import SwiftUI
 
 /// Montre la fenêtre dans l'un des quatre modes — petit, moyen, grand,
-/// arrière-plan — et route le clavier. Une seule fenêtre : chaque mode change
-/// son contenu et sa taille ; l'arrière-plan la retire et la lecture continue.
+/// arrière-plan — et exécute les actions du clavier. Une seule fenêtre :
+/// chaque mode change son contenu et sa taille ; l'arrière-plan la retire et
+/// la lecture continue. Le placement (`PanelPlacement`), le clavier
+/// (`PanelKeyRouter`) et VoiceOver (`PanelAnnouncements`) vivent à part.
 @MainActor
 @Observable
 final class PanelController {
@@ -14,18 +16,15 @@ final class PanelController {
     @ObservationIgnored let store: DisplayModeStore
     /// Durée d'affichage d'un message passager (« Phrase copiée »).
     @ObservationIgnored var messageDuration: TimeInterval = 2
-    @ObservationIgnored private var keyMonitor: Any?
     @ObservationIgnored private var contentHeight: CGFloat = 0
     @ObservationIgnored private var resizePending = false
     @ObservationIgnored private var closeGuard: PanelCloseGuard?
-    @ObservationIgnored private var announcer = Announcer()
+    @ObservationIgnored private var placement: PanelPlacement!
+    @ObservationIgnored private var keys: PanelKeyRouter!
+    @ObservationIgnored private var announcements: PanelAnnouncements!
     /// ↑ ↓ : la vue de lecture affichée (ou sa copie cachée du mode petit)
     /// dit où commence la ligne voisine.
     @ObservationIgnored let lines = LineNavigator()
-    /// Vrai pendant que le code place la fenêtre : seul un déplacement de
-    /// l'utilisateur fixe la place du mode petit.
-    @ObservationIgnored private var placing = false
-    @ObservationIgnored private var moveObserver: NSObjectProtocol?
 
     private(set) var mode: DisplayMode = .background
     /// Réglages de lecture du moteur (interlignage, règle), relus à chaque
@@ -45,9 +44,27 @@ final class PanelController {
     @ObservationIgnored private var draftOrigin = ""
     @ObservationIgnored private var resumeAfterEditing = false
 
-    init(model: ReaderModel, store: DisplayModeStore? = nil) {
+    /// Ouvre la fenêtre des réglages (un onglet, ou le dernier ouvert) :
+    /// `,` et `v` au clavier, l'écrou de la barre.
+    @ObservationIgnored let openSettings: @MainActor (SettingsTab?) -> Void
+    /// La même, pour l'environnement des vues : une seule valeur, posée une
+    /// fois, pour que SwiftUI n'y voie jamais de changement.
+    @ObservationIgnored let openSettingsAction: OpenSettingsTabAction
+
+    init(model: ReaderModel, store: DisplayModeStore? = nil,
+         openSettings: @escaping @MainActor (SettingsTab?) -> Void = { _ in }) {
         self.model = model
+        self.openSettings = openSettings
+        openSettingsAction = OpenSettingsTabAction(open: openSettings)
         self.store = store ?? DisplayModeStore(defaults: Self.processDefaults)
+        // Avant la vue : son corps lit le placement (largeur du texte).
+        placement = PanelPlacement(window: window, store: self.store, mode: { [unowned self] in self.mode })
+        keys = PanelKeyRouter(window: window,
+                              isEditing: { [unowned self] in self.editing },
+                              action: { [unowned self] in self.action(for: $0) },
+                              finishEditing: { [unowned self] in self.finishEditing() },
+                              perform: { [unowned self] in self.perform($0) })
+        announcements = PanelAnnouncements(window: window)
         let host = NSHostingView(rootView: PanelContent(controller: self))
         window.contentView = host
         host.setAccessibilityIdentifier("panneau-lecture")
@@ -57,27 +74,16 @@ final class PanelController {
         closeGuard = guardian
         window.delegate = guardian
         observeSettingsWindow()
-        observeMoves()
-        post = { [weak self] text in self?.postToVoiceOver(text) }
     }
 
     /// Les préférences du processus, lues une fois : sous les tests, chaque
     /// appel à `processDefaults()` vide la suite.
     private static let processDefaults = DisplayModeStore.processDefaults()
 
-    private var screenFrame: CGRect {
-        (NSScreen.main ?? NSScreen.screens[0]).visibleFrame
-    }
-
-    /// L'écran principal (celui de la barre des menus).
-    private var primaryScreenFrame: CGRect {
-        NSScreen.screens.first?.visibleFrame ?? screenFrame
-    }
-
     /// La largeur du texte du mode moyen : la copie cachée du mode petit la
     /// garde, pour que ↑ ↓ visent les mêmes lignes.
     var shadowTextWidth: CGFloat {
-        PanelGeometry.panelFrame(contentHeight: 0, screen: screenFrame).width
+        PanelGeometry.panelFrame(contentHeight: 0, screen: placement.screenFrame).width
             - 2 * PanelGeometry.horizontalPadding
     }
 
@@ -125,8 +131,8 @@ final class PanelController {
         let wasHidden = mode == .background || !window.isVisible
         if wasHidden || target != mode {
             mode = target
-            applySizeLimits(for: target)
-            place(frame(for: target), animated: !wasHidden)
+            placement.applySizeLimits(for: target)
+            placement.place(placement.frame(for: target, contentHeight: contentHeight), animated: !wasHidden)
             updateIdentifier()
         }
         if takeKey { window.makeKeyAndOrderFront(nil) } else { window.orderFrontRegardless() }
@@ -137,8 +143,8 @@ final class PanelController {
         // L'annonceur ne voit rien en arrière-plan : on repart de l'état
         // courant pour ne rien annoncer de ce qui s'est passé entre-temps.
         model.refresh()
-        announcer.reseed(with: model.snapshot)
-        installKeyMonitor()
+        announcements.reseed(with: model.snapshot)
+        keys.install()
     }
 
     /// L'arrière-plan : la fenêtre se retire, la lecture continue. Le modèle
@@ -153,60 +159,7 @@ final class PanelController {
         mode = .background
         if window.isVisible { window.orderOut(nil) }
         model.presence = .hidden
-        removeKeyMonitor()
-    }
-
-    private func frame(for mode: DisplayMode) -> CGRect {
-        switch mode {
-        case .small:
-            return SmallPlacement.frame(savedOrigin: store.smallOrigin,
-                                        screens: NSScreen.screens.map(\.visibleFrame),
-                                        main: primaryScreenFrame)
-        case .large:
-            return PanelGeometry.expandedFrame(screen: screenFrame)
-        case .medium, .background:
-            return PanelGeometry.panelFrame(contentHeight: contentHeight, screen: screenFrame)
-        }
-    }
-
-    /// Le mode petit ne se redimensionne pas ; les autres, si. Des bornes de
-    /// taille ne tiendraient pas : la vue hôte réécrit celles de la fenêtre
-    /// à chaque changement de contenu.
-    private func applySizeLimits(for mode: DisplayMode) {
-        if mode == .small {
-            window.styleMask.remove(.resizable)
-        } else {
-            window.styleMask.insert(.resizable)
-        }
-    }
-
-    private func place(_ frame: CGRect, animated: Bool) {
-        placing = true
-        defer { placing = false }
-        if animated, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
-            window.setFrame(frame, display: true, animate: true)
-        } else {
-            window.setFrame(frame, display: animated)
-        }
-    }
-
-    private func observeMoves() {
-        moveObserver = NotificationCenter.default.addObserver(
-            // Livré tout de suite (`queue: nil`), pendant que `placing` est
-            // vrai : une file différée verrait chaque placement du code comme
-            // un déplacement de l'utilisateur.
-            forName: NSWindow.didMoveNotification, object: window, queue: nil
-        ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.windowMoved() }
-        }
-    }
-
-    /// La barre déplacée par l'utilisateur : sa place est retenue.
-    /// Un redimensionnement différé de la vue hôte (le haut fixe, l'origine
-    /// bouge) n'est pas un déplacement : seule la barre à sa taille compte.
-    func windowMoved() {
-        guard mode == .small, !placing, window.frame.size == SmallPlacement.size else { return }
-        store.smallOrigin = window.frame.origin
+        keys.remove()
     }
 
     // MARK: - Réglages
@@ -239,16 +192,18 @@ final class PanelController {
         let center = NotificationCenter.default
         settingsObservers = [
             center.addObserver(forName: NSWindow.didBecomeKeyNotification, object: nil, queue: .main) { [weak self] note in
+                let window = note.object as? NSWindow
                 MainActor.assumeIsolated {
-                    guard let self, let w = note.object as? NSWindow, PanelLevel.isSettingsWindow(w) else { return }
+                    guard let self, let w = window, PanelLevel.isSettingsWindow(w) else { return }
                     self.settingsVisibilityChanged(true)
                     // Devant le panneau, sans passer au-dessus des autres apps.
                     w.orderFront(nil)
                 }
             },
             center.addObserver(forName: NSWindow.willCloseNotification, object: nil, queue: .main) { [weak self] note in
+                let window = note.object as? NSWindow
                 MainActor.assumeIsolated {
-                    guard let self, let w = note.object as? NSWindow, PanelLevel.isSettingsWindow(w) else { return }
+                    guard let self, let w = window, PanelLevel.isSettingsWindow(w) else { return }
                     self.settingsVisibilityChanged(false)
                 }
             },
@@ -267,8 +222,7 @@ final class PanelController {
     /// L'annonceur voit tous les instantanés visibles, VoiceOver ou non, pour
     /// que son état reste à jour.
     func announcementText(for s: Snapshot) -> String? {
-        let text = announcer.announcement(for: s, doc: model.document)
-        return mode == .background ? nil : text
+        announcements.text(for: s, doc: model.document, background: mode == .background)
     }
 
     /// Dit à VoiceOver un changement d'état (lecture, pause, section), jamais
@@ -278,15 +232,11 @@ final class PanelController {
         post(text)
     }
 
-    /// Où part une annonce : VoiceOver, s'il est allumé (posé dans `init`).
-    /// Remplaçable, pour qu'un test compte ce que le vrai chemin dit.
-    @ObservationIgnored var post: (String) -> Void = { _ in }
-
-    private func postToVoiceOver(_ text: String) {
-        guard NSWorkspace.shared.isVoiceOverEnabled else { return }
-        NSAccessibility.post(element: window, notification: .announcementRequested,
-                             userInfo: [.announcement: text,
-                                        .priority: NSAccessibilityPriorityLevel.medium.rawValue])
+    /// Où part une annonce : VoiceOver, s'il est allumé. Remplaçable, pour
+    /// qu'un test compte ce que le vrai chemin dit.
+    var post: (String) -> Void {
+        get { announcements.post }
+        set { announcements.post = newValue }
     }
 
     func contentHeightChanged(_ height: CGFloat) {
@@ -301,8 +251,8 @@ final class PanelController {
             guard let self else { return }
             self.resizePending = false
             guard self.mode == .medium else { return }
-            self.place(PanelGeometry.panelFrame(contentHeight: self.contentHeight,
-                                                screen: self.screenFrame), animated: true)
+            self.placement.place(PanelGeometry.panelFrame(contentHeight: self.contentHeight,
+                                                          screen: self.placement.screenFrame), animated: true)
         }
     }
 
@@ -340,9 +290,9 @@ final class PanelController {
                 helpVisible.toggle()
             }
         case .openSettings:
-            SettingsOpener.shared.open()
+            openSettings(nil)
         case .openVoiceSettings:
-            SettingsOpener.shared.open(tab: .voice)
+            openSettings(.voice)
         case .edit:
             beginEditing()
         }
@@ -426,39 +376,6 @@ final class PanelController {
         }
         window.contentView?.setAccessibilityIdentifier(identifier)
         window.contentView?.setAccessibilityLabel(label)
-    }
-
-    private func installKeyMonitor() {
-        guard keyMonitor == nil else { return }
-        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self, event.window === self.window else { return event }
-            // En édition, ⌘↩ valide comme Échap.
-            if self.editing, event.keyCode == KeyCode.enter, event.modifierFlags.contains(.command) {
-                self.finishEditing()
-                return nil
-            }
-            // Un champ de saisie garde ses touches, sauf Échap.
-            if self.window.firstResponder is NSTextView,
-               !(self.window.firstResponder is ReadingTextView),
-               event.keyCode != KeyCode.escape {
-                return event
-            }
-            // Une liste (sommaire, signets) garde ses flèches verticales et
-            // Entrée : on la parcourt, puis on y va.
-            if self.window.firstResponder is NSTableView,
-               [KeyCode.up, KeyCode.down, KeyCode.enter].contains(event.keyCode),
-               !event.modifierFlags.contains(.option) {
-                return event
-            }
-            guard let action = self.action(for: KeyPress(event)) else { return event }
-            self.perform(action)
-            return nil
-        }
-    }
-
-    private func removeKeyMonitor() {
-        if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
-        keyMonitor = nil
     }
 }
 

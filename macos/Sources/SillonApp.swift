@@ -7,6 +7,7 @@ struct SillonApp: App {
     var body: some Scene {
         MenuBarExtra {
             MenuContent()
+                .environment(delegate.services)
         } label: {
             // Toujours présente : c'est elle qui donne l'action d'ouverture
             // des réglages, panneau masqué compris.
@@ -16,16 +17,19 @@ struct SillonApp: App {
         }
         Settings {
             SettingsRoot()
+                .environment(delegate.services)
         }
     }
 }
 
 /// Le contenu de la scène `Settings`. Le corps de la scène est évalué au
 /// lancement, avant `applicationDidFinishLaunching` : le modèle n'existe pas
-/// encore. Lu ici, il l'est à l'ouverture de la fenêtre.
+/// encore. Lu ici (et observé), il l'est à l'ouverture de la fenêtre.
 private struct SettingsRoot: View {
+    @Environment(AppServices.self) private var services
+
     var body: some View {
-        if let model = AppDelegate.shared?.model {
+        if let model = services.model {
             ReglagesView(model: model)
                 .background(SettingsWindowName())
         }

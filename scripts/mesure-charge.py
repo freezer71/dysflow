@@ -10,7 +10,7 @@ machine de mesure). Rien n'est journalisé du texte lu.
 
 Lancer avec l'interpréteur du banc (numpy, soundfile) :
   ~/Library/Caches/sillon-bench/light/venv-mlx/bin/python -I scripts/mesure-charge.py app \
-      --app macos/build/Release/Sillon.app --out target/runs/sillon-charge.json
+      --app macos/build/Mesure/Sillon.app --out target/runs/sillon-charge.json
 """
 import argparse, json, os, re, statistics, subprocess, sys, tempfile, threading, time
 
@@ -247,7 +247,7 @@ def cmd_serve(a):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("cmd", choices=["app", "serve"])
-    ap.add_argument("--app", default="macos/build/Release/Sillon.app")
+    ap.add_argument("--app", default="macos/build/Mesure/Sillon.app")
     ap.add_argument("--serve", default="target/release/examples/kokoro_serve")
     ap.add_argument("--lang", default="fr")
     ap.add_argument("--calm", type=float, default=LOAD_MAX)

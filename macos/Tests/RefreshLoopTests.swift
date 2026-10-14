@@ -7,7 +7,8 @@ final class RefreshLoopTests: XCTestCase {
     func testTheLoopRunsOnlyWhileTheWindowIsVisible() async throws {
         var ticks = 0
         let loop = RefreshLoop(interval: .milliseconds(10)) { ticks += 1 }
-        try await Task.sleep(for: .milliseconds(60))
+        await drainMainActor()
+        XCTAssertFalse(loop.isRunning)
         XCTAssertEqual(ticks, 0, "rien avant que la fenêtre paraisse")
         loop.setVisible(true)
         let ran = await eventuallyTrue { ticks >= 3 }
@@ -15,7 +16,9 @@ final class RefreshLoopTests: XCTestCase {
         loop.setVisible(false)
         XCTAssertFalse(loop.isRunning)
         let stopped = ticks
-        try await Task.sleep(for: .milliseconds(80))
+        // La boucle annulée se réveille (sommeil interrompu) et sort : les
+        // travaux en file passés, aucune relecture de plus.
+        await drainMainActor()
         XCTAssertEqual(ticks, stopped, "fenêtre fermée : plus aucune relecture")
         loop.setVisible(true)
         let again = await eventuallyTrue { ticks > stopped }
@@ -25,13 +28,15 @@ final class RefreshLoopTests: XCTestCase {
 
     func testShowingTwiceRunsASingleLoop() async throws {
         var ticks = 0
-        let loop = RefreshLoop(interval: .milliseconds(50)) { ticks += 1 }
+        // Un intervalle qu'aucun test n'atteint : chaque boucle relit une
+        // fois en partant, puis dort.
+        let loop = RefreshLoop(interval: .seconds(3600)) { ticks += 1 }
         loop.setVisible(true)
         loop.setVisible(true)
         loop.setVisible(true)
-        try await Task.sleep(for: .milliseconds(120))
+        await drainMainActor()
         loop.setVisible(false)
-        // Une boucle : 3 relectures environ (0, 50, 100 ms) ; trois en feraient 9.
-        XCTAssertLessThanOrEqual(ticks, 4)
+        // Une boucle : une relecture ; trois boucles en feraient trois.
+        XCTAssertEqual(ticks, 1)
     }
 }
