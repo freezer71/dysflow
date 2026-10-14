@@ -4,6 +4,7 @@ import XCTest
 /// avec l'accord de l'utilisateur : `-only-testing:SillonUITests/KokoroVoiceUITests`.
 /// Le lecteur des tests est muet : `--ui-testing-kokoro` lui prête les
 /// capacités de Kokoro (`UITestStaging`).
+@MainActor
 final class KokoroVoiceUITests: XCTestCase {
     private func voiceTab(_ arguments: [String]) -> (XCUIApplication, XCUIElement) {
         let app = XCUIApplication()
@@ -83,6 +84,7 @@ private extension XCUIElement {
 /// arguments de test (`UITestStaging`) : atteints au clavier, puis audités.
 /// Lancé à la main, avec l'accord de l'utilisateur :
 /// `-only-testing:SillonUITests/KokoroNoticesUITests`.
+@MainActor
 final class KokoroNoticesUITests: XCTestCase {
     func testTheOfferNoticeAndBannerAreReachableAndAudited() throws {
         continueAfterFailure = false

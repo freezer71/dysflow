@@ -18,24 +18,31 @@ protocol FrameSource: AnyObject {
 @MainActor
 final class DisplayLinkFrames: NSObject, FrameSource {
     /// Relais faible : `CADisplayLink` retient sa cible, le relais évite
-    /// le cycle avec la source et laisse `deinit` invalider le lien.
+    /// le cycle avec la source et laisse `deinit` invalider le lien. Le lien
+    /// est ajouté à la boucle principale : `step` y est toujours appelé.
+    @MainActor
     private final class Relay: NSObject {
         weak var frames: DisplayLinkFrames?
         @objc func step(_ link: CADisplayLink) {
-            MainActor.assumeIsolated { frames?.onFrame?() }
+            frames?.onFrame?()
         }
     }
 
-    private var link: CADisplayLink?
+    /// Lu par `deinit`, qui n'est pas isolé : seul endroit hors de l'acteur
+    /// principal, quand plus rien d'autre ne tient la source.
+    nonisolated(unsafe) private var link: CADisplayLink?
     var onFrame: (() -> Void)?
     /// Fabrique le lien d'affichage ; nil si rien à suivre (pas d'écran).
     /// Par défaut, l'écran principal ; une vue passe `NSView.displayLink`,
     /// qui suit la fenêtre d'un écran à l'autre.
-    private let makeLink: (AnyObject, Selector) -> CADisplayLink?
+    /// Appelée sur l'acteur principal, comme tout le reste : le lien naît
+    /// et vit sur le fil principal, il n'a jamais à le quitter (CADisplayLink
+    /// n'est pas Sendable).
+    private let makeLink: @MainActor (AnyObject, Selector) -> CADisplayLink?
 
-    init(makeLink: ((AnyObject, Selector) -> CADisplayLink?)? = nil) {
+    init(makeLink: (@MainActor (AnyObject, Selector) -> CADisplayLink?)? = nil) {
         self.makeLink = makeLink ?? { target, selector in
-            MainActor.assumeIsolated { NSScreen.main?.displayLink(target: target, selector: selector) }
+            NSScreen.main?.displayLink(target: target, selector: selector)
         }
     }
 

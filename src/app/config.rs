@@ -1,12 +1,12 @@
 //! Écran de configuration plein écran.
 //!
-//! Tout ce qui se règle est ici : les modèles installables, la voix, les
-//! paramètres d'échantillonnage du modèle, la lecture et le moteur. Les valeurs
+//! Tout ce qui se règle est ici : les modèles installables, la voix, la
+//! lecture et le moteur. Les valeurs
 //! s'appliquent immédiatement — vitesse et volume au son, sur-le-champ ; les
 //! autres réglages de voix en régénérant la synthèse — et `w` les écrit dans
 //! `config.toml` pour les sessions suivantes.
 
-use crate::config::Config;
+use crate::config::{Config, Effect};
 use crate::models;
 
 /// Rubriques de l'écran.
@@ -14,16 +14,14 @@ use crate::models;
 pub enum Section {
     Models,
     Voice,
-    Sampling,
     Reading,
     Engine,
 }
 
 impl Section {
-    pub const ALL: [Section; 5] = [
+    pub const ALL: [Section; 4] = [
         Section::Models,
         Section::Voice,
-        Section::Sampling,
         Section::Reading,
         Section::Engine,
     ];
@@ -32,7 +30,6 @@ impl Section {
         match self {
             Section::Models => "Modèles",
             Section::Voice => "Voix",
-            Section::Sampling => "Échantillonnage",
             Section::Reading => "Lecture",
             Section::Engine => "Moteur",
         }
@@ -60,18 +57,6 @@ impl Section {
                 let voix = voix.split(' ').next().unwrap_or(&voix).to_string();
                 format!("{voix} · {:.2}×", config.voice.speed)
             }
-            Section::Sampling => {
-                let réglés = Section::Sampling
-                    .fields()
-                    .iter()
-                    .filter(|f| !f.value(config, 1.0).starts_with('('))
-                    .count();
-                if réglés == 0 {
-                    "défauts".to_string()
-                } else {
-                    format!("{réglés} modifié{}", if réglés > 1 { "s" } else { "" })
-                }
-            }
             Section::Reading => {
                 // Le résumé tient en une colonne étroite : la largeur s'abrège.
                 let colonne = match config.reading.line_width {
@@ -98,21 +83,9 @@ impl Section {
             Section::Voice => &[
                 Field::Speed,
                 Field::Pitch,
-                Field::Energy,
                 Field::Volume,
                 Field::Language,
-                Field::Emotion,
                 Field::Voice,
-                Field::Instruction,
-            ],
-            Section::Sampling => &[
-                Field::Temperature,
-                Field::TopP,
-                Field::TopK,
-                Field::GuidanceScale,
-                Field::RepetitionPenalty,
-                Field::InferenceSteps,
-                Field::Seed,
             ],
             Section::Reading => &[
                 Field::LineWidth,
@@ -124,7 +97,6 @@ impl Section {
             ],
             Section::Engine => &[
                 Field::EnginePref,
-                Field::Compute,
                 Field::Threads,
                 Field::Sessions,
                 Field::Prefetch,
@@ -140,19 +112,9 @@ impl Section {
 pub enum Field {
     Speed,
     Pitch,
-    Energy,
     Volume,
     Language,
-    Emotion,
     Voice,
-    Instruction,
-    Temperature,
-    TopP,
-    TopK,
-    GuidanceScale,
-    RepetitionPenalty,
-    InferenceSteps,
-    Seed,
     CodeBlocks,
     Autoplay,
     SeekStep,
@@ -160,7 +122,6 @@ pub enum Field {
     LineSpacing,
     ReadingRuler,
     EnginePref,
-    Compute,
     Threads,
     Sessions,
     Prefetch,
@@ -168,29 +129,17 @@ pub enum Field {
     Family,
 }
 
-const EMOTIONS: &[&str] = &["", "neutre", "calme", "chaleureux", "sérieux", "enjoué", "posé"];
 const CODE_POLICIES: &[&str] = &["announce", "skip", "read"];
 const ENGINES: &[&str] = &["auto", "system"];
-const COMPUTES: &[&str] = &["cpu", "metal", "cuda", "vulkan", "auto"];
 
 impl Field {
     pub fn label(&self) -> &'static str {
         match self {
             Field::Speed => "Vitesse",
             Field::Pitch => "Hauteur",
-            Field::Energy => "Énergie",
             Field::Volume => "Volume",
             Field::Language => "Langue",
-            Field::Emotion => "Intonation",
             Field::Voice => "Voix",
-            Field::Instruction => "Consigne de style",
-            Field::Temperature => "Température",
-            Field::TopP => "Top-p",
-            Field::TopK => "Top-k",
-            Field::GuidanceScale => "Guidage",
-            Field::RepetitionPenalty => "Pénalité de répétition",
-            Field::InferenceSteps => "Étapes d'inférence",
-            Field::Seed => "Graine",
             Field::CodeBlocks => "Blocs de code",
             Field::Autoplay => "Lecture au démarrage",
             Field::SeekStep => "Pas d'avance rapide",
@@ -198,7 +147,6 @@ impl Field {
             Field::LineSpacing => "Interlignage",
             Field::ReadingRuler => "Règle de lecture",
             Field::EnginePref => "Moteur",
-            Field::Compute => "Calcul",
             Field::Threads => "Threads",
             Field::Sessions => "Sessions simultanées",
             Field::Prefetch => "Phrases en avance",
@@ -246,20 +194,10 @@ impl Field {
                 "Immédiate, sans resynthèse : appliquée au son, la voix accélère sans \
                  monter dans les aigus. t pour l'entendre."
             }
-            Field::Pitch => "Décalage de hauteur transmis au modèle, de -1 à +1.",
-            Field::Energy => "Intensité de la diction.",
+            Field::Pitch => "Décalage de hauteur de la voix du système, de -1 à +1.",
             Field::Volume => "Volume de sortie, sans effet sur la synthèse.",
             Field::Language => "Langue des documents : « auto » suit chacun d'eux.",
-            Field::Emotion => "Intonation demandée, si la famille la prend en charge.",
             Field::Voice => "Voix du modèle.",
-            Field::Instruction => "Consigne de style en langage naturel.",
-            Field::Temperature => "Plus haut, plus varié. Vide = valeur du modèle.",
-            Field::TopP => "Troncature par masse de probabilité.",
-            Field::TopK => "Nombre de candidats retenus par pas.",
-            Field::GuidanceScale => "Force du conditionnement.",
-            Field::RepetitionPenalty => "Décourage les répétitions.",
-            Field::InferenceSteps => "Plus d'étapes : meilleure qualité, plus lent.",
-            Field::Seed => "Fixe le tirage pour rendre la synthèse reproductible.",
             Field::CodeBlocks => "announce : annonce sans lire · skip : ignore · read : récite.",
             Field::Autoplay => "Démarrer la lecture dès l'ouverture.",
             Field::SeekStep => "Nombre de phrases sautées par Maj+flèche.",
@@ -269,11 +207,10 @@ impl Field {
             Field::LineSpacing => "Lignes vides entre deux lignes de texte.",
             Field::ReadingRuler => "Souligne d'un fond la ligne en cours de lecture.",
             Field::EnginePref => "auto lit avec le modèle installé (Kokoro), sinon la voix du système.",
-            Field::Compute => "Backend de calcul du modèle.",
             Field::Threads => "Threads alloués au modèle.",
             Field::Sessions => {
-                "Synthèses menées en parallèle. Chacune pèse ~460 Mo ; « auto » en ouvre ce que \
-                 le modèle demande — une pour Supertonic, plusieurs pour MagpieTTS."
+                "Synthèses menées en parallèle ; « auto » en ouvre ce que le modèle demande \
+                 (une pour Kokoro)."
             }
             Field::Prefetch => "Profondeur d'avance de la synthèse.",
             Field::ModelPath => "Renseigné automatiquement à l'installation d'un modèle.",
@@ -288,7 +225,7 @@ impl Field {
     pub fn is_text(&self, config: &Config) -> bool {
         match self {
             Field::Voice => models::voices_for_family(&config.engine.family).is_empty(),
-            Field::Instruction | Field::ModelPath | Field::Family => true,
+            Field::ModelPath | Field::Family => true,
             _ => false,
         }
     }
@@ -301,18 +238,8 @@ impl Field {
     pub fn option_key(&self) -> Option<&'static str> {
         match self {
             Field::Pitch => Some("pitch_shift"),
-            Field::Energy => Some("energy"),
             Field::Language => Some("language"),
-            Field::Emotion => Some("emotion"),
             Field::Voice => Some("voice"),
-            Field::Instruction => Some("instruction"),
-            Field::Temperature => Some("temperature"),
-            Field::TopP => Some("top_p"),
-            Field::TopK => Some("top_k"),
-            Field::GuidanceScale => Some("guidance_scale"),
-            Field::RepetitionPenalty => Some("repetition_penalty"),
-            Field::InferenceSteps => Some("num_inference_steps"),
-            Field::Seed => Some("seed"),
             _ => None,
         }
     }
@@ -331,10 +258,6 @@ impl Field {
 
     /// Valeur affichée.
     pub fn value(&self, config: &Config, volume: f32) -> String {
-        let optional = |v: Option<f32>, decimals: usize| match v {
-            Some(x) => format!("{x:.*}", decimals),
-            None => "(modèle)".to_string(),
-        };
         let text = |s: &str| {
             if s.is_empty() {
                 "(défaut)".to_string()
@@ -345,10 +268,8 @@ impl Field {
         match self {
             Field::Speed => format!("{:.2}×", config.voice.speed),
             Field::Pitch => format!("{:+.2}", config.voice.pitch),
-            Field::Energy => format!("{:.2}", config.voice.energy),
             Field::Volume => format!("{:.0} %", volume * 100.0),
             Field::Language => text(&config.voice.language),
-            Field::Emotion => text(&config.voice.emotion),
             Field::Voice => {
                 let voices = models::voices_for_family(&config.engine.family);
                 let shown = voice_in_use(config);
@@ -372,23 +293,6 @@ impl Field {
                     None => text(&config.voice.voice),
                 }
             }
-            Field::Instruction => text(&config.voice.instruction),
-            Field::Temperature => optional(config.sampling.temperature, 2),
-            Field::TopP => optional(config.sampling.top_p, 2),
-            Field::TopK => config
-                .sampling
-                .top_k
-                .map_or("(modèle)".to_string(), |v| v.to_string()),
-            Field::GuidanceScale => optional(config.sampling.guidance_scale, 1),
-            Field::RepetitionPenalty => optional(config.sampling.repetition_penalty, 2),
-            Field::InferenceSteps => config
-                .sampling
-                .inference_steps
-                .map_or("(modèle)".to_string(), |v| v.to_string()),
-            Field::Seed => config
-                .sampling
-                .seed
-                .map_or("(aléatoire)".to_string(), |v| v.to_string()),
             Field::CodeBlocks => config.reading.code_blocks.clone(),
             Field::Autoplay => if config.reading.autoplay { "oui" } else { "non" }.to_string(),
             Field::SeekStep => format!("{} phrases", config.reading.seek_step),
@@ -405,7 +309,6 @@ impl Field {
                 if config.reading.reading_ruler { "oui" } else { "non" }.to_string()
             }
             Field::EnginePref => config.engine.engine.clone(),
-            Field::Compute => config.engine.compute.clone(),
             Field::Threads => config.engine.threads.to_string(),
             Field::Sessions => match config.engine.sessions {
                 0 => format!("auto · {}", config.sessions()),
@@ -421,7 +324,6 @@ impl Field {
     pub fn raw_text(&self, config: &Config) -> String {
         match self {
             Field::Voice => config.voice.voice.clone(),
-            Field::Instruction => config.voice.instruction.clone(),
             Field::ModelPath => config.engine.model_path.clone(),
             Field::Family => config.engine.family.clone(),
             _ => String::new(),
@@ -431,7 +333,6 @@ impl Field {
     pub fn set_text(&self, config: &mut Config, value: String) {
         match self {
             Field::Voice => config.voice.voice = value,
-            Field::Instruction => config.voice.instruction = value,
             Field::ModelPath => config.engine.model_path = value,
             Field::Family => config.engine.family = value,
             _ => {}
@@ -450,10 +351,6 @@ impl Field {
                 config.voice.pitch = (config.voice.pitch + 0.05 * step).clamp(-1.0, 1.0);
                 Effect::Resynthesize
             }
-            Field::Energy => {
-                config.voice.energy = (config.voice.energy + 0.05 * step).clamp(0.0, 2.0);
-                Effect::Resynthesize
-            }
             Field::Volume => Effect::Volume(0.05 * step),
             Field::Language => {
                 // « auto » d'abord : chaque document prend alors sa langue.
@@ -462,50 +359,6 @@ impl Field {
                 languages.extend(models::languages_for_family(&config.engine.family));
                 cycle_string(&mut config.voice.language, &languages, delta);
                 Effect::Reparse
-            }
-            Field::Emotion => {
-                cycle_string(&mut config.voice.emotion, EMOTIONS, delta);
-                Effect::Resynthesize
-            }
-            Field::Temperature => {
-                step_optional_f32(&mut config.sampling.temperature, delta, 0.05, 0.0, 2.0, 0.7);
-                Effect::Resynthesize
-            }
-            Field::TopP => {
-                step_optional_f32(&mut config.sampling.top_p, delta, 0.05, 0.0, 1.0, 0.9);
-                Effect::Resynthesize
-            }
-            Field::TopK => {
-                step_optional_u32(&mut config.sampling.top_k, delta, 1, 200, 50);
-                Effect::Resynthesize
-            }
-            Field::GuidanceScale => {
-                step_optional_f32(&mut config.sampling.guidance_scale, delta, 0.5, 0.0, 20.0, 3.0);
-                Effect::Resynthesize
-            }
-            Field::RepetitionPenalty => {
-                step_optional_f32(
-                    &mut config.sampling.repetition_penalty,
-                    delta,
-                    0.05,
-                    0.5,
-                    2.0,
-                    1.1,
-                );
-                Effect::Resynthesize
-            }
-            Field::InferenceSteps => {
-                step_optional_u32(&mut config.sampling.inference_steps, delta, 1, 200, 16);
-                Effect::Resynthesize
-            }
-            Field::Seed => {
-                match (&mut config.sampling.seed, delta) {
-                    (slot @ None, d) if d > 0 => *slot = Some(0),
-                    (Some(0), d) if d < 0 => config.sampling.seed = None,
-                    (Some(v), d) => *v = v.saturating_add_signed(d as i64),
-                    _ => {}
-                }
-                Effect::Resynthesize
             }
             Field::CodeBlocks => {
                 cycle_string(&mut config.reading.code_blocks, CODE_POLICIES, delta);
@@ -545,10 +398,6 @@ impl Field {
             }
             Field::EnginePref => {
                 cycle_string(&mut config.engine.engine, ENGINES, delta);
-                Effect::ReloadEngine
-            }
-            Field::Compute => {
-                cycle_string(&mut config.engine.compute, COMPUTES, delta);
                 Effect::ReloadEngine
             }
             Field::Threads => {
@@ -595,7 +444,7 @@ impl Field {
                 Effect::Resynthesize
             }
             // Les autres champs textuels s'éditent avec Entrée, pas aux flèches.
-            Field::Instruction | Field::ModelPath | Field::Family => Effect::None,
+            Field::ModelPath | Field::Family => Effect::None,
         }
     }
 }
@@ -641,53 +490,6 @@ fn cycle_string(current: &mut String, choices: &[&str], delta: i32) {
     let index = choices.iter().position(|c| *c == current).unwrap_or(0) as i32;
     let next = (index + delta).rem_euclid(choices.len() as i32) as usize;
     *current = choices[next].to_string();
-}
-
-/// Fait varier une option numérique, `None` valant « laisser le modèle décider ».
-///
-/// Descendre sous le minimum rend la main au modèle plutôt que de figer une
-/// valeur arbitraire.
-fn step_optional_f32(
-    slot: &mut Option<f32>,
-    delta: i32,
-    step: f32,
-    min: f32,
-    max: f32,
-    default: f32,
-) {
-    match slot {
-        None => {
-            if delta > 0 {
-                *slot = Some(default);
-            }
-        }
-        Some(value) => {
-            let next = *value + step * delta as f32;
-            if next < min {
-                *slot = None;
-            } else {
-                *value = next.min(max);
-            }
-        }
-    }
-}
-
-fn step_optional_u32(slot: &mut Option<u32>, delta: i32, min: u32, max: u32, default: u32) {
-    match slot {
-        None => {
-            if delta > 0 {
-                *slot = Some(default);
-            }
-        }
-        Some(value) => {
-            let next = value.saturating_add_signed(delta);
-            if next < min {
-                *slot = None;
-            } else {
-                *value = next.min(max);
-            }
-        }
-    }
 }
 
 /// Page affichée par l'écran de configuration.
@@ -898,22 +700,6 @@ impl ConfigScreen {
     }
 }
 
-/// Ce qu'un changement de réglage impose au reste de l'application.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Effect {
-    None,
-    /// Régénérer l'audio déjà préparé.
-    Resynthesize,
-    /// Recharger le moteur, donc tout le pipeline de synthèse.
-    ReloadEngine,
-    /// Le découpage du document changerait : effet au prochain lancement.
-    Reparse,
-    /// Ajuster le volume de sortie du delta indiqué.
-    Volume(f32),
-    /// Appliquer la vitesse de la configuration au son, sur-le-champ.
-    Speed,
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -947,23 +733,6 @@ mod tests {
                 assert!(!section.fields().is_empty(), "{section:?}");
             }
         }
-    }
-
-    #[test]
-    fn optional_settings_fall_back_to_the_model() {
-        let mut config = Config::default();
-        assert_eq!(config.sampling.temperature, None);
-
-        // Une première incrémentation prend la main sur le modèle…
-        Field::Temperature.adjust(&mut config, 1);
-        assert_eq!(config.sampling.temperature, Some(0.7));
-
-        // …et redescendre sous le minimum la lui rend.
-        for _ in 0..40 {
-            Field::Temperature.adjust(&mut config, -1);
-        }
-        assert_eq!(config.sampling.temperature, None);
-        assert_eq!(Field::Temperature.value(&config, 1.0), "(modèle)");
     }
 
     #[test]
@@ -1010,7 +779,7 @@ mod tests {
     #[test]
     fn engine_changes_request_a_reload() {
         let mut config = Config::default();
-        assert_eq!(Field::Compute.adjust(&mut config, 1), Effect::ReloadEngine);
+        assert_eq!(Field::Threads.adjust(&mut config, 1), Effect::ReloadEngine);
         assert_eq!(Field::Sessions.adjust(&mut config, 1), Effect::ReloadEngine);
     }
 
@@ -1064,7 +833,7 @@ mod tests {
         config.voice.voice = "p-fenrir60".into();
         assert!(!Field::Voice.is_ignored(&config));
         assert!(!Field::Speed.is_ignored(&config));
-        assert!(Field::Instruction.is_ignored(&config));
+        assert!(Field::Pitch.is_ignored(&config), "Kokoro ne lit pas la hauteur");
     }
 
     #[test]
@@ -1103,15 +872,15 @@ mod tests {
         let mut config = Config::default();
         config.engine.family = "kokoro".into();
         let mut screen = ConfigScreen::new();
-        screen.section = 2; // Échantillonnage
+        screen.section = 1; // Voix
 
-        // Kokoro ne lit aucun réglage d'échantillonnage : tous attendent
-        // qu'on les demande.
-        assert!(screen.visible_fields(&config).is_empty());
-        assert_eq!(screen.hidden_count(&config), 7);
+        // Kokoro ne lit pas la hauteur (voix du système seule) : elle attend
+        // qu'on la demande.
+        assert!(!screen.visible_fields(&config).contains(&Field::Pitch));
+        assert_eq!(screen.hidden_count(&config), 1);
 
         screen.toggle_show_all(&config);
-        assert_eq!(screen.visible_fields(&config).len(), 7);
+        assert!(screen.visible_fields(&config).contains(&Field::Pitch));
         assert_eq!(screen.hidden_count(&config), 0);
     }
 
@@ -1119,7 +888,7 @@ mod tests {
     fn showing_everything_never_leaves_the_cursor_outside() {
         let config = Config::default();
         let mut screen = ConfigScreen::new();
-        screen.section = 2;
+        screen.section = 1;
         screen.toggle_show_all(&config);
         screen.move_row(99, &config);
         let dernier = screen.row;
@@ -1148,7 +917,7 @@ mod tests {
     #[test]
     fn a_digit_opens_its_section_straight_away() {
         let mut screen = ConfigScreen::new();
-        screen.goto_section(3);
+        screen.goto_section(2);
         assert_eq!(screen.page, Page::Detail);
         assert_eq!(screen.current_section(), Section::Reading);
 

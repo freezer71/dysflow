@@ -52,7 +52,6 @@ impl Reader {
         sample::start(
             &mut lone.previewer,
             &mut lone.player,
-            engine.requires_reference(),
             &self.config,
             language,
             label,
@@ -108,7 +107,7 @@ impl Reader {
     /// hors de ce fil, comme `App::reload_engine`.
     pub(super) fn drop_lone_preview(&mut self) {
         if let Some(LonePreview { previewer, player }) = self.lone_preview.take() {
-            std::thread::spawn(move || drop(previewer));
+            crate::sync::spawn_named("sillon-liberation", move || drop(previewer));
             drop(player);
         }
     }
@@ -117,29 +116,13 @@ impl Reader {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sync::LockExt;
     use crate::config::Config;
     use crate::tts::silent::SilentEngine;
     use crate::tts::{TtsEngine, TtsSession};
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Mutex;
     use std::time::Duration;
-
-    /// Un moteur qui ne parle qu'en clonant.
-    struct CloningEngine;
-    impl TtsEngine for CloningEngine {
-        fn name(&self) -> String {
-            "clonage".into()
-        }
-        fn open_session(&self) -> anyhow::Result<Box<dyn TtsSession>> {
-            SilentEngine.open_session()
-        }
-        fn max_sessions(&self) -> usize {
-            1
-        }
-        fn requires_reference(&self) -> bool {
-            true
-        }
-    }
 
     fn reader_with(engine: fn() -> Arc<dyn TtsEngine>) -> (Reader, Arc<AtomicUsize>) {
         let loads = Arc::new(AtomicUsize::new(0));
@@ -162,10 +145,6 @@ mod tests {
         Arc::new(SilentEngine)
     }
 
-    fn cloning() -> Arc<dyn TtsEngine> {
-        Arc::new(CloningEngine)
-    }
-
     #[test]
     fn a_preview_without_text_loads_the_voice_and_explains_a_missing_output() {
         let (mut r, loads) = reader_with(silent);
@@ -175,13 +154,6 @@ mod tests {
         assert!(r.voice_loaded());
         assert!(r.session().is_none(), "aucun texte n'est ouvert pour autant");
         assert!(!r.previewing());
-    }
-
-    #[test]
-    fn a_cloning_model_without_wav_refuses_the_preview() {
-        let (mut r, _) = reader_with(cloning);
-        let err = r.preview_voice_in("fr", Instant::now()).unwrap_err();
-        assert_eq!(err, sample::REFERENCE_MISSING);
     }
 
     #[test]
@@ -238,7 +210,7 @@ mod tests {
     }
     impl TtsSession for GatedSession {
         fn synthesize(&mut self, text: &str, params: &crate::tts::TtsParams) -> anyhow::Result<crate::tts::PcmBuffer> {
-            let _ = self.0.lock().unwrap().recv();
+            let _ = self.0.locked().recv();
             SilentEngine.open_session()?.synthesize(text, params)
         }
     }

@@ -3,6 +3,7 @@ import XCTest
 /// Les quatre modes au clavier et l'audit du mode petit. Lancé à la main,
 /// avec l'accord de l'utilisateur :
 /// `-only-testing:SillonUITests/DisplayModeUITests`.
+@MainActor
 final class DisplayModeUITests: XCTestCase {
     override func setUp() {
         continueAfterFailure = false

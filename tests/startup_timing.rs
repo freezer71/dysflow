@@ -45,7 +45,6 @@ fn where_the_startup_seconds_go() {
     let sessions = settings.sessions.max(1) as usize;
     println!("\n=== configuration ===");
     println!("famille   : {}", settings.family);
-    println!("backend   : {}", settings.backend);
     println!("sessions  : {sessions}");
 
     let quiet = sillon::logging::redirect_stderr();
@@ -117,7 +116,6 @@ fn where_the_startup_seconds_go() {
 #[ignore = "banc de mesure"]
 fn what_the_parsing_costs_before_the_model_starts_loading() {
     use sillon::doc::DocumentBuilder;
-    use sillon::input;
 
     let readme = std::fs::read_to_string("README.md").expect("README");
     for (label, text) in [
@@ -127,7 +125,7 @@ fn what_the_parsing_costs_before_the_model_starts_loading() {
     ] {
         let start = Instant::now();
         let mut builder = DocumentBuilder::new(sillon::doc::builder::CodePolicy::Announce);
-        for block in input::split_blocks(&text) {
+        for block in sillon::doc::blocks::split_blocks(&text) {
             builder.push_block(&block);
         }
         let elapsed = start.elapsed();

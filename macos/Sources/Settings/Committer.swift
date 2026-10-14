@@ -3,8 +3,14 @@ import Foundation
 /// Écrit la dernière valeur d'une rafale de changements, une écriture à la
 /// fois : un curseur qu'on glisse ne produit pas une écriture par pas.
 @MainActor
-final class Committer<Value: Equatable> {
+final class Committer<Value: Equatable & Sendable> {
+    /// Attend une durée. `Task.sleep` en vrai ; les tests passent une horloge
+    /// qu'ils avancent eux-mêmes, sans dépendre du temps réel.
+    typealias Sleep = @Sendable (Duration) async throws -> Void
+    nonisolated static var realSleep: Sleep { { try await Task.sleep(for: $0) } }
+
     private let delay: Duration
+    private let sleep: Sleep
     /// Reçoit la valeur à écrire et celle que le moteur a déjà ; rend celle
     /// qu'il a réellement appliquée (bornes comprises).
     private let write: (Value, Value) async throws -> Value
@@ -30,9 +36,10 @@ final class Committer<Value: Equatable> {
     var isIdle: Bool { waitingID == nil && inFlight == nil }
 
     convenience init(delay: Duration = .milliseconds(150), saved: Value? = nil,
+                     sleep: @escaping Sleep = Committer.realSleep,
                      write: @escaping (Value) async throws -> Void,
                      onResult: @escaping (Error?) -> Void = { _ in }) {
-        self.init(delay: delay, saved: saved,
+        self.init(delay: delay, saved: saved, sleep: sleep,
                   writeApplied: { new, _ in try await write(new); return new },
                   onResult: onResult)
     }
@@ -40,18 +47,21 @@ final class Committer<Value: Equatable> {
     /// `writeChange` reçoit aussi la dernière valeur écrite : il peut
     /// n'envoyer que ce qui a changé.
     convenience init(delay: Duration = .milliseconds(150), saved: Value? = nil,
+                     sleep: @escaping Sleep = Committer.realSleep,
                      writeChange: @escaping (_ new: Value, _ previous: Value) async throws -> Void,
                      onResult: @escaping (Error?) -> Void = { _ in }) {
-        self.init(delay: delay, saved: saved,
+        self.init(delay: delay, saved: saved, sleep: sleep,
                   writeApplied: { new, previous in try await writeChange(new, previous); return new },
                   onResult: onResult)
     }
 
     init(delay: Duration = .milliseconds(150), saved: Value? = nil,
+         sleep: @escaping Sleep = Committer.realSleep,
          writeApplied: @escaping (_ new: Value, _ previous: Value) async throws -> Value,
          onApplied: @escaping (_ sent: Value, _ applied: Value) -> Void = { _, _ in },
          onResult: @escaping (Error?) -> Void = { _ in }) {
         self.delay = delay
+        self.sleep = sleep
         self.saved = saved
         self.write = writeApplied
         self.onApplied = onApplied
@@ -99,7 +109,7 @@ final class Committer<Value: Equatable> {
         pending = Task {
             defer { if waitingID == myWait { waitingID = nil } }
             if wait > .zero {
-                do { try await Task.sleep(for: wait) } catch { return }
+                do { try await sleep(wait) } catch { return }
             }
             // Une tâche annulée avant d'avoir tourné (sans pause, rien ne l'a
             // interrompue) ne touche pas à la pause de celle qui l'a remplacée.

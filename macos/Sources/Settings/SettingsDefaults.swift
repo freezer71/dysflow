@@ -9,12 +9,10 @@ extension SettingsPatch {
     /// Un patch qui ne touche rien : on n'y pose que ce qui change.
     static var empty: SettingsPatch {
         SettingsPatch(
-            voice: nil, language: nil, speed: nil, pitch: nil, energy: nil, emotion: nil,
-            instruction: nil, volume: nil, engine: nil, compute: nil, threads: nil, sessions: nil,
-            prefetch: nil, temperature: nil, topP: nil, topK: nil, guidanceScale: nil,
-            repetitionPenalty: nil, inferenceSteps: nil, seed: nil, codeBlocks: nil,
-            autoplay: nil, seekStep: nil, lineWidth: nil, lineSpacing: nil, readingRuler: nil,
-            keepVoiceMinutes: nil, outputDevice: nil, extraSet: [], extraRemove: [], voiceForLanguage: nil)
+            voice: nil, language: nil, speed: nil, pitch: nil, volume: nil, engine: nil,
+            threads: nil, sessions: nil, prefetch: nil, codeBlocks: nil, autoplay: nil,
+            seekStep: nil, lineWidth: nil, lineSpacing: nil, readingRuler: nil,
+            keepVoiceMinutes: nil, outputDevice: nil, voiceForLanguage: nil)
     }
 
     var isEmpty: Bool { self == .empty }

@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Mesure les seuils de la spec sur Sillon.app construite en Release.
+# Mesure les seuils de la spec sur Sillon.app construite en Release, avec
+# le code de mesure (`build-macos.sh --mesure`, absent de l'app livrée).
 set -euo pipefail
 cd "$(dirname "$0")/.."
-APP=macos/build/Release/Sillon.app
+APP=macos/build/Mesure/Sillon.app
 # Toujours reconstruire (incrémental), sinon on mesure une app périmée.
 CHARGE=0
 CONSTRUIRE=1
@@ -23,15 +24,17 @@ for arg in "$@"; do
 done
 [ "$CHARGE" = 1 ] && [ "$SECOND" = 1 ] && usage
 if [ "$CONSTRUIRE" = 1 ]; then
-    ./scripts/build-macos.sh
+    ./scripts/build-macos.sh --mesure
 fi
+# Les relevés vont sous target/runs (ignoré par git, effacé par cargo clean).
+mkdir -p target/runs
 # Filtre de charge : le pilote du banc échantillonne l'app pendant son scénario.
 if [ "$CHARGE" = 1 ]; then
     PY=${SILLON_BENCH_PY:-$HOME/Library/Caches/sillon-bench/light/venv-mlx/bin/python}
-    exec "$PY" -I scripts/mesure-charge.py app --app "$APP" --out /tmp/sillon-charge.json
+    exec "$PY" -I scripts/mesure-charge.py app --app "$APP" --out target/runs/sillon-charge.json
 fi
-SORTIE=/tmp/sillon-mesures.txt
-JOURNAL=/tmp/sillon-mesures.err
+SORTIE=target/runs/sillon-mesures.txt
+JOURNAL=target/runs/sillon-mesures.err
 # grep sans correspondance ne doit pas masquer le vrai diagnostic (|| true).
 "$APP/Contents/MacOS/Sillon" --measure 2>"$JOURNAL" | { grep '^MESURE' || true; } | tee "$SORTIE"
 if [ ! -s "$SORTIE" ]; then

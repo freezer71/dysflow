@@ -11,14 +11,16 @@
 //!   s'applique à la lecture (`audio::tempo`), un changement ne touche pas
 //!   au cache.
 
+use crate::sync::{CondvarExt, LockExt};
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
-use std::thread::{self, JoinHandle};
+use std::thread::JoinHandle;
 use std::time::Duration;
 
 use super::{Cancel, PcmBuffer, Synthesis, TtsEngine, TtsParams, WordSpan};
+use crate::audio::pcm::{fade_edge, Edge};
 
 /// Phrase à synthétiser.
 #[derive(Debug, Clone)]
@@ -181,7 +183,7 @@ fn split_text_at_word(text: &str, split: Split) -> Option<Split> {
     // Début de chaque jeton de `text`, pour couper au blanc qui précède.
     let starts: Vec<usize> = text
         .char_indices()
-        .filter(|&(i, c)| !c.is_whitespace() && text[..i].chars().next_back().map_or(true, char::is_whitespace))
+        .filter(|&(i, c)| !c.is_whitespace() && text[..i].chars().next_back().is_none_or(char::is_whitespace))
         .map(|(i, _)| i)
         .collect();
     let tokens: Vec<&str> = text.split_whitespace().collect();
@@ -194,51 +196,12 @@ fn split_text_at_word(text: &str, split: Split) -> Option<Split> {
     Some(Split { head_text: head.to_string(), tail_text: tail.to_string(), ..split })
 }
 
-/// Bord d'un son à adoucir.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Edge {
-    Start,
-    End,
-}
-
-/// Durée du fondu à la coupe : assez court pour ne pas s'entendre comme
-/// tel, assez long pour ne pas claquer.
-const CUT_FADE: Duration = Duration::from_millis(5);
-
-/// Fondu en cosinus sur `CUT_FADE` au bord `edge`, jusqu'au silence.
-///
-/// Tête et suite passent chacune par leur propre conversion de fréquence,
-/// qui part d'un silence et y retourne : une tête coupée en pleine onde
-/// claquait à la jonction dès que la carte son ne tourne pas à la fréquence
-/// de la synthèse (24 kHz contre 48 kHz, le cas courant sur Mac).
-pub(crate) fn fade_edge(pcm: PcmBuffer, edge: Edge) -> PcmBuffer {
-    let ch = pcm.channels as usize;
-    let frames = pcm.samples.len() / ch;
-    let n = ((pcm.sample_rate as f64 * CUT_FADE.as_secs_f64()) as usize).min(frames);
-    if n == 0 {
-        return pcm;
-    }
-    let mut samples = pcm.samples.to_vec();
-    for k in 0..n {
-        // `k` : distance au bord, en trames ; gain nul au bord même.
-        let gain = 0.5 * (1.0 - (std::f32::consts::PI * k as f32 / n as f32).cos());
-        let frame = match edge {
-            Edge::Start => k,
-            Edge::End => frames - 1 - k,
-        };
-        for sample in &mut samples[frame * ch..(frame + 1) * ch] {
-            *sample *= gain;
-        }
-    }
-    PcmBuffer::new(samples, pcm.sample_rate, pcm.channels)
-}
-
 /// Position des virgules, points-virgules et deux-points qui finissent un
 /// mot (suivis d'un blanc, ou en fin de texte).
 fn cut_marks(text: &str) -> impl Iterator<Item = (usize, char)> + '_ {
     text.char_indices().filter(move |&(i, c)| {
         matches!(c, ',' | ';' | ':')
-            && text[i + c.len_utf8()..].chars().next().map_or(true, char::is_whitespace)
+            && text[i + c.len_utf8()..].chars().next().is_none_or(char::is_whitespace)
     })
 }
 
@@ -402,7 +365,7 @@ impl Synthesizer {
         let handles = (0..worker_count)
             .map(|_| {
                 let shared = Arc::clone(&shared);
-                thread::spawn(move || worker_loop(shared))
+                crate::sync::spawn_named("sillon-synthese", move || worker_loop(shared))
             })
             .collect();
 
@@ -429,7 +392,7 @@ impl Synthesizer {
     /// nombre en chiffres y reste reconnaissable.
     pub fn push_sentence(&self, text: String, words: Vec<String>, written: Vec<String>, pause_ms: u64) {
         let written = if written.len() == words.len() { written } else { words.clone() };
-        let mut state = self.shared.state.lock().unwrap();
+        let mut state = self.shared.state.locked();
         state.jobs.push(Job { text, words, written, pause_ms });
         drop(state);
         self.shared.wake.notify_all();
@@ -437,7 +400,7 @@ impl Synthesizer {
 
     /// Déplace la fenêtre de synthèse.
     pub fn set_cursor(&self, cursor: usize) {
-        let mut state = self.shared.state.lock().unwrap();
+        let mut state = self.shared.state.locked();
         if state.cursor == cursor {
             return;
         }
@@ -452,7 +415,7 @@ impl Synthesizer {
     /// Voix, langue, échantillonnage… La vitesse n'en fait pas partie : elle
     /// s'applique au son, et ne vide jamais le cache.
     pub fn set_params(&self, params: TtsParams) {
-        let mut state = self.shared.state.lock().unwrap();
+        let mut state = self.shared.state.locked();
         if state.params == params {
             return;
         }
@@ -465,12 +428,12 @@ impl Synthesizer {
     }
 
     pub fn params(&self) -> TtsParams {
-        self.shared.state.lock().unwrap().params.clone()
+        self.shared.state.locked().params.clone()
     }
 
     /// Audio d'une phrase, s'il est prêt et à jour.
     pub fn get(&self, id: usize) -> Option<Rendered> {
-        let state = self.shared.state.lock().unwrap();
+        let state = self.shared.state.locked();
         state
             .cache
             .get(&id)
@@ -481,7 +444,7 @@ impl Synthesizer {
     /// La suite d'une phrase coupée, si elle est prête et à jour. Son
     /// minutage part du début de la suite.
     pub fn tail(&self, id: usize) -> Option<Rendered> {
-        let state = self.shared.state.lock().unwrap();
+        let state = self.shared.state.locked();
         state
             .cache
             .get(&id)
@@ -491,14 +454,14 @@ impl Synthesizer {
 
     /// Message d'erreur si la synthèse de cette phrase a échoué.
     pub fn failure(&self, id: usize) -> Option<String> {
-        self.shared.state.lock().unwrap().failures.get(&id).cloned()
+        self.shared.state.locked().failures.get(&id).cloned()
     }
 
     /// Message de la dernière ouverture de session, si elle a échoué et
     /// qu'aucune session n'est ouverte : la voix entière est alors muette.
     /// Une session ouverte ailleurs parle : rien à signaler.
     pub fn open_failure(&self) -> Option<String> {
-        let state = self.shared.state.lock().unwrap();
+        let state = self.shared.state.locked();
         if state.open_sessions > 0 {
             return None;
         }
@@ -511,7 +474,7 @@ impl Synthesizer {
     /// revenir exprès ne la faisait pas réentendre. Or c'est précisément le
     /// geste de quelqu'un qui veut réécouter un passage.
     pub fn retry_from(&self, from: usize) {
-        let mut state = self.shared.state.lock().unwrap();
+        let mut state = self.shared.state.locked();
         let before = state.failures.len();
         state.failures.retain(|&id, _| id < from);
         if state.failures.len() == before {
@@ -529,10 +492,6 @@ impl Synthesizer {
     }
 
     /// Vrai si le moteur exige un WAV de référence pour parler.
-    pub fn requires_reference(&self) -> bool {
-        self.shared.engine.requires_reference()
-    }
-
     /// Le moteur, pour ouvrir une session hors de l'ordonnanceur.
     ///
     /// Sert aux aperçus : ils doivent parler avec le même modèle et les mêmes
@@ -546,7 +505,7 @@ impl Synthesizer {
     /// Les synthèses encore en cours portent l'ancienne génération : elles
     /// seront jetées à leur arrivée, et libéreront alors leur place.
     pub fn reset(&self) {
-        let mut state = self.shared.state.lock().unwrap();
+        let mut state = self.shared.state.locked();
         state.jobs.clear();
         state.cache.clear();
         state.failures.clear();
@@ -557,7 +516,7 @@ impl Synthesizer {
     }
 
     pub fn stats(&self) -> SynthesisStats {
-        let state = self.shared.state.lock().unwrap();
+        let state = self.shared.state.locked();
         SynthesisStats {
             ready: state
                 .cache
@@ -598,7 +557,7 @@ fn worker_loop(shared: Arc<Shared>) {
 
     loop {
         let job = {
-            let mut state = shared.state.lock().unwrap();
+            let mut state = shared.state.locked();
             loop {
                 if shared.shutdown.load(Ordering::SeqCst) {
                     if session.is_some() {
@@ -612,25 +571,25 @@ fn worker_loop(shared: Arc<Shared>) {
                     state.in_flight.insert(job.id);
                     break job;
                 }
-                state = shared.wake.wait(state).unwrap();
+                state = shared.wake.wait_locked(state);
             }
         };
 
         if session.is_none() {
-            shared.state.lock().unwrap().opening += 1;
+            shared.state.locked().opening += 1;
             let opened = shared.engine.open_session();
-            shared.state.lock().unwrap().opening -= 1;
+            shared.state.locked().opening -= 1;
             match opened {
                 Ok(s) => {
                     session = Some(s);
-                    let mut state = shared.state.lock().unwrap();
+                    let mut state = shared.state.locked();
                     state.open_failure = None;
                     state.open_sessions += 1;
                 }
                 Err(err) => {
                     // Une famille qui ne sait pas synthétiser échoue ici, à
                     // chaque phrase : le lecteur doit pouvoir le dire.
-                    let mut state = shared.state.lock().unwrap();
+                    let mut state = shared.state.locked();
                     state.open_failure = Some(err.to_string());
                     if state.open_sessions > 0 || state.opening > 0 {
                         // Une autre session parle (ou s'ouvre) : ce worker se
@@ -744,7 +703,7 @@ fn cancel_for(shared: &Arc<Shared>, id: usize, generation: u64) -> Cancel {
 /// du moteur et ce verrou. La phrase est alors simplement refaite (au pire
 /// une tête de plus) : rien n'est perdu ni joué deux fois.
 fn abandon(shared: &Arc<Shared>, id: usize, generation: u64) {
-    let mut state = shared.state.lock().unwrap();
+    let mut state = shared.state.locked();
     state.in_flight.remove(&id);
     if generation == state.generation {
         state.cache.remove(&id);
@@ -766,7 +725,7 @@ fn synthesize(
 ) -> Result<Synthesis, Stop> {
     let started = std::time::Instant::now();
     let outcome = session.synthesize_cancellable(text, words, params, cancel);
-    shared.state.lock().unwrap().busy += started.elapsed();
+    shared.state.locked().busy += started.elapsed();
     match outcome {
         Ok(s) if s.pcm.is_empty() => Err(Stop::Failed("aucun échantillon produit".to_string())),
         Ok(s) => Ok(s),
@@ -808,7 +767,7 @@ fn finish_generation(
     generation: u64,
     outcome: Result<Rendered, String>,
 ) {
-    let mut state = shared.state.lock().unwrap();
+    let mut state = shared.state.locked();
     state.in_flight.remove(&id);
     // Un résultat produit sous d'anciens paramètres n'a plus lieu d'être joué.
     if generation == state.generation {
@@ -828,7 +787,7 @@ fn finish_generation(
 
 /// Range la tête d'une phrase coupée ; la phrase reste en cours.
 fn finish_head(shared: &Arc<Shared>, id: usize, generation: u64, rendered: Rendered) {
-    let mut state = shared.state.lock().unwrap();
+    let mut state = shared.state.locked();
     if generation == state.generation {
         state.cache.insert(id, Entry { rendered, tail: None, generation });
     }
@@ -840,7 +799,7 @@ fn finish_head(shared: &Arc<Shared>, id: usize, generation: u64, rendered: Rende
 /// celui d'une phrase : la lecture passe à la suivante. La tête part avec
 /// elle : restée seule en cache, elle empêcherait de refaire la phrase.
 fn finish_tail(shared: &Arc<Shared>, id: usize, generation: u64, outcome: Result<Rendered, String>) {
-    let mut state = shared.state.lock().unwrap();
+    let mut state = shared.state.locked();
     state.in_flight.remove(&id);
     if generation == state.generation {
         match outcome {
@@ -862,6 +821,7 @@ fn finish_tail(shared: &Arc<Shared>, id: usize, generation: u64, outcome: Result
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::thread;
     use crate::tts::TtsSession;
     use std::sync::atomic::AtomicUsize;
 
@@ -997,8 +957,8 @@ mod tests {
         }
         fn open_session(&self) -> Result<Box<dyn TtsSession>> {
             if self.opens.fetch_add(1, Ordering::SeqCst) == 0 {
-                self.started.lock().unwrap().send(()).unwrap();
-                self.gate.lock().unwrap().recv().unwrap();
+                self.started.locked().send(()).unwrap();
+                self.gate.locked().recv().unwrap();
                 anyhow::bail!("refusée");
             }
             Ok(Box::new(LengthSession))
@@ -1138,7 +1098,7 @@ mod tests {
         fn open_session(&self) -> Result<Box<dyn TtsSession>> {
             Ok(Box::new(GatedSession {
                 calls: Arc::clone(&self.calls),
-                started: self.started.lock().unwrap().clone(),
+                started: self.started.locked().clone(),
                 gate: Arc::clone(&self.gate),
             }))
         }
@@ -1151,7 +1111,7 @@ mod tests {
         fn synthesize(&mut self, text: &str, _: &TtsParams) -> Result<PcmBuffer> {
             self.calls.fetch_add(1, Ordering::SeqCst);
             self.started.send(()).unwrap();
-            self.gate.lock().unwrap().recv().unwrap();
+            self.gate.locked().recv().unwrap();
             Ok(PcmBuffer::new(vec![0.1; text.len() * 10], 1000, 1))
         }
     }
@@ -1289,7 +1249,7 @@ mod tests {
             synth.set_cursor(cursor);
             thread::sleep(Duration::from_millis(5));
         }
-        let cached = synth.shared.state.lock().unwrap().cache.len();
+        let cached = synth.shared.state.locked().cache.len();
         assert!(cached <= 32, "le cache a grossi sans borne : {cached}");
     }
 
@@ -1538,7 +1498,7 @@ mod tests {
 
     impl TtsSession for SplittingSession {
         fn synthesize(&mut self, text: &str, _: &TtsParams) -> Result<PcmBuffer> {
-            self.texts.lock().unwrap().push(text.to_string());
+            self.texts.locked().push(text.to_string());
             if !text.contains(',') && self.fail_tail.swap(false, Ordering::SeqCst) {
                 anyhow::bail!("suite refusée");
             }
@@ -1583,7 +1543,7 @@ mod tests {
         assert_eq!(tail.words.as_ref().map(|w| w.len()), Some(4));
         assert!(tail.audio.duration > tail.speech, "la pause de fin de bloc va à la suite");
         assert_eq!(wait_ready(&synth, 1).part, Part::Whole, "les phrases suivantes restent entières");
-        assert_eq!(texts.lock().unwrap()[..2], ["Le quatorze juillet,", "Camille harangua la foule."]);
+        assert_eq!(texts.locked()[..2], ["Le quatorze juillet,", "Camille harangua la foule."]);
     }
 
     #[test]
@@ -1605,7 +1565,7 @@ mod tests {
         let head = wait_ready(&synth, 0);
         assert_eq!(head.part, Part::Head { words: 7 });
         wait_tail(&synth, 0);
-        let said = texts.lock().unwrap().clone();
+        let said = texts.locked().clone();
         assert_eq!(said.len(), 2, "{said:?}");
         assert!(said[0].ends_with(','), "{said:?}");
         assert_eq!(format!("{} {}", said[0], said[1]), sentence.text);
@@ -1624,7 +1584,7 @@ mod tests {
         synth.push_with_words(sentence.text.clone(), sentence.spoken_words(), 0);
         let rendered = wait_ready(&synth, 0);
         assert_eq!(rendered.part, Part::Whole, "la phrase reste entière");
-        assert_eq!(*texts.lock().unwrap(), std::slice::from_ref(&sentence.text));
+        assert_eq!(*texts.locked(), std::slice::from_ref(&sentence.text));
         assert_eq!(rendered.words.map(|w| w.len()), Some(sentence.words.len()));
     }
 
@@ -1645,7 +1605,7 @@ mod tests {
         synth.push_with_words(first.into(), words(first), 0);
         assert_eq!(wait_ready(&synth, 0).part, Part::Head { words: 5 });
         assert_eq!(wait_tail(&synth, 0).words.as_ref().map(|w| w.len()), Some(6));
-        assert_eq!(texts.lock().unwrap()[..2], ["Camille traversa la grande place", "sous la pluie fine du matin."]);
+        assert_eq!(texts.locked()[..2], ["Camille traversa la grande place", "sous la pluie fine du matin."]);
     }
 
     #[test]
@@ -1728,7 +1688,7 @@ mod tests {
         }
         fn open_session(&self) -> Result<Box<dyn TtsSession>> {
             Ok(Box::new(AbandoningSession {
-                started: self.started.lock().unwrap().clone(),
+                started: self.started.locked().clone(),
                 gate: Arc::clone(&self.gate),
                 abandoned: Arc::clone(&self.abandoned),
             }))
@@ -1754,9 +1714,9 @@ mod tests {
         ) -> Result<Synthesis> {
             self.started.send(text.to_string()).unwrap();
             // Banc démonté (feu vert lâché) : la synthèse finit tout de suite.
-            let _ = self.gate.lock().unwrap().recv_timeout(Duration::from_secs(5));
+            let _ = self.gate.locked().recv_timeout(Duration::from_secs(5));
             if cancel.is_cancelled() {
-                self.abandoned.lock().unwrap().push(text.to_string());
+                self.abandoned.locked().push(text.to_string());
                 return Err(crate::tts::Cancelled.into());
             }
             Ok(Synthesis { pcm: PcmBuffer::new(vec![0.1; text.len() * 10], 1000, 1), words: None })
@@ -1793,7 +1753,7 @@ mod tests {
             self.started.recv_timeout(Duration::from_secs(5)).expect("une synthèse démarre")
         }
         fn abandoned(&self) -> Vec<String> {
-            self.abandoned.lock().unwrap().clone()
+            self.abandoned.locked().clone()
         }
     }
 

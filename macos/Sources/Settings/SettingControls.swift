@@ -1,12 +1,6 @@
 import Foundation
 import SwiftUI
 
-/// Un réglage que le modèle actif ignore, montré sur demande : il le dit,
-/// en description de sa ligne, et VoiceOver l'entend en indice du contrôle.
-enum IgnoredSetting {
-    static let hint = "sans effet sur ce modèle"
-}
-
 /// Nombres à la française, à l'écran comme pour VoiceOver.
 enum SettingFormat {
     /// Deux décimales au plus, virgule : « 1,25 », « 1 ».
@@ -57,111 +51,5 @@ enum LanguageName {
     static func display(_ code: String) -> String {
         guard let name = french.localizedString(forLanguageCode: code), name != code else { return code }
         return name.prefix(1).uppercased() + name.dropFirst()
-    }
-}
-
-/// Un réglage que le modèle peut fixer seul. « Laisser le modèle décider »
-/// est un état à part, distinct de toute valeur ; sinon, une valeur posée au
-/// curseur. `onEditingChanged` reçoit le début et la fin du geste : rien ne
-/// part avant le relâchement.
-struct OptionalSlider: View {
-    let title: String
-    let ignored: Bool
-    @Binding var value: Float?
-    let range: ClosedRange<Float>
-    let step: Float
-    /// La valeur proposée quand on reprend la main.
-    let fallback: Float
-    var onEditingChanged: (Bool) -> Void = { _ in }
-
-    var body: some View {
-        SettingRow(title: title, detail: ignored ? IgnoredSetting.hint : nil) {
-            Group {
-                if let current = value {
-                    Slider(value: Binding(get: { current }, set: { value = SettingFormat.rounded($0) }),
-                           in: range, step: step) {
-                        Text("\(title) : \(SettingFormat.decimal(current))")
-                    } onEditingChanged: { onEditingChanged($0) }
-                    .notionSlider(width: 150)
-                    .accessibilityLabel(title)
-                    .accessibilityValue(SettingFormat.decimal(current))
-                    ValueText(SettingFormat.decimal(current), width: 36)
-                }
-                AutoToggle(title: title, isAuto: Binding(get: { value == nil },
-                                                         set: { value = $0 ? nil : fallback }))
-            }
-            .accessibilityHint(ignored ? IgnoredSetting.hint : "")
-        }
-    }
-}
-
-/// « Auto » : le modèle décide. Une case, à droite du réglage ; VoiceOver
-/// entend « Température : laisser le modèle décider ».
-struct AutoToggle: View {
-    let title: String
-    @Binding var isAuto: Bool
-
-    var body: some View {
-        Toggle(isOn: $isAuto) { Text("Auto").font(Typo.body).foregroundStyle(Palette.muted) }
-            .toggleStyle(.checkbox)
-            .controlSize(.small)
-            .accessibilityLabel("\(title) : laisser le modèle décider")
-    }
-}
-
-/// La même chose pour un entier.
-struct OptionalStepper: View {
-    let title: String
-    let ignored: Bool
-    @Binding var value: UInt32?
-    let range: ClosedRange<UInt32>
-    let fallback: UInt32
-
-    var body: some View {
-        SettingRow(title: title, detail: ignored ? IgnoredSetting.hint : nil) {
-            Group {
-                if let current = value {
-                    ValueText("\(current)", width: 30)
-                    Stepper("\(title) : \(current)",
-                            value: Binding(get: { current }, set: { value = $0 }), in: range)
-                        .labelsHidden()
-                        .accessibilityLabel(title)
-                        .accessibilityValue("\(current)")
-                }
-                AutoToggle(title: title, isAuto: Binding(get: { value == nil },
-                                                         set: { value = $0 ? nil : fallback }))
-            }
-            .accessibilityHint(ignored ? IgnoredSetting.hint : "")
-        }
-    }
-}
-
-/// La graine : un tirage au hasard, ou une valeur fixe pour une synthèse
-/// reproductible.
-struct SeedField: View {
-    let ignored: Bool
-    @Binding var seed: UInt64?
-
-    var body: some View {
-        SettingRow(title: "Graine", detail: ignored ? IgnoredSetting.hint
-                   : (seed != nil ? "Entrée pour valider" : "Un tirage différent à chaque phrase")) {
-            Group {
-                if seed != nil {
-                    TextField("Graine", value: Binding(get: { seed ?? 0 }, set: { seed = $0 }),
-                              format: IntegerFormatStyle<UInt64>().grouping(.never))
-                        .textFieldStyle(.notion)
-                        .frame(width: 120)
-                        .accessibilityLabel("Graine")
-                        .accessibilityHint("Entrée pour valider")
-                }
-                Toggle(isOn: Binding(get: { seed == nil }, set: { seed = $0 ? nil : 0 })) {
-                    Text("Aléatoire").font(Typo.body).foregroundStyle(Palette.muted)
-                }
-                .toggleStyle(.checkbox)
-                .controlSize(.small)
-                .accessibilityLabel("Graine : aléatoire")
-            }
-            .accessibilityHint(ignored ? IgnoredSetting.hint : "")
-        }
     }
 }

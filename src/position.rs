@@ -3,13 +3,26 @@
 //! Un signet se pose à la main, pour y revenir plus tard ; la position, elle,
 //! se retient toute seule et ne sert qu'une fois. Les deux ne se mélangent
 //! donc pas — et perdre une position coûte un défilement, là où perdre un
-//! signet coûte du travail : ce fichier-ci se relit sans façons, et s'ignore
-//! s'il est illisible.
+//! signet coûte du travail. Un fichier illisible est tout de même mis de côté
+//! en `.bak` plutôt qu'écrasé, et le journal le dit.
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
+
+/// Ce qui identifie un document d'une ouverture à l'autre : son chemin entier.
+///
+/// Le nom seul ne suffit pas — deux `spec.pdf` dans deux dossiers se
+/// partageraient positions et signets, et l'un enverrait la lecture de
+/// l'autre n'importe où. Le chemin est résolu pour qu'un même fichier, atteint
+/// par deux chemins, reste un seul document.
+pub fn document_identity(path: &std::path::Path) -> String {
+    std::fs::canonicalize(path)
+        .unwrap_or_else(|_| path.to_path_buf())
+        .to_string_lossy()
+        .into_owned()
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Position {
@@ -37,10 +50,8 @@ impl PositionStore {
         crate::paths::data_dir().map(|d| d.join("positions.json"))
     }
 
-    /// Relit les positions retenues, ou repart de zéro sans le dire.
-    ///
-    /// Un fichier illisible n'est pas mis de côté comme celui des signets :
-    /// ce qu'il contient se reconstruit à la première lecture.
+    /// Relit les positions retenues. Un fichier illisible est mis de côté
+    /// (`paths::load_json`) et l'avertissement va au journal.
     pub fn load() -> Self {
         Self::path().map(|p| Self::load_from(&p)).unwrap_or_default()
     }
@@ -52,17 +63,15 @@ impl PositionStore {
 
     /// Séparé du chemin par défaut pour que l'aller-retour se vérifie.
     fn load_from(path: &Path) -> Self {
-        std::fs::read_to_string(path)
-            .ok()
-            .and_then(|text| serde_json::from_str(&text).ok())
-            .unwrap_or_default()
+        let (store, notice) = crate::paths::load_json(path, "positions de lecture");
+        if let Some(notice) = notice {
+            eprintln!("sillon : {notice}");
+        }
+        store
     }
 
     fn save_to(&self, path: &Path) -> Result<()> {
-        let text = serde_json::to_string_pretty(self)?;
-        crate::paths::write_atomic(path, text.as_bytes())
-            .with_context(|| format!("écriture de {}", path.display()))?;
-        Ok(())
+        crate::paths::save_json(path, self)
     }
 
     /// Fait passer une position retenue sous un ancien nom au nom courant.
@@ -118,6 +127,24 @@ fn now_epoch() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_unreadable_file_is_set_aside_not_overwritten() {
+        let dir = std::env::temp_dir().join(format!("sillon-positions-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("positions.json");
+        std::fs::write(&path, "{ pas du json").unwrap();
+
+        let mut store = PositionStore::load_from(&path);
+        assert!(store.items.is_empty());
+        store.record("a.md", 1, "Une phrase.");
+        store.save_to(&path).unwrap();
+
+        let backup = std::fs::read_to_string(dir.join("positions.json.bak")).unwrap();
+        assert_eq!(backup, "{ pas du json", "l'ancien fichier est gardé à part");
+        assert_eq!(PositionStore::load_from(&path).items.len(), 1);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 
     #[test]
     fn a_place_is_kept_for_each_document() {

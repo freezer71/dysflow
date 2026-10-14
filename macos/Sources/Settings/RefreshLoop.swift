@@ -57,7 +57,9 @@ struct WindowVisibility: NSViewRepresentable {
     final class WatcherView: NSView {
         var onVisible: (Bool) -> Void = { _ in }
         var onClose: () -> Void = {}
-        private var observers: [NSObjectProtocol] = []
+        /// Lu par `deinit`, hors de l'acteur principal : la vue est alors
+        /// seule à le tenir, aucun accès concurrent n'est possible.
+        nonisolated(unsafe) private var observers: [NSObjectProtocol] = []
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()

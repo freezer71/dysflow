@@ -5,12 +5,12 @@
 //! d'un vrai modèle atteignable depuis l'interface, sans ligne de commande et
 //! sans jamais télécharger quoi que ce soit sans accord explicite.
 
+use crate::sync::LockExt;
 use anyhow::{anyhow, Context, Result};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use std::thread;
 
 /// Un fichier de plus, téléchargé dans le dossier de la famille.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -280,7 +280,7 @@ fn is_active_path_with(configured: &str, installed: &Path, home: Option<&Path>) 
     if configured.is_empty() {
         return false;
     }
-    let expanded = PathBuf::from(crate::config::expand_tilde_with(configured, home));
+    let expanded = PathBuf::from(crate::paths::expand_tilde_with(configured, home));
     let canonical = |p: &Path| std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
     canonical(&expanded) == canonical(installed)
 }
@@ -493,7 +493,7 @@ impl Download {
         let cancel = Arc::new(AtomicBool::new(false));
 
         let worker = (Arc::clone(&received), Arc::clone(&outcome), Arc::clone(&cancel));
-        thread::spawn(move || {
+        crate::sync::spawn_named("sillon-telechargement", move || {
             let (received, outcome, cancel) = worker;
             let mut base = 0u64;
             let mut result = Ok(());
@@ -514,14 +514,14 @@ impl Download {
                 Ok(()) => Progress::Done,
                 Err(err) => Progress::Failed(err.to_string()),
             };
-            *outcome.lock().unwrap() = Some(state);
+            *outcome.locked() = Some(state);
         });
 
         Ok(Self { package, received, total, outcome, cancel })
     }
 
     pub fn progress(&self) -> Progress {
-        if let Some(state) = self.outcome.lock().unwrap().clone() {
+        if let Some(state) = self.outcome.locked().clone() {
             return state;
         }
         Progress::Running {
@@ -547,7 +547,7 @@ impl Download {
     #[cfg(test)]
     pub(crate) fn fake_ended(package: &'static ModelPackage, ending: Progress) -> Self {
         let download = Self::fake(package, false);
-        *download.outcome.lock().unwrap() = Some(ending);
+        *download.outcome.locked() = Some(ending);
         download
     }
 
@@ -562,7 +562,7 @@ impl Download {
     }
 
     pub fn is_finished(&self) -> bool {
-        self.outcome.lock().unwrap().is_some()
+        self.outcome.locked().is_some()
     }
 }
 
@@ -860,6 +860,44 @@ pub fn languages_for_family(family: &str) -> Vec<&'static str> {
         .find(|p| p.family == family)
         .map(|p| p.languages.to_vec())
         .unwrap_or_else(|| FALLBACK_LANGUAGES.to_vec())
+}
+
+/// Ce que le catalogue décide pour une configuration : la voix de chaque
+/// langue et le nombre de sessions.
+impl crate::config::Config {
+    /// Fait suivre la voix quand la famille change.
+    ///
+    /// Seul Kokoro nomme ses voix, une par langue : `voice.voice` reste celle
+    /// de l'ancien modèle, pour qui voudra y revenir, et seules les langues
+    /// sans voix reçoivent la leur. Une voix retirée du catalogue n'est pas
+    /// réécrite : `tts_params_in` la remplace par la voix recommandée de sa
+    /// langue (règle des valeurs non listées). Les autres familles ne nomment
+    /// aucune voix : rien à aligner. Renvoie vrai si quelque chose a changé.
+    pub fn align_voice_with_family(&mut self) -> bool {
+        let family = self.engine.family.clone();
+        if !voices_follow_language(&family) {
+            return false;
+        }
+        let mut changed = false;
+        for language in ["fr", "en"] {
+            if !self.voice.per_language.contains_key(language) {
+                let voice = default_voice_for_language(&family, language);
+                self.voice.per_language.insert(language.to_string(), voice.to_string());
+                changed = true;
+            }
+        }
+        changed
+    }
+
+    /// Sessions de synthèse réellement ouvertes.
+    ///
+    /// Un nombre posé à la main l'emporte ; `0` s'en remet à la famille.
+    pub fn sessions(&self) -> u32 {
+        match self.engine.sessions {
+            0 => sessions_for_family(&self.engine.family),
+            n => n,
+        }
+    }
 }
 
 #[cfg(test)]

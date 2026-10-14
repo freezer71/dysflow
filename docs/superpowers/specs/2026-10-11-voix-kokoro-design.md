@@ -1,5 +1,7 @@
 # La voix Kokoro-82M dans Sillon
 
+> **Document historique** — état au 11 oct. 2026 ; audio.cpp, Supertonic et MagpieTTS ont été retirés le 14 oct. 2026.
+
 Conception validée le 2026-10-11. Elle s'appuie sur trois mesures :
 `.superpowers/research/eval/rapport.md` (§10 et §11),
 `.superpowers/research/2026-10-11-spike-kokoro-integration.md` (le spike) et

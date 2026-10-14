@@ -1,3 +1,4 @@
+#if DEBUG || SILLON_MESURE
 import Foundation
 
 /// Mesures des seuils de la spec, sur le vrai moteur. Lancé par
@@ -356,3 +357,4 @@ enum Measure {
         fflush(stdout)
     }
 }
+#endif

@@ -1,6 +1,7 @@
 //! Synthèse vocale : contrat commun, moteurs, et ordonnanceur parallèle.
 
 pub mod lazy;
+pub mod params;
 pub mod fallback;
 pub mod kokoro;
 pub mod pool;
@@ -11,6 +12,7 @@ pub mod system;
 
 pub use pool::{SynthesisStats, Synthesizer};
 
+pub use crate::audio::PcmBuffer;
 pub use crate::doc::WordSpan;
 
 /// Une phrase synthétisée, avec le temps de chacun de ses mots affichés
@@ -22,9 +24,7 @@ pub struct Synthesis {
 }
 
 use anyhow::Result;
-use std::collections::BTreeMap;
 use std::sync::Arc;
-use std::time::Duration;
 
 /// Paramètres d'une requête de synthèse.
 ///
@@ -38,23 +38,8 @@ pub struct TtsParams {
     // s'applique au son pendant la lecture (`audio::tempo`, par Sonic, sans
     // changer la hauteur). Donnée au modèle, elle comprimait la durée prévue
     // de la phrase et lui faisait avaler mots et ponctuation.
+    /// Hauteur de la voix du système (-1 à 1) ; Kokoro ne la lit pas.
     pub pitch_shift: f32,
-    pub energy: f32,
-    pub emotion: String,
-    /// Consigne de style en langage naturel, pour les modèles qui la prennent.
-    ///
-    /// Aucune famille du catalogue ne la consulte : elle sert aux familles
-    /// qu'on compilerait soi-même, et l'écran la marque inerte en attendant.
-    pub instruction: String,
-    pub temperature: Option<f32>,
-    pub top_p: Option<f32>,
-    pub top_k: Option<u32>,
-    pub guidance_scale: Option<f32>,
-    pub repetition_penalty: Option<f32>,
-    pub inference_steps: Option<u32>,
-    pub seed: Option<u64>,
-    /// Options transmises telles quelles au modèle.
-    pub extra: BTreeMap<String, String>,
 }
 
 impl Default for TtsParams {
@@ -63,66 +48,7 @@ impl Default for TtsParams {
             voice: String::new(),
             language: "fr".to_string(),
             pitch_shift: 0.0,
-            energy: 1.0,
-            emotion: String::new(),
-            instruction: String::new(),
-            temperature: None,
-            top_p: None,
-            top_k: None,
-            guidance_scale: None,
-            repetition_penalty: None,
-            inference_steps: None,
-            seed: None,
-            extra: BTreeMap::new(),
         }
-    }
-}
-
-/// Audio synthétisé, prêt pour la sortie.
-#[derive(Debug, Clone)]
-pub struct PcmBuffer {
-    pub samples: Arc<[f32]>,
-    pub sample_rate: u32,
-    pub channels: u16,
-    /// Durée réelle du signal, mesurée sur les échantillons.
-    ///
-    /// C'est elle qui pilote le curseur de lecture, et non une estimation en
-    /// mots par seconde.
-    pub duration: Duration,
-}
-
-impl PcmBuffer {
-    /// Le même son, privé de ses `offset` premières secondes.
-    ///
-    /// La coupe tombe sur une trame entière : couper entre deux canaux
-    /// inverserait gauche et droite pour toute la suite.
-    pub fn skip(&self, offset: Duration) -> PcmBuffer {
-        let start = self.sample_index(offset);
-        PcmBuffer::new(self.samples[start..].to_vec(), self.sample_rate, self.channels)
-    }
-
-    /// Indice du premier échantillon de la trame qui tombe à `offset`.
-    pub fn sample_index(&self, offset: Duration) -> usize {
-        let frames = (offset.as_secs_f64() * self.sample_rate as f64) as usize;
-        (frames * self.channels as usize).min(self.samples.len())
-    }
-
-    pub fn new(samples: Vec<f32>, sample_rate: u32, channels: u16) -> Self {
-        let channels = channels.max(1);
-        let sample_rate = sample_rate.max(1);
-        let frames = samples.len() / channels as usize;
-        let duration = Duration::from_secs_f64(frames as f64 / sample_rate as f64);
-        Self {
-            samples: samples.into(),
-            sample_rate,
-            channels,
-            duration,
-        }
-    }
-
-
-    pub fn is_empty(&self) -> bool {
-        self.samples.is_empty()
     }
 }
 
@@ -148,15 +74,6 @@ pub trait TtsEngine: Send + Sync {
 
     /// Nombre de sessions simultanées raisonnable pour ce moteur.
     fn max_sessions(&self) -> usize;
-
-    /// Vrai quand le moteur exige un WAV de référence pour parler.
-    ///
-    /// Certaines familles ne savent que cloner : sans référence elles refusent
-    /// chaque phrase, une par une. Le savoir d'avance permet de le dire une
-    /// fois, au bon endroit.
-    fn requires_reference(&self) -> bool {
-        false
-    }
 
     /// État du moteur, pour l'annoncer. Un moteur ordinaire est prêt.
     fn readiness(&self) -> Readiness {
@@ -334,8 +251,8 @@ fn kokoro_backend(
         return Err("Kokoro int8 : binaire compilé sans `kokoro-onnx`".to_string());
     }
     match mlx {
-        Some(backend) if settings.backend != "cpu" => Ok(backend as Arc<dyn kokoro::KokoroBackend>),
-        _ => Err("Calcul Metal indisponible — Kokoro MLX ne tourne que dans l'app, sur la puce graphique".to_string()),
+        Some(backend) => Ok(backend as Arc<dyn kokoro::KokoroBackend>),
+        None => Err("Calcul Metal indisponible — Kokoro MLX ne tourne que dans l'app, sur la puce graphique".to_string()),
     }
 }
 
@@ -350,9 +267,7 @@ impl EnginePreference {
     pub fn parse(value: &str) -> Option<Self> {
         match value.to_ascii_lowercase().as_str() {
             "auto" => Some(EnginePreference::Auto),
-            // audio.cpp n'est plus : une ancienne configuration qui le
-            // demandait prend le modèle configuré, comme `auto`.
-            "audio_cpp" | "audio-cpp" | "audiocpp" => Some(EnginePreference::Auto),
+            // L'ancien `audio_cpp` est ramené à `auto` par `Config::normalised`.
             "system" | "systeme" | "système" => Some(EnginePreference::System),
             _ => None,
         }
@@ -364,7 +279,6 @@ impl EnginePreference {
 pub struct EngineSettings {
     pub model_path: String,
     pub family: String,
-    pub backend: String,
     pub threads: u32,
     pub sessions: u32,
 }
@@ -372,28 +286,12 @@ pub struct EngineSettings {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Duration;
 
-    #[test]
-    fn skipping_drops_whole_frames_from_the_start() {
-        // Stéréo, 10 trames par seconde : 0,3 s = 3 trames = 6 échantillons.
-        let pcm = PcmBuffer::new((0..20).map(|i| i as f32).collect(), 10, 2);
-        let rest = pcm.skip(Duration::from_millis(300));
-        assert_eq!(rest.samples.len(), 14);
-        assert_eq!(rest.samples[0], 6.0);
-        assert_eq!(rest.channels, 2);
-    }
-
-    #[test]
-    fn skipping_past_the_end_leaves_silence() {
-        let pcm = PcmBuffer::new(vec![0.5; 10], 10, 1);
-        assert!(pcm.skip(Duration::from_secs(5)).is_empty());
-    }
-
-    fn kokoro_settings(model_path: &str, backend: &str) -> EngineSettings {
+    fn kokoro_settings(model_path: &str) -> EngineSettings {
         EngineSettings {
             model_path: model_path.into(),
             family: "kokoro".into(),
-            backend: backend.into(),
             threads: 4,
             sessions: 1,
         }
@@ -409,7 +307,7 @@ mod tests {
 
     #[test]
     fn kokoro_without_its_files_falls_back_and_says_why() {
-        let settings = kokoro_settings("/nulle/part/kokoro-v1_0.safetensors", "metal");
+        let settings = kokoro_settings("/nulle/part/kokoro-v1_0.safetensors");
         let (_, note) = build_engine_with(EnginePreference::Auto, &settings, None);
         assert!(note.unwrap().contains("Kokoro n'est pas installé"));
     }
@@ -417,7 +315,7 @@ mod tests {
     #[test]
     fn kokoro_mlx_needs_the_compute_of_the_app() {
         let path = kokoro_files("mlx", "kokoro-v1_0.safetensors");
-        let (_, note) = build_engine_with(EnginePreference::Auto, &kokoro_settings(&path.to_string_lossy(), "metal"), None);
+        let (_, note) = build_engine_with(EnginePreference::Auto, &kokoro_settings(&path.to_string_lossy()), None);
         assert!(note.unwrap().contains("Calcul Metal indisponible"));
     }
 
@@ -425,7 +323,7 @@ mod tests {
     #[cfg(not(feature = "kokoro-onnx"))]
     fn kokoro_int8_needs_the_onnx_feature() {
         let path = kokoro_files("onnx", "model_quantized.onnx");
-        let (_, note) = build_engine_with(EnginePreference::Auto, &kokoro_settings(&path.to_string_lossy(), "cpu"), None);
+        let (_, note) = build_engine_with(EnginePreference::Auto, &kokoro_settings(&path.to_string_lossy()), None);
         assert!(note.unwrap().contains("kokoro-onnx"));
     }
 
@@ -436,7 +334,7 @@ mod tests {
         // échouera en arrière-plan, mais rien n'est tranché d'avance.
         let path = kokoro_files("onnx-ort", "model_quantized.onnx");
         let (engine, note) =
-            build_engine_with(EnginePreference::Auto, &kokoro_settings(&path.to_string_lossy(), "cpu"), None);
+            build_engine_with(EnginePreference::Auto, &kokoro_settings(&path.to_string_lossy()), None);
         assert_eq!(note, None, "le calcul ORT part en arrière-plan");
         assert!(engine.splits_first_clause());
     }
@@ -464,7 +362,7 @@ mod tests {
         let (engine, note) =
             build_engine_with(
             EnginePreference::Auto,
-            &kokoro_settings(&path.to_string_lossy(), "metal"),
+            &kokoro_settings(&path.to_string_lossy()),
             Some(Arc::new(kokoro::SharedCompute::new(Arc::new(Idle)))),
         );
         assert_eq!(note, None, "rien à dire d'avance : le chargement part en arrière-plan");

@@ -5,7 +5,7 @@ import XCTest
 final class ModelsStoreTests: XCTestCase {
     func testTheActiveModelIsRefusedWithoutAnAlert() {
         let store = ModelsStore(backend: FakeModelsBackend())
-        let active = VoiceModel.sample(id: "a", name: "Supertonic 3 · F16", active: true)
+        let active = VoiceModel.sample(id: "a", name: "Kokoro 82M · MLX", active: true)
         guard case .refuse(let reason) = ModelsStore.deletionRequest(for: active) else {
             return XCTFail("le modèle actif ne se supprime pas")
         }
@@ -17,12 +17,12 @@ final class ModelsStoreTests: XCTestCase {
 
     func testAnInstalledModelAsksForConfirmation() {
         let store = ModelsStore(backend: FakeModelsBackend())
-        let model = VoiceModel.sample(id: "b", name: "MagpieTTS", bytes: 1_562_142_912)
+        let model = VoiceModel.sample(id: "b", name: "Kokoro 82M · int8", bytes: 108_000_000)
         guard case .confirm(let title, let message) = ModelsStore.deletionRequest(for: model) else {
             return XCTFail("confirmation attendue")
         }
-        XCTAssertEqual(title, "Supprimer MagpieTTS ?")
-        XCTAssertTrue(message.hasPrefix("1,6 Go seront libérés"), message)
+        XCTAssertEqual(title, "Supprimer Kokoro 82M · int8 ?")
+        XCTAssertTrue(message.hasPrefix("108 Mo seront libérés"), message)
         store.askDeletion(model)
         XCTAssertEqual(store.pendingDeletion?.id, "b")
     }
@@ -43,11 +43,11 @@ final class ModelsStoreTests: XCTestCase {
     func testAFailedDeletionSaysWhyAndRereadsTheCatalogue() async {
         let backend = FakeModelsBackend()
         backend.catalogue = [.sample(id: "b")]
-        backend.failRemoval = "suppression de magpie.gguf : permission refusée"
+        backend.failRemoval = "suppression de model_quantized.onnx : permission refusée"
         let store = ModelsStore(backend: backend)
         await store.reload()
         await store.delete(backend.catalogue[0])
-        XCTAssertEqual(store.error, "suppression de magpie.gguf : permission refusée")
+        XCTAssertEqual(store.error, "suppression de model_quantized.onnx : permission refusée")
         XCTAssertEqual(backend.loads, 2, "catalogue relu")
         XCTAssertEqual(store.catalogue.count, 1)
     }
@@ -112,7 +112,7 @@ final class ModelsStoreTests: XCTestCase {
     func testARepeatedRefusalIsAnnouncedEveryTime() {
         var said: [String] = []
         let store = ModelsStore(backend: FakeModelsBackend(), announce: { said.append($0) })
-        let active = VoiceModel.sample(id: "a", name: "Supertonic", active: true)
+        let active = VoiceModel.sample(id: "a", name: "Kokoro", active: true)
         store.askDeletion(active)
         store.askDeletion(active)
         XCTAssertEqual(said.count, 2)
@@ -159,10 +159,10 @@ final class ModelsStoreTests: XCTestCase {
         await settings.load()
         let store = ModelsStore(backend: backend, onActiveModelChanged: { await settings.reload() })
         await store.downloadChanged(downloading: true)
-        settingsBackend.capabilities = Capabilities.magpie
+        settingsBackend.capabilities = Capabilities.kokoro
         backend.finishDownloadActivating("b")
         await store.downloadChanged(downloading: false)
-        XCTAssertEqual(settings.capabilities.family, "magpie_tts")
+        XCTAssertEqual(settings.capabilities.family, "kokoro")
     }
 
     /// Seule la fin d'un téléchargement compte, et seulement si elle change

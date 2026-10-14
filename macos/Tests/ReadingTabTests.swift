@@ -1,6 +1,7 @@
 import XCTest
 @testable import Sillon
 
+@MainActor
 final class ReadingTabTests: XCTestCase {
     func testTheThreeCodePoliciesAreNamedInFrench() {
         let options = ReadingTab.codeOptions(current: "announce")

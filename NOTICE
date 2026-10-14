@@ -25,6 +25,14 @@ Contents/Resources/licences (ce fichier compris) :
   nlohmann-json-LICENSE) et {fmt} (licence MIT avec exception pour les
   binaires, Victor Zverovich — fmt-LICENSE) ;
 - KeyboardShortcuts, licence MIT, Sindre Sorhus — KeyboardShortcuts-LICENSE ;
+- trois polices de lecture, sous SIL Open Font License 1.1, sans
+  modification, avec le texte de leur licence à côté d'elles dans
+  Contents/Resources/Fonts (sources : macos/Resources/Fonts) :
+  Literata (Copyright 2017 The Literata Project Authors — OFL-Literata.txt),
+  OpenDyslexic (Copyright 2019 Abbie Gonzalez, nom de police réservé
+  « OpenDyslexic » — OFL-OpenDyslexic.txt) et Atkinson Hyperlegible
+  (Copyright 2020 Braille Institute of America, Inc. —
+  OFL-AtkinsonHyperlegible.txt) ;
 - Sonic, licence Apache 2.0 (voir plus haut) — sonic-LICENSE ;
 - le moteur de Sillon (bibliothèque Rust liée statiquement), et avec lui :
   - les crates Rust qu'il lie (licences MIT, Apache 2.0, ISC, BSD,
@@ -54,8 +62,13 @@ Le terminal (dossier produit par scripts/package.sh) contient ce fichier,
 THIRD-PARTY-RUST.txt (les crates Rust liées au binaire, mêmes licences que
 ci-dessus) et, dans licences/ : Sonic (sonic-LICENSE), Tesseract et
 Leptonica avec la feature ocr (tesseract-LICENSE, leptonica-LICENSE).
-La feature kokoro-onnx charge ONNX Runtime (licence MIT, Microsoft), livré à
-côté du binaire sous Linux avec sa licence et ses avis
+Avec la feature ocr, le binaire embarque aussi les données de langue
+française et anglaise de Tesseract (assets/tessdata, fra.traineddata et
+eng.traineddata, tirées de tesseract-ocr/tessdata_fast, licence Apache 2.0 —
+même texte que tesseract-LICENSE).
+La feature kokoro-onnx charge ONNX Runtime 1.31.0 (licence MIT, Microsoft),
+livré à côté du binaire sous Linux (x86_64, ARM64) et sous macOS (Apple
+Silicon) avec sa licence et ses avis
 (LICENSE-onnxruntime, ThirdPartyNotices-onnxruntime.txt), et sillon-espeak
 (GPL-3.0, programme séparé, comme dans l'app) avec ses données
 (espeak-ng-data), sa licence, l'adresse des sources d'espeak-ng et ses

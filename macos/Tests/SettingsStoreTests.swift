@@ -3,6 +3,14 @@ import XCTest
 
 @MainActor
 final class SettingsStoreTests: XCTestCase {
+    private lazy var clock = TestClock()
+
+    /// La pause passe (horloge de test), puis la condition est attendue.
+    private func eventuallyAfterPause(_ condition: () -> Bool) async -> Bool {
+        await clock.advance(by: .seconds(1))
+        return await eventuallyTrue(.seconds(5), condition)
+    }
+
     /// Un moteur à portes : libéré en fin de test quoi qu'il arrive, et test borné.
     private func gated() -> GatedSettingsBackend {
         executionTimeAllowance = 20
@@ -13,7 +21,7 @@ final class SettingsStoreTests: XCTestCase {
 
     private func loadedStore(_ backend: FakeSettingsBackend,
                              delay: Duration = .milliseconds(20)) async -> SettingsStore {
-        let store = SettingsStore(backend: backend, delay: delay)
+        let store = SettingsStore(backend: backend, delay: delay, sleep: clock.sleep)
         await store.load()
         return store
     }
@@ -22,7 +30,7 @@ final class SettingsStoreTests: XCTestCase {
         let backend = FakeSettingsBackend()
         let store = await loadedStore(backend)
         store.set(\.speed, 1.4)
-        let sent = await eventuallyTrue { backend.patches.count == 1 }
+        let sent = await eventuallyAfterPause { backend.patches.count == 1 }
         XCTAssertTrue(sent)
         var expected = SettingsPatch.empty
         expected.speed = 1.4
@@ -35,12 +43,12 @@ final class SettingsStoreTests: XCTestCase {
         let store = await loadedStore(backend)
         store.setVoice("p-fenrir60", language: "fr")
         store.setVoice("am_fenrir", language: "en")
-        let sent = await eventuallyTrue { backend.patches.count == 2 }
+        let sent = await eventuallyAfterPause { backend.patches.count == 2 }
         XCTAssertTrue(sent)
         XCTAssertEqual(Set(backend.stored.voicesByLanguage),
                        [LanguageVoice(language: "fr", voice: "p-fenrir60"),
                         LanguageVoice(language: "en", voice: "am_fenrir")])
-        let applied = await eventuallyTrue { store.values.voicesByLanguage.count == 2 }
+        let applied = await eventuallyAfterPause { store.values.voicesByLanguage.count == 2 }
         XCTAssertTrue(applied)
     }
 
@@ -52,11 +60,11 @@ final class SettingsStoreTests: XCTestCase {
         backend.stored.language = "ja"
         backend.stored.keepVoiceMinutes = 7
         let store = await loadedStore(backend)
-        try await Task.sleep(for: .milliseconds(100))
+        await clock.advance(by: .milliseconds(100))
         XCTAssertTrue(backend.patches.isEmpty)
         XCTAssertEqual(store.values.codeBlocks, "lire")
         store.set(\.speed, 1.2)
-        _ = await eventuallyTrue { backend.patches.count == 1 }
+        _ = await eventuallyAfterPause { backend.patches.count == 1 }
         XCTAssertNil(backend.patches.first?.codeBlocks)
         XCTAssertNil(backend.patches.first?.language)
         XCTAssertNil(backend.patches.first?.keepVoiceMinutes)
@@ -64,33 +72,17 @@ final class SettingsStoreTests: XCTestCase {
 
     func testNothingIsSentBeforeLoading() async throws {
         let backend = FakeSettingsBackend()
-        let store = SettingsStore(backend: backend, delay: .milliseconds(10))
+        let store = SettingsStore(backend: backend, delay: .milliseconds(10), sleep: clock.sleep)
         store.set(\.speed, 2)
-        try await Task.sleep(for: .milliseconds(80))
+        await clock.advance(by: .milliseconds(80))
         XCTAssertTrue(backend.patches.isEmpty)
-    }
-
-    /// Supertonic → MagpieTTS : température apparaît, top-p reste ignoré.
-    func testIgnoredSettingsFollowTheActiveModel() async {
-        let backend = FakeSettingsBackend()
-        let store = await loadedStore(backend)
-        XCTAssertFalse(store.isShown(.temperature))
-        XCTAssertTrue(store.isIgnored(.topP))
-        store.showIgnored = true
-        XCTAssertTrue(store.isShown(.temperature), "montré sur demande")
-        store.showIgnored = false
-        backend.capabilities = Capabilities.magpie
-        await store.reloadCapabilities()
-        XCTAssertTrue(store.isShown(.temperature))
-        XCTAssertTrue(store.isShown(.topK))
-        XCTAssertTrue(store.isShown(.guidance))
     }
 
     func testTheValueShownIsTheOneApplied() async {
         let backend = FakeSettingsBackend()
         let store = await loadedStore(backend)
         store.set(\.lineSpacing, 4)
-        let clamped = await eventuallyTrue { store.values.lineSpacing == 3 }
+        let clamped = await eventuallyAfterPause { store.values.lineSpacing == 3 }
         XCTAssertTrue(clamped, "ramené dans les bornes et affiché tel qu'appliqué")
     }
 
@@ -99,7 +91,7 @@ final class SettingsStoreTests: XCTestCase {
         backend.failNext = "écriture de config.toml impossible"
         let store = await loadedStore(backend)
         store.set(\.speed, 1.4)
-        let said = await eventuallyTrue { store.error != nil }
+        let said = await eventuallyAfterPause { store.error != nil }
         XCTAssertTrue(said)
         XCTAssertEqual(store.error, "écriture de config.toml impossible")
         XCTAssertEqual(store.values.speed, 1.4, "gardé à l'écran")
@@ -111,31 +103,30 @@ final class SettingsStoreTests: XCTestCase {
         store.dragChanged(true)
         store.set(\.speed, 1.1)
         store.set(\.speed, 1.3)
-        try await Task.sleep(for: .milliseconds(100))
+        await clock.advance(by: .milliseconds(100))
         XCTAssertTrue(backend.patches.isEmpty)
         store.dragChanged(false)
-        let sent = await eventuallyTrue { backend.patches.count == 1 }
+        let sent = await eventuallyAfterPause { backend.patches.count == 1 }
         XCTAssertTrue(sent)
         XCTAssertEqual(backend.patches.first?.speed, 1.3)
     }
 
     /// Même règle pour chaque curseur qui resynthétise : une seule écriture au relâchement.
-    func testEverySamplingSliderWritesOnceOnRelease() async throws {
+    func testEveryVoiceSliderWritesOnceOnRelease() async throws {
         let backend = FakeSettingsBackend()
         let store = await loadedStore(backend)
         store.dragChanged(true)
         store.set(\.pitch, 0.5)
-        store.set(\.energy, 1.5)
-        store.set(\.temperature, 0.6)
+        store.set(\.volume, 0.8)
         store.set(\.pitch, 0.7)
-        try await Task.sleep(for: .milliseconds(100))
+        await clock.advance(by: .milliseconds(100))
         XCTAssertTrue(backend.patches.isEmpty)
         store.dragChanged(false)
-        let sent = await eventuallyTrue { backend.patches.count == 1 }
+        let sent = await eventuallyAfterPause { backend.patches.count == 1 }
         XCTAssertTrue(sent)
         XCTAssertEqual(backend.patches.first?.pitch, 0.7)
-        XCTAssertEqual(backend.patches.first?.energy, 1.5)
-        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(backend.patches.first?.volume, 0.8)
+        await clock.advance(by: .milliseconds(100))
         XCTAssertEqual(backend.patches.count, 1)
     }
 
@@ -144,7 +135,7 @@ final class SettingsStoreTests: XCTestCase {
         let store = await loadedStore(backend)
         store.dragChanged(true)
         store.dragChanged(false)
-        try await Task.sleep(for: .milliseconds(100))
+        await clock.advance(by: .milliseconds(100))
         XCTAssertTrue(backend.patches.isEmpty)
     }
 
@@ -153,11 +144,11 @@ final class SettingsStoreTests: XCTestCase {
         let backend = FakeSettingsBackend()
         let store = await loadedStore(backend)
         backend.stored.voice = "Aria"
-        backend.capabilities = Capabilities.magpie
+        backend.capabilities = Capabilities.kokoro
         await store.reload()
         XCTAssertEqual(store.values.voice, "Aria")
-        XCTAssertEqual(store.capabilities.family, "magpie_tts")
-        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(store.capabilities.family, "kokoro")
+        await clock.advance(by: .milliseconds(100))
         XCTAssertTrue(backend.patches.isEmpty)
     }
 
@@ -175,7 +166,7 @@ final class SettingsStoreTests: XCTestCase {
     /// seul ce champ part, par-dessus la config relue.
     func testChangeDuringReloadSurvivesAndWritesOnlyThatField() async throws {
         let backend = gated()
-        let store = SettingsStore(backend: backend, delay: .milliseconds(20))
+        let store = SettingsStore(backend: backend, delay: .milliseconds(20), sleep: clock.sleep)
         await store.load()
         backend.stored.voice = "Aria"        // changé ailleurs (nouveau modèle)
         backend.stored.language = "de"
@@ -187,19 +178,19 @@ final class SettingsStoreTests: XCTestCase {
         await reloading.value
         XCTAssertEqual(store.values.speed, 1.7, "le changement reste à l'écran")
         XCTAssertEqual(store.values.voice, "Aria")
-        let sent = await eventuallyTrue { backend.patches.count == 1 }
+        let sent = await eventuallyAfterPause { backend.patches.count == 1 }
         XCTAssertTrue(sent)
         var expected = SettingsPatch.empty
         expected.speed = 1.7
         XCTAssertEqual(backend.patches, [expected], "pas d'ancienne voix ni langue réécrites")
-        try await Task.sleep(for: .milliseconds(100))
+        await clock.advance(by: .milliseconds(100))
         XCTAssertEqual(backend.patches.count, 1)
     }
 
     /// Deux relectures qui se chevauchent : seule la dernière s'applique.
     func testOnlyTheLatestOverlappingReloadApplies() async {
         let backend = gated()
-        let store = SettingsStore(backend: backend, delay: .milliseconds(20))
+        let store = SettingsStore(backend: backend, delay: .milliseconds(20), sleep: clock.sleep)
         await store.load()
         backend.gateLoads = true
         backend.stored.voice = "ancienne"
@@ -223,7 +214,7 @@ final class SettingsStoreTests: XCTestCase {
         store.dragChanged(true)
         await store.reload()
         store.set(\.speed, 1.5)
-        let sent = await eventuallyTrue { backend.patches.count == 1 }
+        let sent = await eventuallyAfterPause { backend.patches.count == 1 }
         XCTAssertTrue(sent, "plus de glissé en cours : le changement part")
     }
 
@@ -240,12 +231,12 @@ final class SettingsStoreTests: XCTestCase {
     func testFlushDuringTheSameWriteAddsNothing() async {
         let backend = gated()
         backend.gateWrites = true
-        let store = SettingsStore(backend: backend, delay: .zero)
+        let store = SettingsStore(backend: backend, delay: .zero, sleep: clock.sleep)
         await store.load()
         store.set(\.speed, 2.2)
         guard await eventuallyTrue(.seconds(5), { backend.waitingWrites == 1 }) else { return XCTFail("précondition jamais atteinte") }
         let flushing = Task { await store.flush() }
-        try? await Task.sleep(for: .milliseconds(50))
+        await clock.advance(by: .milliseconds(50))
         backend.releaseWrite()
         await flushing.value
         XCTAssertEqual(backend.patches.count, 1)
@@ -255,22 +246,24 @@ final class SettingsStoreTests: XCTestCase {
     func testWritesAreSerialisedAndTheLastWins() async throws {
         let backend = gated()
         backend.gateWrites = true
-        let store = SettingsStore(backend: backend, delay: .milliseconds(5))
+        let store = SettingsStore(backend: backend, delay: .milliseconds(5), sleep: clock.sleep)
         await store.load()
         store.set(\.speed, 1.1)
+        await clock.advance(by: .milliseconds(5))
         guard await eventuallyTrue(.seconds(5), { backend.waitingWrites == 1 }) else { return XCTFail("précondition jamais atteinte") }
         store.set(\.speed, 1.2)
-        try await Task.sleep(for: .milliseconds(30))
+        await clock.advance(by: .milliseconds(30))
         store.set(\.speed, 1.3)
-        try await Task.sleep(for: .milliseconds(30))
+        await clock.advance(by: .milliseconds(30))
         store.set(\.speed, 1.4)
-        try await Task.sleep(for: .milliseconds(30))
+        await clock.advance(by: .milliseconds(30))
         XCTAssertEqual(backend.patches.count, 1, "rien ne part tant que la première n'est pas finie")
         backend.releaseWrite()
+        await clock.advance(by: .milliseconds(5))
         guard await eventuallyTrue(.seconds(5), { backend.waitingWrites == 1 }) else { return XCTFail("précondition jamais atteinte") }
         backend.releaseWrite()
         guard await eventuallyTrue(.seconds(5), { backend.patches.count == 2 && backend.running == 0 }) else { return XCTFail("précondition jamais atteinte") }
-        try await Task.sleep(for: .milliseconds(60))
+        await clock.advance(by: .milliseconds(60))
         XCTAssertEqual(backend.patches.count, 2)
         XCTAssertEqual(backend.patches.last?.speed, 1.4)
         XCTAssertEqual(backend.maxRunning, 1, "jamais deux écritures en même temps")
@@ -291,10 +284,10 @@ final class SettingsStoreTests: XCTestCase {
         store.followReader(speed: 1.5, volume: 0.8)
         XCTAssertEqual(store.values.speed, 1.5)
         XCTAssertEqual(store.values.volume, 0.8)
-        try await Task.sleep(for: .milliseconds(80))
+        await clock.advance(by: .milliseconds(80))
         XCTAssertTrue(backend.patches.isEmpty, "reprendre n'écrit rien")
         store.set(\.speed, 1.0)
-        let sent = await eventuallyTrue { backend.patches.count == 1 }
+        let sent = await eventuallyAfterPause { backend.patches.count == 1 }
         XCTAssertTrue(sent, "revenir à l'ancienne valeur écrit")
         XCTAssertEqual(backend.patches.first?.speed, 1.0)
         XCTAssertNil(backend.patches.first?.volume)

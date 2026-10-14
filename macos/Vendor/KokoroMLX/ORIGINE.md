@@ -27,3 +27,13 @@ prédicteur de hauteur) ; les phases initiales des harmoniques de
 par `KokoroParityTests` (référence : `scripts/kokoro-parite.py`).
 
 Seule dépendance : mlx-swift 0.32.3.
+
+Le détail exact de ces changements : `patches/kokoro-mlx.patch`, à la racine
+du dépôt (`diff -ruN`, de l'amont vers ce dossier). Pour le refaire :
+télécharger `https://github.com/Blaizzy/mlx-audio-swift/archive/244458d.tar.gz`,
+ranger dans un dossier `a/` les fichiers de
+`Sources/MLXAudioTTS/Models/StyleTTS2` comme ici (`Kokoro/*.swift` sauf
+`KokoroMultilingualProcessor.swift` à plat, `SharedConfigs.swift`,
+`Albert.swift`, `Blocks/`), copier les `.swift` de ce dossier dans `b/`, puis
+`diff -ruN a b`. `KokoroModules.swift`, `Albert.swift` et six des huit
+`Blocks/` sont identiques à l'amont.

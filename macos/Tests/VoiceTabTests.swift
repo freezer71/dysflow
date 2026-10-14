@@ -1,11 +1,12 @@
 import XCTest
 @testable import Sillon
 
+@MainActor
 final class VoiceTabTests: XCTestCase {
     func testKokoroOffersOneVoicePerLanguage() {
         let caps = Capabilities.kokoro
         XCTAssertTrue(VoiceTab.followsLanguage(caps))
-        XCTAssertFalse(VoiceTab.followsLanguage(Capabilities.supertonic))
+        XCTAssertFalse(VoiceTab.followsLanguage(Capabilities.system))
         XCTAssertEqual(VoiceTab.voices(caps, language: "fr").map(\.id), ["p-fenrir60"])
         XCTAssertEqual(VoiceTab.voices(caps, language: "en").map(\.id), ["af_bella", "am_fenrir", "af_heart"])
         var values = SettingsView.defaults
@@ -24,7 +25,7 @@ final class VoiceTabTests: XCTestCase {
         }
         XCTAssertFalse(VoiceTab.showsKokoroVoices(kokoro, voice: .fallback(reason: "Metal indisponible")))
         XCTAssertFalse(VoiceTab.showsKokoroVoices(kokoro, voice: .unavailable(reason: "aucune session")))
-        XCTAssertFalse(VoiceTab.showsKokoroVoices(Capabilities.supertonic, voice: .ready), "pas Kokoro")
+        XCTAssertFalse(VoiceTab.showsKokoroVoices(Capabilities.system, voice: .ready), "pas Kokoro")
     }
 
     /// Une voix retirée du catalogue (ou écrite à la main) se montre comme

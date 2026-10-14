@@ -5,10 +5,18 @@ import MediaPlayer
 /// Point d'entrée AppKit : le lecteur vit aussi longtemps que l'app.
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    static private(set) var shared: AppDelegate!
+    /// Gardé pour la fenêtre des réglages seulement (`ReglagesView` y
+    /// dépose son magasin, `Announcement` y lit `isUnitTesting`). Le reste
+    /// de l'app reçoit ce qu'il lui faut : `services` par l'environnement
+    /// SwiftUI, le reste en paramètre.
+    static private(set) weak var shared: AppDelegate?
+
+    /// Ce que les scènes SwiftUI lisent (`.environment(services)`).
+    let services = AppServices()
 
     /// Lancée par les tests d'interface : lecteur muet, texte d'exemple.
-    let isUITesting = ProcessInfo.processInfo.arguments.contains("--ui-testing")
+    /// Toujours faux dans l'app livrée (Release).
+    let isUITesting = AppDelegate.isUITestLaunch(ProcessInfo.processInfo.arguments)
     /// Hôte des tests unitaires : ni ouverture à la connexion, ni alerte, ni
     /// raccourcis globaux (ils s'inscriraient pour l'app de développement).
     let isUnitTesting = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
@@ -22,7 +30,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// lecteur est muet et n'écrit rien : jamais ~/.config/sillon ni
     /// ~/Library/Application Support/sillon.
     nonisolated static func usesSilentReader(arguments: [String], environment: [String: String]) -> Bool {
-        arguments.contains("--ui-testing") || environment["XCTestConfigurationFilePath"] != nil
+        isUITestLaunch(arguments) || environment["XCTestConfigurationFilePath"] != nil
+    }
+
+    /// `--ui-testing` : la mise en scène des tests d'interface n'existe
+    /// qu'en Debug ; l'app livrée ignore l'argument.
+    nonisolated static func isUITestLaunch(_ arguments: [String]) -> Bool {
+        #if DEBUG
+        arguments.contains("--ui-testing")
+        #else
+        false
+        #endif
     }
     private(set) var model: ReaderModel!
     private(set) var panel: PanelController!
@@ -101,7 +119,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// fois. Aucune minuterie, rien entre deux ouvertures.
     @discardableResult
     static func refreshWhenAMenuOpens(center: NotificationCenter = .default,
-                                      refresh: @escaping @MainActor () -> Void) -> NSObjectProtocol {
+                                      refresh: @escaping @MainActor @Sendable () -> Void) -> NSObjectProtocol {
         center.addObserver(forName: NSMenu.didBeginTrackingNotification, object: nil, queue: .main) { _ in
             MainActor.assumeIsolated { refresh() }
         }
@@ -109,16 +127,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Le magasin de la fenêtre des réglages tant qu'elle existe.
     weak var settingsStore: SettingsStore?
 
-    /// Un réglage qui attend sa pause part avant la fin, attente bornée.
+    /// Un réglage qui attend sa pause part avant la fin : macOS attend
+    /// (`.terminateLater`) que son écriture finisse, 1,5 s au plus, sans que
+    /// la boucle principale tourne à la main. Pendant l'attente, AppKit fait
+    /// tourner la boucle dans un mode où l'acteur principal est servi.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard let store = settingsStore else { return .terminateNow }
+        terminationPending = true
+        Task { @MainActor [weak self] in
+            await store.flush()
+            self?.allowTermination()
+        }
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: Self.terminationDeadline)
+            self?.allowTermination()
+        }
+        return .terminateLater
+    }
+
+    static let terminationDeadline: Duration = .milliseconds(1500)
+    private var terminationPending = false
+
+    /// L'écriture finie ou le délai passé, le premier des deux : la fin reprend.
+    private func allowTermination() {
+        guard terminationPending else { return }
+        terminationPending = false
+        NSApp.reply(toApplicationShouldTerminate: true)
+    }
+
+    /// Les notes s'écrivent d'un coup (synchrone), à la toute fin.
     func applicationWillTerminate(_ notification: Notification) {
         notes?.store.flush()
-        guard let store = settingsStore else { return }
-        var done = false
-        Task { @MainActor in await store.flush(); done = true }
-        let deadline = Date().addingTimeInterval(1.5)
-        while !done, Date() < deadline {
-            RunLoop.main.run(until: Date().addingTimeInterval(0.01))
-        }
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -134,9 +173,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             kokoroCompute = compute
             reader = SillonReader.withKokoro(compute: compute)
         }
+        #if DEBUG || SILLON_MESURE
         // Mode mesure : seul le lecteur et les mesures tournent. Retour avant le
         // modèle, le panneau, les raccourcis, l'ouverture à la connexion et
-        // l'accueil ; sans l'argument, rien ne change.
+        // l'accueil ; sans l'argument, rien ne change. Absent de l'app livrée :
+        // `scripts/measure-macos.sh` construit sa propre copie (SILLON_MESURE).
         if ProcessInfo.processInfo.arguments.contains("--measure-charge"), !isUnitTesting {
             Task { @MainActor [reader = reader!, compute = kokoroCompute] in
                 await Measure.charge(reader: reader, compute: compute)
@@ -151,13 +192,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             return
         }
+        #endif
+        #if DEBUG
+        // Les tests d'interface posent leur mise en scène sur le lecteur : le
+        // modèle n'en sait rien.
+        if isUITesting { reader = UITestStaging.reader(reader, arguments: ProcessInfo.processInfo.arguments) }
+        #endif
         model = ReaderModel(reader: reader)
-        if isUITesting {
-            model.staged = UITestStaging.staging(for: ProcessInfo.processInfo.arguments)
-            model.stagedCapabilities = UITestStaging.capabilities(for: ProcessInfo.processInfo.arguments)
-        }
         model.refresh()
-        panel = PanelController(model: model)
+        let settings = SettingsOpener.shared
+        panel = PanelController(model: model, openSettings: { settings.open(tab: $0) })
         transport = Transport(model: model)
         // Sous les tests, un dossier jetable : jamais les notes de l'utilisateur.
         let notesDirectory = readerIsSilent
@@ -168,6 +212,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             model.open(text: page.markdown, source: "note")
             panel.apply(.readSelection)
         }, closed: { [weak self] in self?.notesClosed() })
+        services.model = model
+        services.panel = panel
+        services.transport = transport
+        services.notes = notes
+        services.read = { [weak self] in await self?.read() }
         menuObserver = Self.refreshWhenAMenuOpens { [model] in model?.refresh() }
         outputWatcher = AudioDeviceWatcher { [weak model] in model?.refreshOutputs() }
         Task { [model] in await model?.loadOutput() }
@@ -180,7 +229,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if ProcessInfo.processInfo.arguments.contains("--show-panel") { panel.apply(.choose(.medium)) }
             if ProcessInfo.processInfo.arguments.contains("--show-settings") {
                 // L'icône de la barre des menus donne l'action dès qu'elle paraît.
-                SettingsOpener.shared.open()
+                settings.open()
             }
             if ProcessInfo.processInfo.arguments.contains("--show-notes") { notes?.show() }
         }
@@ -263,7 +312,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// clavier pour le ⌘C simulé), puis le panneau, sans activer sillon.
     /// `capture` nil : le presse-papiers seul (depuis le menu). En mode
     /// mesure, ni modèle ni panneau : rien à faire (le menu plantait).
-    func read(capture: (() async -> CaptureOutcome)? = nil) async {
+    func read(capture: (@MainActor () async -> CaptureOutcome)? = nil) async {
         guard let model, let panel else { return }
         let pasteboard = SystemPasteboard()
         await readGate.run {
@@ -296,13 +345,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.nowPlaying = nowPlaying
     }
 
+    /// La sélection, sinon la copie simulée : ce que le raccourci « Lire » capture.
+    private var captureChain: CaptureChain?
+
     private func installShortcuts() {
-        let chain = CaptureChain(sources: [
+        captureChain = CaptureChain(sources: [
             SelectionSource(),
             CopySource(pasteboard: SystemPasteboard(), keys: SystemKeystrokes()),
         ])
         KeyboardShortcuts.onKeyUp(for: .readSelection) { [unowned self] in
-            Task { @MainActor in await self.read(capture: { await chain.capture() }) }
+            Task { @MainActor in
+                guard let chain = self.captureChain else { return }
+                await self.read(capture: { await chain.capture() })
+            }
         }
         KeyboardShortcuts.onKeyUp(for: .showPanel) { [unowned self] in self.panel.show() }
         // Sans document, rien ne part (Transport).

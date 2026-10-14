@@ -12,7 +12,7 @@ final class FakeRemoteCommands: RemoteCommandSource {
     private(set) var handler: (@MainActor (RemoteAction) -> Bool)?
     private(set) var installs = 0
     private(set) var enabled = false
-    func install(_ handler: @escaping @MainActor (RemoteAction) -> Bool) {
+    func install(_ handler: @escaping @MainActor @Sendable (RemoteAction) -> Bool) {
         installs += 1
         self.handler = handler
     }

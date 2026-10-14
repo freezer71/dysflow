@@ -10,9 +10,9 @@
 //! prêt. Rien n'est perdu — la première phrase n'aurait de toute façon pas pu
 //! être prononcée avant.
 
+use crate::sync::{CondvarExt, LockExt};
 use anyhow::{anyhow, Result};
 use std::sync::{Arc, Condvar, Mutex};
-use std::thread;
 
 use super::{TtsEngine, TtsSession};
 
@@ -56,9 +56,9 @@ impl LazyEngine {
         });
 
         let worker = Arc::clone(&shared);
-        thread::spawn(move || {
+        crate::sync::spawn_named("sillon-chargement-voix", move || {
             let outcome = load();
-            let mut state = worker.state.lock().unwrap();
+            let mut state = worker.state.locked();
             *state = match outcome {
                 Ok(engine) => State::Ready(engine),
                 Err(err) => State::Failed(err.to_string()),
@@ -79,12 +79,12 @@ impl LazyEngine {
 
     /// Vrai tant que le modèle n'est pas prêt.
     pub fn is_loading(&self) -> bool {
-        matches!(*self.shared.state.lock().unwrap(), State::Loading)
+        matches!(*self.shared.state.locked(), State::Loading)
     }
 
     /// Message d'échec, si le chargement a échoué.
     pub fn failure(&self) -> Option<String> {
-        match &*self.shared.state.lock().unwrap() {
+        match &*self.shared.state.locked() {
             State::Failed(err) => Some(err.clone()),
             _ => None,
         }
@@ -92,9 +92,9 @@ impl LazyEngine {
 
     /// Attend la fin du chargement et rend le moteur retenu.
     fn resolve(&self) -> std::result::Result<Arc<dyn TtsEngine>, String> {
-        let mut state = self.shared.state.lock().unwrap();
+        let mut state = self.shared.state.locked();
         while matches!(*state, State::Loading) {
-            state = self.shared.ready.wait(state).unwrap();
+            state = self.shared.ready.wait_locked(state);
         }
         match &*state {
             State::Ready(engine) => Ok(Arc::clone(engine)),
@@ -106,7 +106,7 @@ impl LazyEngine {
 
 impl TtsEngine for LazyEngine {
     fn readiness(&self) -> super::Readiness {
-        match &*self.shared.state.lock().unwrap() {
+        match &*self.shared.state.locked() {
             State::Loading => super::Readiness::Loading,
             State::Ready(engine) => engine.readiness(),
             State::Failed(err) => super::Readiness::Fallback(err.clone()),
@@ -114,7 +114,7 @@ impl TtsEngine for LazyEngine {
     }
 
     fn name(&self) -> String {
-        match &*self.shared.state.lock().unwrap() {
+        match &*self.shared.state.locked() {
             State::Loading => format!("{} · chargement…", self.shared.label),
             State::Ready(engine) => engine.name(),
             // L'échec est nommé : l'utilisateur doit savoir pourquoi la voix
@@ -139,24 +139,13 @@ impl TtsEngine for LazyEngine {
         self.shared.sessions.max(1)
     }
 
-    /// Ne se prononce qu'une fois le modèle chargé.
-    ///
-    /// Tant qu'il charge, répondre « oui » afficherait un avertissement qui
-    /// pourrait se révéler faux ; on attend de savoir.
-    fn requires_reference(&self) -> bool {
-        match &*self.shared.state.lock().unwrap() {
-            State::Ready(engine) => engine.requires_reference(),
-            _ => false,
-        }
-    }
-
     /// L'annonce ne vaut que pendant le chargement ; une fois chargé, seul le
-    /// moteur réel en décide, comme pour `requires_reference` — tombé sur sa
+    /// moteur réel en décide — tombé sur sa
     /// voix de repli, il ne coupe plus, et l'annonce ne doit pas le contredire.
     /// Après un échec, c'est le repli qui parle : il répond pour lui. Le pool
     /// le redemande à chaque phrase.
     fn splits_first_clause(&self) -> bool {
-        match &*self.shared.state.lock().unwrap() {
+        match &*self.shared.state.locked() {
             State::Loading => self.splits,
             State::Ready(engine) => engine.splits_first_clause(),
             State::Failed(_) => self.shared.fallback.splits_first_clause(),
@@ -167,6 +156,7 @@ impl TtsEngine for LazyEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::thread;
     use crate::tts::{PcmBuffer, TtsParams};
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::{Duration, Instant};

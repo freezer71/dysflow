@@ -127,7 +127,7 @@ fn handle_config(app: &mut App, key: Key) {
         KeyCode::Char('s') => app.toggle_config(),
 
         // Un chiffre ouvre directement sa rubrique, depuis n'importe où.
-        KeyCode::Char(c @ '1'..='5') => {
+        KeyCode::Char(c @ '1'..='4') => {
             app.config_goto_section(c as usize - '1' as usize);
         }
 

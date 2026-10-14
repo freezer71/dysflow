@@ -724,7 +724,7 @@ pub fn parse_document(markdown: &str, code_policy: CodePolicy) -> Document {
 /// Analyse un document complet dans `language`.
 pub fn parse_document_in(markdown: &str, code_policy: CodePolicy, language: &str) -> Document {
     let mut builder = DocumentBuilder::with_language(code_policy, language);
-    for block in crate::input::split_blocks(markdown) {
+    for block in crate::doc::blocks::split_blocks(markdown) {
         builder.push_block(&block);
     }
     builder.into_document()
@@ -1000,7 +1000,7 @@ mod tests {
         let bulk = doc(md);
 
         let mut builder = DocumentBuilder::new(CodePolicy::Announce);
-        for block in crate::input::split_blocks(md) {
+        for block in crate::doc::blocks::split_blocks(md) {
             builder.push_block(&block);
         }
         let incremental = builder.into_document();

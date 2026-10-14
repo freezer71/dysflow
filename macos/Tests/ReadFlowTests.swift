@@ -75,15 +75,22 @@ final class ReadFlowTests: XCTestCase {
     /// L'OCR d'une image tourne hors de l'acteur principal : le panneau ne
     /// paraît qu'une fois le texte ouvert, jamais avant.
     func testShowWaitsForAsyncImage() async {
+        let ocr = TestGate()
         let flow = ReadFlow(
             prepare: {}, capture: { .unsupported }, open: { _, _ in },
             readClipboard: { .image(Data()) },
             openImage: { _ in
-                try await Task.sleep(for: .milliseconds(50))
+                await ocr.wait()
                 await MainActor.run { self.log.append("image") }
             },
             say: { _ in }, show: { self.log.append("montre") })
-        await flow.run()
+        let running = Task { await flow.run() }
+        // L'OCR est en cours (suspendue à la porte) : rien n'est montré.
+        let started = await eventuallyTrue { ocr.waiting == 1 }
+        XCTAssertTrue(started)
+        XCTAssertEqual(log, [])
+        ocr.open()
+        await running.value
         XCTAssertEqual(log, ["image", "montre"])
     }
 
@@ -165,13 +172,16 @@ final class ClipboardSnapshotTests: XCTestCase {
 final class ReadGateTests: XCTestCase {
     func testSecondRunIsRefusedWhileFirstIsBusy() async {
         let gate = ReadGate()
+        let release = TestGate()
         var runs = 0
         let first = Task { @MainActor in
-            await gate.run { runs += 1; try? await Task.sleep(for: .milliseconds(100)) }
+            await gate.run { runs += 1; await release.wait() }
         }
-        await Task.yield()
-        try? await Task.sleep(for: .milliseconds(20))
+        // La première lecture est entrée et attend : la porte est prise.
+        let busy = await eventuallyTrue { release.waiting == 1 }
+        XCTAssertTrue(busy)
         let second = await gate.run { runs += 1 }
+        release.open()
         let accepted = await first.value
         XCTAssertTrue(accepted)
         XCTAssertFalse(second)

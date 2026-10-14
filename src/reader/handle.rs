@@ -6,6 +6,7 @@
 //! n'y a qu'un délai à surveiller, et dort sinon. Le document n'est republié
 //! qu'à chaque nouvelle révision.
 
+use crate::sync::LockExt;
 use crossbeam_channel::{Receiver, RecvTimeoutError, Sender};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -130,11 +131,11 @@ impl ReaderHandle {
     }
 
     pub fn snapshot(&self) -> Snapshot {
-        self.published.lock().unwrap().snapshot.clone()
+        self.published.locked().snapshot.clone()
     }
 
     pub fn document(&self) -> Arc<DocView> {
-        Arc::clone(&self.published.lock().unwrap().document)
+        Arc::clone(&self.published.locked().document)
     }
 
     /// Exécute `f` sur le fil du lecteur et rend son résultat.
@@ -212,7 +213,7 @@ fn handle(reader: &mut Reader, request: Request) -> bool {
 fn publish(reader: &Reader, out: &Mutex<Published>, revision: &mut u64) {
     let snapshot = view::snapshot(reader);
     let document = (snapshot.revision != *revision).then(|| Arc::new(view::document(reader)));
-    let mut out = out.lock().unwrap();
+    let mut out = out.locked();
     if let Some(document) = document {
         *revision = snapshot.revision;
         out.document = document;

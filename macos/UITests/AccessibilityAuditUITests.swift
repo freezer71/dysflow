@@ -2,6 +2,7 @@ import XCTest
 
 /// Audit d'accessibilité du panneau et du lecteur agrandi. Écrit pour être
 /// lancé à la main : `-only-testing:SillonUITests/AccessibilityAuditUITests`.
+@MainActor
 final class AccessibilityAuditUITests: XCTestCase {
     func testPanelAndExpandedPassTheAudit() throws {
         let app = XCUIApplication()

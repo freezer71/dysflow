@@ -168,7 +168,7 @@ final class ReaderModelTickingTests: XCTestCase {
                         for download in [nil, running, failed] {
                             let moving = playing || grace || loading || download == running
                             XCTAssertEqual(
-                                ReaderModel.cadence(presence: presence, playing: playing, grace: grace,
+                                RefreshSchedule.cadence(presence: presence, playing: playing, grace: grace,
                                                     loading: loading, download: download),
                                 moving ? active[i] : idle[i],
                                 "\(presence) lecture=\(playing) grâce=\(grace) chargement=\(loading) \(String(describing: download))")
@@ -182,10 +182,10 @@ final class ReaderModelTickingTests: XCTestCase {
     /// La relecture par minuterie : la seconde reste en filet quand l'écran
     /// doit donner les images (écran en veille : aucune n'arrive).
     func testPollIntervalForEachCadence() {
-        XCTAssertNil(ReaderModel.pollInterval(for: .none))
-        XCTAssertEqual(ReaderModel.pollInterval(for: .second), ReaderModel.secondInterval)
-        XCTAssertEqual(ReaderModel.pollInterval(for: .glance), ReaderModel.glanceInterval)
-        XCTAssertEqual(ReaderModel.pollInterval(for: .screen), ReaderModel.secondInterval)
+        XCTAssertNil(RefreshSchedule.pollInterval(for: .none))
+        XCTAssertEqual(RefreshSchedule.pollInterval(for: .second), RefreshSchedule.secondInterval)
+        XCTAssertEqual(RefreshSchedule.pollInterval(for: .glance), RefreshSchedule.glanceInterval)
+        XCTAssertEqual(RefreshSchedule.pollInterval(for: .screen), RefreshSchedule.secondInterval)
     }
 
     /// Écran en veille : aucune image n'arrive. La fin de la grâce se voit
@@ -228,7 +228,7 @@ final class ReaderModelTickingTests: XCTestCase {
         let running = DownloadView(id: "v", received: 1, total: 10, failed: nil)
         let failed = DownloadView(id: "v", received: 1, total: 10, failed: "réseau")
         func cadence(_ d: DownloadView?) -> ReaderModel.Cadence {
-            ReaderModel.cadence(presence: .full, playing: false, grace: false, loading: false, download: d)
+            RefreshSchedule.cadence(presence: .full, playing: false, grace: false, loading: false, download: d)
         }
         XCTAssertEqual(cadence(running), .screen)
         XCTAssertEqual(cadence(failed), .glance)

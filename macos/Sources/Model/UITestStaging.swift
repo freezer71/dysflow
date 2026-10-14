@@ -1,7 +1,9 @@
+#if DEBUG
 /// Pour les tests d'interface seulement : le lecteur muet n'a ni offre, ni
 /// avis, ni configuration illisible. Ces arguments les posent dans
 /// l'instantané publié, pour que les tests les atteignent au clavier et les
-/// passent à l'audit d'accessibilité.
+/// passent à l'audit d'accessibilité. Compilé en Debug seulement : l'app
+/// livrée (Release) n'en contient rien.
 enum UITestStaging {
     static let offer = "--ui-testing-offre"
     static let notice = "--ui-testing-avis"
@@ -19,10 +21,10 @@ enum UITestStaging {
                      VoiceChoice(id: "af_bella", label: "af_bella · américaine, femme, recommandée", language: "en"),
                      VoiceChoice(id: "am_fenrir", label: "am_fenrir · américaine, homme", language: "en"),
                      VoiceChoice(id: "af_heart", label: "af_heart · américaine, femme", language: "en")],
-            languages: ["fr", "en"], honoured: ["voice", "language"], requiresReference: false)
+            languages: ["fr", "en"], honoured: ["voice", "language"])
     }
 
-    static func staging(for arguments: [String]) -> ((inout Snapshot) -> Void)? {
+    static func staging(for arguments: [String]) -> (@Sendable (inout Snapshot) -> Void)? {
         let offer = arguments.contains(Self.offer)
         let notice = arguments.contains(Self.notice)
         let unreadable = arguments.contains(unreadableConfig)
@@ -37,4 +39,46 @@ enum UITestStaging {
             if unreadable { s.configUnreadable = true }
         }
     }
+
+    /// Le lecteur donné, avec la mise en scène demandée par les arguments ;
+    /// le même lecteur s'il n'y a rien à poser. Le modèle n'en sait rien :
+    /// il lit un lecteur comme un autre.
+    static func reader(_ base: SillonReader, arguments: [String]) -> SillonReader {
+        let stage = staging(for: arguments)
+        let capabilities = capabilities(for: arguments)
+        guard stage != nil || capabilities != nil else { return base }
+        return StagedReader(base, stage: stage, capabilities: capabilities)
+    }
 }
+
+/// Un lecteur qui partage le moteur d'un autre (même objet Rust) et pose la
+/// mise en scène sur ce qu'il en rend.
+final class StagedReader: SillonReader, @unchecked Sendable {
+    private let stage: (@Sendable (inout Snapshot) -> Void)?
+    private let stagedCapabilities: ModelCapabilities?
+
+    init(_ base: SillonReader, stage: (@Sendable (inout Snapshot) -> Void)?,
+         capabilities: ModelCapabilities?) {
+        self.stage = stage
+        stagedCapabilities = capabilities
+        // Une référence de plus sur le même lecteur Rust (Arc cloné).
+        super.init(unsafeFromHandle: base.uniffiCloneHandle())
+    }
+
+    required init(unsafeFromHandle handle: UInt64) {
+        stage = nil
+        stagedCapabilities = nil
+        super.init(unsafeFromHandle: handle)
+    }
+
+    override func snapshot() -> Snapshot {
+        var s = super.snapshot()
+        stage?(&s)
+        return s
+    }
+
+    override func capabilities() -> ModelCapabilities {
+        stagedCapabilities ?? super.capabilities()
+    }
+}
+#endif

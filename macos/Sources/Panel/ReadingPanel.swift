@@ -33,7 +33,7 @@ enum PanelLevel {
         settingsVisible ? .normal : .floating
     }
 
-    static func isSettingsWindow(_ window: NSWindow) -> Bool {
+    @MainActor static func isSettingsWindow(_ window: NSWindow) -> Bool {
         window.accessibilityIdentifier() == settingsWindowIdentifier
     }
 }

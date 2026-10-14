@@ -8,8 +8,8 @@ public final class KokoroRunner: @unchecked Sendable {
 
     /// Charge le modèle sous un plafond mémoire et un cache réduit.
     public static func load(directory: URL, memoryLimit: Int, cacheLimit: Int) throws -> KokoroRunner {
-        GPU.set(memoryLimit: memoryLimit)
-        GPU.set(cacheLimit: cacheLimit)
+        Memory.memoryLimit = memoryLimit
+        Memory.cacheLimit = cacheLimit
         return KokoroRunner(model: try KokoroModel.load(directory: directory))
     }
 
@@ -36,6 +36,6 @@ public final class KokoroRunner: @unchecked Sendable {
 
     /// Vide le cache de MLX : la voix part au repos.
     public static func clearCache() {
-        GPU.clearCache()
+        Memory.clearCache()
     }
 }

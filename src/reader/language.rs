@@ -29,8 +29,8 @@ impl LanguageChoices {
         crate::paths::data_dir().map(|d| d.join("languages.json"))
     }
 
-    /// Relit les choix, ou repart de zéro sans le dire : un choix perdu se
-    /// refait d'un geste.
+    /// Relit les choix. Un fichier illisible est mis de côté
+    /// (`paths::load_json`) et l'avertissement va au journal.
     pub fn load() -> Self {
         Self::path().map(|p| Self::load_from(&p)).unwrap_or_default()
     }
@@ -41,16 +41,15 @@ impl LanguageChoices {
     }
 
     pub(crate) fn load_from(path: &Path) -> Self {
-        std::fs::read_to_string(path)
-            .ok()
-            .and_then(|text| serde_json::from_str(&text).ok())
-            .unwrap_or_default()
+        let (choices, notice) = crate::paths::load_json(path, "choix de langue");
+        if let Some(notice) = notice {
+            eprintln!("sillon : {notice}");
+        }
+        choices
     }
 
     pub(crate) fn save_to(&self, path: &Path) -> Result<()> {
-        let text = serde_json::to_string_pretty(self)?;
-        crate::paths::write_atomic(path, text.as_bytes())
-            .with_context(|| format!("écriture de {}", path.display()))
+        crate::paths::save_json(path, self)
     }
 
     pub fn get(&self, document: &str) -> Option<&str> {
@@ -297,18 +296,22 @@ mod tests {
     }
 
     #[test]
-    fn a_missing_or_corrupt_store_is_empty_and_left_alone() {
+    fn a_missing_or_corrupt_store_is_empty_and_set_aside() {
         let dir = std::env::temp_dir().join(format!("sillon-langues-abimes-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         assert!(LanguageChoices::load_from(&dir.join("absent.json")).items.is_empty());
         let corrupt = dir.join("abime.json");
         std::fs::write(&corrupt, "{ pas du json").unwrap();
         assert!(LanguageChoices::load_from(&corrupt).items.is_empty());
-        // Ouvrir un document sans rien changer ne réécrit pas le fichier.
+        // Le fichier abîmé est gardé à part, jamais écrasé.
+        let backup = dir.join("abime.json.bak");
+        assert_eq!(std::fs::read_to_string(&backup).unwrap(), "{ pas du json");
+        // Ouvrir un document sans rien changer n'écrit rien.
         let mut r = reader();
         r.choices_path = Some(corrupt.clone());
         r.open_text(FR, "sélection", Instant::now());
-        assert_eq!(std::fs::read_to_string(&corrupt).unwrap(), "{ pas du json");
+        assert!(!corrupt.exists());
+        assert_eq!(std::fs::read_to_string(&backup).unwrap(), "{ pas du json");
         std::fs::remove_dir_all(&dir).ok();
     }
 

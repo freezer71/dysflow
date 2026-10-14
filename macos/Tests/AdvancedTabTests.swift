@@ -1,69 +1,61 @@
 import XCTest
 @testable import Sillon
 
+@MainActor
 final class AdvancedTabTests: XCTestCase {
-    func testEnginesAndComputeAreNamedAndKeepAHandWrittenValue() {
+    func testEnginesAreNamedAndKeepAHandWrittenValue() {
         XCTAssertEqual(AdvancedTab.engineOptions(current: "auto").map(\.title),
                        ["Automatique", "Voix du système"])
-        XCTAssertEqual(AdvancedTab.computeOptions(current: "metal").map(\.value), ["metal", "cpu"])
-        XCTAssertEqual(AdvancedTab.computeOptions(current: "cuda").map(\.value), ["metal", "cpu", "cuda"])
+        XCTAssertEqual(AdvancedTab.engineOptions(current: "maison").map(\.value), ["auto", "system", "maison"])
     }
 
     func testZeroSessionsMeansTheModelDecides() {
         XCTAssertEqual(AdvancedTab.sessionsText(0), "Sessions : automatique")
         XCTAssertEqual(AdvancedTab.sessionsText(3), "Sessions : 3")
     }
-
-    func testAnOptionIsAddedReplacedOrRefused() {
-        let one = ExtraOptions.adding(key: " cfg_scale ", value: " 3 ", to: [])
-        XCTAssertEqual(one, [ExtraOption(key: "cfg_scale", value: "3")])
-        let replaced = ExtraOptions.adding(key: "cfg_scale", value: "4", to: one ?? [])
-        XCTAssertEqual(replaced, [ExtraOption(key: "cfg_scale", value: "4")])
-        XCTAssertNil(ExtraOptions.adding(key: "  ", value: "1", to: []), "clé vide")
-        XCTAssertNil(ExtraOptions.adding(key: "a=b", value: "1", to: []), "« = » dans la clé")
-        XCTAssertEqual(ExtraOptions.removing("cfg_scale", from: replaced ?? []), [])
-    }
-
-    func testReplacingKeepsThePlaceAndNoKeyIsDuplicated() {
-        let start = [ExtraOption(key: "a", value: "1"), ExtraOption(key: "b", value: "2")]
-        let next = ExtraOptions.adding(key: "a", value: "9", to: start)
-        XCTAssertEqual(next, [ExtraOption(key: "a", value: "9"), ExtraOption(key: "b", value: "2")])
-    }
 }
 
 @MainActor
 final class AdvancedStoreSafetyTests: XCTestCase {
+    private lazy var clock = TestClock()
+
+    /// La pause passe (horloge de test), puis la condition est attendue.
+    private func eventuallyAfterPause(_ condition: () -> Bool) async -> Bool {
+        await clock.advance(by: .seconds(1))
+        return await eventuallyTrue(.seconds(5), condition)
+    }
+
     func testABurstOfThreadPressesIsOneWriteAfterTheEngineDelay() async throws {
         let backend = FakeSettingsBackend()
-        let store = SettingsStore(backend: backend, delay: .milliseconds(10), engineDelay: .milliseconds(300))
+        let store = SettingsStore(backend: backend, delay: .milliseconds(10), engineDelay: .milliseconds(300), sleep: clock.sleep)
         await store.load()
         for n in UInt32(5)...UInt32(9) {
             store.set(\.threads, n, reloadsVoice: true)
-            try await Task.sleep(for: .milliseconds(40))
+            await clock.advance(by: .milliseconds(40))
         }
         XCTAssertTrue(backend.patches.isEmpty, "pas d'écriture pendant la rafale")
-        let sent = await eventuallyTrue { backend.patches.count == 1 }
+        let sent = await eventuallyAfterPause { backend.patches.count == 1 }
         XCTAssertTrue(sent)
-        try await Task.sleep(for: .milliseconds(400))
+        await clock.advance(by: .milliseconds(400))
         XCTAssertEqual(backend.patches.count, 1)
         XCTAssertEqual(backend.patches.first?.threads, 9)
     }
 
     func testAStuckDragIsClearedAfterTheTimeout() async {
         let backend = FakeSettingsBackend()
-        let store = SettingsStore(backend: backend, delay: .milliseconds(10), dragTimeout: .milliseconds(80))
+        let store = SettingsStore(backend: backend, delay: .milliseconds(10), dragTimeout: .milliseconds(80), sleep: clock.sleep)
         await store.load()
         store.dragChanged(true)
         store.set(\.speed, 1.5)
         XCTAssertTrue(store.isDragging)
-        let cleared = await eventuallyTrue { !store.isDragging }
+        let cleared = await eventuallyAfterPause { !store.isDragging }
         XCTAssertTrue(cleared)
-        let sent = await eventuallyTrue { backend.patches.count == 1 }
+        let sent = await eventuallyAfterPause { backend.patches.count == 1 }
         XCTAssertTrue(sent, "la valeur posée pendant le geste part à l'abandon")
     }
 
     func testLeavingTheTabClearsADrag() async {
-        let store = SettingsStore(backend: FakeSettingsBackend(), delay: .milliseconds(10))
+        let store = SettingsStore(backend: FakeSettingsBackend(), delay: .milliseconds(10), sleep: clock.sleep)
         await store.load()
         store.dragChanged(true)
         store.endDragging()
@@ -76,22 +68,22 @@ final class AdvancedStoreSafetyTests: XCTestCase {
 
     func testAnOrdinaryEditDoesNotShortenTheEnginePause() async throws {
         let backend = FakeSettingsBackend()
-        let store = SettingsStore(backend: backend, delay: .milliseconds(20), engineDelay: .milliseconds(400))
+        let store = SettingsStore(backend: backend, delay: .milliseconds(20), engineDelay: .milliseconds(400), sleep: clock.sleep)
         await store.load()
         store.set(\.threads, 6, reloadsVoice: true)
-        try await Task.sleep(for: .milliseconds(100))
-        store.set(\.topK, 40)
-        try await Task.sleep(for: .milliseconds(200))
+        await clock.advance(by: .milliseconds(100))
+        store.set(\.lineSpacing, 2)
+        await clock.advance(by: .milliseconds(200))
         XCTAssertTrue(backend.patches.isEmpty, "pas de rechargement en pleine rafale")
-        let sent = await eventuallyTrue { backend.patches.count == 1 }
+        let sent = await eventuallyAfterPause { backend.patches.count == 1 }
         XCTAssertTrue(sent)
         XCTAssertEqual(backend.patches.first?.threads, 6)
-        XCTAssertEqual(backend.patches.first?.topK, .value(value: 40))
+        XCTAssertEqual(backend.patches.first?.lineSpacing, 2)
     }
 
     func testFlushStillSendsAtOnceDuringTheEnginePause() async {
         let backend = FakeSettingsBackend()
-        let store = SettingsStore(backend: backend, delay: .milliseconds(20), engineDelay: .seconds(30))
+        let store = SettingsStore(backend: backend, delay: .milliseconds(20), engineDelay: .seconds(30), sleep: clock.sleep)
         await store.load()
         store.set(\.threads, 6, reloadsVoice: true)
         await store.flush()
@@ -100,17 +92,17 @@ final class AdvancedStoreSafetyTests: XCTestCase {
 
     func testASlowDragIsNotCutShortWhileItMoves() async throws {
         let backend = FakeSettingsBackend()
-        let store = SettingsStore(backend: backend, delay: .milliseconds(10), dragTimeout: .milliseconds(150))
+        let store = SettingsStore(backend: backend, delay: .milliseconds(10), dragTimeout: .milliseconds(150), sleep: clock.sleep)
         await store.load()
         store.dragChanged(true)
         for n in 0..<12 {
             store.set(\.speed, 1 + Float(n) * 0.05)
-            try await Task.sleep(for: .milliseconds(40))
+            await clock.advance(by: .milliseconds(40))
         }
         XCTAssertTrue(store.isDragging, "le geste dure plus que le délai, mais bouge")
         XCTAssertTrue(backend.patches.isEmpty)
         store.dragChanged(false)
-        let sent = await eventuallyTrue { backend.patches.count == 1 }
+        let sent = await eventuallyAfterPause { backend.patches.count == 1 }
         XCTAssertTrue(sent)
     }
 }

@@ -2,27 +2,26 @@
 # Construit Sillon.app : moteur, liaison, projet, application.
 #
 #   ./scripts/build-macos.sh                  # dans macos/build/Release/Sillon.app
-#   ./scripts/build-macos.sh --verifier-seulement   # ne refait que le contrôle des liens
+#   ./scripts/build-macos.sh --mesure         # dans macos/build/Mesure/Sillon.app
+#
+# --mesure : la même app Release, avec le code de mesure (`--measure`,
+# `--measure-charge`, condition SILLON_MESURE) que l'app livrée n'a pas.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-# audio.cpp est sorti du projet (14 oct. 2026) : l'app ne doit plus lier son
-# shim, qu'un ancien macos/Libraries pourrait encore fournir.
-verifier_sans_shim() {
-    if otool -L "$1/Contents/MacOS/Sillon" | grep -q libaudiocpp_shim; then
-        echo "Erreur : l'app lie encore libaudiocpp_shim (relancer ./scripts/build-ffi.sh)" >&2
-        return 1
-    fi
-    if [ -e "$1/Contents/Frameworks/libaudiocpp_shim.dylib" ]; then
-        echo "Erreur : un ancien libaudiocpp_shim traîne dans Contents/Frameworks" >&2
-        return 1
-    fi
-}
-
-if [ "${1:-}" = "--verifier-seulement" ]; then
-    verifier_sans_shim macos/build/Release/Sillon.app
-    exit
-fi
+SORTIE=Release
+CONDITIONS=
+case "${1:-}" in
+--mesure)
+    SORTIE=Mesure
+    CONDITIONS=SILLON_MESURE
+    ;;
+"") ;;
+*)
+    echo "argument inconnu : $1" >&2
+    exit 2
+    ;;
+esac
 
 # mlx-swift compile ses noyaux Metal : il faut le composant Metal Toolchain.
 if ! xcrun -sdk macosx metal -v >/dev/null 2>&1; then
@@ -40,16 +39,15 @@ fi
 python3 -I scripts/third-party-rust.py --check
 cd macos
 xcodegen generate
-# Une construction antérieure à la sortie d'audio.cpp a laissé son shim dans
-# le dossier de produits : xcodebuild ne le retire pas.
-find build/derived -path "*Sillon.app/Contents/Frameworks/libaudiocpp_shim.dylib" -delete 2>/dev/null || true
+# SILLON_CONDITIONS n'est lu que par la cible Sillon : les paquets (MLX)
+# ne se recompilent pas d'une sortie à l'autre.
 xcodebuild -project Sillon.xcodeproj -scheme Sillon -configuration Release \
-    -destination 'platform=macOS,arch=arm64' -derivedDataPath build/derived build
+    -destination 'platform=macOS,arch=arm64' -derivedDataPath build/derived \
+    SILLON_CONDITIONS="$CONDITIONS" build
 APP=$(find build/derived -name Sillon.app -path "*Release*" -maxdepth 6 | head -1)
-rm -rf build/Release && mkdir -p build/Release && cp -R "$APP" build/Release/
+rm -rf "build/$SORTIE" && mkdir -p "build/$SORTIE" && cp -R "$APP" "build/$SORTIE/"
 cd ..
-verifier_sans_shim macos/build/Release/Sillon.app
-APP_BUILT=macos/build/Release/Sillon.app
+APP_BUILT=macos/build/$SORTIE/Sillon.app
 if [ ! -x "$APP_BUILT/Contents/Helpers/sillon-espeak" ]; then
     echo "Erreur : sillon-espeak manque dans l'app (Contents/Helpers)" >&2
     exit 1
@@ -84,4 +82,4 @@ fi
 echo "--- taille de l'app ---"
 du -sh "$APP_BUILT"
 find "$APP_BUILT" -name '*.metallib' -exec du -h {} +
-echo "Prête : macos/build/Release/Sillon.app"
+echo "Prête : $APP_BUILT"

@@ -33,14 +33,6 @@ pub struct Args {
     #[arg(long)]
     pub pitch: Option<f32>,
 
-    /// Intonation demandée au modèle.
-    #[arg(long)]
-    pub emotion: Option<String>,
-
-    /// Consigne de style en langage naturel.
-    #[arg(long)]
-    pub instruction: Option<String>,
-
     /// Langue du texte.
     #[arg(long)]
     pub language: Option<String>,
@@ -56,10 +48,6 @@ pub struct Args {
     /// Famille du modèle, par exemple kokoro.
     #[arg(long)]
     pub family: Option<String>,
-
-    /// Backend de calcul : cpu, metal, cuda, vulkan.
-    #[arg(long)]
-    pub compute: Option<String>,
 
     /// Sessions de synthèse simultanées ; 0 laisse la famille décider.
     #[arg(long)]
@@ -77,10 +65,6 @@ pub struct Args {
     #[arg(long)]
     pub no_autoplay: bool,
 
-    /// Option libre transmise au modèle, répétable : --set cle=valeur
-    #[arg(long = "set", value_name = "CLE=VALEUR")]
-    pub set: Vec<String>,
-
     /// Écrit la configuration résultante puis quitte.
     #[arg(long)]
     pub write_config: bool,
@@ -88,6 +72,11 @@ pub struct Args {
     /// Affiche la configuration résultante puis quitte.
     #[arg(long)]
     pub show_config: bool,
+
+    /// Vérifie que Kokoro se charge (ONNX Runtime, sillon-espeak et ses
+    /// données) puis quitte.
+    #[arg(long)]
+    pub check_kokoro: bool,
 
     /// Écrit le markdown extrait du fichier puis quitte.
     #[arg(long)]
@@ -110,7 +99,7 @@ pub struct Args {
 pub enum Launch {
     /// Une option a répondu sur la sortie standard : rien à afficher.
     Done,
-    Ready(Prepared),
+    Ready(Box<Prepared>),
 }
 
 pub struct Prepared {
@@ -130,7 +119,7 @@ pub fn prepare(args: &Args) -> Result<Launch> {
     let config_notice_is_none = config_notice.is_none();
     let mut notices: Vec<String> = config_notice.into_iter().collect();
 
-    apply_overrides(&mut config, args, &mut notices)?;
+    apply_overrides(&mut config, args)?;
 
     if args.show_config {
         print!("{}", toml::to_string_pretty(&config)?);
@@ -139,6 +128,10 @@ pub fn prepare(args: &Args) -> Result<Launch> {
     if args.write_config {
         let path = config.save()?;
         println!("Configuration écrite dans {}", path.display());
+        return Ok(Launch::Done);
+    }
+    if args.check_kokoro {
+        print!("{}", check_kokoro()?);
         return Ok(Launch::Done);
     }
 
@@ -213,25 +206,24 @@ pub fn prepare(args: &Args) -> Result<Launch> {
         app.resume_where_left();
     }
 
-    Ok(Launch::Ready(Prepared {
+    Ok(Launch::Ready(Box::new(Prepared {
         app,
         config_requested: args.config,
         has_input,
         quiet,
-    }))
+    })))
 }
 
-/// Ce qui identifie un document d'une ouverture à l'autre : son chemin entier.
-///
-/// Le nom seul ne suffit pas — deux `spec.pdf` dans deux dossiers se
-/// partageraient positions et signets, et l'un enverrait la lecture de
-/// l'autre n'importe où. Le chemin est résolu pour qu'un même fichier, atteint
-/// par deux chemins, reste un seul document.
-pub fn document_identity(path: &std::path::Path) -> String {
-    std::fs::canonicalize(path)
-        .unwrap_or_else(|_| path.to_path_buf())
-        .to_string_lossy()
-        .into_owned()
+/// `--check-kokoro` : ce que Kokoro charge au terminal, sans le modèle
+/// (téléchargé à part). `install.sh` s'en sert après l'installation.
+#[cfg(feature = "kokoro-onnx")]
+fn check_kokoro() -> Result<String> {
+    tts::kokoro::onnx::check_install().context("Kokoro ne se charge pas")
+}
+
+#[cfg(not(feature = "kokoro-onnx"))]
+fn check_kokoro() -> Result<String> {
+    anyhow::bail!("Kokoro absent de ce binaire (construit sans la feature kokoro-onnx)")
 }
 
 /// Le texte d'une source qui en porte un, pour `--to-markdown`.
@@ -270,7 +262,7 @@ fn read_input(
     if args.clip {
         let text = read_clipboard()?;
         let mut builder = builder_for(config, &text, None);
-        for block in input::split_blocks(&text) {
+        for block in crate::doc::blocks::split_blocks(&text) {
             builder.push_block(&block);
         }
         return Ok((builder, None, "presse-papiers".to_string()));
@@ -281,9 +273,9 @@ fn read_input(
             // Un fichier est analysé d'emblée : sommaire et durée sont
             // disponibles dès l'ouverture.
             let text = crate::source::load_with_cache(path, !args.no_cache)?;
-            let identity = document_identity(path);
+            let identity = crate::position::document_identity(path);
             let mut builder = builder_for(config, &text, Some(&identity));
-            for block in input::split_blocks(&text) {
+            for block in crate::doc::blocks::split_blocks(&text) {
                 builder.push_block(&block);
             }
             Ok((builder, None, identity))
@@ -431,7 +423,7 @@ fn adopt_installed_model(config: &mut Config, notices: &mut Vec<String>) {
     }
 }
 
-fn apply_overrides(config: &mut Config, args: &Args, notices: &mut Vec<String>) -> Result<()> {
+fn apply_overrides(config: &mut Config, args: &Args) -> Result<()> {
     if let Some(v) = &args.voice {
         config.voice.voice = v.clone();
     }
@@ -440,12 +432,6 @@ fn apply_overrides(config: &mut Config, args: &Args, notices: &mut Vec<String>) 
     }
     if let Some(v) = args.pitch {
         config.voice.pitch = v;
-    }
-    if let Some(v) = &args.emotion {
-        config.voice.emotion = v.clone();
-    }
-    if let Some(v) = &args.instruction {
-        config.voice.instruction = v.clone();
     }
     if let Some(v) = &args.language {
         config.voice.language = v.clone();
@@ -461,9 +447,6 @@ fn apply_overrides(config: &mut Config, args: &Args, notices: &mut Vec<String>) 
     }
     if let Some(v) = &args.family {
         config.engine.family = v.clone();
-    }
-    if let Some(v) = &args.compute {
-        config.engine.compute = v.clone();
     }
     if let Some(v) = args.sessions {
         // Zéro est « auto » : ce que la famille demande.
@@ -482,14 +465,6 @@ fn apply_overrides(config: &mut Config, args: &Args, notices: &mut Vec<String>) 
         config.reading.autoplay = false;
     }
 
-    for entry in &args.set {
-        match entry.split_once('=') {
-            Some((key, value)) => {
-                config.extra.insert(key.trim().to_string(), value.trim().to_string());
-            }
-            None => notices.push(format!("--set ignoré, format attendu cle=valeur : {entry}")),
-        }
-    }
     Ok(())
 }
 
@@ -533,7 +508,7 @@ mod tests {
     /// ce que la ligne de commande garde pour ce lancement, ce qui s'écrit.
     fn migrated_with(args: &Args) -> (Config, Option<Config>, Vec<String>) {
         let mut config = on_supertonic();
-        apply_overrides(&mut config, args, &mut Vec::new()).unwrap();
+        apply_overrides(&mut config, args).unwrap();
         let mut notices = Vec::new();
         let to_save = migrate_for_launch(&mut config, on_supertonic(), args, &mut notices, &[kokoro_int8()], |_| true);
         (config, to_save, notices)
@@ -597,7 +572,7 @@ mod tests {
         let b = scratch("b");
         std::fs::write(a.join("spec.pdf"), "x").unwrap();
         std::fs::write(b.join("spec.pdf"), "y").unwrap();
-        assert_ne!(document_identity(&a.join("spec.pdf")), document_identity(&b.join("spec.pdf")));
+        assert_ne!(crate::position::document_identity(&a.join("spec.pdf")), crate::position::document_identity(&b.join("spec.pdf")));
         std::fs::remove_dir_all(&a).ok();
         std::fs::remove_dir_all(&b).ok();
     }
@@ -607,7 +582,7 @@ mod tests {
         let dir = scratch("c");
         std::fs::write(dir.join("notes.md"), "x").unwrap();
         let detour = dir.join("..").join(dir.file_name().unwrap()).join("notes.md");
-        assert_eq!(document_identity(&dir.join("notes.md")), document_identity(&detour));
+        assert_eq!(crate::position::document_identity(&dir.join("notes.md")), crate::position::document_identity(&detour));
         std::fs::remove_dir_all(&dir).ok();
     }
 
@@ -617,7 +592,7 @@ mod tests {
         let mut config = Config::default();
         config.engine.sessions = 3;
         let args = Args { sessions: Some(0), ..Args::default() };
-        apply_overrides(&mut config, &args, &mut Vec::new()).unwrap();
+        apply_overrides(&mut config, &args).unwrap();
         assert_eq!(config.engine.sessions, 0);
     }
 

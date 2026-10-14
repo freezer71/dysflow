@@ -6,11 +6,11 @@ import KeyboardShortcuts
 final class PanelControllerTests: XCTestCase {
     private var controller: PanelController!
 
-    override func tearDown() {
+    override func tearDown() async throws {
         controller?.collapseOrHide()
         controller?.collapseOrHide()
         controller = nil
-        super.tearDown()
+        try await super.tearDown()
     }
 
     /// Des préférences à part, vidées : jamais celles de l'utilisateur.
@@ -502,6 +502,7 @@ final class PanelControllerTests: XCTestCase {
     }
 }
 
+@MainActor
 final class PlayerBarFormatTests: XCTestCase {
     func testSpeedUsesADecimalCommaWhenShownAndSpoken() {
         XCTAssertEqual(PlayerBar.speedText(1.4), "1,4×")

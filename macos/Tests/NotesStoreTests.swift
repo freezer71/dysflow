@@ -5,15 +5,15 @@ import XCTest
 final class NotesStoreTests: XCTestCase {
     private var directory: URL!
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
         directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("sillon-notes-tests-\(UUID().uuidString)")
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
         try? FileManager.default.removeItem(at: directory)
-        super.tearDown()
+        try await super.tearDown()
     }
 
     func testAPageIsWrittenAndReadBack() {

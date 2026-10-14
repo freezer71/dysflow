@@ -30,7 +30,7 @@ fn the_binary_writes_the_extracted_markdown_and_stops() {
 #[test]
 fn a_pdf_becomes_markdown_the_reader_can_navigate() {
     let markdown = sillon::source::load_with_cache(&fixture("spec.pdf"), false).expect("le PDF doit se lire");
-    let blocks = sillon::input::split_blocks(&markdown);
+    let blocks = sillon::doc::blocks::split_blocks(&markdown);
     assert!(
         blocks.len() >= 2,
         "le document doit se découper en blocs navigables, obtenu {} : {blocks:?}",

@@ -5,6 +5,7 @@ import XCTest
 /// `-only-testing:SillonUITests/SettingsUITests`. Le parcours au clavier
 /// exige « Navigation au clavier » (Réglages Système › Clavier) et se saute
 /// sans elle ; l'audit tourne toujours.
+@MainActor
 final class SettingsUITests: XCTestCase {
     private let tabs = [
         ("Voix", "onglet-voix"), ("Lecture", "onglet-lecture"), ("Modèles", "onglet-modeles"),

@@ -22,7 +22,7 @@ enum Onboarding {
         alert.addButton(withTitle: "Ouvrir les réglages")
         alert.addButton(withTitle: "Plus tard")
         if alert.runModal() == .alertFirstButtonReturn {
-            let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
+            let options = ["AXTrustedCheckOptionPrompt": true] as CFDictionary
             _ = AXIsProcessTrustedWithOptions(options)
         }
     }

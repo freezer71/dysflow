@@ -10,21 +10,14 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use crate::doc::builder::CodePolicy;
-use crate::tts::{EnginePreference, EngineSettings, TtsParams};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct Config {
     pub engine: EngineConfig,
     pub voice: VoiceConfig,
-    pub sampling: SamplingConfig,
     pub reading: ReadingConfig,
     pub app: AppConfig,
-    /// Options transmises telles quelles au modèle TTS.
-    ///
-    /// Échappatoire pour tout paramètre propre à une famille que le lecteur ne
-    /// connaît pas nommément.
-    pub extra: BTreeMap<String, String>,
 }
 
 /// Réglages propres à l'app macOS.
@@ -57,8 +50,7 @@ pub struct EngineConfig {
     pub model_path: String,
     /// Famille du modèle : `kokoro`.
     pub family: String,
-    /// Backend de calcul : `cpu`, `metal`, `cuda`, `vulkan`.
-    pub compute: String,
+    /// Fils de calcul de Kokoro au terminal (ONNX Runtime, borné à 4).
     pub threads: u32,
     /// Sessions de synthèse simultanées ; `0` laisse la famille décider.
     pub sessions: u32,
@@ -75,7 +67,6 @@ impl Default for EngineConfig {
             engine: "auto".to_string(),
             model_path: String::new(),
             family: String::new(),
-            compute: if cfg!(target_os = "macos") { "metal" } else { "cpu" }.to_string(),
             threads: cores.clamp(1, 8),
             // Ce que la famille demande : une session pour Kokoro. Voir
             // `models::sessions_for_family`.
@@ -96,13 +87,8 @@ pub struct VoiceConfig {
     /// Vitesse de lecture. Appliquée au son par Sonic, sans changer la hauteur ;
     /// la synthèse, elle, se fait toujours à 1×.
     pub speed: f32,
-    /// Décalage de hauteur, en demi-tons normalisés (-1.0 à 1.0).
+    /// Décalage de hauteur de la voix du système (-1.0 à 1.0).
     pub pitch: f32,
-    pub energy: f32,
-    /// Intonation demandée au modèle, si la famille la prend en charge.
-    pub emotion: String,
-    /// Consigne de style en langage naturel.
-    pub instruction: String,
     pub volume: f32,
     /// Voix par langue de document, pour les familles qui en ont une par
     /// langue (Kokoro) : `fr = "p-fenrir60"`, `en = "af_bella"`.
@@ -116,25 +102,10 @@ impl Default for VoiceConfig {
             language: crate::text::language::AUTO.to_string(),
             speed: 1.0,
             pitch: 0.0,
-            energy: 1.0,
-            emotion: String::new(),
-            instruction: String::new(),
             volume: 1.0,
             per_language: BTreeMap::new(),
         }
     }
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
-#[serde(default)]
-pub struct SamplingConfig {
-    pub temperature: Option<f32>,
-    pub top_p: Option<f32>,
-    pub top_k: Option<u32>,
-    pub guidance_scale: Option<f32>,
-    pub repetition_penalty: Option<f32>,
-    pub inference_steps: Option<u32>,
-    pub seed: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -169,6 +140,22 @@ impl Default for ReadingConfig {
             reading_ruler: true,
         }
     }
+}
+
+/// Ce qu'un changement de réglage impose au reste de l'application.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Effect {
+    None,
+    /// Régénérer l'audio déjà préparé.
+    Resynthesize,
+    /// Recharger le moteur, donc tout le pipeline de synthèse.
+    ReloadEngine,
+    /// Le découpage du document changerait : effet au prochain lancement.
+    Reparse,
+    /// Ajuster le volume de sortie du delta indiqué.
+    Volume(f32),
+    /// Appliquer la vitesse de la configuration au son, sur-le-champ.
+    Speed,
 }
 
 impl Config {
@@ -229,7 +216,6 @@ impl Config {
         let finite = |value: f32, fallback: f32| if value.is_finite() { value } else { fallback };
         self.voice.speed = finite(self.voice.speed, defaults.voice.speed).clamp(0.5, 3.0);
         self.voice.pitch = finite(self.voice.pitch, defaults.voice.pitch).clamp(-1.0, 1.0);
-        self.voice.energy = finite(self.voice.energy, defaults.voice.energy).clamp(0.0, 2.0);
         self.voice.volume = finite(self.voice.volume, defaults.voice.volume).clamp(0.0, 2.0);
         self.engine.threads = self.engine.threads.clamp(1, 64);
         self.engine.sessions = self.engine.sessions.min(16);
@@ -239,17 +225,6 @@ impl Config {
         if matches!(self.engine.engine.to_ascii_lowercase().as_str(), "audio_cpp" | "audio-cpp" | "audiocpp") {
             self.engine.engine = "auto".to_string();
         }
-        // L'échantillonnage suit les bornes de l'écran ; un nombre sans
-        // valeur rend la main au modèle plutôt que d'atteindre le moteur.
-        let bounded = |value: Option<f32>, low: f32, high: f32| {
-            value.filter(|v| v.is_finite()).map(|v| v.clamp(low, high))
-        };
-        self.sampling.temperature = bounded(self.sampling.temperature, 0.0, 2.0);
-        self.sampling.top_p = bounded(self.sampling.top_p, 0.0, 1.0);
-        self.sampling.guidance_scale = bounded(self.sampling.guidance_scale, 0.0, 20.0);
-        self.sampling.repetition_penalty = bounded(self.sampling.repetition_penalty, 0.5, 2.0);
-        self.sampling.top_k = self.sampling.top_k.map(|v| v.clamp(1, 200));
-        self.sampling.inference_steps = self.sampling.inference_steps.map(|v| v.clamp(1, 200));
         self.reading.seek_step = self.reading.seek_step.clamp(1, 50);
         // Zéro reste « plein écran » ; une largeur posée se lit de 40 à 120.
         if self.reading.line_width != 0 {
@@ -265,119 +240,12 @@ impl Config {
         crate::text::language::resolve(&self.voice.language, None, None)
     }
 
-    /// Paramètres de synthèse dans la langue par défaut.
-    pub fn tts_params(&self) -> TtsParams {
-        self.tts_params_in(&self.default_language())
-    }
-
-    /// Paramètres de synthèse pour un document dans `language`.
-    pub fn tts_params_in(&self, language: &str) -> TtsParams {
-        let family = &self.engine.family;
-        let voice = if crate::models::voices_follow_language(family) {
-            let code = crate::text::language::Lang::parse(language).map_or(language, |l| l.code());
-            let configured = self.voice.per_language.get(code).map(String::as_str);
-            crate::models::voice_for_language(family, code, configured).to_string()
-        } else {
-            // Hors Kokoro, aucune famille ne nomme plus ses voix : la voix
-            // configurée part telle quelle, sans filtre. Une config Magpie
-            // écrite à la main avec un préréglage étranger (« F1 ») retombe
-            // sur l'erreur « stoll: no conversion » du modèle : accepté, ce
-            // modèle est hors catalogue. Un chemin de WAV sous `~` est
-            // développé : le moteur ne le ferait pas.
-            expand_tilde(self.voice.voice.trim())
-        };
-        TtsParams {
-            voice,
-            language: language.to_string(),
-            pitch_shift: self.voice.pitch.clamp(-1.0, 1.0),
-            energy: self.voice.energy.clamp(0.0, 2.0),
-            emotion: self.voice.emotion.clone(),
-            instruction: self.voice.instruction.clone(),
-            temperature: self.sampling.temperature,
-            top_p: self.sampling.top_p,
-            top_k: self.sampling.top_k,
-            guidance_scale: self.sampling.guidance_scale,
-            repetition_penalty: self.sampling.repetition_penalty,
-            inference_steps: self.sampling.inference_steps,
-            seed: self.sampling.seed,
-            extra: self.extra.clone(),
-        }
-    }
-
-    /// Fait suivre la voix quand la famille change.
-    ///
-    /// Seul Kokoro nomme ses voix, une par langue : `voice.voice` reste celle
-    /// de l'ancien modèle, pour qui voudra y revenir, et seules les langues
-    /// sans voix reçoivent la leur. Une voix retirée du catalogue n'est pas
-    /// réécrite : `tts_params_in` la remplace par la voix recommandée de sa
-    /// langue (règle des valeurs non listées). Les autres familles ne nomment
-    /// aucune voix : rien à aligner. Renvoie vrai si quelque chose a changé.
-    pub fn align_voice_with_family(&mut self) -> bool {
-        let family = self.engine.family.clone();
-        if !crate::models::voices_follow_language(&family) {
-            return false;
-        }
-        let mut changed = false;
-        for language in ["fr", "en"] {
-            if !self.voice.per_language.contains_key(language) {
-                let voice = crate::models::default_voice_for_language(&family, language);
-                self.voice.per_language.insert(language.to_string(), voice.to_string());
-                changed = true;
-            }
-        }
-        changed
-    }
-
-    pub fn engine_preference(&self) -> EnginePreference {
-        EnginePreference::parse(&self.engine.engine).unwrap_or(EnginePreference::Auto)
-    }
-
-    pub fn engine_settings(&self) -> EngineSettings {
-        EngineSettings {
-            model_path: expand_tilde(&self.engine.model_path),
-            family: self.engine.family.clone(),
-            backend: self.engine.compute.clone(),
-            threads: self.engine.threads.max(1),
-            sessions: self.sessions(),
-        }
-    }
-
-    /// Sessions de synthèse réellement ouvertes.
-    ///
-    /// Un nombre posé à la main l'emporte ; `0` s'en remet à la famille.
-    pub fn sessions(&self) -> u32 {
-        match self.engine.sessions {
-            0 => crate::models::sessions_for_family(&self.engine.family),
-            n => n,
-        }
-    }
-
     pub fn code_policy(&self) -> CodePolicy {
         CodePolicy::parse(&self.reading.code_blocks).unwrap_or(CodePolicy::Announce)
     }
 }
 
-/// Développe un `~` initial : un chemin littéral `~/...` n'existe pas.
-pub fn expand_tilde(path: &str) -> String {
-    expand_tilde_with(path, dirs::home_dir().as_deref())
-}
-
-/// `expand_tilde` avec un dossier personnel explicite (les tests n'ont pas à
-/// dépendre de celui de la machine).
-pub fn expand_tilde_with(path: &str, home: Option<&std::path::Path>) -> String {
-    let Some(rest) = path.strip_prefix('~') else {
-        return path.to_string();
-    };
-    let Some(home) = home else {
-        return path.to_string();
-    };
-    let rest = rest.trim_start_matches(['/', '\\']);
-    if rest.is_empty() {
-        home.to_string_lossy().into_owned()
-    } else {
-        home.join(rest).to_string_lossy().into_owned()
-    }
-}
+pub use crate::paths::{expand_tilde, expand_tilde_with};
 
 #[cfg(test)]
 mod tests {
@@ -421,22 +289,10 @@ mod tests {
     }
 
     #[test]
-    fn every_voice_setting_reaches_the_tts_params() {
+    fn the_pitch_reaches_the_tts_params() {
         let mut config = Config::default();
-        config.voice.emotion = "calme".into();
-        config.voice.instruction = "ton posé".into();
         config.voice.pitch = 0.3;
-        config.voice.energy = 1.2;
-        config.sampling.temperature = Some(0.7);
-        config.sampling.seed = Some(42);
-        config.extra.insert("cfg_scale".into(), "3".into());
-
-        let params = config.tts_params();
-        assert_eq!(params.emotion, "calme");
-        assert_eq!(params.instruction, "ton posé");
-        assert_eq!(params.pitch_shift, 0.3);
-        assert_eq!(params.energy, 1.2);
-
+        assert_eq!(config.tts_params().pitch_shift, 0.3);
     }
 
     /// Hors Kokoro, plus aucune famille ne nomme ses voix : la voix
@@ -555,24 +411,6 @@ mod tests {
         let voice = config.tts_params().voice;
         assert!(!voice.starts_with('~'), "{voice}");
         assert!(voice.ends_with("voix.wav"), "{voice}");
-    }
-
-    #[test]
-    fn sampling_values_are_brought_back_within_the_screen_bounds() {
-        let mut config = Config::default();
-        config.sampling.temperature = Some(f32::NAN);
-        config.sampling.top_p = Some(4.0);
-        config.sampling.top_k = Some(900);
-        config.sampling.guidance_scale = Some(-3.0);
-        config.sampling.repetition_penalty = Some(9.0);
-        config.sampling.inference_steps = Some(0);
-        let c = config.normalised();
-        assert_eq!(c.sampling.temperature, None, "NaN rend la main au modèle");
-        assert_eq!(c.sampling.top_p, Some(1.0));
-        assert_eq!(c.sampling.top_k, Some(200));
-        assert_eq!(c.sampling.guidance_scale, Some(0.0));
-        assert_eq!(c.sampling.repetition_penalty, Some(2.0));
-        assert_eq!(c.sampling.inference_steps, Some(1));
     }
 
     #[test]

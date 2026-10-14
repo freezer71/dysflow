@@ -360,7 +360,7 @@ impl Reader {
 
     pub fn open_file(&mut self, path: &Path, now: Instant) -> anyhow::Result<()> {
         let markdown = crate::source::load(path)?;
-        let source = crate::launch::document_identity(path);
+        let source = crate::position::document_identity(path);
         // Le choix de langue suit le fichier, comme sa position : il doit
         // être là avant l'ouverture, qui en dépend.
         if let Some(name) = path.file_name() {
@@ -493,7 +493,7 @@ impl Reader {
         synth.reset();
         let mut builder = DocumentBuilder::with_language(self.config.code_policy(), &language.effective);
         self.language = Some(language);
-        for block in crate::input::split_blocks(&text.markdown) {
+        for block in crate::doc::blocks::split_blocks(&text.markdown) {
             builder.push_block(&block);
         }
         let mut app = App::from_parts(

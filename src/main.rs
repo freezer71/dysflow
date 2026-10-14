@@ -11,7 +11,7 @@ fn main() -> Result<()> {
     let Launch::Ready(prepared) = launch::prepare(&args)? else {
         return Ok(());
     };
-    let Prepared { mut app, config_requested, has_input, quiet } = prepared;
+    let Prepared { mut app, config_requested, has_input, quiet } = *prepared;
 
     // Sans document ni flux, on démarre sur l'écran de configuration : sans
     // texte à lire, régler l'outil est la seule chose utile à faire.

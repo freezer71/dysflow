@@ -13,7 +13,7 @@
 
 use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
 use std::sync::Arc;
-use std::thread::{self, JoinHandle};
+use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use super::{PcmBuffer, TtsEngine, TtsParams};
@@ -40,28 +40,8 @@ pub fn sample_text(language: &str) -> &'static str {
     }
 }
 
-/// Refus d'un aperçu clonant sans WAV de référence.
-pub const REFERENCE_MISSING: &str =
-    "ce modèle ne parle qu'en clonant : choisissez d'abord un fichier WAV";
 /// Refus d'un aperçu sans sortie audio.
 pub const AUDIO_MISSING: &str = "sortie audio indisponible : aucun aperçu possible";
-
-/// Pourquoi un aperçu ne peut pas partir, s'il ne le peut pas.
-///
-/// La voix clonée passe d'abord : c'est la seule à laquelle l'utilisateur
-/// peut remédier depuis l'onglet.
-pub fn refusal(requires_reference: bool, voice: &str, audio_available: bool) -> Option<String> {
-    if requires_reference {
-        let voice = crate::config::expand_tilde(voice.trim());
-        if voice.is_empty() || !std::path::Path::new(&voice).is_file() {
-            return Some(REFERENCE_MISSING.to_string());
-        }
-    }
-    if !audio_available {
-        return Some(AUDIO_MISSING.to_string());
-    }
-    None
-}
 
 /// Lance l'aperçu des réglages en cours sur la phrase d'exemple : le
 /// précédent est coupé, un refus s'explique, la lecture se met en pause pour
@@ -69,15 +49,14 @@ pub fn refusal(requires_reference: bool, voice: &str, audio_available: bool) -> 
 pub fn start(
     previewer: &mut Previewer,
     player: &mut crate::audio::Player,
-    requires_reference: bool,
     config: &crate::config::Config,
     language: &str,
     label: String,
 ) -> Result<(), String> {
     previewer.cancel();
     player.stop_preview();
-    if let Some(reason) = refusal(requires_reference, &config.voice.voice, player.is_available()) {
-        return Err(reason);
+    if !player.is_available() {
+        return Err(AUDIO_MISSING.to_string());
     }
     player.pause();
     previewer
@@ -118,7 +97,7 @@ impl Previewer {
     pub fn new(engine: Arc<dyn TtsEngine>) -> Self {
         let (requests, inbox) = mpsc::channel();
         let (outbox, results) = mpsc::channel();
-        let worker = thread::spawn(move || worker(engine, inbox, outbox));
+        let worker = crate::sync::spawn_named("sillon-apercu", move || worker(engine, inbox, outbox));
         Self {
             requests: Some(requests),
             results,
@@ -255,6 +234,7 @@ fn latest(mut request: Request, requests: &Receiver<Request>) -> Request {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::thread;
 
     #[test]
     fn a_regional_english_code_gets_the_english_sample() {
@@ -262,15 +242,6 @@ mod tests {
         assert_ne!(sample_text("en_GB"), sample_text("fr"));
     }
 
-    #[test]
-    fn a_cloning_model_without_a_wav_is_refused_before_the_audio_check() {
-        assert_eq!(refusal(true, "", true).as_deref(), Some(REFERENCE_MISSING));
-        assert_eq!(refusal(true, "/n/existe/pas.wav", false).as_deref(), Some(REFERENCE_MISSING));
-        let present = concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml");
-        assert_eq!(refusal(true, present, true), None);
-        assert_eq!(refusal(false, "", false).as_deref(), Some(AUDIO_MISSING));
-        assert_eq!(refusal(false, "", true), None);
-    }
     use anyhow::Result;
     use std::sync::atomic::{AtomicUsize, Ordering};
 

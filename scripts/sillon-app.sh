@@ -5,7 +5,7 @@
 #   sillon document.pdf    # le panneau, sur ce document (texte, PDF, image)
 #
 # Installée par ./scripts/install-app-command.sh dans ~/.local/bin/sillon.
-set -e
+set -eu
 
 # Le chemin, pas l'identifiant : `open -b` peut choisir une copie de
 # développement (macos/build/…) au lieu de l'app installée.
