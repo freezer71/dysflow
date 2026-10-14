@@ -40,13 +40,13 @@ export MACOSX_DEPLOYMENT_TARGET=14.0
 
 # La liaison d'abord : le binaire bindgen recompile le crate sans les options
 # lourdes, et écraserait sinon la bibliothèque finale.
-cargo build --release -p sillon-ffi
-cargo run --release -p sillon-ffi --features bindgen --bin uniffi-bindgen -- \
-    generate --library target/release/libsillon_ffi.dylib --language swift --out-dir "$GEN"
+cargo build --profile app -p sillon-ffi
+cargo run --profile app -p sillon-ffi --features bindgen --bin uniffi-bindgen -- \
+    generate --library target/app/libsillon_ffi.dylib --language swift --out-dir "$GEN"
 mv "$GEN/sillon_ffiFFI.modulemap" "$GEN/module.modulemap"
 
-cargo build --release -p sillon-ffi ${FEATURES:+--features "$FEATURES"}
-cp target/release/libsillon_ffi.a "$LIB/"
+cargo build --profile app -p sillon-ffi ${FEATURES:+--features "$FEATURES"}
+cp target/app/libsillon_ffi.a "$LIB/"
 
 FLAGS="-lsillon_ffi -lc++ -framework CoreAudio -framework AudioToolbox -framework AudioUnit -framework CoreFoundation -framework Security -framework Metal -framework Accelerate"
 # Un ancien shim audio.cpp (retiré le 14 oct. 2026) ne doit plus être joint.

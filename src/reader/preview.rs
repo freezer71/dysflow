@@ -117,6 +117,7 @@ impl Reader {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sync::LockExt;
     use crate::config::Config;
     use crate::tts::silent::SilentEngine;
     use crate::tts::{TtsEngine, TtsSession};
@@ -238,7 +239,7 @@ mod tests {
     }
     impl TtsSession for GatedSession {
         fn synthesize(&mut self, text: &str, params: &crate::tts::TtsParams) -> anyhow::Result<crate::tts::PcmBuffer> {
-            let _ = self.0.lock().unwrap().recv();
+            let _ = self.0.locked().recv();
             SilentEngine.open_session()?.synthesize(text, params)
         }
     }

@@ -10,6 +10,7 @@ pub mod onnx;
 
 pub use backend::{check, KokoroBackend, KokoroRaw, SharedCompute};
 
+use crate::sync::LockExt;
 use anyhow::{bail, Context, Result};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -103,7 +104,7 @@ struct Inner {
 
 impl Inner {
     fn voice(&self, name: &str) -> Result<Arc<VoicePack>> {
-        let mut voices = self.voices.lock().unwrap();
+        let mut voices = self.voices.locked();
         if let Some(voice) = voices.get(name) {
             return Ok(Arc::clone(voice));
         }
@@ -113,7 +114,7 @@ impl Inner {
     }
 
     fn broken(&self) -> Option<String> {
-        self.broken.lock().unwrap().clone()
+        self.broken.locked().clone()
     }
 
     /// Rend la part du calcul, une seule fois.
@@ -125,7 +126,7 @@ impl Inner {
 
     /// La voix passe en repli : le calcul n'a plus d'usage.
     fn break_down(&self, reason: String) {
-        *self.broken.lock().unwrap() = Some(reason);
+        *self.broken.locked() = Some(reason);
         self.release_compute();
     }
 
@@ -268,7 +269,7 @@ impl TtsSession for KokoroSession {
         let mut items = Vec::with_capacity(words.len() + 1);
         items.push(text.to_string());
         items.extend(words.iter().cloned());
-        let phonemes = match self.inner.phonemizer.lock().unwrap().phonemize(language, &items) {
+        let phonemes = match self.inner.phonemizer.locked().phonemize(language, &items) {
             Ok(p) => p,
             Err(err) => {
                 self.inner.break_down(format!("espeak-ng s'est arrêté ({err})"));
@@ -381,7 +382,7 @@ mod tests {
                 self.abandoned.fetch_add(cancel.is_cancelled() as usize, Ordering::SeqCst);
                 cancel.check()?;
             }
-            let mut calls = self.calls.lock().unwrap();
+            let mut calls = self.calls.locked();
             calls.push((ids.to_vec(), style[0]));
             if self.mode == Mode::Flaky && calls.len() % 2 == 1 {
                 anyhow::bail!("calcul perdu une fois");
@@ -458,7 +459,7 @@ mod tests {
         let (engine, _) = engine(Arc::clone(&backend), false, "bords");
         let mut session = engine.open_session().unwrap();
         let out = session.synthesize_timed("un deux", &strings("un deux"), &params("rampe")).unwrap();
-        let calls = backend.calls.lock().unwrap();
+        let calls = backend.calls.locked();
         let (ids, style) = &calls[0];
         assert_eq!(ids.first(), Some(&0));
         assert_eq!(ids.last(), Some(&0));
@@ -488,7 +489,7 @@ mod tests {
         let text = "abcd efgh, ".repeat(60); // 660 symboles
         let words = strings(&text);
         let out = session.synthesize_timed(text.trim(), &words, &params("rampe")).unwrap();
-        let calls = backend.calls.lock().unwrap();
+        let calls = backend.calls.locked();
         assert_eq!(calls.len(), 2, "deux morceaux");
         assert!(calls.iter().all(|(ids, _)| ids.len() <= MAX_PHONEMES + 2));
         let spans = out.words.expect("minutage recollé");
@@ -506,7 +507,7 @@ mod tests {
         let text = "abcd ".repeat(400);
         let words = strings(&text);
         let out = session.synthesize_timed(text.trim(), &words, &params("rampe")).unwrap();
-        let calls = backend.calls.lock().unwrap();
+        let calls = backend.calls.locked();
         assert_eq!(calls.len(), 4);
         assert!(calls.iter().all(|(ids, _)| ids.len() <= MAX_PHONEMES + 2));
         let spans = out.words.expect("minutage");

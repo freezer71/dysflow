@@ -75,6 +75,37 @@ pub fn write_atomic(path: &Path, contents: &[u8]) -> std::io::Result<()> {
     outcome
 }
 
+/// Relit un fichier JSON de données (positions, signets, langues).
+///
+/// Absent, il rend la valeur par défaut. Illisible, il est mis de côté en
+/// `.json.bak` avant de repartir à neuf, pour que la sauvegarde suivante ne
+/// l'écrase pas, et l'avertissement rendu dit où il est allé.
+pub fn load_json<T: serde::de::DeserializeOwned + Default>(path: &Path, what: &str) -> (T, Option<String>) {
+    let text = match std::fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return (T::default(), None),
+        Err(err) => return (T::default(), Some(format!("{what} illisibles : {err}"))),
+    };
+    match serde_json::from_str(&text) {
+        Ok(value) => (value, None),
+        Err(err) => {
+            let backup = path.with_extension("json.bak");
+            let notice = match std::fs::rename(path, &backup) {
+                Ok(()) => format!("{what} d'un ancien format mis de côté dans {} ({err})", backup.display()),
+                Err(_) => format!("{what} illisibles, ignorés : {err}"),
+            };
+            (T::default(), Some(notice))
+        }
+    }
+}
+
+/// Écrit une valeur en JSON lisible, d'un seul coup (`write_atomic`).
+pub fn save_json<T: serde::Serialize>(path: &Path, value: &T) -> anyhow::Result<()> {
+    use anyhow::Context;
+    let text = serde_json::to_string_pretty(value)?;
+    write_atomic(path, text.as_bytes()).with_context(|| format!("écriture de {}", path.display()))
+}
+
 fn adopt(base: &Path) -> PathBuf {
     let current = base.join(APP);
     let former = base.join(FORMER);

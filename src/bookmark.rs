@@ -47,35 +47,11 @@ impl BookmarkStore {
     }
 
     /// Lit les signets d'un fichier donné (les tests visent un fichier à eux).
+    ///
+    /// Un fichier écrit par une version antérieure ne doit pas être écrasé en
+    /// silence : il est mis de côté avant de repartir à neuf.
     pub(crate) fn load_from(path: &std::path::Path) -> (Self, Option<String>) {
-        let path = path.to_path_buf();
-        if !path.exists() {
-            return (Self::default(), None);
-        }
-        match std::fs::read_to_string(&path) {
-            Ok(text) => match serde_json::from_str(&text) {
-                Ok(store) => (store, None),
-                // Un fichier écrit par une version antérieure ne doit pas être
-                // écrasé en silence : on le met de côté avant de repartir à neuf.
-                Err(err) => {
-                    let notice = match Self::archive(&path) {
-                        Some(backup) => format!(
-                            "signets d'un ancien format mis de côté dans {} ({err})",
-                            backup.display()
-                        ),
-                        None => format!("signets illisibles, ignorés : {err}"),
-                    };
-                    (Self::default(), Some(notice))
-                }
-            },
-            Err(err) => (Self::default(), Some(format!("signets illisibles : {err}"))),
-        }
-    }
-
-    /// Renomme le fichier courant en `.bak`, et renvoie le chemin retenu.
-    fn archive(path: &std::path::Path) -> Option<PathBuf> {
-        let backup = path.with_extension("json.bak");
-        std::fs::rename(path, &backup).ok().map(|_| backup)
+        crate::paths::load_json(path, "signets")
     }
 
     pub fn save(&self) -> Result<()> {
@@ -84,10 +60,7 @@ impl BookmarkStore {
     }
 
     pub(crate) fn save_to(&self, path: &std::path::Path) -> Result<()> {
-        let text = serde_json::to_string_pretty(self)?;
-        crate::paths::write_atomic(path, text.as_bytes())
-            .with_context(|| format!("écriture de {}", path.display()))?;
-        Ok(())
+        crate::paths::save_json(path, self)
     }
 
     /// Rattache au nom courant les signets posés sous un ancien nom.

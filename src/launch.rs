@@ -110,7 +110,7 @@ pub struct Args {
 pub enum Launch {
     /// Une option a répondu sur la sortie standard : rien à afficher.
     Done,
-    Ready(Prepared),
+    Ready(Box<Prepared>),
 }
 
 pub struct Prepared {
@@ -213,12 +213,12 @@ pub fn prepare(args: &Args) -> Result<Launch> {
         app.resume_where_left();
     }
 
-    Ok(Launch::Ready(Prepared {
+    Ok(Launch::Ready(Box::new(Prepared {
         app,
         config_requested: args.config,
         has_input,
         quiet,
-    }))
+    })))
 }
 
 /// Ce qui identifie un document d'une ouverture à l'autre : son chemin entier.

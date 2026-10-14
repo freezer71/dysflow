@@ -1721,6 +1721,7 @@ pub(crate) fn word_target(
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
+    use crate::sync::LockExt;
     use crate::doc::builder::CodePolicy;
     use crate::tts::{PcmBuffer, TtsSession};
     use anyhow::Result;
@@ -2437,7 +2438,7 @@ pub(crate) mod tests {
             if text.starts_with("Camille") {
                 if let Some(gate) = &self.gate {
                     // Borné : un essai qui échoue ne reste pas suspendu à sa barrière.
-                    let _ = gate.lock().unwrap().recv_timeout(Duration::from_secs(5));
+                    let _ = gate.locked().recv_timeout(Duration::from_secs(5));
                 }
                 if self.refuse_tail {
                     anyhow::bail!("suite refusée");

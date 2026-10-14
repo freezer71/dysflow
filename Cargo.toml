@@ -72,6 +72,12 @@ codegen-units = 1
 panic = "abort"
 strip = true
 
+# La bibliothèque de l'app macOS : une panique Rust doit rester une erreur
+# (rattrapée par UniFFI, verrous repris par `sync`), pas arrêter l'app.
+[profile.app]
+inherits = "release"
+panic = "unwind"
+
 # Le rendu TUI et la synthèse restent fluides même en debug.
 [profile.dev.package."*"]
 opt-level = 2

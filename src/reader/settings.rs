@@ -621,6 +621,7 @@ impl Place {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sync::LockExt;
 
     fn reader_on(family: &str) -> Reader {
         let mut config = Config::default();
@@ -1184,7 +1185,7 @@ mod tests {
         let mut r = Reader::new(
             config,
             Box::new(move |c| {
-                log.lock().unwrap().push(c.engine.model_path.clone());
+                log.locked().push(c.engine.model_path.clone());
                 Arc::new(SilentEngine) as Arc<dyn TtsEngine>
             }),
             Box::new(|_: &str| Player::silent()),
@@ -1194,7 +1195,7 @@ mod tests {
         r.rest();
         r.switch_voice_config("/nouvelle/voix.onnx", "supertonic");
         r.with_session(Instant::now(), |_| {});
-        assert_eq!(seen.lock().unwrap().last().unwrap(), "/nouvelle/voix.onnx");
+        assert_eq!(seen.locked().last().unwrap(), "/nouvelle/voix.onnx");
         assert_eq!(r.config().engine.model_path, "/nouvelle/voix.onnx");
     }
 

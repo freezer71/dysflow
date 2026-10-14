@@ -5,6 +5,7 @@
 //! d'un vrai modèle atteignable depuis l'interface, sans ligne de commande et
 //! sans jamais télécharger quoi que ce soit sans accord explicite.
 
+use crate::sync::LockExt;
 use anyhow::{anyhow, Context, Result};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -514,14 +515,14 @@ impl Download {
                 Ok(()) => Progress::Done,
                 Err(err) => Progress::Failed(err.to_string()),
             };
-            *outcome.lock().unwrap() = Some(state);
+            *outcome.locked() = Some(state);
         });
 
         Ok(Self { package, received, total, outcome, cancel })
     }
 
     pub fn progress(&self) -> Progress {
-        if let Some(state) = self.outcome.lock().unwrap().clone() {
+        if let Some(state) = self.outcome.locked().clone() {
             return state;
         }
         Progress::Running {
@@ -547,7 +548,7 @@ impl Download {
     #[cfg(test)]
     pub(crate) fn fake_ended(package: &'static ModelPackage, ending: Progress) -> Self {
         let download = Self::fake(package, false);
-        *download.outcome.lock().unwrap() = Some(ending);
+        *download.outcome.locked() = Some(ending);
         download
     }
 
@@ -562,7 +563,7 @@ impl Download {
     }
 
     pub fn is_finished(&self) -> bool {
-        self.outcome.lock().unwrap().is_some()
+        self.outcome.locked().is_some()
     }
 }
 
