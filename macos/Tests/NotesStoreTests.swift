@@ -94,9 +94,10 @@ final class NotesStoreTests: XCTestCase {
         XCTAssertFalse(LaunchKind.launchedWithFiles(event: nil))
     }
 
-    /// Fermer les notes quitte sillon, sauf en pleine lecture.
-    func testClosingTheNotesQuitsUnlessReading() {
-        XCTAssertTrue(AppDelegate.quitsWhenNotesClose(playing: false))
-        XCTAssertFalse(AppDelegate.quitsWhenNotesClose(playing: true))
+    /// Fermer les notes retire aussi le panneau, sauf en pleine lecture ;
+    /// sillon ne quitte jamais (il reste dans la barre des menus).
+    func testClosingTheNotesHidesThePanelUnlessReading() {
+        XCTAssertTrue(AppDelegate.hidesPanelWhenNotesClose(playing: false))
+        XCTAssertFalse(AppDelegate.hidesPanelWhenNotesClose(playing: true))
     }
 }

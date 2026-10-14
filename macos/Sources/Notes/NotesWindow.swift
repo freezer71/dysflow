@@ -3,13 +3,13 @@ import SwiftUI
 
 /// La fenêtre des notes : ouverte quand on lance sillon soi-même (Dock,
 /// Spotlight, un lanceur), ou depuis le menu. Tant qu'elle est ouverte,
-/// sillon a son icône dans le Dock et passe au ⌘Tab. Fermée, sillon quitte
-/// s'il ne lit rien ; s'il lit, il reste dans la barre des menus.
+/// sillon a son icône dans le Dock et passe au ⌘Tab. Fermée, il redevient
+/// discret dans la barre des menus (le panneau se retire s'il ne lit rien).
 @MainActor
 final class NotesWindowController: NSObject, NSWindowDelegate {
     let store: NotesStore
     private let read: (NotePage) -> Void
-    /// Après la fermeture de la fenêtre (l'app décide s'il faut quitter).
+    /// Après la fermeture de la fenêtre (l'app décide du panneau).
     private let closed: () -> Void
     private var window: NSWindow?
 

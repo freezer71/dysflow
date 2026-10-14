@@ -57,15 +57,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         openFile(files.last!)
     }
 
-    /// La fenêtre des notes fermée : rien à lire, sillon quitte tout ; en
-    /// pleine lecture, il reste (le panneau ou le mini-lecteur).
+    /// La fenêtre des notes fermée : rien à lire, le panneau se retire aussi
+    /// (sillon reste dans la barre des menus) ; en pleine lecture, il reste
+    /// pour garder la main sur le son.
     private func notesClosed() {
-        guard !isUITesting, !isUnitTesting, let model else { return }
+        guard !isUITesting, !isUnitTesting, let model, let panel else { return }
         model.refresh()
-        if Self.quitsWhenNotesClose(playing: model.snapshot.playing) { NSApp.terminate(nil) }
+        if Self.hidesPanelWhenNotesClose(playing: model.snapshot.playing) { panel.apply(.hide) }
     }
 
-    nonisolated static func quitsWhenNotesClose(playing: Bool) -> Bool { !playing }
+    nonisolated static func hidesPanelWhenNotesClose(playing: Bool) -> Bool { !playing }
 
     private func openFile(_ url: URL) {
         guard let model, let panel else { return }
