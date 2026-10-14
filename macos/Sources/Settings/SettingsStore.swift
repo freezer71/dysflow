@@ -45,21 +45,25 @@ final class SettingsStore {
     @ObservationIgnored private let engineDelay: Duration
     @ObservationIgnored private let dragTimeout: Duration
     @ObservationIgnored private var dragWatchdog: Task<Void, Never>?
+    @ObservationIgnored private let sleep: Committer<SettingsView>.Sleep
 
     /// `engineDelay` : la pause des réglages qui rechargent la voix (moteur,
     /// calcul, fils, sessions, phrases d'avance) ; une rafale de pressions
     /// ne recharge qu'une fois. `dragTimeout` : un geste sans relâchement
     /// au bout de ce temps est abandonné.
     /// `announce` : ce qui dit un refus à VoiceOver (VoiceOver lui-même par défaut).
+    /// `sleep` : l'attente des pauses ; les tests passent leur horloge.
     init(backend: SettingsBackend, delay: Duration = .milliseconds(150),
          engineDelay: Duration = .milliseconds(800), dragTimeout: Duration = .seconds(3),
+         sleep: @escaping Committer<SettingsView>.Sleep = Committer<SettingsView>.realSleep,
          announce: ((String) -> Void)? = nil) {
         self.backend = backend
         writeError = ErrorNote(announce: announce)
         previewError = ErrorNote(announce: announce)
         self.engineDelay = engineDelay
         self.dragTimeout = dragTimeout
-        committer = Committer(delay: delay, writeApplied: { [backend] new, old in
+        self.sleep = sleep
+        committer = Committer(delay: delay, sleep: sleep, writeApplied: { [backend] new, old in
             let patches = SettingsDiff.patches(from: old, to: new)
             if patches.isEmpty { return new }   // rien à écrire
             var applied = new
@@ -170,8 +174,8 @@ final class SettingsStore {
     /// écritures : sans aucun mouvement pendant `dragTimeout`, le geste prend fin.
     private func armWatchdog() {
         dragWatchdog?.cancel()
-        dragWatchdog = Task { [weak self, dragTimeout] in
-            try? await Task.sleep(for: dragTimeout)
+        dragWatchdog = Task { [weak self, dragTimeout, sleep] in
+            try? await sleep(dragTimeout)
             guard !Task.isCancelled else { return }
             self?.dragChanged(false)
         }
