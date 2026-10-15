@@ -124,6 +124,10 @@ pub struct App {
     synthesis_started: bool,
     /// Un choix fait à l'écran attend d'être écrit dans `config.toml`.
     config_dirty: bool,
+
+    /// Où l'enregistrement automatique écrit (`config.toml` ; un fichier
+    /// temporaire sous test). `None` : rien ne s'écrit.
+    config_target: Option<std::path::PathBuf>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -263,6 +267,7 @@ impl App {
             started_at: Instant::now(),
             synthesis_started: false,
             config_dirty: false,
+            config_target: Config::path(),
         };
         if !has_stream {
             app.builder.finish();
@@ -921,6 +926,98 @@ pub(crate) mod tests {
         app.reload_engine();
         assert!(app.estimated_total().is_none());
         assert_eq!(app.skipped_count(), 0);
+    }
+
+    /// Un fichier `config.toml` propre au test, dans un dossier neuf.
+    fn autosave_target(name: &str) -> (std::path::PathBuf, std::path::PathBuf) {
+        let dir = std::env::temp_dir().join(format!("sillon-autosave-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        (dir, path)
+    }
+
+    /// L'écran des réglages ouvert sur « Lecture › Interlignage ».
+    fn on_line_spacing(app: &mut App) {
+        app.screen.goto_section(2);
+        app.screen.row = 1;
+        assert_eq!(app.screen.current_field(&app.config), Some(Field::LineSpacing));
+    }
+
+    #[test]
+    fn a_setting_changed_on_screen_is_written_at_once() {
+        let (dir, path) = autosave_target("immediat");
+        let mut app = app_reading(DOC);
+        app.set_config_target(Some(path.clone()));
+        on_line_spacing(&mut app);
+        let before = app.config.reading.line_spacing;
+        app.config_adjust_and_save(1);
+        let written = Config::read_from(&path).unwrap();
+        std::fs::remove_dir_all(&dir).ok();
+        assert_eq!(app.config.reading.line_spacing, before + 1, "appliqué");
+        assert_eq!(written.reading.line_spacing, before + 1, "écrit sans w");
+        assert!(!app.config_needs_saving());
+    }
+
+    #[test]
+    fn the_autosave_writes_only_the_setting_changed_on_screen() {
+        let (dir, path) = autosave_target("seul");
+        let mut on_disk = Config::default();
+        on_disk.voice.speed = 1.2;
+        on_disk.save_to(&path).unwrap();
+        let mut app = app_reading(DOC);
+        app.set_config_target(Some(path.clone()));
+        app.config.voice.speed = 2.5; // venue de --speed 2.5
+        on_line_spacing(&mut app);
+        app.config_adjust_and_save(1);
+        let written = Config::read_from(&path).unwrap();
+        std::fs::remove_dir_all(&dir).ok();
+        assert_eq!(written.voice.speed, 1.2, "l'option de la ligne de commande n'est pas écrite");
+        assert!(written.reading.autoplay, "l'autoplay coupé du test non plus");
+        assert_eq!(written.reading.line_spacing, app.config.reading.line_spacing);
+    }
+
+    #[test]
+    fn an_unreadable_config_is_never_overwritten_by_the_autosave() {
+        let (dir, path) = autosave_target("illisible");
+        let witness = b"[voice\nvoice = \"F2\" # \xc3\xa9crit \xc3\xa0 la main".to_vec();
+        std::fs::write(&path, &witness).unwrap();
+        let mut app = app_reading(DOC);
+        app.set_config_target(Some(path.clone()));
+        on_line_spacing(&mut app);
+        let before = app.config.reading.line_spacing;
+        app.config_adjust_and_save(1);
+        let after = std::fs::read(&path).unwrap();
+        std::fs::remove_dir_all(&dir).ok();
+        assert_eq!(after, witness, "le fichier de l'utilisateur est intact");
+        assert_eq!(app.config.reading.line_spacing, before + 1, "le réglage s'applique quand même");
+        assert!(app.status().contains("non enregistré"), "{}", app.status());
+    }
+
+    #[test]
+    fn a_text_field_is_written_when_its_edit_is_committed() {
+        let (dir, path) = autosave_target("texte");
+        let mut app = app_reading(DOC);
+        app.set_config_target(Some(path.clone()));
+        app.screen.goto_section(1);
+        app.screen.show_all = true;
+        app.screen.row = 4;
+        assert_eq!(app.screen.current_field(&app.config), Some(Field::Voice));
+        app.screen.editing = Some("~/voix.wav".into());
+        app.config_commit_edit_and_save();
+        let written = Config::read_from(&path).unwrap();
+        std::fs::remove_dir_all(&dir).ok();
+        assert_eq!(written.voice.voice, "~/voix.wav");
+        assert!(app.screen.editing.is_none());
+    }
+
+    #[test]
+    fn without_a_target_nothing_is_written_and_the_screen_says_so() {
+        let mut app = app_reading(DOC);
+        app.set_config_target(None);
+        on_line_spacing(&mut app);
+        app.config_adjust_and_save(1);
+        assert!(app.status().contains("non enregistré"), "{}", app.status());
     }
 
     #[test]

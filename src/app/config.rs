@@ -339,6 +339,46 @@ impl Field {
         }
     }
 
+    /// Recopie la valeur de ce réglage de `from` dans `to`, et rien d'autre :
+    /// l'enregistrement automatique n'écrit que ce que l'écran vient de
+    /// changer, jamais une option de la ligne de commande (`--speed`…).
+    pub fn copy_value(&self, from: &Config, to: &mut Config) {
+        match self {
+            Field::Speed => to.voice.speed = from.voice.speed,
+            Field::Pitch => to.voice.pitch = from.voice.pitch,
+            Field::Volume => to.voice.volume = from.voice.volume,
+            Field::Language => to.voice.language = from.voice.language.clone(),
+            Field::Voice => {
+                if models::voices_follow_language(&from.engine.family) {
+                    // Kokoro : le champ écrit la ligne de la langue par défaut.
+                    let language = from.default_language();
+                    let code = crate::text::language::Lang::parse(&language)
+                        .map_or_else(|| language.clone(), |l| l.code().to_string());
+                    if let Some(voice) = from.voice.per_language.get(&code) {
+                        to.voice.per_language.insert(code, voice.clone());
+                    }
+                } else {
+                    to.voice.voice = from.voice.voice.clone();
+                }
+            }
+            Field::CodeBlocks => to.reading.code_blocks = from.reading.code_blocks.clone(),
+            Field::Autoplay => to.reading.autoplay = from.reading.autoplay,
+            Field::SeekStep => to.reading.seek_step = from.reading.seek_step,
+            Field::LineWidth => to.reading.line_width = from.reading.line_width,
+            Field::LineSpacing => to.reading.line_spacing = from.reading.line_spacing,
+            Field::ReadingRuler => to.reading.reading_ruler = from.reading.reading_ruler,
+            Field::EnginePref => to.engine.engine = from.engine.engine.clone(),
+            Field::Threads => to.engine.threads = from.engine.threads,
+            Field::Sessions => to.engine.sessions = from.engine.sessions,
+            Field::Prefetch => to.engine.prefetch = from.engine.prefetch,
+            Field::ModelPath => to.engine.model_path = from.engine.model_path.clone(),
+            Field::Family => {
+                to.engine.family = from.engine.family.clone();
+                to.align_voice_with_family();
+            }
+        }
+    }
+
     /// Applique un pas de réglage. Renvoie ce qui doit être répercuté.
     pub fn adjust(&self, config: &mut Config, delta: i32) -> Effect {
         let step = delta as f32;
@@ -703,6 +743,33 @@ impl ConfigScreen {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn copying_a_field_copies_nothing_else() {
+        let mut from = Config::default();
+        from.voice.speed = 2.5; // une option --speed, par exemple
+        from.reading.line_spacing = 3;
+        let mut to = Config::default();
+        Field::LineSpacing.copy_value(&from, &mut to);
+        assert_eq!(to.reading.line_spacing, 3);
+        assert_eq!(to.voice.speed, Config::default().voice.speed, "la vitesse ne suit pas");
+    }
+
+    #[test]
+    fn copying_the_kokoro_voice_copies_only_its_language_line() {
+        let mut from = Config::default();
+        from.engine.family = "kokoro".into();
+        from.voice.language = "en".into();
+        from.voice.voice = "voix-de-la-ligne-de-commande".into();
+        Field::Voice.adjust(&mut from, 1);
+        let chosen = from.voice.per_language["en"].clone();
+        let mut to = Config::default();
+        to.voice.per_language.insert("fr".into(), "p-fenrir60".into());
+        Field::Voice.copy_value(&from, &mut to);
+        assert_eq!(to.voice.per_language["en"], chosen);
+        assert_eq!(to.voice.per_language["fr"], "p-fenrir60", "l'autre langue reste");
+        assert_eq!(to.voice.voice, "", "voice.voice n'est pas écrit");
+    }
 
     #[test]
     fn languages_cycle_through_those_of_the_model() {

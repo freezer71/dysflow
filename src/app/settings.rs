@@ -449,6 +449,51 @@ impl App {
         }
     }
 
+    /// Où l'enregistrement automatique écrit ; `None` : nulle part.
+    pub fn set_config_target(&mut self, path: Option<std::path::PathBuf>) {
+        self.config_target = path;
+    }
+
+    /// Écrit ce seul réglage dans `config.toml` : le fichier est relu, le
+    /// champ y est recopié depuis la configuration en cours, le reste du
+    /// fichier ne bouge pas (les options de la ligne de commande n'y entrent
+    /// pas). Un fichier illisible n'est jamais réécrit.
+    pub fn save_field(&mut self, field: Field) -> anyhow::Result<std::path::PathBuf> {
+        let path = self
+            .config_target
+            .clone()
+            .ok_or_else(|| anyhow::anyhow!("répertoire de configuration introuvable"))?;
+        let mut on_disk = Config::read_from(&path)?;
+        field.copy_value(&self.config, &mut on_disk);
+        on_disk.save_to(&path)?;
+        Ok(path)
+    }
+
+    /// Ajuste le champ sélectionné, répercute son effet, et l'enregistre
+    /// aussitôt. Un enregistrement impossible laisse le réglage appliqué et
+    /// le dit.
+    pub fn config_adjust_and_save(&mut self, delta: i32) {
+        let Some(field) = self.screen.current_field(&self.config) else { return };
+        self.config_adjust(delta);
+        self.report_save(field);
+    }
+
+    /// Valide la saisie d'un champ textuel, puis l'enregistre aussitôt.
+    pub fn config_commit_edit_and_save(&mut self) {
+        if self.screen.editing.is_none() {
+            return;
+        }
+        let Some(field) = self.screen.current_field(&self.config) else { return };
+        self.config_commit_edit();
+        self.report_save(field);
+    }
+
+    fn report_save(&mut self, field: Field) {
+        if let Err(err) = self.save_field(field) {
+            self.notify(&format!("Réglage appliqué, non enregistré : {err:#}"));
+        }
+    }
+
     /// Ce que la fermeture doit dire, si elle ne peut pas être immédiate.
     ///
     /// Quitter attend la synthèse en cours : sur un modèle lent, plusieurs

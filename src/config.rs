@@ -220,6 +220,19 @@ impl Config {
         Ok(())
     }
 
+    /// La configuration écrite à ce chemin, telle quelle (sans
+    /// `normalised`) ; les défauts s'il n'existe pas. Illisible ou invalide :
+    /// une erreur — on n'écrit jamais par-dessus un fichier qu'on n'a pas su
+    /// lire.
+    pub fn read_from(path: &std::path::Path) -> Result<Self> {
+        if !path.exists() {
+            return Ok(Self::default());
+        }
+        let text = std::fs::read_to_string(path)
+            .with_context(|| format!("configuration illisible ({})", path.display()))?;
+        toml::from_str(&text).with_context(|| format!("configuration invalide ({})", path.display()))
+    }
+
     /// Ramène chaque réglage dans les bornes que l'écran lui donne.
     ///
     /// Les flèches bornent ce qu'elles touchent ; un fichier écrit à la main
@@ -275,6 +288,21 @@ pub use crate::paths::{expand_tilde, expand_tilde_with};
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn read_from_gives_the_file_as_written_or_the_defaults_or_an_error() {
+        let dir = std::env::temp_dir().join(format!("sillon-read-from-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        assert_eq!(Config::read_from(&path).unwrap(), Config::default(), "absent : les défauts");
+        std::fs::write(&path, "[reading]\nline_width = 5\n").unwrap();
+        assert_eq!(Config::read_from(&path).unwrap().reading.line_width, 5, "tel quel, sans bornes");
+        std::fs::write(&path, "[voice\nspeed = 1.4").unwrap();
+        let err = Config::read_from(&path).unwrap_err().to_string();
+        std::fs::remove_dir_all(&dir).ok();
+        assert!(err.contains("invalide"), "{err}");
+    }
 
     #[test]
     fn defaults_round_trip_through_toml() {
