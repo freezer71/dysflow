@@ -107,9 +107,13 @@ jamais perdre une saisie). Annuler : seulement par le bouton.
 | ⌘W | fermer (arrête la lecture) |
 | Échap | fermer recherche/sommaire, sinon fermer (comme ⌘W) |
 | ? | aide (liste **toutes** ces touches) |
+| Début | revenir au début du document |
+
+Relire sans couper la voix reste possible : faire défiler le texte suspend
+le suivi (`FollowPolicy`, inchangé).
 
 Retirés : signets (b, B), volume ([ ] m ⌥↑↓), préréglages 1–4, mot (⌥← →),
-saut de N phrases (⇧← →), bloc (⇧↑↓), r, g, Début/Fin, v, ⌘1/2/3, alias
+saut de N phrases (⇧← →), bloc (⇧↑↓), r, g, Fin, v, ⌘1/2/3, alias
 (h, =, _, chiffres AZERTY).
 
 ### 1.6 Réglages : une page
@@ -156,7 +160,8 @@ réglages. En cas d'échec : un bouton « Réessayer » à ces deux endroits.
 ## 2. Terminal
 
 - **Touches** : Espace, ← →, ↑ ↓, n/p, /, N/P, + −, t (sommaire), s
-  (réglages), ? (aide), q (quitter), Échap (fermer panneau). Mêmes retraits
+  (réglages), ? (aide), q (quitter), Échap (fermer panneau), Début (revenir au début), Pg↑ Pg↓ et f (relire
+  sans déplacer la lecture, puis reprendre le suivi). Mêmes retraits
   que l'app (signets, volume, préréglages, alias). L'aide liste toutes les
   touches.
 - **Réglages** : une page (voix FR, voix EN, vitesse, largeur de colonne,
