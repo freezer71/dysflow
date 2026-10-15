@@ -345,6 +345,37 @@ pub fn first_installed_with(mlx: bool) -> Option<&'static ModelPackage> {
     available_with(mlx).into_iter().find(|p| is_installed(p))
 }
 
+/// Le paquet que l'installation automatique télécharge : le Kokoro
+/// recommandé de ce catalogue, quand aucun Kokoro du catalogue n'est
+/// installé. `None` : déjà là, ou pas de Kokoro dans ce binaire.
+///
+/// Seul compte ce que ce binaire sait charger : un Kokoro int8 posé par le
+/// terminal ne dispense pas l'app (MLX) d'installer le sien.
+pub fn default_voice_to_install(
+    available: &[&'static ModelPackage],
+    installed: impl Fn(&ModelPackage) -> bool,
+) -> Option<&'static ModelPackage> {
+    let kokoro: Vec<&'static ModelPackage> = available.iter().copied().filter(|p| p.family == "kokoro").collect();
+    if kokoro.iter().any(|p| installed(p)) {
+        return None;
+    }
+    kokoro.iter().copied().find(|p| p.recommended).or_else(|| kokoro.first().copied())
+}
+
+/// L'installation automatique de la voix, sans rien demander : démarre le
+/// téléchargement du Kokoro recommandé s'il n'y en a aucun d'installé.
+/// Idempotente : `running` qui court encore, ou une voix déjà là, ne
+/// déclenchent rien. Un téléchargement fini (échoué compris) se relance.
+pub fn ensure_default_voice(mlx: bool, running: Option<&Download>) -> Result<Option<Download>> {
+    if running.is_some_and(|d| !d.is_finished()) {
+        return Ok(None);
+    }
+    match default_voice_to_install(&available_with(mlx), is_installed) {
+        Some(package) => Download::start(package).map(Some),
+        None => Ok(None),
+    }
+}
+
 /// Octets présents sur disque pour ce paquet : fichier principal et compagnons.
 pub fn installed_bytes_in(root: &Path, package: &ModelPackage) -> u64 {
     std::iter::once(main_path_in(root, package))
@@ -1475,5 +1506,40 @@ mod tests {
         assert_eq!(voice_for_language("kokoro", "fr", Some("af_bella")), "p-fenrir60", "voix d'une autre langue");
         assert_eq!(voice_for_language("kokoro", "en", Some("F1")), "af_bella");
         assert_eq!(voice_for_language("kokoro", "en", None), "af_bella");
+    }
+
+    #[test]
+    fn the_recommended_kokoro_is_chosen_when_none_is_installed() {
+        let mlx = package("kokoro_82m_mlx");
+        let int8 = package("kokoro_82m_int8");
+        assert_eq!(default_voice_to_install(&[mlx], |_| false), Some(mlx));
+        assert_eq!(default_voice_to_install(&[int8], |_| false), Some(int8));
+    }
+
+    #[test]
+    fn an_installed_kokoro_needs_no_installation() {
+        let mlx = package("kokoro_82m_mlx");
+        assert_eq!(default_voice_to_install(&[mlx], |_| true), None);
+    }
+
+    #[test]
+    fn a_build_without_kokoro_installs_nothing() {
+        assert_eq!(default_voice_to_install(&[], |_| false), None);
+    }
+
+    /// Appelée à chaque lancement et à chaque « Réessayer » : un
+    /// téléchargement qui court n'est jamais doublé (rien ne part sur le
+    /// réseau ici).
+    #[test]
+    fn a_running_download_is_never_doubled() {
+        let running = Download::fake(&CATALOG[0], false);
+        assert!(ensure_default_voice(true, Some(&running)).unwrap().is_none());
+    }
+
+    /// Un terminal construit sans `kokoro-onnx` n'a aucun Kokoro à installer.
+    #[cfg(not(feature = "kokoro-onnx"))]
+    #[test]
+    fn the_terminal_without_onnx_has_nothing_to_install() {
+        assert!(ensure_default_voice(false, None).unwrap().is_none());
     }
 }
