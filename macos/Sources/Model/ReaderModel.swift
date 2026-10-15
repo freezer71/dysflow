@@ -41,13 +41,20 @@ final class ReaderModel {
     /// une réussite. Avec « Réessayer » dans la ligne d'état.
     var voiceSetupError: String?
 
-    /// Au lancement et à chaque « Réessayer ».
-    func installDefaultVoice() async {
+    /// Dit un échec de la voix à VoiceOver : une annonce à chaque échec,
+    /// même au texte identique (sans VoiceOver, ou sans fenêtre, rien).
+    @ObservationIgnored var announceFailure: @MainActor (String) -> Void = { Announcement.post($0) }
+
+    /// Au lancement et à chaque « Réessayer ». `ensure` : l'appel au moteur
+    /// (celui du modèle par défaut), pour les tests.
+    func installDefaultVoice(ensure: (@MainActor () async throws -> Void)? = nil) async {
         do {
-            try await ensureDefaultVoice()
+            if let ensure { try await ensure() } else { try await ensureDefaultVoice() }
             voiceSetupError = nil
         } catch {
-            voiceSetupError = SettingsStore.message(of: error)
+            let message = SettingsStore.message(of: error)
+            voiceSetupError = message
+            announceFailure(VoiceStatus.failed(message).text)
         }
     }
 
@@ -142,6 +149,10 @@ final class ReaderModel {
         let newDocument = next.revision != snapshot.revision
         let newSection = next.section != snapshot.section
         let downloadEnded = Self.downloadEnded(from: snapshot.download, to: next.download)
+        // Un téléchargement qui échoue se dit une fois (à l'échec, pas à chaque image).
+        if let failed = next.download?.failed, failed != snapshot.download?.failed {
+            announceFailure(VoiceStatus.failed(failed).text)
+        }
         // Ne publier qu'un changement réel : SwiftUI ne redessine pas pour rien.
         if changed {
             snapshot = next

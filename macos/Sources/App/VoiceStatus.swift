@@ -43,10 +43,6 @@ struct VoiceStatusLine: View {
     let model: ReaderModel
     var color: Color = Palette.muted
 
-    private func announceFailure(_ status: VoiceStatus) {
-        if status.canRetry { AnnounceOnce.post(status.text) }
-    }
-
     var body: some View {
         if let status = VoiceStatus.current(snapshot: model.snapshot, preparing: model.voicePreparation.isRunning,
                                             setupError: model.voiceSetupError) {
@@ -71,10 +67,6 @@ struct VoiceStatusLine: View {
             .font(.system(size: 12))
             .foregroundStyle(color)
             .accessibilityElement(children: .contain)
-            // Un échec se dit une fois à VoiceOver (le lecteur et les
-            // réglages montrent la même ligne).
-            .onAppear { announceFailure(status) }
-            .onChange(of: status) { _, new in announceFailure(new) }
         }
     }
 }

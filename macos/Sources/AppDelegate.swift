@@ -281,8 +281,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Le passage à Kokoro (une fois, avec un avis), l'installation
-    /// automatique de la voix, puis la préparation des noyaux Metal, maintenant et à chaque fois que la voix active a pu
-    /// changer.
+    /// automatique de la voix, puis la préparation des noyaux Metal,
+    /// maintenant et à chaque fois que la voix active a pu changer.
     private func startKokoro() {
         model.onVoiceMayHaveChanged = { [weak self] in self?.kokoroBecameActive() }
         // Le passage écrit `config.toml` : hors du fil principal, puis la

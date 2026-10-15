@@ -59,3 +59,24 @@ final class VoiceStatusTests: XCTestCase {
         XCTAssertNotNil(f.download?.failed)
     }
 }
+
+/// L'installation automatique : son refus se garde, se dit à chaque échec.
+@MainActor
+final class VoiceInstallTests: XCTestCase {
+    private struct Refused: LocalizedError { var errorDescription: String? { "disque plein" } }
+
+    func testAFailureIsKeptAndSaidEachTimeAndSuccessClearsIt() async {
+        let model = ReaderModel(reader: SillonReader.silent())
+        var said: [String] = []
+        model.announceFailure = { said.append($0) }
+        await model.installDefaultVoice { throw Refused() }
+        XCTAssertEqual(model.voiceSetupError, "disque plein")
+        // « Réessayer » échoue de la même façon : dit une seconde fois.
+        await model.installDefaultVoice { throw Refused() }
+        XCTAssertEqual(said, ["La voix ne s'est pas installée : disque plein",
+                              "La voix ne s'est pas installée : disque plein"])
+        await model.installDefaultVoice { }
+        XCTAssertNil(model.voiceSetupError)
+        XCTAssertEqual(said.count, 2, "une réussite ne dit rien")
+    }
+}
