@@ -113,35 +113,6 @@ private struct BarButtonBody: View {
     }
 }
 
-/// La vitesse, lue « 1,5 fois » par VoiceOver.
-struct SpeedLabel: View {
-    let speed: Float
-
-    var body: some View {
-        Text(SpeedFormat.text(speed))
-            .accessibilityLabel("Vitesse")
-            .accessibilityValue(SpeedFormat.spoken(speed))
-    }
-}
-
-/// L'écrou : les réglages de la voix (onglet Voix).
-struct VoiceSettingsButton: View {
-    @Environment(\.openSettingsTab) private var openSettings
-
-    var body: some View {
-        Button {
-            openSettings(.voice)
-        } label: {
-            Image(systemName: "gearshape")
-                .font(.system(size: BarButtonMetrics.glyph))
-        }
-        .buttonStyle(BarButtonStyle())
-        .help("Réglages de la voix (v)")
-        .accessibilityLabel("Réglages de la voix")
-        .accessibilityIdentifier("reglages-voix")
-    }
-}
-
 /// Les sorties, en liste à cocher : la même dans la barre des menus et dans
 /// le bouton du panneau.
 struct OutputPicker: View {
@@ -156,44 +127,5 @@ struct OutputPicker: View {
         }
         .pickerStyle(.inline)
         .labelsHidden()
-    }
-}
-
-/// Le bouton de sortie audio du panneau : une icône (écouteurs, enceinte,
-/// sortie du système), la liste au clic.
-struct OutputMenu: View {
-    let model: ReaderModel
-    /// Le mode petit n'a la place que de l'icône (le menu s'ouvre pareil).
-    var compact = false
-
-    var body: some View {
-        Menu {
-            OutputPicker(model: model)
-        } label: {
-            // Le nom et la flèche du menu : on voit que c'est la sortie, et
-            // qu'on peut la changer.
-            HStack(spacing: 4) {
-                Image(systemName: AudioOutputChoices.symbol(for: model.outputDevice))
-                    .font(.system(size: BarButtonMetrics.glyph))
-                if !compact {
-                    Text(AudioOutputChoices.buttonTitle(model.outputs, chosen: model.outputDevice))
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                        .frame(maxWidth: 150)
-                }
-            }
-            .padding(.horizontal, compact ? 0 : 6)
-            .frame(minWidth: BarButtonMetrics.target, minHeight: BarButtonMetrics.target)
-            .contentShape(Rectangle())
-        }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(compact ? .hidden : .visible)
-        .fixedSize()
-        .focusable(false)
-        .help("Sortie audio : où le son sort")
-        .accessibilityLabel("Sortie audio")
-        .accessibilityValue(model.outputDevice.isEmpty
-                            ? AudioOutputChoices.systemTitle(model.outputs) : model.outputDevice)
-        .accessibilityIdentifier("sortie-audio")
     }
 }
