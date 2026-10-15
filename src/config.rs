@@ -164,12 +164,6 @@ pub enum Effect {
     None,
     /// Régénérer l'audio déjà préparé.
     Resynthesize,
-    /// Recharger le moteur, donc tout le pipeline de synthèse.
-    ReloadEngine,
-    /// Le découpage du document changerait : effet au prochain lancement.
-    Reparse,
-    /// Ajuster le volume de sortie du delta indiqué.
-    Volume(f32),
     /// Appliquer la vitesse de la configuration au son, sur-le-champ.
     Speed,
 }

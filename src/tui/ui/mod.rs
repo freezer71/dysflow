@@ -18,7 +18,7 @@ use ratatui::Frame;
 use crate::doc::{BlockKind, Emphasis};
 use crate::models;
 use crate::app::{App, Panel, ReadingStyle};
-use crate::app::config::{Page, Section};
+use crate::app::config::FIELDS;
 use crate::app::keys::{CONFIG_HELP, HELP};
 use crate::app::startup;
 
@@ -54,7 +54,7 @@ pub fn render(frame: &mut Frame, app: &App) {
     if app.show_config {
         render_config(frame, app, area);
         if app.show_help {
-            render_help(frame, area, CONFIG_HELP, "Configuration");
+            render_help(frame, area, CONFIG_HELP, "Réglages");
         }
         return;
     }
@@ -122,6 +122,25 @@ fn render_header(frame: &mut Frame, app: &App, area: Rect) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn texts(lines: &[Line<'static>]) -> Vec<String> {
+        lines.iter().map(|l| l.spans.iter().map(|s| s.content.to_string()).collect()).collect()
+    }
+
+    #[test]
+    fn the_settings_are_one_page_of_six_lines() {
+        let app = crate::app::tests::app_reading("Une phrase.\n");
+        let page = texts(&config_lines(&app, 80));
+        for field in FIELDS {
+            assert!(page.iter().any(|l| l.contains(field.label())), "{field:?} manque : {page:?}");
+        }
+        for gone in ["Modèles", "Moteur", "Hauteur", "Blocs de code", "Langue"] {
+            assert!(!page.iter().any(|l| l.contains(gone)), "{gone} est encore là : {page:?}");
+        }
+        let footer = texts(&config_footer(&app)).join(" ");
+        assert!(footer.contains("enregistrée aussitôt"), "{footer}");
+        assert!(!footer.contains(" w "), "{footer}");
+    }
 
     #[test]
     fn the_reminder_names_the_contents_and_no_bookmark() {

@@ -1,213 +1,52 @@
-//! Réglages depuis le terminal : écran de configuration, modèles, aperçu, rechargement du moteur, enregistrement.
+//! Réglages depuis le terminal : la page des réglages, l'aperçu de voix, le rechargement du moteur, l'enregistrement de chaque changement.
 
 use super::*;
 
 impl App {
-    /// Ouvre l'écran de configuration.
-    ///
-    /// Utilisé au lancement sans document : sans texte à lire, régler l'outil
-    /// est la seule chose utile à faire.
+    /// Ouvre les réglages. La lecture continue derrière : ce qu'on y change
+    /// s'entend aussitôt.
     pub fn open_config(&mut self) {
         self.show_config = true;
         self.panel = Panel::None;
-        self.player.pause();
-        // Sans modèle, la rubrique utile est celle des modèles.
-        if crate::models::first_installed().is_none() {
-            self.screen.section = 0;
+    }
+
+    /// `q`, `Échap` ou `s` : les réglages se ferment, la lecture reste. Sans
+    /// rien à lire (`sillon --config` seul), il n'y a rien derrière : fermer
+    /// rend la main au terminal.
+    pub fn close_config(&mut self) {
+        self.stop_preview();
+        if self.doc().is_empty() && self.input_complete() {
+            self.should_quit = true;
+            return;
         }
-    }
-
-    pub fn toggle_config(&mut self) {
-        self.show_config = !self.show_config;
-        if self.show_config {
-            self.panel = Panel::None;
-            self.screen.editing = None;
-            // On rouvre toujours sur le menu : c'est le point de repère.
-            self.screen.page = Page::Menu;
-        } else {
-            self.stop_preview();
-        }
-    }
-
-    pub fn config_move_section(&mut self, delta: i32) {
-        self.screen.move_section(delta);
-    }
-
-    pub fn config_goto_section(&mut self, index: usize) {
-        self.screen.goto_section(index);
-    }
-
-    /// Ouvre la rubrique sous le curseur, en plein écran.
-    pub fn config_open_section(&mut self) {
-        self.screen.open_section();
-    }
-
-    /// Revient au menu. Vrai si le retour a eu lieu.
-    ///
-    /// Permet à Échap de reculer d'un cran avant de fermer l'écran, plutôt
-    /// que de tout refermer d'un coup.
-    pub fn config_back_to_menu(&mut self) -> bool {
-        self.screen.back_to_menu()
-    }
-
-    pub fn config_toggle_show_all(&mut self) {
-        self.screen.toggle_show_all(&self.config);
-        let hidden = self.screen.hidden_count(&self.config);
-        self.screen.notice = if self.screen.show_all {
-            "tous les réglages affichés, y compris ceux sans effet".to_string()
-        } else if hidden > 0 {
-            let pluriel = if hidden > 1 { "s" } else { "" };
-            format!("{hidden} réglage{pluriel} sans effet masqué{pluriel}")
-        } else {
-            String::new()
-        };
+        self.show_config = false;
     }
 
     pub fn config_move_row(&mut self, delta: i32) {
-        self.screen.move_row(delta, &self.config);
+        self.screen.move_row(delta);
     }
 
-    /// Ajuste le champ sélectionné et répercute son effet.
-    pub fn config_adjust(&mut self, delta: i32) {
-        let Some(field) = self.screen.current_field(&self.config) else { return };
-        let effect = field.adjust(&mut self.config, delta);
-        self.apply_effect(effect);
-    }
-
-    /// Entrée : édite un champ textuel, ou agit sur le modèle sélectionné.
-    pub fn config_activate(&mut self) {
-        if self.screen.current_section() == Section::Models {
-            self.activate_model();
-            return;
-        }
-        let Some(field) = self.screen.current_field(&self.config) else { return };
-        if field.is_text(&self.config) {
-            self.screen.editing = Some(field.raw_text(&self.config));
-        } else {
-            self.config_adjust_and_save(1);
+    /// La voix d'une autre langue que celle du document ne s'entend pas
+    /// ici : la phrase en cours n'a pas à reprendre pour elle.
+    pub(super) fn effect_in_document(&self, field: Field, effect: Effect) -> Effect {
+        let language = self.builder.language();
+        let code = crate::text::language::Lang::parse(language).map_or(language, |l| l.code());
+        match field.language() {
+            Some(voice_language) if voice_language != code => Effect::None,
+            _ => effect,
         }
     }
 
-    pub fn config_edit_push(&mut self, c: char) {
-        if let Some(buffer) = self.screen.editing.as_mut() {
-            buffer.push(c);
-        }
-    }
-
-    pub fn config_edit_backspace(&mut self) {
-        if let Some(buffer) = self.screen.editing.as_mut() {
-            buffer.pop();
-        }
-    }
-
-    pub fn config_commit_edit(&mut self) {
-        let Some(buffer) = self.screen.editing.take() else { return };
-        let Some(field) = self.screen.current_field(&self.config) else { return };
-        self.config_set_text(field, buffer);
-    }
-
-    /// Pose le texte d'un réglage, avec ce qu'il entraîne.
-    ///
-    /// Une famille saisie à la main change le jeu de voix ; un chemin de
-    /// modèle ou une famille changent le moteur lui-même ; une consigne ou un
-    /// WAV de référence ne demandent qu'une resynthèse — ils partent avec
-    /// chaque requête.
-    pub fn config_set_text(&mut self, field: Field, value: String) {
-        field.set_text(&mut self.config, value.trim().to_string());
-        if field == Field::Family {
-            self.config.align_voice_with_family();
-        }
-        self.apply_effect(match field {
-            Field::ModelPath | Field::Family => Effect::ReloadEngine,
-            _ => Effect::Resynthesize,
-        });
-    }
-
-    pub fn config_cancel_edit(&mut self) {
-        self.screen.editing = None;
-    }
-
-    /// Installe le modèle sélectionné, ou le choisit s'il est déjà là.
-    pub(super) fn activate_model(&mut self) {
-        let Some(package) = self.screen.current_package() else {
-            self.screen.notice =
-                "aucun modèle disponible : binaire compilé sans `kokoro-onnx`".to_string();
-            return;
-        };
-        if self.screen.download.is_some() {
-            self.screen.notice = "un téléchargement est déjà en cours".to_string();
-            return;
-        }
-        if models::is_installed(package) {
-            self.select_model(package);
-            return;
-        }
-        // Rien n'est téléchargé sans une action explicite de l'utilisateur.
-        match models::Download::start(package) {
-            Ok(download) => {
-                self.screen.notice =
-                    format!("téléchargement de {} …", package.display_name);
-                self.screen.download = Some(download);
-            }
-            Err(err) => self.screen.notice = format!("téléchargement impossible : {err}"),
-        }
-    }
-
-    /// Supprime le modèle sélectionné, ou annule son téléchargement.
-    pub fn config_delete(&mut self) {
-        if self.screen.current_section() != Section::Models {
-            return;
-        }
-        if let Some(download) = self.screen.download.as_ref() {
-            download.cancel();
-            self.screen.notice = "annulation demandée".to_string();
-            return;
-        }
-        let Some(package) = self.screen.current_package() else { return };
-        // Un paquet interrompu (annulé, échoué entre deux fichiers) se retire
-        // aussi : son gros fichier ne resterait sinon jamais.
-        if !models::has_files(package) {
-            return;
-        }
-        if !self.screen.confirm_delete(package) {
-            self.screen.notice = format!(
-                "supprimer {} ({}) ? d à nouveau pour confirmer",
-                package.display_name,
-                models::human_size(package.total_bytes())
-            );
-            return;
-        }
-        match models::remove(package) {
-            Ok(()) => {
-                self.screen.notice = format!("{} supprimé", package.display_name);
-                // Le modèle courant vient de disparaître : on repasse au repli.
-                if models::is_active_package(&self.config.engine.model_path, package) {
-                    self.config.engine.model_path.clear();
-                    self.config.engine.family.clear();
-                    self.reload_engine();
-                }
-            }
-            Err(err) => self.screen.notice = format!("suppression impossible : {err}"),
-        }
-    }
-
-    /// Fait d'un modèle installé le moteur courant.
+    /// Fait d'un modèle installé le moteur courant, et l'écrit aussitôt.
     pub(super) fn select_model(&mut self, package: &'static models::ModelPackage) {
         let Some(path) = models::install_path(package) else { return };
         self.config.engine.model_path = path.to_string_lossy().into_owned();
         self.config.engine.family = package.family.to_string();
         self.config.engine.engine = "auto".to_string();
-        // Le modèle change, ses voix aussi : celle qui était retenue n'existe
-        // peut-être plus.
-        let remplacée = self.config.align_voice_with_family();
+        // Le modèle change, ses voix aussi : chaque langue reçoit la sienne.
+        self.config.align_voice_with_family();
         self.reload_engine();
-        // Le moteur vient de changer : dire tout de suite comment le juger.
-        self.screen.notice = if remplacée {
-            let voix = Field::Voice.value(&self.config, 1.0);
-            format!("{} sélectionné · voix {voix} — t pour l'écouter", package.display_name)
-        } else {
-            format!("{} sélectionné — t pour l'écouter", package.display_name)
-        };
+        self.notify(&format!("Voix {} prête", package.display_name));
         // Le choix doit survivre au relancement : il s'écrit tout de suite.
         if let Err(err) = self.save_model_choice() {
             self.notify(&format!("Modèle choisi, non enregistré : {err:#}"));
@@ -216,54 +55,27 @@ impl App {
 
     // ----------------------------------------------------------- aperçu de voix
 
-    /// Fait entendre les réglages courants sur une phrase de démonstration.
-    ///
-    /// Sans cela on règle une voix qu'on n'a jamais entendue : `M3` ou `F1` ne
-    /// disent rien du timbre, et le seul retour possible était de quitter
-    /// l'écran pour relancer la lecture.
+    /// `t` dans la page : la voix de la ligne choisie, dans sa langue ; sur
+    /// les autres lignes, la voix du document.
     pub fn preview_voice(&mut self) {
         // La touche répond toujours quelque chose : laisser tourner l'aperçu
         // précédent ferait passer un refus pour une touche sans effet.
         self.stop_preview();
-        // Dans la liste des modèles, l'aperçu porte sur celui qui est chargé ;
-        // faire parler un modèle qu'on n'a pas choisi serait un mensonge.
-        if self.screen.current_section() == Section::Models {
-            if let Some(package) = self.screen.current_package() {
-                let loaded = models::install_path(package)
-                    .is_some_and(|p| p.to_string_lossy() == self.config.engine.model_path);
-                if !loaded {
-                    self.screen.notice = if models::is_installed(package) {
-                        format!(
-                            "{} n'est pas chargé — Entrée pour le choisir, puis t pour l'écouter",
-                            package.display_name
-                        )
-                    } else {
-                        format!("{} n'est pas installé — Entrée pour l'installer", package.display_name)
-                    };
-                    return;
-                }
-            }
-        }
-
-        match self.request_preview() {
+        let language = match self.screen.current_field().language() {
+            Some(language) => language.to_string(),
+            None => self.builder.language().to_string(),
+        };
+        match self.request_preview_in(&language) {
             Ok(()) => self.screen.notice.clear(),
             Err(err) => self.screen.notice = err,
         }
-    }
-
-    /// L'aperçu tel que l'app le demande : les réglages en cours sur la
-    /// phrase d'exemple, la lecture mise en pause, le précédent coupé. Rend
-    /// la raison d'un refus.
-    pub fn request_preview(&mut self) -> Result<(), String> {
-        let language = self.builder.language().to_string();
-        self.request_preview_in(&language)
     }
 
     /// L'aperçu dans une langue donnée : chaque voix de l'onglet Voix
     /// s'écoute dans la sienne.
     pub fn request_preview_in(&mut self, language: &str) -> Result<(), String> {
         self.preview_error = None;
-        let label = self.preview_label();
+        let label = self.preview_label(language);
         preview::start(
             &mut self.previewer,
             &mut self.player,
@@ -283,13 +95,12 @@ impl App {
         self.player.preview_playing()
     }
 
-    /// Décrit ce que l'aperçu fait entendre.
-    pub(super) fn preview_label(&self) -> String {
-        format!(
-            "{} · {:.2}×",
-            Field::Voice.value(&self.config, 1.0),
-            self.config.voice.speed
-        )
+    /// Décrit ce que l'aperçu fait entendre : la voix de cette langue et la
+    /// vitesse.
+    pub(super) fn preview_label(&self, language: &str) -> String {
+        let voice = self.config.tts_params_in(language).voice;
+        let voice = if voice.is_empty() { "voix du système".to_string() } else { voice };
+        format!("{voice} · {:.2}×", self.config.voice.speed)
     }
 
     pub fn stop_preview(&mut self) {
@@ -344,7 +155,6 @@ impl App {
     pub fn apply_effect(&mut self, effect: Effect) {
         match effect {
             Effect::None => {}
-            Effect::Volume(delta) => self.change_volume(delta),
             Effect::Speed => {
                 let speed = self.config.voice.speed;
                 self.player.set_speed(speed);
@@ -353,10 +163,6 @@ impl App {
                 self.apply_tts_params();
                 let current = self.current_sentence();
                 self.seek_to(current);
-            }
-            Effect::ReloadEngine => self.reload_engine(),
-            Effect::Reparse => {
-                self.notify("Découpage modifié — effet au prochain lancement");
             }
         }
     }
@@ -437,22 +243,13 @@ impl App {
         Ok(path)
     }
 
-    /// Ajuste le champ sélectionné, répercute son effet, et l'enregistre
-    /// aussitôt. Un enregistrement impossible laisse le réglage appliqué et
-    /// le dit.
+    /// Change le réglage choisi, le fait entendre, et l'écrit aussitôt. Un
+    /// enregistrement impossible laisse le réglage appliqué et le dit.
     pub fn config_adjust_and_save(&mut self, delta: i32) {
-        let Some(field) = self.screen.current_field(&self.config) else { return };
-        self.config_adjust(delta);
-        self.report_save(field);
-    }
-
-    /// Valide la saisie d'un champ textuel, puis l'enregistre aussitôt.
-    pub fn config_commit_edit_and_save(&mut self) {
-        if self.screen.editing.is_none() {
-            return;
-        }
-        let Some(field) = self.screen.current_field(&self.config) else { return };
-        self.config_commit_edit();
+        let field = self.screen.current_field();
+        let effect = field.adjust(&mut self.config, delta);
+        let effect = self.effect_in_document(field, effect);
+        self.apply_effect(effect);
         self.report_save(field);
     }
 

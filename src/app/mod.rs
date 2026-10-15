@@ -24,7 +24,7 @@ use crate::input::InputEvent;
 use crate::models;
 use crate::tts::preview::{self, Previewer};
 use crate::tts::{self, Synthesizer, TtsEngine, TtsParams};
-use crate::app::config::{ConfigScreen, Field, Page, Section};
+use crate::app::config::{ConfigScreen, Field};
 use crate::config::Effect;
 use crate::app::pace::Pace;
 use crate::app::search::Search;
@@ -37,7 +37,7 @@ pub enum Panel {
     Contents,
 }
 
-/// Réglages d'affichage du texte, tels que la rubrique « Lecture » les fixe.
+/// Réglages d'affichage du texte, tels que la page des réglages les fixe.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ReadingStyle {
     /// Lignes vides insérées entre deux lignes de texte.
@@ -876,15 +876,6 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn a_text_setting_reloads_the_engine_only_when_it_names_the_model() {
-        let mut app = app_reading(DOC);
-        let engine = app.synth.engine();
-        app.config_set_text(Field::Family, "kokoro".to_string());
-        assert!(!Arc::ptr_eq(&engine, &app.synth.engine()), "la famille nomme le modèle");
-    }
-
-
-    #[test]
     fn the_screen_names_the_file_not_its_whole_path() {
         let mut app = app_reading(DOC);
         app.source = "/tres/long/chemin/vers/spec.pdf".to_string();
@@ -926,11 +917,26 @@ pub(crate) mod tests {
         (dir, path)
     }
 
-    /// L'écran des réglages ouvert sur « Lecture › Interlignage ».
+    /// La page des réglages, sur « Interlignage ».
     fn on_line_spacing(app: &mut App) {
-        app.screen.goto_section(2);
-        app.screen.row = 1;
-        assert_eq!(app.screen.current_field(&app.config), Some(Field::LineSpacing));
+        app.screen.select(Field::LineSpacing);
+        assert_eq!(app.screen.current_field(), Field::LineSpacing);
+    }
+
+    #[test]
+    fn a_voice_of_another_language_does_not_restart_the_sentence() {
+        let app = app_reading(DOC); // document français
+        assert_eq!(app.effect_in_document(Field::VoiceEn, Effect::Resynthesize), Effect::None);
+        assert_eq!(app.effect_in_document(Field::VoiceFr, Effect::Resynthesize), Effect::Resynthesize);
+        assert_eq!(app.effect_in_document(Field::Speed, Effect::Speed), Effect::Speed);
+    }
+
+    #[test]
+    fn the_preview_names_the_voice_of_its_language() {
+        let mut app = app_reading(DOC);
+        app.config.engine.family = "kokoro".into();
+        assert!(app.preview_label("en").contains("af_bella"), "{}", app.preview_label("en"));
+        assert!(app.preview_label("fr").contains("p-fenrir60"), "{}", app.preview_label("fr"));
     }
 
     #[test]
@@ -980,23 +986,6 @@ pub(crate) mod tests {
         assert_eq!(after, witness, "le fichier de l'utilisateur est intact");
         assert_eq!(app.config.reading.line_spacing, before + 1, "le réglage s'applique quand même");
         assert!(app.status().contains("non enregistré"), "{}", app.status());
-    }
-
-    #[test]
-    fn a_text_field_is_written_when_its_edit_is_committed() {
-        let (dir, path) = autosave_target("texte");
-        let mut app = app_reading(DOC);
-        app.set_config_target(Some(path.clone()));
-        app.screen.goto_section(1);
-        app.screen.show_all = true;
-        app.screen.row = 4;
-        assert_eq!(app.screen.current_field(&app.config), Some(Field::Voice));
-        app.screen.editing = Some("~/voix.wav".into());
-        app.config_commit_edit_and_save();
-        let written = Config::read_from(&path).unwrap();
-        std::fs::remove_dir_all(&dir).ok();
-        assert_eq!(written.voice.voice, "~/voix.wav");
-        assert!(app.screen.editing.is_none());
     }
 
     #[test]

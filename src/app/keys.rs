@@ -1,10 +1,8 @@
 //! Correspondance touches → commandes, la même pour tous les écrans.
 //!
-//! Trois contextes se succèdent, du plus captif au plus général : la saisie d'un
-//! champ texte, l'écran de configuration, puis la lecture. Chacun consomme les
-//! touches qui lui reviennent avant de rendre la main.
+//! Deux contextes : la page des réglages, puis la lecture. Chacun consomme
+//! les touches qui lui reviennent.
 
-use super::config::Page;
 use super::{App, Panel};
 
 const VIEW_STEP: isize = 4;
@@ -29,16 +27,13 @@ pub const HELP: &[(&str, &str)] = &[
     ("q", "Quitter"),
 ];
 
-/// Aide de l'écran de configuration.
+/// Aide de la page des réglages : toutes les touches qui y agissent.
 pub const CONFIG_HELP: &[(&str, &str)] = &[
-    ("1 … 5", "Ouvrir une rubrique directement"),
-    ("↑ ↓", "Se déplacer dans la liste"),
-    ("Entrée", "Ouvrir · éditer · installer · choisir"),
-    ("← →", "Modifier une valeur (enregistrée aussitôt)"),
-    ("Échap", "Revenir au menu, puis fermer"),
-    ("t", "Écouter un aperçu de la voix"),
-    ("a", "Montrer les réglages sans effet"),
-    ("d", "Supprimer un modèle (d deux fois) · annuler"),
+    ("↑ ↓", "Choisir un réglage"),
+    ("← → · Entrée", "Changer sa valeur, enregistrée aussitôt"),
+    ("t", "Écouter la voix"),
+    ("q · Échap · s", "Fermer les réglages"),
+    ("?", "Aide"),
 ];
 
 /// Une touche, sans le vocabulaire d'aucune bibliothèque.
@@ -98,53 +93,15 @@ pub fn handle(app: &mut App, key: Key) {
 }
 
 fn handle_config(app: &mut App, key: Key) {
-    // La saisie d'un champ texte capte tout, sauf sa validation et son abandon.
-    if app.screen.editing.is_some() {
-        match key.code {
-            KeyCode::Enter => app.config_commit_edit_and_save(),
-            KeyCode::Esc => app.config_cancel_edit(),
-            KeyCode::Backspace => app.config_edit_backspace(),
-            KeyCode::Char(c) => app.config_edit_push(c),
-            _ => {}
-        }
-        return;
-    }
-
-    let in_menu = app.screen.page == Page::Menu;
     match key.code {
-        // Échap recule d'un cran : d'une rubrique ouverte on revient au menu,
-        // et seulement ensuite on quitte l'écran.
-        KeyCode::Esc => {
-            if !app.config_back_to_menu() {
-                app.toggle_config();
-            }
-        }
-        KeyCode::Char('s') => app.toggle_config(),
-
-        // Un chiffre ouvre directement sa rubrique, depuis n'importe où.
-        KeyCode::Char(c @ '1'..='4') => {
-            app.config_goto_section(c as usize - '1' as usize);
-        }
-
-        KeyCode::Up if in_menu => app.config_move_section(-1),
-        KeyCode::Down if in_menu => app.config_move_section(1),
-        KeyCode::Enter | KeyCode::Right | KeyCode::Tab if in_menu => app.config_open_section(),
-        KeyCode::Left if in_menu => {}
-
+        // Fermer les réglages ne quitte jamais une lecture.
+        KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('s') => app.close_config(),
         KeyCode::Up => app.config_move_row(-1),
         KeyCode::Down => app.config_move_row(1),
-        KeyCode::Right => app.config_adjust_and_save(1),
+        KeyCode::Right | KeyCode::Enter => app.config_adjust_and_save(1),
         KeyCode::Left => app.config_adjust_and_save(-1),
-        KeyCode::Enter => app.config_activate(),
-        KeyCode::Tab | KeyCode::BackTab => {
-            app.config_back_to_menu();
-        }
-
-        KeyCode::Char('a') => app.config_toggle_show_all(),
         KeyCode::Char('t') => app.preview_voice(),
-        KeyCode::Char('d') | KeyCode::Delete => app.config_delete(),
-        KeyCode::Char('?') | KeyCode::Char('h') => app.show_help = true,
-        KeyCode::Char('q') => app.should_quit = true,
+        KeyCode::Char('?') => app.show_help = true,
         _ => {}
     }
 }
@@ -196,7 +153,7 @@ fn handle_reader(app: &mut App, key: Key) {
         KeyCode::Char('-') => app.nudge_speed(-0.1),
 
         KeyCode::Char('t') => app.toggle_panel(Panel::Contents),
-        KeyCode::Char('s') => app.toggle_config(),
+        KeyCode::Char('s') => app.open_config(),
         KeyCode::Char('f') => app.toggle_follow(),
 
         // Défiler fige la vue : on relit sans interrompre la voix.
@@ -217,6 +174,7 @@ fn handle_reader(app: &mut App, key: Key) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::app::config::Field;
     use crate::app::tests::{app_reading, DOC};
     use std::time::Duration;
 
@@ -225,9 +183,30 @@ mod tests {
     }
 
     #[test]
+    fn q_and_escape_close_the_settings_without_quitting() {
+        for code in [KeyCode::Char('q'), KeyCode::Esc, KeyCode::Char('s')] {
+            let mut app = app_reading(DOC);
+            press(&mut app, KeyCode::Char('s'));
+            assert!(app.show_config, "s ouvre les réglages");
+            press(&mut app, code);
+            assert!(!app.show_config, "{code:?} ferme les réglages");
+            assert!(!app.should_quit, "{code:?} ne quitte pas");
+        }
+    }
+
+    #[test]
+    fn closing_the_settings_with_nothing_to_read_quits() {
+        // `sillon --config` seul : derrière la page, il n'y a rien.
+        let mut app = app_reading("");
+        app.open_config();
+        press(&mut app, KeyCode::Esc);
+        assert!(app.should_quit);
+    }
+
+    #[test]
     fn w_writes_nothing_any_more_in_the_settings() {
         let mut app = app_reading(DOC);
-        app.show_config = true;
+        app.open_config();
         press(&mut app, KeyCode::Char('w'));
         assert!(app.status().is_empty(), "w a écrit : {:?}", app.status());
     }
@@ -237,14 +216,22 @@ mod tests {
         let (dir, path) = crate::app::tests::autosave_target("fleches");
         let mut app = app_reading(DOC);
         app.set_config_target(Some(path.clone()));
-        app.show_config = true;
-        app.screen.goto_section(2); // Lecture
-        app.screen.row = 1; // Interlignage
+        app.open_config();
+        app.screen.select(Field::LineSpacing);
         let before = app.config.reading.line_spacing;
         press(&mut app, KeyCode::Right);
-        let written = crate::config::Config::read_from(&path).unwrap();
+        let after_right = crate::config::Config::read_from(&path).unwrap().reading.line_spacing;
+        press(&mut app, KeyCode::Enter);
+        let after_enter = crate::config::Config::read_from(&path).unwrap().reading.line_spacing;
         std::fs::remove_dir_all(&dir).ok();
-        assert_eq!(written.reading.line_spacing, before + 1);
+        assert_eq!(after_right, before + 1, "→ écrit");
+        assert_eq!(after_enter, before + 2, "Entrée avance d'un cran et écrit");
+    }
+
+    #[test]
+    fn the_settings_help_lists_only_what_acts_there() {
+        let keys: Vec<&str> = CONFIG_HELP.iter().map(|(k, _)| *k).collect();
+        assert_eq!(keys, vec!["↑ ↓", "← → · Entrée", "t", "q · Échap · s", "?"]);
     }
 
     #[test]
