@@ -11,11 +11,9 @@ fn main() -> Result<()> {
     let Launch::Ready(prepared) = launch::prepare(&args)? else {
         return Ok(());
     };
-    let Prepared { mut app, config_requested, has_input, quiet } = *prepared;
+    let Prepared { mut app, config_requested, quiet } = *prepared;
 
-    // Sans document ni flux, on démarre sur l'écran de configuration : sans
-    // texte à lire, régler l'outil est la seule chose utile à faire.
-    if config_requested || !has_input {
+    if config_requested {
         app.open_config();
         // Ouverte au lancement, la page passe avant la lecture.
         app.player.pause();
