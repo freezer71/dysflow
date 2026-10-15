@@ -180,3 +180,39 @@ struct SpeedMenu: View {
         .accessibilityIdentifier("vitesse-lecteur")
     }
 }
+
+/// La sortie audio, cliquable : l'icône de la sortie (écouteurs, enceinte,
+/// sortie du système), la liste au clic, la même que dans les réglages.
+struct OutputMenu: View {
+    let model: ReaderModel
+
+    var body: some View {
+        let chosen = model.outputDevice
+        Menu {
+            ForEach(AudioOutputChoices.choices(model.outputs, chosen: chosen)) { choice in
+                Button {
+                    model.chooseOutput(choice.value)
+                } label: {
+                    if choice.value == chosen {
+                        Label(choice.title, systemImage: "checkmark")
+                    } else {
+                        Text(choice.title)
+                    }
+                }
+            }
+        } label: {
+            Image(systemName: AudioOutputChoices.symbol(for: chosen))
+                .font(.system(size: BarButtonMetrics.glyph))
+                .frame(minWidth: BarButtonMetrics.target, minHeight: BarButtonMetrics.target)
+                .contentShape(Rectangle())
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .focusable(false)
+        .help("Sortie audio : " + AudioOutputChoices.buttonTitle(model.outputs, chosen: chosen))
+        .accessibilityLabel("Sortie audio")
+        .accessibilityValue(chosen.isEmpty ? AudioOutputChoices.systemTitle(model.outputs) : chosen)
+        .accessibilityIdentifier("sortie-audio-lecteur")
+    }
+}

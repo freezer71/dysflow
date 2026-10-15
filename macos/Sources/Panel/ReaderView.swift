@@ -148,7 +148,8 @@ struct ReaderHeader: View {
     }
 }
 
-/// ⏮ ▶ ⏭, la progression cliquable, le temps, la vitesse, « Réduire ».
+/// ⏮ ▶ ⏭, la progression cliquable, le temps, la vitesse, la sortie audio,
+/// « Réduire ».
 struct ReaderBar: View {
     let controller: PanelController
     let theme: Theme
@@ -177,6 +178,7 @@ struct ReaderBar: View {
                 .fontWeight(.medium)
                 .fixedSize()
             SpeedMenu(speed: s.speed) { controller.perform(.command(.setSpeed(speed: $0))) }
+            OutputMenu(model: model)
             BarIconButton(symbol: "arrow.down.right.and.arrow.up.left", label: "Réduire",
                           help: "Réduire en mini (⌘M)", identifier: "reduire") {
                 controller.perform(.toggleSize)
