@@ -103,3 +103,24 @@ final class ReaderPlacementTests: XCTestCase {
         XCTAssertTrue(main.contains(frame))
     }
 }
+
+@MainActor
+final class PanelSizeLimitsTests: XCTestCase {
+    /// Le lecteur ne se réduit pas sous sa taille minimale (l'en-tête et la
+    /// barre se chevaucheraient) ; le mini retrouve la sienne.
+    func testTheReaderCannotShrinkBelowItsMinimumAndTheMiniGetsItsOwn() {
+        let name = "sillon.tests.affichage.limites"
+        let defaults = UserDefaults(suiteName: name)!
+        defaults.removePersistentDomain(forName: name)
+        // Jamais montrée : la fenêtre n'existe que pour ses limites.
+        let window = NSWindow(contentRect: CGRect(origin: .zero, size: MiniPlacement.size),
+                              styleMask: [.borderless], backing: .buffered, defer: true)
+        let placement = PanelPlacement(window: window, store: DisplayModeStore(defaults: defaults), mode: { .reader })
+        placement.applySizeLimits(for: .reader)
+        XCTAssertEqual(window.minSize, ReaderPlacement.minimumSize)
+        XCTAssertTrue(window.styleMask.contains(.resizable))
+        placement.applySizeLimits(for: .mini)
+        XCTAssertEqual(window.minSize, MiniPlacement.size)
+        XCTAssertFalse(window.styleMask.contains(.resizable))
+    }
+}

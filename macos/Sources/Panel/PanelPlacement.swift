@@ -37,12 +37,15 @@ final class PanelPlacement {
         }
     }
 
-    /// Le mini ne se redimensionne pas ; le lecteur, si.
+    /// Le mini ne se redimensionne pas ; le lecteur, si, jamais sous sa
+    /// taille minimale (l'en-tête et la barre se chevaucheraient).
     func applySizeLimits(for mode: DisplayMode) {
         if mode == .mini {
             window.styleMask.remove(.resizable)
+            window.minSize = MiniPlacement.size
         } else {
             window.styleMask.insert(.resizable)
+            window.minSize = ReaderPlacement.minimumSize
         }
     }
 
