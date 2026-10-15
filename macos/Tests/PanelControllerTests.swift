@@ -457,6 +457,35 @@ final class PanelControllerTests: XCTestCase {
         c.perform(.openSearch)
         XCTAssertEqual(c.openSearchRequests, 2)
     }
+
+    /// ⌘C : la sélection si elle existe, sinon la phrase en cours.
+    func testCommandCCopiesTheSelectionThenTheSentence() throws {
+        let c = shownPanel("Un deux. Trois quatre.")
+        let text = try XCTUnwrap(textView(c))
+        text.setSelectedRange(NSRange(location: 9, length: 5))
+        c.perform(.copy)
+        XCTAssertEqual(c.pasteboard.string(forType: .string), "Trois")
+        XCTAssertEqual(c.model.message, "Sélection copiée")
+        XCTAssertFalse(c.editing, "copier n'entre pas en édition")
+        text.setSelectedRange(NSRange(location: 0, length: 0))
+        c.perform(.copy)
+        XCTAssertEqual(c.pasteboard.string(forType: .string), "Un deux.")
+    }
+
+    /// « Lire à partir d'ici » : la voix part de ce mot.
+    func testReadFromHereStartsTheVoiceThere() {
+        let c = shownPanel("Un deux. Trois quatre.")
+        c.readFrom(location: 9)
+        XCTAssertTrue(waitUntil { c.model.refresh(); return c.model.snapshot.sentence == 1 && c.model.snapshot.playing })
+        c.model.send(.pause)
+    }
+
+    func testCopyChoosesANonBlankSelection() {
+        XCTAssertEqual(ReadingCopy.choose(selection: "mot", sentence: "Phrase.")?.text, "mot")
+        XCTAssertEqual(ReadingCopy.choose(selection: "  \n", sentence: "Phrase.")?.text, "Phrase.")
+        XCTAssertEqual(ReadingCopy.choose(selection: nil, sentence: "Phrase.")?.message, "Phrase copiée")
+        XCTAssertNil(ReadingCopy.choose(selection: nil, sentence: ""))
+    }
 }
 
 @MainActor

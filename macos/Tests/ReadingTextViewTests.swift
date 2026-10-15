@@ -255,4 +255,50 @@ final class ReadingTextViewTests: XCTestCase {
         RunLoop.main.run(until: Date().addingTimeInterval(0.3))
         XCTAssertGreaterThan(clip.bounds.origin.y, 0)
     }
+
+    /// En lecture, le texte se sélectionne et ne se modifie pas.
+    func testTheTextIsSelectableButNotEditable() {
+        XCTAssertTrue(view.isSelectable)
+        XCTAssertFalse(view.isEditable)
+        view.setSelectedRange(NSRange(location: 3, length: 4))
+        XCTAssertEqual(view.selectedText, "deux")
+        view.setSelectedRange(NSRange(location: 0, length: 0))
+        XCTAssertNil(view.selectedText)
+    }
+
+    /// La voix avance, la vue suit (trait, couleur, défilement) : la
+    /// sélection reste.
+    func testFollowingTheVoiceKeepsTheSelection() {
+        let selection = NSRange(location: 15, length: 6)
+        view.setSelectedRange(selection)
+        view.playing = true
+        for (i, word) in [NSRange(location: 0, length: 2), NSRange(location: 3, length: 4),
+                          NSRange(location: 8, length: 5), NSRange(location: 15, length: 6)].enumerated() {
+            view.show(word: word, sentence: NSRange(location: i < 3 ? 0 : 15, length: 14),
+                      pastUpTo: word.location, follow: true)
+            frames.tick()
+        }
+        view.setFrameSize(NSSize(width: 420, height: view.frame.height))
+        XCTAssertEqual(view.selectedRange(), selection)
+        view.playing = false
+    }
+
+    /// Clic droit : « Copier », « Lire à partir d'ici » (à l'endroit cliqué).
+    func testTheContextMenuOffersCopyAndReadFromHere() throws {
+        var readFrom: Int?
+        var copies = 0
+        view.onReadFrom = { readFrom = $0 }
+        view.onCopy = { copies += 1 }
+        let word = try XCTUnwrap(view.rectForTesting(NSRange(location: 15, length: 6)))
+        let inWindow = view.convert(CGPoint(x: word.midX, y: word.midY), to: nil)
+        let event = try XCTUnwrap(NSEvent.mouseEvent(with: .rightMouseDown, location: inWindow, modifierFlags: [],
+                                                     timestamp: 0, windowNumber: window.windowNumber, context: nil,
+                                                     eventNumber: 0, clickCount: 1, pressure: 1))
+        let menu = try XCTUnwrap(view.menu(for: event))
+        XCTAssertEqual(menu.items.map(\.title), ["Copier", "Lire à partir d'ici"])
+        menu.performActionForItem(at: 1)
+        XCTAssertTrue((15...21).contains(readFrom ?? -1), "endroit : \(String(describing: readFrom))")
+        menu.performActionForItem(at: 0)
+        XCTAssertEqual(copies, 1)
+    }
 }

@@ -31,6 +31,15 @@ final class PanelKeyRouterTests: XCTestCase {
         XCTAssertEqual(route(KeyCode.space, focus: list), .perform(.command(.togglePlay)))
     }
 
+    /// Le texte lu, sélectionnable, prend le focus au clic : ses touches
+    /// restent celles du lecteur (⌘C copie par l'app), ⌘A passe à la vue.
+    func testTheSelectableReadingTextKeepsTheReaderKeys() {
+        let reading = ReadingTextView()
+        XCTAssertEqual(route(KeyCode.space, focus: reading), .perform(.command(.togglePlay)))
+        XCTAssertEqual(route(8, command: true, focus: reading, action: .copy), .perform(.copy))
+        XCTAssertEqual(route(0, command: true, focus: reading, action: nil), .pass)
+    }
+
     func testAKeyWithoutActionPasses() {
         XCTAssertEqual(route(KeyCode.space, action: nil), .pass)
     }

@@ -46,4 +46,33 @@ final class LineNavigator {
         guard low < words.count, words[low].range.location < NSMaxRange(line) else { return nil }
         return words[low]
     }
+
+    /// Le texte sélectionné dans la vue affichée.
+    var selectedText: String? { view?.selectedText }
+
+    /// « Lire à partir d'ici » : la commande qui mène la voix à `location`.
+    func readCommand(at location: Int) -> ReaderCommand? {
+        guard let layout else { return nil }
+        return Self.readTarget(at: location, words: layout.words, sentences: layout.sentenceRanges)
+    }
+
+    /// Le mot sous `location` (ou le suivant, s'il est dans la même phrase,
+    /// ou si l'endroit n'est dans aucune phrase) ; sinon la phrase qui
+    /// contient `location` (un bloc de code annoncé) ; sinon rien.
+    static func readTarget(at location: Int, words: [WordPlace], sentences: [UInt32: NSRange]) -> ReaderCommand? {
+        var low = 0, high = words.count
+        while low < high {
+            let mid = (low + high) / 2
+            if NSMaxRange(words[mid].range) <= location { low = mid + 1 } else { high = mid }
+        }
+        let sentenceHere = sentences.first { NSLocationInRange(location, $0.value) }?.key
+        if low < words.count {
+            let w = words[low]
+            if sentenceHere == nil || sentenceHere == w.sentence {
+                return .seekToWord(sentence: w.sentence, word: w.word)
+            }
+        }
+        if let sentence = sentenceHere { return .seekTo(sentence: sentence) }
+        return nil
+    }
 }

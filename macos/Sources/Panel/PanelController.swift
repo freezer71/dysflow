@@ -283,18 +283,27 @@ final class PanelController {
         }
     }
 
-    /// ⌘C : la phrase en cours (la sélection arrive à la tâche suivante).
+    /// ⌘C, « Copier » : la sélection, sinon la phrase en cours. N'entre
+    /// jamais en édition.
     func copy() {
-        let sentence = model.currentSentenceText
-        guard !sentence.isEmpty else { return }
+        guard let choice = ReadingCopy.choose(selection: lines.selectedText,
+                                              sentence: model.currentSentenceText) else { return }
         pasteboard.clearContents()
-        pasteboard.setString(sentence, forType: .string)
-        flash("Phrase copiée")
+        pasteboard.setString(choice.text, forType: .string)
+        flash(choice.message)
+    }
+
+    /// « Lire à partir d'ici » : la voix rejoint ce mot et lit.
+    func readFrom(location: Int) {
+        guard let command = lines.readCommand(at: location) else { return }
+        model.send(command)
+        model.refresh()
+        if !model.snapshot.playing { model.send(.togglePlay) }
     }
 
     // MARK: - Édition
 
-    /// Double clic ou « e » : la lecture se met en pause et le texte devient
+    /// Bouton Modifier ou « e » : la lecture se met en pause et le texte devient
     /// modifiable. Le mini n'a pas la place : le lecteur s'ouvre.
     func beginEditing() {
         guard !editing, model.snapshot.hasDocument else { return }

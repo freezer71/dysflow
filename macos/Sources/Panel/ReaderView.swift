@@ -19,7 +19,8 @@ struct ReaderView: View {
                     TextEditingView(controller: controller, style: style)
                 } else {
                     ReadingView(model: model, style: style, lines: controller.lines,
-                                onDoubleClick: { controller.beginEditing() })
+                                onCopy: { controller.copy() },
+                                onReadFrom: { controller.readFrom(location: $0) })
                         .overlay {
                             if !model.snapshot.hasDocument { ReaderInvitation(theme: style.theme) }
                         }
