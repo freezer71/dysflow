@@ -1,4 +1,5 @@
 import XCTest
+import SwiftUI
 import KeyboardShortcuts
 @testable import Sillon
 
@@ -542,6 +543,19 @@ final class PanelStatusTests: XCTestCase {
     func testReaderStatusShows() {
         XCTAssertEqual(PanelStatus.line(message: nil, snapshot: snapshot(status: "Sortie audio débranchée")),
                        "Sortie audio débranchée")
+    }
+
+    /// La ligne d'état du lecteur garde sa hauteur, message ou non : ⌘C
+    /// (« Phrase copiée ») ne fait bouger ni le texte ni la barre.
+    func testTheStatusLineKeepsItsHeightWithOrWithoutAMessage() {
+        let long = String(repeating: "Sortie audio débranchée, lecture en pause. ", count: 6)
+        let lines: [String?] = [nil, "Phrase copiée", long]
+        let heights = lines.map { line -> CGFloat in
+            let host = NSHostingView(rootView: ReaderStatusLine(line: line, color: .gray).frame(width: 420))
+            host.layoutSubtreeIfNeeded()
+            return host.fittingSize.height
+        }
+        XCTAssertEqual(heights, Array(repeating: ReaderStatusLine.height, count: 3))
     }
 
     func testTheVoiceIsNotSaidHere() {

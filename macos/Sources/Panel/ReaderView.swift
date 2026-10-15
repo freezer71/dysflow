@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Le lecteur : l'en-tête, le texte (le sommaire à côté s'il est ouvert),
-/// la barre, et une ligne d'état seulement quand il y a quelque chose à dire.
+/// la barre, et une ligne d'état à la hauteur toujours réservée.
 struct ReaderView: View {
     let controller: PanelController
     let style: ReadingStyle
@@ -29,15 +29,38 @@ struct ReaderView: View {
             if !controller.editing {
                 ReaderBar(controller: controller, theme: style.theme, markers: model.sectionPositions)
             }
-            if let line = PanelStatus.line(message: model.message, snapshot: model.snapshot) {
-                Text(line)
-                    .font(.system(size: 13))
-                    .lineLimit(2)
-                    .foregroundStyle(Color(nsColor: style.theme.chrome))
-                    .accessibilityIdentifier("etat-lecteur")
-            }
+            ReaderStatusLine(line: PanelStatus.line(message: model.message, snapshot: model.snapshot),
+                             color: Color(nsColor: style.theme.chrome))
             VoiceStatusLine(model: model, color: Color(nsColor: style.theme.chrome))
         }
+    }
+}
+
+/// Les messages passagers (« Phrase copiée », « Texte modifié ») et l'état
+/// du lecteur. La hauteur d'une ligne est toujours réservée : un message qui
+/// vient ou part ne fait bouger ni le texte ni la barre. Un message trop long
+/// est coupé ; il se lit en entier au survol et pour VoiceOver.
+struct ReaderStatusLine: View {
+    static let height: CGFloat = 16
+    let line: String?
+    let color: Color
+
+    var body: some View {
+        Group {
+            if let line {
+                Text(line)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .help(line)
+                    .accessibilityLabel(line)
+                    .accessibilityIdentifier("etat-lecteur")
+            } else {
+                Color.clear.accessibilityHidden(true)
+            }
+        }
+        .font(.system(size: 13))
+        .foregroundStyle(color)
+        .frame(maxWidth: .infinity, minHeight: Self.height, maxHeight: Self.height, alignment: .leading)
     }
 }
 
