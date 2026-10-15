@@ -728,6 +728,18 @@ impl SillonReader {
         let _ = self.handle.ask(|reader| reader.dismiss_offer());
     }
 
+    /// L'installation automatique de la voix, sans rien demander : accepte
+    /// l'offre Kokoro en attente, ou télécharge le Kokoro recommandé si
+    /// aucun n'est installé ; sinon rien. Idempotente ; sans effet pendant
+    /// un téléchargement. La progression : `Snapshot.download`. « Réessayer »
+    /// rappelle cette fonction.
+    pub fn ensure_default_voice(&self) -> Result<(), SillonError> {
+        self.handle
+            .ask(|reader| reader.ensure_default_voice(Instant::now()).map_err(|e| e.to_string()))
+            .ok_or_else(|| failed("lecteur indisponible"))?
+            .map_err(failed)
+    }
+
     /// « Remplacer » un `config.toml` illisible : une copie est gardée à
     /// côté (`config.toml.illisible`), puis les réglages en cours sont écrits.
     pub fn replace_unreadable_config(&self) -> Result<(), SillonError> {
@@ -1260,5 +1272,15 @@ mod tests {
         assert!(!reader.snapshot().config_unreadable);
         let err = reader.replace_unreadable_config().unwrap_err().to_string();
         assert!(err.contains("mode d'essai"), "{err}");
+    }
+
+    /// L'app de test (lecteur muet) appelle l'installation comme l'app
+    /// réelle : rien ne se télécharge, rien n'échoue.
+    #[test]
+    fn the_silent_reader_never_installs_a_voice() {
+        let reader = SillonReader::silent();
+        reader.ensure_default_voice().expect("sans effet, sans erreur");
+        reader.ensure_default_voice().expect("idempotente");
+        assert!(reader.snapshot().download.is_none());
     }
 }
