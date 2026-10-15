@@ -129,10 +129,14 @@ final class PanelController {
 
     /// Fermer arrête la lecture : une modification s'applique sans relancer
     /// la voix, puis la pause. Le document et la position restent.
+    ///
+    /// La pause part toujours : l'instantané publié ne voit pas un texte
+    /// encore en file (voix qui se recharge), dont l'autoplay relancerait la
+    /// voix fenêtre masquée. La file est dans l'ordre, la pause arrive après
+    /// l'ouverture ; le moteur l'ignore sans texte ou voix au repos.
     private func stopForClosing() {
         if editing { finishEditing(resume: false) }
-        model.refresh()
-        if model.snapshot.playing { model.send(.pause) }
+        model.send(.pause)
     }
 
     private func present(_ target: DisplayMode) {

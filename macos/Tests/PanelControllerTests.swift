@@ -204,6 +204,24 @@ final class PanelControllerTests: XCTestCase {
         }
     }
 
+    /// ⌃⌥Espace puis aussitôt Échap : le texte est encore en file, l'instantané
+    /// ne dit pas « en lecture ». Fermer doit quand même rendre le silence,
+    /// sans que l'autoplay de cette ouverture relance la voix fenêtre masquée.
+    func testClosingRightAfterOpeningLeavesTheReaderPaused() async throws {
+        let c = shownPanel("Un.")
+        var patch = SettingsPatch.empty
+        patch.autoplay = true
+        _ = try await c.model.updateSettings(patch)
+        let long = (1...400).map { "Phrase \($0)." }.joined(separator: " ")
+        c.model.open(text: long, source: "test")
+        c.close()
+        XCTAssertTrue(waitUntil { c.model.refresh(); return c.model.snapshot.revision == 2 },
+                      "le second texte doit s'ouvrir")
+        try await Task.sleep(for: .milliseconds(500))
+        c.model.refresh()
+        XCTAssertFalse(c.model.snapshot.playing, "la voix parle fenêtre masquée")
+    }
+
     /// Le document et la position restent : la réouverture reprend là.
     func testReopeningAfterClosingKeepsThePlace() {
         let c = shownPanel("Un. Deux. Trois.")
