@@ -2,6 +2,10 @@
 
 use super::*;
 
+/// Le rappel permanent de la ligne d'état, après « s réglages · ? » : les
+/// touches qu'un nouveau venu cherche d'abord.
+pub(super) const REMINDER: &str = " aide · espace lecture · ← → phrase · / chercher · t sommaire ";
+
 pub(super) fn render_player(frame: &mut Frame, app: &App, area: Rect) {
     let doc = app.doc();
     let current = app.current_sentence();
@@ -69,14 +73,6 @@ pub(super) fn render_player(frame: &mut Frame, app: &App, area: Rect) {
         Span::styled(
             format!(" {:.2}× ", app.config.voice.speed),
             Style::default().fg(BRIGHT).add_modifier(Modifier::BOLD),
-        ),
-        Span::styled(
-            if app.player.is_muted() {
-                "  🔇 coupé ".to_string()
-            } else {
-                format!("  🔊 {:>3.0} % ", app.player.volume() * 100.0)
-            },
-            Style::default().fg(NORMAL),
         ),
         Span::styled(
             format!("  {} ", app.engine_name()),
@@ -182,10 +178,7 @@ pub(super) fn status_spans(app: &App) -> Vec<Span<'static>> {
             "?",
             Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
         ));
-        spans.push(Span::styled(
-            " aide · espace lecture · / chercher · n/p titre ",
-            Style::default().fg(FAINT),
-        ));
+        spans.push(Span::styled(REMINDER, Style::default().fg(FAINT)));
     }
 
     // Où en est la recherche, tant qu'elle a des résultats à parcourir.

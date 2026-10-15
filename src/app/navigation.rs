@@ -151,7 +151,7 @@ impl App {
             return;
         };
         self.seek_to(target);
-        self.notify("Reprise là où vous en étiez — g revient au début");
+        self.notify("Reprise là où vous en étiez");
     }
 
     /// Où en est la lecture, si cela vaut d'être retenu.

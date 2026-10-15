@@ -9,27 +9,24 @@ use super::{App, Panel};
 
 const VIEW_STEP: isize = 4;
 
-/// Aide de la vue de lecture.
+/// Aide de la vue de lecture : toutes les touches qui y agissent, et
+/// seulement elles.
 pub const HELP: &[(&str, &str)] = &[
     ("Espace", "Lecture / pause"),
     ("← →", "Phrase précédente / suivante"),
-    ("Maj+← →", "Recul / avance rapide"),
     ("↑ ↓", "Bloc précédent / suivant"),
     ("n / p", "Titre suivant / précédent"),
-    ("g / Début · Fin", "Début · fin du document"),
-    ("r", "Reprendre la phrase"),
-    ("+ / -", "Vitesse (immédiate)"),
-    ("1 2 3 4", "Vitesse 0,75× 1× 1,5× 2×"),
-    ("[ / ]", "Volume"),
-    ("m", "Couper le son"),
-    ("t", "Sommaire"),
-    ("s", "Configuration et modèles"),
-    ("Pg↑ Pg↓", "Défiler sans déplacer la lecture"),
-    ("f", "Revenir à la lecture"),
+    ("Début", "Début du document"),
     ("/", "Chercher dans le document"),
     ("N / P", "Résultat suivant / précédent"),
-    ("? / h", "Aide"),
-    ("q / Échap", "Quitter"),
+    ("+ / -", "Vitesse"),
+    ("t", "Sommaire : ↑ ↓ puis Entrée"),
+    ("s", "Réglages"),
+    ("Pg↑ Pg↓", "Relire sans déplacer la lecture"),
+    ("f", "Reprendre le suivi"),
+    ("?", "Aide"),
+    ("Échap", "Fermer le sommaire, sinon quitter"),
+    ("q", "Quitter"),
 ];
 
 /// Aide de l'écran de configuration.
@@ -167,11 +164,10 @@ fn handle_reader(app: &mut App, key: Key) {
         return;
     }
 
-    let step = app.config.reading.seek_step as isize;
-
     match key.code {
-        KeyCode::Char('q') | KeyCode::Esc => {
-            // Échap referme d'abord le panneau ouvert.
+        KeyCode::Char('q') => app.should_quit = true,
+        KeyCode::Esc => {
+            // Échap referme d'abord le sommaire ; rien d'ouvert, il quitte.
             if app.panel != Panel::None {
                 app.panel = Panel::None;
             } else {
@@ -181,10 +177,10 @@ fn handle_reader(app: &mut App, key: Key) {
 
         KeyCode::Char(' ') => app.toggle_play(),
 
-        KeyCode::Right => app.seek_sentences(if key.shift { step } else { 1 }),
-        KeyCode::Left => app.seek_sentences(if key.shift { -step } else { -1 }),
+        KeyCode::Right => app.seek_sentences(1),
+        KeyCode::Left => app.seek_sentences(-1),
 
-        // Les flèches verticales pilotent le panneau ouvert, sinon le texte.
+        // Les flèches verticales pilotent le sommaire ouvert, sinon le texte.
         KeyCode::Up => match app.panel {
             Panel::Contents => app.move_selection(-1),
             Panel::None => app.seek_block(-1),
@@ -196,22 +192,12 @@ fn handle_reader(app: &mut App, key: Key) {
 
         KeyCode::Char('n') => app.seek_section(1),
         KeyCode::Char('p') => app.seek_section(-1),
-        KeyCode::Home | KeyCode::Char('g') => app.seek_start(),
-        KeyCode::End | KeyCode::Char('G') => app.seek_end(),
-        KeyCode::Char('r') => app.restart_sentence(),
+        KeyCode::Home => app.seek_start(),
 
-        KeyCode::Char('+') | KeyCode::Char('=') => app.change_speed(0.1),
-        KeyCode::Char('-') | KeyCode::Char('_') => app.change_speed(-0.1),
-        KeyCode::Char('1') => app.set_speed(0.75),
-        KeyCode::Char('2') => app.set_speed(1.0),
-        KeyCode::Char('3') => app.set_speed(1.5),
-        KeyCode::Char('4') => app.set_speed(2.0),
+        KeyCode::Char('+') => app.change_speed(0.1),
+        KeyCode::Char('-') => app.change_speed(-0.1),
 
-        KeyCode::Char(']') => app.change_volume(0.05),
-        KeyCode::Char('[') => app.change_volume(-0.05),
-        KeyCode::Char('m') => app.toggle_mute(),
-
-        KeyCode::Char('t') | KeyCode::Tab => app.toggle_panel(Panel::Contents),
+        KeyCode::Char('t') => app.toggle_panel(Panel::Contents),
         KeyCode::Char('s') => app.toggle_config(),
         KeyCode::Char('f') => app.toggle_follow(),
 
@@ -224,8 +210,7 @@ fn handle_reader(app: &mut App, key: Key) {
         KeyCode::Char('P') => app.search_advance(-1),
 
         KeyCode::Enter => app.activate_selection(),
-        KeyCode::Char('w') => app.save_config(),
-        KeyCode::Char('?') | KeyCode::Char('h') => app.show_help = true,
+        KeyCode::Char('?') => app.show_help = true,
 
         _ => {}
     }
@@ -340,12 +325,84 @@ mod tests {
         assert_ne!(app.current_sentence(), first, "N n'a pas avancé");
     }
 
+    /// Ce qui ne doit pas bouger quand une touche retirée est pressée.
+    fn assert_untouched(app: &App, key: &str, volume: f32) {
+        assert_eq!(app.current_sentence(), 1, "{key} a déplacé la lecture");
+        assert_eq!(app.config.voice.speed, 1.0, "{key} a changé la vitesse");
+        assert_eq!(app.player.volume(), volume, "{key} a changé le volume");
+        assert!(!app.player.is_muted(), "{key} a coupé le son");
+        assert_eq!(app.panel, Panel::None, "{key} a ouvert un panneau");
+        assert!(!app.show_help, "{key} a ouvert l'aide");
+        assert!(!app.should_quit, "{key} a quitté");
+        assert!(app.status().is_empty(), "{key} a parlé : {:?}", app.status());
+    }
+
     #[test]
-    fn shift_with_an_arrow_seeks_by_the_configured_step() {
+    fn the_keys_taken_out_do_nothing_any_more() {
+        let mut app = app_reading(DOC);
+        app.seek_to(1);
+        let volume = app.player.volume();
+        for c in ['[', ']', 'm', '1', '2', '3', '4', 'g', 'G', 'r', 'w', '=', '_', 'h'] {
+            press(&mut app, KeyCode::Char(c));
+            assert_untouched(&app, &c.to_string(), volume);
+        }
+        for code in [KeyCode::End, KeyCode::Tab] {
+            press(&mut app, code);
+            assert_untouched(&app, &format!("{code:?}"), volume);
+        }
+    }
+
+    #[test]
+    fn home_goes_to_the_start_of_the_document() {
+        let mut app = app_reading(DOC);
+        app.seek_to(app.doc().sentences.len() - 1);
+        press(&mut app, KeyCode::Home);
+        assert_eq!(app.current_sentence(), 0);
+    }
+
+    #[test]
+    fn shift_with_an_arrow_moves_one_sentence_like_the_arrow() {
         let mut app = app_reading(DOC);
         app.config.reading.seek_step = 2;
         handle(&mut app, Key { code: KeyCode::Right, shift: true, ctrl: false });
-        assert_eq!(app.current_sentence(), 2);
+        assert_eq!(app.current_sentence(), 1, "plus de saut de plusieurs phrases");
+    }
+
+    #[test]
+    fn escape_closes_the_contents_then_quits() {
+        let mut app = app_reading(DOC);
+        press(&mut app, KeyCode::Char('t'));
+        assert_eq!(app.panel, Panel::Contents);
+        press(&mut app, KeyCode::Esc);
+        assert_eq!(app.panel, Panel::None, "Échap ferme d'abord le sommaire");
+        assert!(!app.should_quit);
+        press(&mut app, KeyCode::Esc);
+        assert!(app.should_quit, "rien d'ouvert : Échap quitte");
+    }
+
+    #[test]
+    fn q_quits_even_with_the_contents_open() {
+        let mut app = app_reading(DOC);
+        press(&mut app, KeyCode::Char('t'));
+        press(&mut app, KeyCode::Char('q'));
+        assert!(app.should_quit);
+    }
+
+    #[test]
+    fn the_help_names_every_reading_key_and_no_other() {
+        let keys: Vec<&str> = HELP.iter().map(|(k, _)| *k).collect();
+        for kept in [
+            "Espace", "← →", "↑ ↓", "n / p", "Début", "/", "N / P", "+ / -", "t", "s",
+            "Pg↑ Pg↓", "f", "?", "Échap", "q",
+        ] {
+            assert!(keys.contains(&kept), "{kept} manque à l'aide : {keys:?}");
+        }
+        for gone in [
+            "Maj+← →", "g / Début · Fin", "r", "1 2 3 4", "[ / ]", "m", "b", "t / B", "? / h",
+            "q / Échap",
+        ] {
+            assert!(!keys.contains(&gone), "{gone} est encore dans l'aide");
+        }
     }
 
     #[test]

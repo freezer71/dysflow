@@ -124,6 +124,12 @@ mod tests {
     use super::*;
 
     #[test]
+    fn the_reminder_names_the_contents_and_no_bookmark() {
+        assert!(REMINDER.contains("t sommaire"), "{REMINDER}");
+        assert!(!REMINDER.contains("signet"), "{REMINDER}");
+    }
+
+    #[test]
     fn hints_fold_without_losing_a_word() {
         let text = "10 voix intégrées, au choix avec les flèches, t pour écouter";
         let lines = fold(text, 24);
