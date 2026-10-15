@@ -49,6 +49,12 @@
 
 (Les deux risques « option de la ligne de commande écrite » et « fichier illisible écrasé » sont épinglés par les tests du plan 1, Tâche 5 ; ce plan les garde verts en les adaptant à la page unique, Tâche 5.)
 
+
+## Amendements validés par l'utilisateur (15 oct. 2026) — priment sur les tâches
+
+1. **Tâche 3 (vue figée retirée) est SUPPRIMÉE.** Pg↑, Pg↓ et `f` restent, avec `ViewAnchor`. L'aide (`HELP`) de la Tâche 2 les liste : « Pg↑ Pg↓ — relire sans déplacer la lecture », « f — reprendre le suivi ».
+2. **Début est gardé** (Tâche 2) : la touche Début → aller au début du document, listée dans l'aide. `g`, `G` et Fin restent retirés. Adapter les tests de la Tâche 2 qui vérifient que Début n'a plus d'effet.
+
 ---
 
 ## Structure des fichiers

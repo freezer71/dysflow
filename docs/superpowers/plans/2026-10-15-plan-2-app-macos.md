@@ -88,6 +88,12 @@ Attendu : un compte ≥ 3. Sinon, s'arrêter : le plan 1 n'est pas fusionné.
 | `macos/Sources/AppDelegate.swift` | lancement, réouverture, ouverture de fichiers, raccourcis, installation de la voix |
 | `ffi/src/lib.rs` | signets et commandes inutilisées retirés (Tâche 11) |
 
+
+## Amendements validés par l'utilisateur (15 oct. 2026) — priment sur les tâches
+
+1. **Début est gardé.** Tâche 5 : `KeyMap` garde la touche Début (keyCode 115) → `.start` ; le test `XCTAssertNil(act("", 115), "Début")` devient `XCTAssertEqual(act("", 115), .start)` (adapter au nom réel de l'action) ; l'aide liste « Début — revenir au début ». `g` et Fin restent retirés. Tâche 11 : la variante FFI `Start` est **gardée** (elle a cet appelant) ; retirer `case start$` des deux `grep` de vérification.
+2. **Relire sans couper la voix est gardé** : `FollowPolicy` et le défilement libre ne sont pas modifiés. Tâche 12 : ajouter à la vérification manuelle « faire défiler pendant la lecture : la voix continue, la vue ne revient qu'après 4 s ou à la prochaine commande ».
+
 ---
 
 ### Tâche 1 : Notes retirées, `LaunchKind` déplacé, aucune icône de Dock
