@@ -11,7 +11,7 @@ use sillon::audio::Player;
 use sillon::config::Config;
 use sillon::reader::command::Command;
 use sillon::reader::handle::{ReaderHandle, Request};
-use sillon::reader::{data, preview, settings, view, Reader};
+use sillon::reader::{preview, settings, view, Reader};
 use sillon::tts::kokoro::{self, KokoroBackend, KokoroRaw};
 use sillon::tts::{self, silent::SilentEngine, TtsEngine};
 
@@ -169,20 +169,15 @@ fn app_reader(loaded: (Config, Option<String>), mlx: Option<Arc<kokoro::SharedCo
 pub enum ReaderCommand {
     TogglePlay,
     Pause,
+    /// Gardée pour l'outil de mesure de l'app (`Measure.swift`, saut de mots).
     Words { delta: i32 },
     Sentences { delta: i32 },
-    Blocks { delta: i32 },
     Sections { delta: i32 },
     SeekTo { sentence: u32 },
     SeekToWord { sentence: u32, word: u32 },
-    RestartSentence,
     Start,
-    End,
     SetSpeed { speed: f32 },
     ChangeSpeed { delta: f32 },
-    ChangeVolume { delta: f32 },
-    ToggleMute,
-    ToggleBookmark,
     Search { query: String },
     SearchAdvance { delta: i32 },
     SearchCancel,
@@ -195,20 +190,14 @@ impl From<ReaderCommand> for Command {
             ReaderCommand::Pause => Command::Pause,
             ReaderCommand::Words { delta } => Command::Words(delta as isize),
             ReaderCommand::Sentences { delta } => Command::Sentences(delta as isize),
-            ReaderCommand::Blocks { delta } => Command::Blocks(delta as isize),
             ReaderCommand::Sections { delta } => Command::Sections(delta as isize),
             ReaderCommand::SeekTo { sentence } => Command::SeekTo(sentence as usize),
             ReaderCommand::SeekToWord { sentence, word } => {
                 Command::SeekToWord { sentence: sentence as usize, word: word as usize }
             }
-            ReaderCommand::RestartSentence => Command::RestartSentence,
             ReaderCommand::Start => Command::Start,
-            ReaderCommand::End => Command::End,
             ReaderCommand::SetSpeed { speed } => Command::SetSpeed(speed),
             ReaderCommand::ChangeSpeed { delta } => Command::ChangeSpeed(delta),
-            ReaderCommand::ChangeVolume { delta } => Command::ChangeVolume(delta),
-            ReaderCommand::ToggleMute => Command::ToggleMute,
-            ReaderCommand::ToggleBookmark => Command::ToggleBookmark,
             ReaderCommand::Search { query } => Command::Search(query),
             ReaderCommand::SearchAdvance { delta } => Command::SearchAdvance(delta as isize),
             ReaderCommand::SearchCancel => Command::SearchCancel,
@@ -306,7 +295,6 @@ pub struct Snapshot {
     pub engine: String,
     pub status: String,
     pub search: Option<SearchState>,
-    pub bookmarked: bool,
     pub skipped: u32,
     pub download: Option<DownloadView>,
     pub preview: PreviewView,
@@ -373,14 +361,6 @@ pub struct DocView {
     pub blocks: Vec<BlockView>,
 }
 
-#[derive(uniffi::Record)]
-pub struct BookmarkView {
-    pub sentence: u32,
-    pub section_title: String,
-    pub snippet: String,
-    pub when: String,
-}
-
 #[derive(uniffi::Record, Clone)]
 pub struct SettingsView {
     pub voice: String,
@@ -404,6 +384,11 @@ pub struct SettingsView {
     /// La sortie audio choisie ; vide : celle du système.
     pub output_device: String,
     pub voices_by_language: Vec<LanguageVoice>,
+    /// La police du texte : `literata`, `atkinson` ou `openDyslexic` (les
+    /// `rawValue` de `ReadingFont`).
+    pub reading_font: String,
+    /// La taille du texte, en points (14 à 40).
+    pub reading_size: f32,
 }
 
 /// Une modification : `None` pour un réglage non touché.
@@ -428,6 +413,13 @@ pub struct SettingsPatch {
     pub output_device: Option<String>,
     /// La voix d'une langue (Kokoro : une voix par langue).
     pub voice_for_language: Option<LanguageVoice>,
+    /// La police du texte. Défaut `nil` côté Swift : les appels existants
+    /// de `SettingsPatch(…)` restent valides.
+    #[uniffi(default = None)]
+    pub reading_font: Option<String>,
+    /// La taille du texte, en points.
+    #[uniffi(default = None)]
+    pub reading_size: Option<f32>,
 }
 
 #[derive(uniffi::Record)]
@@ -462,16 +454,6 @@ pub struct VoiceModel {
     pub pace: String,
     pub voices_label: String,
     pub licenses: String,
-}
-
-#[derive(uniffi::Record)]
-pub struct StoredBookmarkView {
-    pub document: String,
-    pub label: String,
-    pub sentence: u32,
-    pub section_title: String,
-    pub snippet: String,
-    pub when: String,
 }
 
 #[derive(uniffi::Object)]
@@ -560,24 +542,6 @@ impl SillonReader {
 
     pub fn document(&self) -> DocView {
         doc_of(&self.handle.document())
-    }
-
-    pub fn bookmarks(&self) -> Vec<BookmarkView> {
-        self.handle
-            .ask(|reader| {
-                // Au repos aussi : le magasin est relu pour le texte gardé.
-                reader
-                    .bookmarks()
-                    .iter()
-                    .map(|b| BookmarkView {
-                        sentence: b.sentence_id as u32,
-                        section_title: b.section_title.clone(),
-                        snippet: b.snippet.clone(),
-                        when: b.timestamp(),
-                    })
-                    .collect()
-            })
-            .unwrap_or_default()
     }
 
     pub fn settings(&self) -> SettingsView {
@@ -716,6 +680,18 @@ impl SillonReader {
         let _ = self.handle.ask(|reader| reader.dismiss_offer());
     }
 
+    /// L'installation automatique de la voix, sans rien demander : accepte
+    /// l'offre Kokoro en attente, ou télécharge le Kokoro recommandé si
+    /// aucun n'est installé ; sinon rien. Idempotente ; sans effet pendant
+    /// un téléchargement. La progression : `Snapshot.download`. « Réessayer »
+    /// rappelle cette fonction.
+    pub fn ensure_default_voice(&self) -> Result<(), SillonError> {
+        self.handle
+            .ask(|reader| reader.ensure_default_voice(Instant::now()).map_err(|e| e.to_string()))
+            .ok_or_else(|| failed("lecteur indisponible"))?
+            .map_err(failed)
+    }
+
     /// « Remplacer » un `config.toml` illisible : une copie est gardée à
     /// côté (`config.toml.illisible`), puis les réglages en cours sont écrits.
     pub fn replace_unreadable_config(&self) -> Result<(), SillonError> {
@@ -783,23 +759,6 @@ impl SillonReader {
             .ok_or_else(|| failed("lecteur indisponible"))?
             .map_err(failed)
     }
-
-    pub fn all_bookmarks(&self) -> Vec<StoredBookmarkView> {
-        self.handle
-            .ask(|reader| reader.all_bookmarks().into_iter().map(stored_bookmark_of).collect())
-            .unwrap_or_default()
-    }
-
-    pub fn remove_bookmark(&self, document: String, sentence: u32) -> Result<(), SillonError> {
-        self.handle
-            .ask(move |reader| {
-                reader
-                    .remove_bookmark(&document, sentence as usize)
-                    .map_err(|e| e.to_string())
-            })
-            .ok_or_else(|| failed("lecteur indisponible"))?
-            .map_err(failed)
-    }
 }
 
 fn crossbeam_channel_bounded() -> (
@@ -842,6 +801,8 @@ fn settings_of(s: settings::SettingsView) -> SettingsView {
             .into_iter()
             .map(|(language, voice)| LanguageVoice { language, voice })
             .collect(),
+        reading_font: s.reading_font,
+        reading_size: s.reading_size,
     }
 }
 
@@ -865,22 +826,13 @@ fn patch_from(p: SettingsPatch) -> settings::SettingsPatch {
         keep_voice_minutes: p.keep_voice_minutes,
         output_device: p.output_device,
         voice_for_language: p.voice_for_language.map(|v| (v.language, v.voice)),
+        reading_font: p.reading_font,
+        reading_size: p.reading_size,
     }
 }
 
 fn preview_of(p: preview::PreviewView) -> PreviewView {
     PreviewView { pending: p.pending, playing: p.playing, error: p.error }
-}
-
-fn stored_bookmark_of(b: data::StoredBookmark) -> StoredBookmarkView {
-    StoredBookmarkView {
-        document: b.document,
-        label: b.label,
-        sentence: b.sentence as u32,
-        section_title: b.section_title,
-        snippet: b.snippet,
-        when: b.when,
-    }
 }
 
 fn snapshot_of(s: view::Snapshot) -> Snapshot {
@@ -914,7 +866,6 @@ fn snapshot_of(s: view::Snapshot) -> Snapshot {
             position: q.position as u32,
             count: q.count as u32,
         }),
-        bookmarked: s.bookmarked,
         skipped: s.skipped as u32,
         download: s.download.map(|d| DownloadView {
             id: d.id,
@@ -1084,7 +1035,15 @@ mod tests {
         assert_eq!(reader.update_settings(patch).expect("rien à écrire").seek_step, 7);
         let err = reader.clear_document_cache().unwrap_err().to_string();
         assert!(err.contains("mode d'essai"), "{err}");
-        assert!(reader.remove_bookmark("x".into(), 0).is_err());
+    }
+
+    /// Les commandes que l'app envoie encore traversent le pont telles quelles.
+    #[test]
+    fn the_commands_left_cross_the_bridge() {
+        assert_eq!(Command::from(ReaderCommand::Sentences { delta: -1 }), Command::Sentences(-1));
+        assert_eq!(Command::from(ReaderCommand::Words { delta: 3 }), Command::Words(3));
+        assert_eq!(Command::from(ReaderCommand::SeekTo { sentence: 4 }), Command::SeekTo(4));
+        assert_eq!(Command::from(ReaderCommand::SetSpeed { speed: 1.25 }), Command::SetSpeed(1.25));
     }
 
     #[test]
@@ -1194,6 +1153,27 @@ mod tests {
     }
 
     #[test]
+    fn the_reading_font_and_size_cross_the_bridge() {
+        let defaults = default_settings();
+        assert_eq!(defaults.reading_font, "literata");
+        assert_eq!(defaults.reading_size, 22.0);
+        let reader = SillonReader::silent();
+        let applied = reader.apply_patch(SettingsPatch {
+            reading_font: Some("openDyslexic".into()),
+            reading_size: Some(26.0),
+            ..Default::default()
+        });
+        assert_eq!(applied.reading_font, "openDyslexic");
+        assert_eq!(applied.reading_size, 26.0);
+        assert_eq!(reader.settings().reading_font, "openDyslexic");
+        // Le lecteur muet n'écrit rien, mais la réponse est la même.
+        let updated = reader
+            .update_settings(SettingsPatch { reading_size: Some(99.0), ..Default::default() })
+            .unwrap();
+        assert_eq!(updated.reading_size, 40.0, "ramenée dans les bornes");
+    }
+
+    #[test]
     fn the_offer_answers_cross_the_bridge() {
         let reader = SillonReader::silent();
         assert!(reader.snapshot().offer.is_none());
@@ -1223,5 +1203,45 @@ mod tests {
         assert!(!reader.snapshot().config_unreadable);
         let err = reader.replace_unreadable_config().unwrap_err().to_string();
         assert!(err.contains("mode d'essai"), "{err}");
+    }
+
+    /// L'app de test (lecteur muet) appelle l'installation comme l'app
+    /// réelle : rien ne se télécharge, rien n'échoue.
+    #[test]
+    fn the_silent_reader_never_installs_a_voice() {
+        let reader = SillonReader::silent();
+        reader.ensure_default_voice().expect("sans effet, sans erreur");
+        reader.ensure_default_voice().expect("idempotente");
+        assert!(reader.snapshot().download.is_none());
+    }
+
+    /// La barre de progression cliquable de l'app convertit une fraction en
+    /// phrase par `DocView.sentence_count` et `ReaderCommand::SeekTo`, sans
+    /// commande dédiée : `Snapshot.progress` doit rester « phrase courante
+    /// (plus l'avancement dans la phrase) / nombre de phrases ».
+    #[test]
+    fn progress_is_the_sentence_over_the_sentence_count() {
+        let reader = SillonReader::silent();
+        reader.open_text("Un. Deux. Trois. Quatre.".into(), "test".into());
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while reader.snapshot().revision != 1 {
+            assert!(Instant::now() < deadline, "texte jamais publié");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        let count = reader.document().sentence_count;
+        assert_eq!(count, 4);
+        reader.command(ReaderCommand::SeekTo { sentence: 2 });
+        while reader.snapshot().sentence != 2 {
+            assert!(Instant::now() < deadline, "saut jamais appliqué");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        let progress = reader.snapshot().progress;
+        assert!((0.5..0.75).contains(&progress), "{progress}");
+        // La conversion de l'app : partie entière de fraction × nombre,
+        // bornée à la dernière phrase.
+        let at = |fraction: f32| ((fraction * count as f32) as u32).min(count - 1);
+        assert_eq!(at(0.6), 2);
+        assert_eq!(at(1.0), 3, "le bout de la barre : la dernière phrase");
+        assert_eq!(at(0.0), 0);
     }
 }

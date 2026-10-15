@@ -9,15 +9,16 @@ Lecteur audio en terminal : il prend du markdown — pipé ou en fichier —, le
 hiérarchise, et le lit à voix haute avec les contrôles d'un lecteur audio.
 
 ```bash
-sillon                                      # ouvre le menu de configuration
+sillon                                      # dit comment lire, puis rend la main
 cat notes.md | sillon
 sillon rapport.md --speed 1.5
 llm "explique-moi les monades" | sillon     # la lecture démarre avant la fin du flux
+sillon --config                             # les réglages
 ```
 
-**Lancé sans argument, `sillon` ouvre l'écran de configuration.** Depuis la
-lecture, la touche `s` y mène aussi ; la barre d'état le rappelle en
-permanence.
+**Lancé sans argument, `sillon` affiche les quatre manières de lire** — un
+fichier, un tube, `--clip`, l'app — et rend la main. `s` ouvre les réglages
+en cours de lecture, `?` l'aide.
 
 ## Ce qu'il fait
 
@@ -74,7 +75,7 @@ désinstaller, `rm -r $PREFIX/lib/sillon $PREFIX/bin/sillon`.
 Sur Mac, avec l'app dans `/Applications`, `./scripts/install-app-command.sh`
 pose à la place une commande `sillon` qui ouvre l'app : `sillon document.pdf`
 ouvre le panneau sur le document et le lit (reprise à la dernière position),
-`sillon` seul ouvre la page de notes. Le lecteur au terminal n'est alors plus
+`sillon` seul ouvre le lecteur. Le lecteur au terminal n'est alors plus
 la commande `sillon` (`$PREFIX/lib/sillon` reste, à retirer à la main) ; pour
 désinstaller la commande de l'app, `rm $PREFIX/bin/sillon`. Chacun des deux
 scripts prévient avant de remplacer l'autre, et ne le fait qu'après
@@ -102,11 +103,17 @@ premier build ; ensuite rien n'est à installer, les données de langue
 cargo build --release --features ocr
 ```
 
-### Installer un modèle
+### La voix
 
-Lancez `sillon` sans argument : l'écran s'ouvre sur la rubrique **Modèles**, qui
-liste ce qui est installable avec la taille et l'espace disque libre. `Entrée`
-installe, puis sélectionne. Rien n'est jamais téléchargé sans cette action.
+**Kokoro s'installe tout seul** au premier usage, avec un binaire construit
+avec `kokoro-onnx` (`./scripts/install.sh` le fait) : le téléchargement
+démarre au lancement, la voix du système lit en attendant, et la ligne d'état
+montre la progression (`⬇ voix  Installation de la voix Kokoro 82M · int8 :
+34,0 Mo / 92,4 Mo`). Le téléchargement fini, Kokoro prend la suite à la phrase
+en cours, et le choix s'écrit dans `config.toml`. Un échec — réseau coupé —
+se dit dans la ligne d'état ; le lancement suivant réessaie, en reprenant ce
+qui était déjà reçu. Rien ne se télécharge avec `--engine system`, ni avec un
+binaire sans `kokoro-onnx`.
 
 | Modèle | Taille | Langues | Voix |
 |---|---|---|---|
@@ -140,8 +147,8 @@ cargo test --release --features kokoro-onnx --test startup_timing -- --ignored -
 **Le nombre de sessions suit la famille.** Kokoro calcule en série : une
 session, *Sessions simultanées* valant `auto` par défaut. Un nombre posé à la
 main l'emporte toujours — y compris celui qu'une version antérieure a pu
-écrire dans `config.toml` : remettez-le à `auto` dans la rubrique **Moteur**
-pour en profiter.
+écrire dans `config.toml` : retirez la ligne `sessions` (ou mettez `0`) pour
+en profiter.
 
 ### Ce qui est dit au moteur
 
@@ -219,8 +226,9 @@ lit donc comme il s'écrit.
 
 ### Choisir une voix
 
-Rubrique **Voix**, champ *Voix*, `←` `→` pour parcourir les voix de la langue
-par défaut, `t` pour écouter celle qui est retenue. Rien d'autre à faire.
+Dans les réglages (`s`), lignes *Voix française* et *Voix anglaise* : `←` `→`
+parcourent les voix de la langue, `t` fait écouter celle de la ligne. Le choix
+s'enregistre aussitôt.
 
 Kokoro a une voix par langue de document : `p-fenrir60` en français (la seule),
 `af_bella`, `am_fenrir` ou `af_heart` en anglais. Une voix écrite à la main qui
@@ -228,8 +236,8 @@ n'est plus proposée parle avec la recommandée de sa langue, sans que le fichie
 soit réécrit.
 
 Sans modèle installé — ou sans la feature — le lecteur se replie sur la voix du
-système (`say` sur macOS, `espeak-ng` ailleurs). La barre d'état affiche alors
-`⚠ voix système` et la marche à suivre, en permanence.
+système (`say` sur macOS, `espeak-ng` ailleurs). La ligne d'état montre alors l'installation
+en cours, ou pourquoi elle a échoué.
 
 ## Contrôles
 
@@ -237,26 +245,19 @@ système (`say` sur macOS, `espeak-ng` ailleurs). La barre d'état affiche alors
 |---|---|
 | `Espace` | Lecture / pause |
 | `←` `→` | Phrase précédente / suivante |
-| `Maj+←` `Maj+→` | Recul / avance rapide |
 | `↑` `↓` | Bloc précédent / suivant |
 | `n` `p` | Titre suivant / précédent |
-| `g` · `Début` `Fin` | Début · fin du document |
-| `r` | Reprendre la phrase |
-| `+` `-` | Vitesse |
-| `1` `2` `3` `4` | 0,75× · 1× · 1,5× · 2× |
-| `[` `]` · `m` | Volume · couper le son |
-| `Pg↑` `Pg↓` | Défiler sans déplacer la lecture |
+| `Début` | Début du document |
 | `/` | Chercher dans le document |
 | `N` · `P` | Résultat suivant · précédent |
-| `b` | Poser / retirer un signet |
-| `t` · `B` | Sommaire · signets |
-| `s` | Configuration et modèles |
-| `t` *(dans la configuration)* | Écouter un aperçu de la voix |
-| `--config` | Ouvrir la configuration au lancement |
-| `f` | Revenir à la lecture après un défilement |
-| `w` | Enregistrer la configuration |
-| `?` | Aide |
-| `q` · `Échap` | Quitter — `Échap` referme d'abord un panneau ouvert |
+| `+` `-` | Vitesse (enregistrée) |
+| `t` | Sommaire — `↑` `↓` puis `Entrée` pour y aller |
+| `s` | Réglages |
+| `Pg↑` `Pg↓` | Relire sans déplacer la lecture |
+| `f` | Reprendre le suivi |
+| `?` | Aide : toutes ces touches |
+| `Échap` | Ferme le sommaire ; sinon quitte |
+| `q` | Quitter |
 
 La vitesse agit **sur le son, à la lecture**, sans changer la hauteur : la voix
 accélère sans monter dans les aigus. La synthèse se fait toujours à 1×, et
@@ -270,7 +271,7 @@ entre blocs raccourcissent moins vite que la parole (÷ √vitesse).
 ## Lire en écoutant
 
 Le lecteur est fait pour être suivi des yeux, pas seulement entendu. Trois
-réglages, dans la rubrique **Lecture**, gouvernent ce que l'écran demande à
+réglages, dans les réglages (`s`), gouvernent ce que l'écran demande à
 l'œil :
 
 | Réglage | Défaut | Ce qu'il change |
@@ -321,7 +322,7 @@ trois valeurs sans leur colonne. Chaque cellule est par ailleurs une phrase,
 donc `←` `→` parcourent le tableau cellule par cellule.
 
 **Reprendre où l'on s'était arrêté.** Rouvrir un fichier déjà lu remet la voix
-sur sa dernière phrase, et le dit en bas de l'écran ; `g` ramène au début. Ce
+sur sa dernière phrase, et le dit en bas de l'écran ; `Début` ramène au début. Ce
 qui est retenu n'est pas seulement un rang, c'est la phrase elle-même : un
 paragraphe ajouté en tête décale tout, et la reprise tomberait au milieu d'un
 autre passage. Un document lu jusqu'au bout oublie sa position — le rouvrir le
@@ -340,54 +341,37 @@ sont écrits comme le source des blocs de code.
 
 ## Configuration
 
-Tout se règle depuis l'écran de configuration — `sillon` sans argument, ou `s`
-en cours de lecture :
-
-| Rubrique | Contenu |
-|---|---|
-| **Modèles** | Installer, choisir, supprimer. Taille, langues, espace libre. |
-| **Voix** | Voix, vitesse, hauteur, volume, langue. |
-| **Lecture** | Largeur de colonne, interlignage, règle, blocs de code, pas d'avance. |
-| **Moteur** | Moteur, threads, sessions, préchargement, modèle. |
-
-Le menu porte l'état de chaque rubrique en face de son nom — modèles installés,
-voix et débit retenus, moteur chargé — pour ne pas avoir à l'ouvrir pour le
-savoir.
-
-L'écran fonctionne **par pages**, jamais en colonnes côte à côte. Il s'ouvre sur
-un menu qui n'affiche que les quatre rubriques et leur état :
+Les réglages tiennent sur **une page** — `s` en cours de lecture, ou
+`sillon --config` :
 
 ```
-   ▸ 1  Modèles            3 installés
-     2  Voix               Aria · 1.00×
-     3  Lecture            plein écran · announce
-     4  Moteur             kokoro
-```
+  Réglages   moteur : Kokoro · ONNX
 
-Un chiffre ouvre sa rubrique en plein écran ; `Échap` ramène au menu, `Échap`
-encore ferme l'écran. Les flèches n'ont donc qu'un sens à la fois.
+  ▸ Voix française          p-fenrir60 · française, recommandée
+    Voix anglaise           af_bella · américaine, femme, recommandée
+    Vitesse                 1.00×
+    Largeur de colonne      plein écran
+    Interlignage            une ligne
+    Règle de lecture        oui
+```
 
 | Touche | Effet |
 |---|---|
-| `1` … `4` | Ouvrir une rubrique directement |
-| `↑` `↓` | Se déplacer dans la liste |
-| `Entrée` | Ouvrir · éditer · installer · choisir |
-| `←` `→` | Modifier une valeur |
-| `Échap` | Revenir au menu, puis fermer |
-| `t` | Écouter un aperçu de la voix |
-| `a` | Montrer les réglages sans effet |
-| `w` | Enregistrer |
+| `↑` `↓` | Choisir un réglage |
+| `←` `→` · `Entrée` | Changer sa valeur |
+| `t` | Écouter la voix |
+| `q` · `Échap` · `s` | Fermer les réglages (sans quitter la lecture) |
+| `?` | Aide |
 
-**Les réglages inertes sont masqués par défaut.** Kokoro ne lit que la voix
-et la langue : la hauteur, qui ne règle que la voix du système, n'agit pas sur
-lui. Une ligne discrète dit combien sont cachés, et `a` les rend visibles, marqués
-`(ignoré par ce modèle)`. Un réglage marqué inerte le dit aussi dans son
-explication, au lieu de décrire ce qu'il ferait s'il agissait.
+**Chaque changement s'enregistre aussitôt** dans `config.toml`, sans touche
+à presser, et s'entend tout de suite : la vitesse sur-le-champ, une voix en
+reprenant la phrase. Seul le réglage changé s'écrit : une option de la ligne
+de commande (`--speed 2`) reste à ce lancement. Un `config.toml` illisible
+n'est jamais réécrit ; la page dit alors que le réglage n'est pas enregistré.
 
-Vitesse et volume agissent sur le son et valent pour toutes les voix.
-
-Les valeurs prennent effet immédiatement : vitesse et volume sur-le-champ, les
-autres réglages de voix en régénérant la synthèse déjà préparée.
+Le reste du fichier — moteur, fils de calcul, sessions, blocs de code,
+langue, hauteur — ne s'affiche plus : il garde sa valeur, et se règle à la
+main.
 
 Le fichier vit dans `~/.config/sillon/config.toml`, et peut aussi être écrit
 par `sillon --write-config`.
@@ -432,8 +416,11 @@ Les sections `[sampling]` et `[extra]`, et les clés `compute`, `energy`,
 une configuration qui les porte encore s'ouvre sans erreur, et elles
 disparaissent au prochain enregistrement.
 
-Les mêmes réglages existent en ligne de commande (`--voice`, `--speed`,
-`--pitch`, `--language`, `--sessions`…). Voir `sillon --help`.
+`sillon --help` montre les options de tous les jours (`--clip`, `--speed`,
+`--voice`, `--to-markdown`, `--no-cache`, `--config`). Les autres restent
+acceptées : `--pitch`, `--language`, `--engine`, `--model`, `--family`,
+`--sessions`, `--prefetch`, `--code-blocks`, `--no-autoplay`,
+`--write-config`, `--show-config`, `--check-kokoro`.
 
 ## Architecture
 
@@ -452,7 +439,7 @@ entrée ──▶ doc ──▶ tts ──▶ audio ──▶ app ──▶ tui
 - `text` — nettoyage du formatage et découpage en phrases (`sanitize`), mise en mots des dates, des nombres et des sigles pour la voix seule (`verbalize`).
 - `tts` — contrat moteur/session, pool parallèle, Kokoro (MLX ou ONNX Runtime), repli système.
 - `audio` — file de sortie et position déduite du son réellement joué.
-- `app` — le contrôleur : document, lecture, recherche, signets, écran de configuration. Il ne connaît aucun écran.
+- `app` — le contrôleur : document, lecture, recherche, page des réglages. Il ne connaît aucun écran.
 - `tui` — rendu ratatui du contrôleur, adaptation des touches.
 
 Les sorties natives (ONNX Runtime, espeak-ng) sont détournées vers

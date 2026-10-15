@@ -23,11 +23,6 @@ final class PlaybackTimeTests: XCTestCase {
         XCTAssertEqual(PlaybackTime.timelineValue(elapsed: nil, total: nil, progress: 0.4), "40 %")
     }
 
-    func testTheMenuLine() {
-        XCTAssertEqual(PlaybackTime.menuLine(elapsed: 56, total: 176), "Reste environ 2:00")
-        XCTAssertNil(PlaybackTime.menuLine(elapsed: nil, total: 176))
-    }
-
     func testNothingToReadNamesTheChosenShortcut() {
         let space = KeyboardShortcuts.Shortcut(.space, modifiers: [.control, .option])
         XCTAssertEqual(PlaybackTime.emptyText(shortcut: space), "Rien à lire — ⌃⌥Espace")
@@ -50,20 +45,18 @@ final class MiniPlayerViewTests: XCTestCase {
         worst.speed = 10
         let bar = MiniPlayerBar(model: model, snapshot: worst, message: nil, theme: .paper) { _ in }
         let host = NSHostingView(rootView: bar)
-        host.frame = CGRect(origin: .zero, size: SmallPlacement.size)
+        host.frame = CGRect(origin: .zero, size: MiniPlacement.size)
         host.layoutSubtreeIfNeeded()
         let ideal = host.fittingSize
-        XCTAssertLessThanOrEqual(ideal.width, SmallPlacement.size.width, "déborde de \(ideal.width - SmallPlacement.size.width) pt")
-        XCTAssertLessThanOrEqual(ideal.height, SmallPlacement.size.height)
+        XCTAssertLessThanOrEqual(ideal.width, MiniPlacement.size.width, "déborde de \(ideal.width - MiniPlacement.size.width) pt")
+        XCTAssertLessThanOrEqual(ideal.height, MiniPlacement.size.height)
         // Les textes fixes de la rangée du haut laissent 30 pt à la timeline.
         let fixed = HStack(spacing: 8) {
             Text("99:59").monospacedDigit().fixedSize()
             Text("-99:59").monospacedDigit().fixedSize()
         }.font(.system(size: 13))
-        let room = SmallPlacement.size.width - 2 * MiniBarMetrics.margin - 16 - NSHostingView(rootView: fixed).fittingSize.width
+        let room = MiniPlacement.size.width - 2 * MiniBarMetrics.margin - 16 - NSHostingView(rootView: fixed).fittingSize.width
         XCTAssertGreaterThanOrEqual(room, 30)
-        let speed = NSHostingView(rootView: SpeedLabel(speed: 10).fixedSize().font(.system(size: 13)))
-        XCTAssertLessThanOrEqual(speed.fittingSize.width, MiniBarMetrics.side)
     }
 
     /// Chaque bouton de barre offre une cible d'au moins 32 × 32 pt.
@@ -78,8 +71,8 @@ final class MiniPlayerViewTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(BarButtonMetrics.disc, 36)
         XCTAssertTrue((16...17).contains(BarButtonMetrics.glyph))
         let model = ReaderModel(reader: SillonReader.silent())
-        for view in [AnyView(PlayButton(model: model)), AnyView(VoiceSettingsButton()),
-                     AnyView(MiniTransportButton(item: MiniTransport.after[0]) { _ in })] {
+        for view in [AnyView(PlayButton(model: model)),
+                     AnyView(TransportButton(item: SentenceTransport.next) { _ in })] {
             let size = NSHostingView(rootView: view).fittingSize
             XCTAssertGreaterThanOrEqual(size.width, 32)
             XCTAssertGreaterThanOrEqual(size.height, 32)
@@ -108,60 +101,29 @@ final class MiniPlayerViewTests: XCTestCase {
         let bar = MiniPlayerBar(model: model, snapshot: model.snapshot,
                                 message: "Aucune ligne de ce côté", theme: .paper) { _ in }
         let host = NSHostingView(rootView: bar)
-        host.frame = CGRect(origin: .zero, size: SmallPlacement.size)
+        host.frame = CGRect(origin: .zero, size: MiniPlacement.size)
         host.layoutSubtreeIfNeeded()
-        XCTAssertLessThanOrEqual(host.fittingSize.height, SmallPlacement.size.height)
-        XCTAssertLessThanOrEqual(host.fittingSize.width, SmallPlacement.size.width)
+        XCTAssertLessThanOrEqual(host.fittingSize.height, MiniPlacement.size.height)
+        XCTAssertLessThanOrEqual(host.fittingSize.width, MiniPlacement.size.width)
     }
 
     func testTheBarIs340By88() {
-        XCTAssertEqual(SmallPlacement.size, CGSize(width: 340, height: 88))
+        XCTAssertEqual(MiniPlacement.size, CGSize(width: 340, height: 88))
     }
 
-    /// Ligne précédente, mot précédent, [lecture], mot suivant, ligne suivante.
-    func testTheTransportButtonsSendTheRightActions() {
-        let all = MiniTransport.before + MiniTransport.after
-        XCTAssertEqual(all.map(\.identifier), ["ligne-precedente", "mot-precedent", "mot-suivant", "ligne-suivante"])
-        XCTAssertEqual(all.map(\.action), [.line(delta: -1), .command(.words(delta: -1)),
-                                           .command(.words(delta: 1)), .line(delta: 1)])
-        XCTAssertEqual(MiniTransport.before.count, 2)
-    }
-
-    func testTheTransportButtonsHaveLabelsAndHelp() {
-        let all = MiniTransport.before + MiniTransport.after
-        XCTAssertEqual(all.map(\.label), ["Ligne précédente", "Mot précédent", "Mot suivant", "Ligne suivante"])
-        XCTAssertEqual(all.map(\.help), ["Ligne précédente (↑)", "Mot précédent (⌥←)",
-                                         "Mot suivant (⌥→)", "Ligne suivante (↓)"])
-    }
-
-    /// Ces actions sont celles des touches : ↑ ↓ et ⌥← ⌥→.
-    func testTheButtonsMatchTheKeys() {
-        let all = MiniTransport.before + MiniTransport.after
-        let keys: [Sillon.KeyPress] = [Sillon.KeyPress(characters: "", keyCode: KeyCode.up),
-                                Sillon.KeyPress(characters: "", keyCode: KeyCode.left, option: true),
-                                Sillon.KeyPress(characters: "", keyCode: KeyCode.right, option: true),
-                                Sillon.KeyPress(characters: "", keyCode: KeyCode.down)]
-        XCTAssertEqual(all.map(\.action), keys.map { KeyMap.action(for: $0) })
-    }
-
-    func testAButtonSendsItsActionOnClick() {
-        var sent: [ReaderAction] = []
-        let item = MiniTransport.after[0]
-        MiniTransportButton(item: item) { sent.append($0) }.fire()
-        XCTAssertEqual(sent, [.command(.words(delta: 1))])
-    }
-
-    func testTheTransportIsDisabledWithoutADocument() {
-        let model = ReaderModel(reader: SillonReader.silent())
-        XCTAssertFalse(model.snapshot.hasDocument)
-        XCTAssertFalse(MiniTransport.enabled(snapshot: model.snapshot))
+    /// Le mini avance par phrase, comme le lecteur, et s'agrandit.
+    func testTheMiniMovesBySentenceAndGrows() {
+        XCTAssertEqual(MiniControlsRow.transport.map(\.identifier), ["phrase-precedente", "phrase-suivante"])
+        XCTAssertEqual(MiniControlsRow.transport.map(\.action),
+                       [.command(.sentences(delta: -1)), .command(.sentences(delta: 1))])
+        XCTAssertEqual(MiniControlsRow.growAction, .toggleSize)
     }
 
     func testTheEmptyBarFitsItsHeight() {
         let model = ReaderModel(reader: SillonReader.silent())
         let host = NSHostingView(rootView: MiniPlayerView(model: model, theme: .paper) { _ in })
-        host.frame = CGRect(origin: .zero, size: SmallPlacement.size)
+        host.frame = CGRect(origin: .zero, size: MiniPlacement.size)
         host.layoutSubtreeIfNeeded()
-        XCTAssertLessThanOrEqual(host.fittingSize.height, SmallPlacement.size.height)
+        XCTAssertLessThanOrEqual(host.fittingSize.height, MiniPlacement.size.height)
     }
 }

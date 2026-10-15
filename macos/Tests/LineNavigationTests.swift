@@ -136,4 +136,24 @@ final class LineNavigationTests: XCTestCase {
         XCTAssertEqual(move(from: avant, 1), apres)
         XCTAssertEqual(move(from: apres, -1), avant)
     }
+
+    /// « Lire à partir d'ici » : le mot sous le pointeur, sinon le suivant
+    /// de la phrase ; un bloc sans mot, sa phrase.
+    func testReadFromHereTargetsTheWordUnderThePointer() {
+        // « Un deux. Trois » : phrase 0 = 0…7, phrase 1 = 9…13.
+        let words = [WordPlace(range: NSRange(location: 0, length: 2), sentence: 0, word: 0, index: 0),
+                     WordPlace(range: NSRange(location: 3, length: 5), sentence: 0, word: 1, index: 1),
+                     WordPlace(range: NSRange(location: 9, length: 5), sentence: 1, word: 0, index: 2)]
+        let sentences: [UInt32: NSRange] = [0: NSRange(location: 0, length: 8), 1: NSRange(location: 9, length: 5),
+                                            2: NSRange(location: 15, length: 20)]
+        XCTAssertEqual(LineNavigator.readTarget(at: 4, words: words, sentences: sentences),
+                       .seekToWord(sentence: 0, word: 1))
+        XCTAssertEqual(LineNavigator.readTarget(at: 3, words: words, sentences: sentences),
+                       .seekToWord(sentence: 0, word: 1), "au début du mot")
+        XCTAssertEqual(LineNavigator.readTarget(at: 8, words: words, sentences: sentences),
+                       .seekToWord(sentence: 1, word: 0), "entre deux phrases : la suivante")
+        XCTAssertEqual(LineNavigator.readTarget(at: 20, words: words, sentences: sentences),
+                       .seekTo(sentence: 2), "un bloc de code : sa phrase")
+        XCTAssertNil(LineNavigator.readTarget(at: 99, words: words, sentences: sentences))
+    }
 }

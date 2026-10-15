@@ -1,6 +1,10 @@
-//! Barre de lecture, ligne d'état, panneaux (sommaire, signets) et aide.
+//! Barre de lecture, ligne d'état, sommaire et aide.
 
 use super::*;
+
+/// Le rappel permanent de la ligne d'état, après « s réglages · ? » : les
+/// touches qu'un nouveau venu cherche d'abord.
+pub(super) const REMINDER: &str = " aide · espace lecture · ← → phrase · / chercher · t sommaire ";
 
 pub(super) fn render_player(frame: &mut Frame, app: &App, area: Rect) {
     let doc = app.doc();
@@ -71,14 +75,6 @@ pub(super) fn render_player(frame: &mut Frame, app: &App, area: Rect) {
             Style::default().fg(BRIGHT).add_modifier(Modifier::BOLD),
         ),
         Span::styled(
-            if app.player.is_muted() {
-                "  🔇 coupé ".to_string()
-            } else {
-                format!("  🔊 {:>3.0} % ", app.player.volume() * 100.0)
-            },
-            Style::default().fg(NORMAL),
-        ),
-        Span::styled(
             format!("  {} ", app.engine_name()),
             Style::default().fg(DIM),
         ),
@@ -96,9 +92,6 @@ pub(super) fn render_player(frame: &mut Frame, app: &App, area: Rect) {
             format!("  ⚠ {} échec(s)", stats.failed),
             Style::default().fg(ACCENT),
         ));
-    }
-    if app.bookmarked_here() {
-        second.push(Span::styled("  ⚑ signet", Style::default().fg(ACCENT)));
     }
 
     let block = Block::default()
@@ -136,11 +129,6 @@ pub(super) fn status_spans(app: &App) -> Vec<Span<'static>> {
         return spans;
     }
 
-    // Un repli sur la voix du système est un état dégradé : il doit se voir en
-    // permanence, et dire comment en sortir. C'est la seule façon de rendre
-    // l'écran de configuration découvrable sans avoir lu de documentation.
-    let on_fallback = !models::available().is_empty() && models::first_installed().is_none();
-
     // La vue figée est un état, pas un événement : il survit au message qui
     // l'a annoncé, sans quoi on cherche pourquoi le texte ne défile plus.
     if !app.view.is_following() {
@@ -157,20 +145,14 @@ pub(super) fn status_spans(app: &App) -> Vec<Span<'static>> {
             format!(" {} ", app.status()),
             Style::default().fg(ACCENT),
         ));
-    } else if on_fallback {
+    } else if let Some(install) = app.voice_install_status() {
+        // L'installation de la voix est un état, pas un événement : elle se
+        // voit tant qu'elle dure, et son échec jusqu'au prochain lancement.
         spans.push(Span::styled(
-            " ⚠ voix système ",
+            " ⬇ voix ",
             Style::default().fg(Color::Black).bg(ACCENT).add_modifier(Modifier::BOLD),
         ));
-        spans.push(Span::styled(" appuyez sur ", Style::default().fg(NORMAL)));
-        spans.push(Span::styled(
-            "s",
-            Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
-        ));
-        spans.push(Span::styled(
-            " pour installer un vrai modèle ",
-            Style::default().fg(NORMAL),
-        ));
+        spans.push(Span::styled(format!(" {install} "), Style::default().fg(NORMAL)));
     } else if let Some(notice) = app.notices.last() {
         spans.push(Span::styled(format!(" {notice} "), Style::default().fg(DIM)));
     } else {
@@ -185,10 +167,7 @@ pub(super) fn status_spans(app: &App) -> Vec<Span<'static>> {
             "?",
             Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
         ));
-        spans.push(Span::styled(
-            " aide · espace lecture · / chercher · n/p titre · b signet ",
-            Style::default().fg(FAINT),
-        ));
+        spans.push(Span::styled(REMINDER, Style::default().fg(FAINT)));
     }
 
     // Où en est la recherche, tant qu'elle a des résultats à parcourir.
@@ -237,7 +216,6 @@ pub(super) fn current_punctuation(app: &App) -> Option<&'static str> {
 pub(super) fn render_panel(frame: &mut Frame, app: &App, area: Rect) {
     let (title, lines) = match app.panel {
         Panel::Contents => ("Sommaire", contents_lines(app)),
-        Panel::Bookmarks => ("Signets", bookmark_lines(app)),
         Panel::None => return,
     };
 
@@ -289,35 +267,6 @@ pub(super) fn contents_lines(app: &App) -> Vec<Line<'static>> {
             ))
         })
         .collect()
-}
-
-pub(super) fn bookmark_lines(app: &App) -> Vec<Line<'static>> {
-    let items: Vec<_> = app.bookmarks.for_document(&app.source).collect();
-    if items.is_empty() {
-        return vec![Line::from(Span::styled(
-            "Aucun signet. `b` pour en poser un.",
-            Style::default().fg(DIM),
-        ))];
-    }
-
-    let mut lines = Vec::new();
-    for (i, bookmark) in items.iter().enumerate() {
-        let selected = i == app.selection;
-        let style = if selected {
-            Style::default().bg(ACCENT).fg(Color::Black)
-        } else {
-            Style::default().fg(NORMAL)
-        };
-        lines.push(Line::from(Span::styled(
-            truncate(&bookmark.snippet, 34),
-            style,
-        )));
-        lines.push(Line::from(Span::styled(
-            format!("  {} · {}", bookmark.timestamp(), truncate(&bookmark.section_title, 16)),
-            Style::default().fg(FAINT),
-        )));
-    }
-    lines
 }
 
 pub(super) fn render_help(

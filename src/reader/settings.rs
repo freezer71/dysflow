@@ -46,6 +46,11 @@ pub struct SettingsView {
     pub output_device: String,
     /// `[voice.per_language]` : la voix de chaque langue (Kokoro).
     pub voices_by_language: BTreeMap<String, String>,
+    // [reading], pour l'app seule
+    /// La police du texte : l'une des `config::READING_FONTS`.
+    pub reading_font: String,
+    /// La taille du texte, en points (14 à 40).
+    pub reading_size: f32,
 }
 
 impl SettingsView {
@@ -71,6 +76,8 @@ impl SettingsView {
             keep_voice_minutes: c.app.keep_voice_minutes,
             output_device: c.app.output_device.clone(),
             voices_by_language: c.voice.per_language.clone(),
+            reading_font: c.reading.font.clone(),
+            reading_size: c.reading.size,
         }
     }
 }
@@ -100,6 +107,8 @@ pub struct SettingsPatch {
     pub output_device: Option<String>,
     /// La voix d'une langue : `("en", "am_fenrir")`.
     pub voice_for_language: Option<(String, String)>,
+    pub reading_font: Option<String>,
+    pub reading_size: Option<f32>,
 }
 
 fn set<T: Clone>(slot: &mut T, value: &Option<T>) {
@@ -128,6 +137,8 @@ impl SettingsPatch {
         set(&mut c.reading.reading_ruler, &self.reading_ruler);
         set(&mut c.app.keep_voice_minutes, &self.keep_voice_minutes);
         set(&mut c.app.output_device, &self.output_device);
+        set(&mut c.reading.font, &self.reading_font);
+        set(&mut c.reading.size, &self.reading_size);
         if let Some((language, voice)) = &self.voice_for_language {
             c.voice.per_language.insert(language.clone(), voice.clone());
         }
@@ -701,6 +712,8 @@ mod tests {
             keep_voice_minutes: Some(30),
             output_device: Some("Casque".into()),
             voice_for_language: Some(("en".into(), "am_fenrir".into())),
+            reading_font: Some("atkinson".into()),
+            reading_size: Some(30.0),
         };
         let expected = SettingsView {
             voice: "F2".into(),
@@ -723,6 +736,8 @@ mod tests {
             keep_voice_minutes: 30,
             output_device: "Casque".into(),
             voices_by_language: BTreeMap::from([("en".to_string(), "am_fenrir".to_string())]),
+            reading_font: "atkinson".into(),
+            reading_size: 30.0,
         };
         assert_eq!(r.apply_patch(&patch, Instant::now()), expected);
         assert_eq!(r.settings(), expected);
@@ -755,6 +770,8 @@ mod tests {
         assert_eq!(effect_of(|c| c.reading.seek_step = 9), Display);
         assert_eq!(effect_of(|c| c.reading.autoplay = false), Display);
         assert_eq!(effect_of(|c| c.app.keep_voice_minutes = 2), Display);
+        assert_eq!(effect_of(|c| c.reading.font = "atkinson".into()), Display, "la police ne touche pas la voix");
+        assert_eq!(effect_of(|c| c.reading.size = 30.0), Display);
         assert_eq!(effect_of(|c| c.voice.volume = 0.5), Immediate);
         assert_eq!(effect_of(|c| c.voice.speed = 1.5), Immediate, "la vitesse s'applique au son");
         assert_eq!(effect_of(|c| c.voice.voice = "F1".into()), Resynthesize);
@@ -806,10 +823,14 @@ mod tests {
                 threads: Some(0),
                 speed: Some(9.0),
                 volume: Some(-1.0),
+                reading_font: Some("comic".into()),
+                reading_size: Some(99.0),
                 ..Default::default()
             },
             Instant::now(),
         );
+        assert_eq!(applied.reading_font, "literata");
+        assert_eq!(applied.reading_size, 40.0);
         assert_eq!(applied.line_spacing, 3);
         assert_eq!(applied.seek_step, 50);
         assert_eq!(applied.threads, 1);
@@ -1099,5 +1120,46 @@ mod tests {
         assert_eq!(crate::reader::view::document(&r).sentence_count, 2);
         r.open_text("Trois.", "b", Instant::now());
         assert!(r.resting_document().is_none());
+    }
+
+    #[test]
+    fn a_font_or_size_change_never_reloads_nor_interrupts_the_voice() {
+        let (mut r, loads) = counting_reader();
+        let t0 = Instant::now();
+        r.open_text("Un. Deux. Trois.", "a", t0);
+        r.with_session(t0, |app| app.toggle_play());
+        let revision = r.revision();
+        r.apply_patch(
+            &SettingsPatch { reading_font: Some("atkinson".into()), reading_size: Some(30.0), ..Default::default() },
+            t0,
+        );
+        assert_eq!(loads.load(Ordering::SeqCst), 1, "aucune voix rechargée");
+        assert_eq!(r.revision(), revision, "le document n'est pas republié");
+        let app = r.session().unwrap();
+        assert!(app.player.is_playing(), "la lecture continue");
+        assert_eq!(app.config.reading.font, "atkinson");
+        assert_eq!(app.config.reading.size, 30.0);
+    }
+
+    #[test]
+    fn font_and_size_are_written_to_config_toml() {
+        let dir = std::env::temp_dir().join(format!("sillon-police-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        let mut r = reader();
+        r.set_config_path(Some(path.clone()));
+        let applied = r
+            .update_settings(
+                &SettingsPatch { reading_font: Some("openDyslexic".into()), reading_size: Some(18.0), ..Default::default() },
+                Instant::now(),
+            )
+            .unwrap();
+        let written: Config = toml::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(applied.reading_font, "openDyslexic");
+        assert_eq!(applied.reading_size, 18.0);
+        assert_eq!(written.reading.font, "openDyslexic");
+        assert_eq!(written.reading.size, 18.0);
     }
 }

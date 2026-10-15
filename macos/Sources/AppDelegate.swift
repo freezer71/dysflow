@@ -1,6 +1,7 @@
 import AppKit
 import KeyboardShortcuts
 import MediaPlayer
+import UniformTypeIdentifiers
 
 /// Point d'entrée AppKit : le lecteur vit aussi longtemps que l'app.
 @MainActor
@@ -52,10 +53,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var menuObserver: NSObjectProtocol?
     /// Les sorties audio branchées ou retirées : la liste se relit.
     private var outputWatcher: AudioDeviceWatcher?
-    /// Les pages de notes ; leur fenêtre s'ouvre quand on lance sillon soi-même.
-    private(set) var notes: NotesWindowController?
-    /// Lancé par macOS à l'ouverture de session : la fenêtre des notes ne
-    /// s'impose pas.
+    /// Lancé par macOS à l'ouverture de session : rien ne s'impose.
     private var launchedAtLogin = false
 
     /// Fichiers reçus avant que le lecteur soit prêt (au lancement, macOS
@@ -75,17 +73,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         openFile(files.last!)
     }
 
-    /// La fenêtre des notes fermée : rien à lire, le panneau se retire aussi
-    /// (sillon reste dans la barre des menus) ; en pleine lecture, il reste
-    /// pour garder la main sur le son.
-    private func notesClosed() {
-        guard !isUITesting, !isUnitTesting, let model, let panel else { return }
-        model.refresh()
-        if Self.hidesPanelWhenNotesClose(playing: model.snapshot.playing) { panel.apply(.hide) }
-    }
-
-    nonisolated static func hidesPanelWhenNotesClose(playing: Bool) -> Bool { !playing }
-
     private func openFile(_ url: URL) {
         guard let model, let panel else { return }
         Task { @MainActor in
@@ -96,8 +83,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 } catch {
                     model.message = "Impossible d'ouvrir « \(url.lastPathComponent) »"
                 }
-                panel.apply(.readSelection)
+                panel.show()
             }
+        }
+    }
+
+    /// ⌘O, « Ouvrir un fichier… » : le panneau d'ouverture, au-dessus du
+    /// lecteur (qui flotte). Une app de barre des menus passe d'abord au
+    /// premier plan, sinon le panneau s'ouvrirait derrière l'application active.
+    func chooseFile() {
+        let chooser = NSOpenPanel()
+        chooser.allowedContentTypes = OpenableFiles.types
+        chooser.allowsMultipleSelection = false
+        chooser.canChooseDirectories = false
+        chooser.message = "Choisissez un texte, un PDF ou une image à lire"
+        chooser.level = NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue + 1)
+        NSApp.activate()
+        chooser.begin { [weak self] response in
+            guard response == .OK, let url = chooser.url else { return }
+            MainActor.assumeIsolated { self?.openFile(url) }
         }
     }
 
@@ -108,10 +112,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// sillon déjà lancé, rouvert depuis le Dock, le Finder, Spotlight ou un
-    /// lanceur : la page de notes.
+    /// lanceur : le lecteur.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        notes?.show()
+        guard let model else { return false }
+        model.refresh()
+        present(LaunchKind.reopenPresentation(hasDocument: model.snapshot.hasDocument))
         return false
+    }
+
+    /// Montre ce que décide `LaunchKind`. Le lecteur vide, toujours en
+    /// grand ; la dernière taille, par « Afficher ».
+    private func present(_ presentation: LaunchPresentation) {
+        guard let panel else { return }
+        switch presentation {
+        case .nothing: break
+        case .emptyReader: panel.apply(.choose(.reader))
+        case .lastSize: panel.show()
+        }
     }
 
     /// Le modèle ne suit rien en pause et en arrière-plan : à l'ouverture
@@ -155,11 +172,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.reply(toApplicationShouldTerminate: true)
     }
 
-    /// Les notes s'écrivent d'un coup (synchrone), à la toute fin.
-    func applicationWillTerminate(_ notification: Notification) {
-        notes?.store.flush()
-    }
-
     func applicationDidFinishLaunching(_ notification: Notification) {
         ReadingFont.registerBundled()
         Self.shared = self
@@ -201,51 +213,60 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model = ReaderModel(reader: reader)
         model.refresh()
         let settings = SettingsOpener.shared
-        panel = PanelController(model: model, openSettings: { settings.open(tab: $0) })
+        panel = PanelController(model: model, openSettings: { settings.open() },
+                                readClipboard: { [weak self] in Task { @MainActor in await self?.read() } },
+                                chooseFile: { [weak self] in self?.chooseFile() },
+                                openFile: { [weak self] in self?.openFile($0) })
         transport = Transport(model: model)
-        // Sous les tests, un dossier jetable : jamais les notes de l'utilisateur.
-        let notesDirectory = readerIsSilent
-            ? FileManager.default.temporaryDirectory.appendingPathComponent("sillon-notes-\(UUID().uuidString)")
-            : NotesStore.userDirectory
-        notes = NotesWindowController(store: NotesStore(directory: notesDirectory), read: { [model, panel] page in
-            guard let model, let panel else { return }
-            model.open(text: page.markdown, source: "note")
-            panel.apply(.readSelection)
-        }, closed: { [weak self] in self?.notesClosed() })
         services.model = model
         services.panel = panel
-        services.transport = transport
-        services.notes = notes
-        services.read = { [weak self] in await self?.read() }
+        services.readSelection = { [weak self] in await self?.readSelection() }
+        services.chooseFile = { [weak self] in self?.chooseFile() }
         menuObserver = Self.refreshWhenAMenuOpens { [model] in model?.refresh() }
         outputWatcher = AudioDeviceWatcher { [weak model] in model?.refreshOutputs() }
         Task { [model] in await model?.loadOutput() }
         if !readerIsSilent { installNowPlaying() }
-        // Le mode laissé à la dernière fermeture (sous les tests : suite
-        // vidée, donc l'arrière-plan).
-        panel.restore()
         if isUITesting {
-            model.open(text: Self.sample, source: "exemple")
-            if ProcessInfo.processInfo.arguments.contains("--show-panel") { panel.apply(.choose(.medium)) }
-            if ProcessInfo.processInfo.arguments.contains("--show-settings") {
+            let arguments = ProcessInfo.processInfo.arguments
+            // `--ui-testing-vide` : rien d'ouvert, comme un premier lancement.
+            if !arguments.contains("--ui-testing-vide") { model.open(text: Self.sample, source: "exemple") }
+            if arguments.contains("--show-panel") { panel.apply(.choose(.reader)) }
+            if arguments.contains("--show-settings") {
                 // L'icône de la barre des menus donne l'action dès qu'elle paraît.
                 settings.open()
             }
-            if ProcessInfo.processInfo.arguments.contains("--show-notes") { notes?.show() }
+            // Le seul ⌃⌥S, pour son test d'interface (quitter d'abord le
+            // sillon installé, qui tiendrait le même raccourci).
+            if arguments.contains("--ui-testing-raccourcis") { installToggleShortcut() }
+            // Le chemin d'un lancement fait à la main, sous les tests.
+            if arguments.contains("--ui-testing-lancement-manuel") {
+                model.refresh()
+                present(LaunchKind.presentation(atLogin: false, withFiles: false,
+                                                hasDocument: model.snapshot.hasDocument))
+            }
         }
         guard !isUITesting, !isUnitTesting else { return }
+        // Police et taille : des préférences vers config.toml, une fois.
+        Task { @MainActor [model = model!, panel = panel!] in
+            model.refresh()
+            if await ReadingPreferencesMigration.run(defaults: .standard, backend: model,
+                                                     configUnreadable: model.snapshot.configUnreadable) {
+                panel.reloadReading()
+            }
+        }
         // Les raccourcis d'abord : l'alerte d'accessibilité bloque (runModal).
         installShortcuts()
         LoginItem.enableOnFirstLaunch()
         Onboarding.runIfNeeded()
         startKokoro()
-        // Lancé avec un fichier : le panneau sur lui. Lancé à la main : la
-        // page de notes, comme une app ordinaire.
+        // Lancé avec un fichier : le lecteur sur lui. Lancé à la main : le
+        // lecteur. À la connexion : rien.
         if let file = pendingFiles.last {
             pendingFiles = []
             openFile(file)
-        } else if !launchedAtLogin, !launchedWithFiles {
-            notes?.show()
+        } else {
+            present(LaunchKind.presentation(atLogin: launchedAtLogin, withFiles: launchedWithFiles,
+                                            hasDocument: model.snapshot.hasDocument))
         }
     }
 
@@ -259,34 +280,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// Le passage à Kokoro (une fois, avec un avis), puis la préparation des
-    /// noyaux Metal, maintenant et à chaque fois que la voix active a pu
-    /// changer.
+    /// Le passage à Kokoro (une fois, avec un avis), l'installation
+    /// automatique de la voix, puis la préparation des noyaux Metal,
+    /// maintenant et à chaque fois que la voix active a pu changer.
     private func startKokoro() {
         model.onVoiceMayHaveChanged = { [weak self] in self?.kokoroBecameActive() }
         // Le passage écrit `config.toml` : hors du fil principal, puis la
         // préparation, sur la voix qui en sort.
         migration = Task { @MainActor [weak self] in
             guard let self, let model = self.model else { return }
-            if let notice = Self.launchNotice(engine: await model.migrateVoice(), offer: model.snapshot.offer) {
+            // L'avis du passage (s'il y en a un) se dit une fois dans le lecteur.
+            let engine = await model.migrateVoice()
+            if let notice = Self.switchNotice(engine: engine, offer: model.snapshot.offer) {
                 model.message = notice
                 self.panel.post(notice)
             }
+            // Puis la voix s'installe seule s'il le faut (rapide : le
+            // téléchargement, lui, court à part).
+            await model.installDefaultVoice()
             self.kokoroBecameActive()
         }
+    }
+
+    /// L'avis du lancement : seulement un passage fait. Une proposition
+    /// (`offer`) n'a plus de bouton pour y répondre : sa phrase se tait, la
+    /// voix par défaut l'accepte d'elle-même.
+    static func switchNotice(engine: String?, offer: VoiceOfferView?) -> String? {
+        offer == nil ? engine : nil
     }
 
     /// Le passage au lancement, gardé : une lecture l'attend après la
     /// capture (le ⌘C simulé ne patiente pas), pour partir sur la bonne voix.
     private var migration: Task<Void, Never>?
-
-    /// L'avis du lancement : une offre en attente se dit à la façon de
-    /// l'app (taille comprise, où y répondre) ; sinon l'avis du moteur
-    /// (passage fait).
-    static func launchNotice(engine: String?, offer: VoiceOfferView?) -> String? {
-        if let offer { return VoiceTab.launchNotice(offer) }
-        return engine
-    }
 
     /// Kokoro est peut-être devenu la voix active (lancement, voix choisie,
     /// proposition acceptée, téléchargement fini) : les noyaux Metal se
@@ -327,9 +352,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 readClipboard: { ClipboardSnapshot(pasteboard: pasteboard).read() },
                 openImage: { try await model.openImage($0) },
                 say: { model.message = $0 },
-                // Le mode en cours ; depuis l'arrière-plan, le moyen.
-                show: { panel.apply(.readSelection) }
+                // La forme en cours ; masqué, la dernière taille.
+                show: { panel.show() }
             ).run()
+        }
+    }
+
+    /// « Lire la sélection » du menu : comme ⌃⌥Espace ; sans la chaîne de
+    /// capture (sous les tests), le presse-papiers seul.
+    func readSelection() async {
+        if let chain = captureChain {
+            await read(capture: { await chain.capture() })
+        } else {
+            await read()
         }
     }
 
@@ -354,16 +389,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             CopySource(pasteboard: SystemPasteboard(), keys: SystemKeystrokes()),
         ])
         KeyboardShortcuts.onKeyUp(for: .readSelection) { [unowned self] in
-            Task { @MainActor in
-                guard let chain = self.captureChain else { return }
-                await self.read(capture: { await chain.capture() })
-            }
+            Task { @MainActor in await self.readSelection() }
         }
-        KeyboardShortcuts.onKeyUp(for: .showPanel) { [unowned self] in self.panel.show() }
-        // Sans document, rien ne part (Transport).
-        KeyboardShortcuts.onKeyUp(for: .playPause) { [unowned self] in _ = self.transport.perform(.toggle) }
-        KeyboardShortcuts.onKeyUp(for: .nextSentence) { [unowned self] in _ = self.transport.perform(.next) }
-        KeyboardShortcuts.onKeyUp(for: .previousSentence) { [unowned self] in _ = self.transport.perform(.previous) }
+        installToggleShortcut()
+    }
+
+    /// ⌃⌥S : afficher le lecteur dans sa dernière taille, ou le masquer.
+    private func installToggleShortcut() {
+        KeyboardShortcuts.onKeyUp(for: .showPanel) { [unowned self] in self.panel.toggleVisibility() }
     }
 
     static let sample = """

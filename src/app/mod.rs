@@ -16,7 +16,6 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crate::audio::Player;
-use crate::bookmark::BookmarkStore;
 use crate::position::PositionStore;
 use crate::config::Config;
 use crate::doc::{Document, DocumentBuilder};
@@ -25,7 +24,7 @@ use crate::input::InputEvent;
 use crate::models;
 use crate::tts::preview::{self, Previewer};
 use crate::tts::{self, Synthesizer, TtsEngine, TtsParams};
-use crate::app::config::{ConfigScreen, Field, Page, Section};
+use crate::app::config::{ConfigScreen, Field};
 use crate::config::Effect;
 use crate::app::pace::Pace;
 use crate::app::search::Search;
@@ -36,10 +35,9 @@ use crate::app::view::ViewAnchor;
 pub enum Panel {
     None,
     Contents,
-    Bookmarks,
 }
 
-/// Réglages d'affichage du texte, tels que la rubrique « Lecture » les fixe.
+/// Réglages d'affichage du texte, tels que la page des réglages les fixe.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ReadingStyle {
     /// Lignes vides insérées entre deux lignes de texte.
@@ -65,7 +63,6 @@ pub struct App {
     /// Dernier échec d'aperçu, pour l'app (le terminal le lit dans `screen`).
     pub preview_error: Option<String>,
     pub player: Player,
-    pub bookmarks: BookmarkStore,
     /// Positions retenues d'une session à l'autre.
     pub positions: PositionStore,
     /// Vrai quand ce document a une identité stable, donc une position qui
@@ -122,8 +119,10 @@ pub struct App {
     /// Vrai dès la première phrase produite : le démarrage ne s'annonce qu'une
     /// fois, même quand un changement de voix vide le cache ensuite.
     synthesis_started: bool,
-    /// Un choix fait à l'écran attend d'être écrit dans `config.toml`.
-    config_dirty: bool,
+
+    /// Où l'enregistrement automatique écrit (`config.toml` ; un fichier
+    /// temporaire sous test). `None` : rien ne s'écrit.
+    config_target: Option<std::path::PathBuf>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -212,9 +211,7 @@ impl App {
         player.set_volume(config.voice.volume);
         player.set_speed(config.voice.speed);
 
-        let (bookmarks, bookmark_notice) = BookmarkStore::load();
         let mut notices = notices;
-        notices.extend(bookmark_notice);
         if let Some(err) = player.error() {
             notices.push(format!("sortie audio indisponible : {err}"));
         }
@@ -232,7 +229,6 @@ impl App {
             previewer,
             preview_error: None,
             player,
-            bookmarks,
             positions: PositionStore::load(),
             remembers_place: false,
             config,
@@ -262,7 +258,7 @@ impl App {
             notices,
             started_at: Instant::now(),
             synthesis_started: false,
-            config_dirty: false,
+            config_target: Config::path(),
         };
         if !has_stream {
             app.builder.finish();
@@ -880,15 +876,6 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn a_text_setting_reloads_the_engine_only_when_it_names_the_model() {
-        let mut app = app_reading(DOC);
-        let engine = app.synth.engine();
-        app.config_set_text(Field::Family, "kokoro".to_string());
-        assert!(!Arc::ptr_eq(&engine, &app.synth.engine()), "la famille nomme le modèle");
-    }
-
-
-    #[test]
     fn the_screen_names_the_file_not_its_whole_path() {
         let mut app = app_reading(DOC);
         app.source = "/tres/long/chemin/vers/spec.pdf".to_string();
@@ -901,13 +888,11 @@ pub(crate) mod tests {
         app.source = "/docs/test.md".to_string();
         let snippet = app.doc().sentence(2).unwrap().written();
         app.positions.record("test.md", 2, &snippet);
-        app.bookmarks.toggle("test.md", 1, 0, "Titre", "x");
 
         app.adopt_former_identity("test.md");
         app.resume_where_left();
 
         assert_eq!(app.current_sentence(), 2);
-        assert!(app.bookmarks.contains("/docs/test.md", 1));
     }
 
 
@@ -923,14 +908,201 @@ pub(crate) mod tests {
         assert_eq!(app.skipped_count(), 0);
     }
 
+    /// Un fichier `config.toml` propre au test, dans un dossier neuf.
+    fn kokoro_int8() -> &'static models::ModelPackage {
+        models::CATALOG.iter().find(|p| p.id == "kokoro_82m_int8").unwrap()
+    }
+
     #[test]
-    fn choosing_a_model_asks_for_the_configuration_to_be_written() {
-        // Le choix ne survivait pas au relancement : seul `w` écrivait, et le
-        // premier modèle installé revenait à la place de celui qu'on avait pris.
+    fn the_system_voice_asked_for_installs_nothing() {
         let mut app = app_reading(DOC);
-        assert!(!app.config_needs_saving());
-        app.select_model(&models::CATALOG[0]);
-        assert!(app.config_needs_saving());
+        app.config.engine.engine = "system".into(); // comme `--engine system`
+        app.install_default_voice();
+        assert!(app.screen.download.is_none());
+        assert_eq!(app.voice_install_status(), None);
+    }
+
+    /// Sans `kokoro-onnx`, le catalogue du terminal est vide : rien à
+    /// télécharger. (Avec la feature, l'appel téléchargerait pour de bon :
+    /// le test n'existe pas.)
+    #[cfg(not(feature = "kokoro-onnx"))]
+    #[test]
+    fn a_terminal_without_kokoro_installs_nothing() {
+        let mut app = app_reading(DOC);
+        app.install_default_voice();
+        assert!(app.screen.download.is_none());
+        assert_eq!(app.voice_install_status(), None);
+    }
+
+    #[test]
+    fn the_install_shows_its_progress() {
+        let mut app = app_reading(DOC);
+        app.screen.download = Some(models::Download::fake(kokoro_int8(), false));
+        let status = app.voice_install_status().expect("une progression");
+        assert!(status.contains("Installation de la voix"), "{status}");
+        assert!(status.contains("voix du système lit en attendant"), "{status}");
+    }
+
+    #[test]
+    fn a_failed_install_says_so_and_writes_nothing() {
+        let (dir, path) = autosave_target("echec");
+        let mut app = app_reading(DOC);
+        app.set_config_target(Some(path.clone()));
+        let family = app.config.engine.family.clone();
+        app.screen.download = Some(models::Download::fake_ended(
+            kokoro_int8(),
+            models::Progress::Failed("réseau injoignable".into()),
+        ));
+        app.tick();
+        let status = app.voice_install_status().expect("l'échec se dit");
+        let written = path.exists();
+        std::fs::remove_dir_all(&dir).ok();
+        assert!(status.contains("réseau injoignable"), "{status}");
+        assert!(status.contains("prochain lancement"), "{status}");
+        assert_eq!(app.config.engine.family, family, "la voix du système continue");
+        assert!(!written, "config.toml n'est pas touché");
+    }
+
+    #[test]
+    fn a_finished_install_becomes_the_voice_and_is_written() {
+        let (dir, path) = autosave_target("fini");
+        let mut app = app_reading(DOC);
+        app.set_config_target(Some(path.clone()));
+        app.screen.download = Some(models::Download::fake(kokoro_int8(), true));
+        app.tick();
+        let written = Config::read_from(&path).unwrap();
+        std::fs::remove_dir_all(&dir).ok();
+        assert_eq!(app.config.engine.family, "kokoro");
+        assert_eq!(written.engine.family, "kokoro");
+        assert_eq!(app.voice_install_status(), None, "plus rien à dire");
+    }
+
+    #[test]
+    fn the_footer_offers_to_quit_only_when_closing_quits() {
+        let mut app = app_reading("");
+        assert!(app.config_closes_to_quit(), "rien à lire, entrée complète");
+        app.input_done = false;
+        assert!(!app.config_closes_to_quit(), "l'entrée arrive encore : fermer ne quitte pas");
+        let mut reading = app_reading(DOC);
+        reading.input_done = true;
+        assert!(!reading.config_closes_to_quit());
+    }
+
+    pub(crate) fn autosave_target(name: &str) -> (std::path::PathBuf, std::path::PathBuf) {
+        let dir = std::env::temp_dir().join(format!("sillon-autosave-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        (dir, path)
+    }
+
+    /// La page des réglages, sur « Interlignage ».
+    fn on_line_spacing(app: &mut App) {
+        app.screen.select(Field::LineSpacing);
+        assert_eq!(app.screen.current_field(), Field::LineSpacing);
+    }
+
+    #[test]
+    fn a_voice_of_another_language_does_not_restart_the_sentence() {
+        let app = app_reading(DOC); // document français
+        assert_eq!(app.effect_in_document(Field::VoiceEn, Effect::Resynthesize), Effect::None);
+        assert_eq!(app.effect_in_document(Field::VoiceFr, Effect::Resynthesize), Effect::Resynthesize);
+        assert_eq!(app.effect_in_document(Field::Speed, Effect::Speed), Effect::Speed);
+    }
+
+    #[test]
+    fn the_preview_names_the_voice_of_its_language() {
+        let mut app = app_reading(DOC);
+        app.config.engine.family = "kokoro".into();
+        assert!(app.preview_label("en").contains("af_bella"), "{}", app.preview_label("en"));
+        assert!(app.preview_label("fr").contains("p-fenrir60"), "{}", app.preview_label("fr"));
+    }
+
+    #[test]
+    fn a_setting_changed_on_screen_is_written_at_once() {
+        let (dir, path) = autosave_target("immediat");
+        let mut app = app_reading(DOC);
+        app.set_config_target(Some(path.clone()));
+        on_line_spacing(&mut app);
+        let before = app.config.reading.line_spacing;
+        app.config_adjust_and_save(1);
+        let written = Config::read_from(&path).unwrap();
+        std::fs::remove_dir_all(&dir).ok();
+        assert_eq!(app.config.reading.line_spacing, before + 1, "appliqué");
+        assert_eq!(written.reading.line_spacing, before + 1, "écrit sans w");
+    }
+
+    #[test]
+    fn the_autosave_writes_only_the_setting_changed_on_screen() {
+        let (dir, path) = autosave_target("seul");
+        let mut on_disk = Config::default();
+        on_disk.voice.speed = 1.2;
+        on_disk.save_to(&path).unwrap();
+        let mut app = app_reading(DOC);
+        app.set_config_target(Some(path.clone()));
+        app.config.voice.speed = 2.5; // venue de --speed 2.5
+        on_line_spacing(&mut app);
+        app.config_adjust_and_save(1);
+        let written = Config::read_from(&path).unwrap();
+        std::fs::remove_dir_all(&dir).ok();
+        assert_eq!(written.voice.speed, 1.2, "l'option de la ligne de commande n'est pas écrite");
+        assert!(written.reading.autoplay, "l'autoplay coupé du test non plus");
+        assert_eq!(written.reading.line_spacing, app.config.reading.line_spacing);
+    }
+
+    #[test]
+    fn an_unreadable_config_is_never_overwritten_by_the_autosave() {
+        let (dir, path) = autosave_target("illisible");
+        let witness = b"[voice\nvoice = \"F2\" # \xc3\xa9crit \xc3\xa0 la main".to_vec();
+        std::fs::write(&path, &witness).unwrap();
+        let mut app = app_reading(DOC);
+        app.set_config_target(Some(path.clone()));
+        on_line_spacing(&mut app);
+        let before = app.config.reading.line_spacing;
+        app.config_adjust_and_save(1);
+        let after = std::fs::read(&path).unwrap();
+        std::fs::remove_dir_all(&dir).ok();
+        assert_eq!(after, witness, "le fichier de l'utilisateur est intact");
+        assert_eq!(app.config.reading.line_spacing, before + 1, "le réglage s'applique quand même");
+        assert!(app.status().contains("non enregistré"), "{}", app.status());
+    }
+
+    #[test]
+    fn without_a_target_nothing_is_written_and_the_screen_says_so() {
+        let mut app = app_reading(DOC);
+        app.set_config_target(None);
+        on_line_spacing(&mut app);
+        app.config_adjust_and_save(1);
+        assert!(app.status().contains("non enregistré"), "{}", app.status());
+    }
+
+    #[test]
+    fn choosing_a_model_is_written_at_once() {
+        // Le choix ne survivait au relancement que si `w` l'écrivait.
+        let (dir, path) = autosave_target("modele");
+        let mut app = app_reading(DOC);
+        app.set_config_target(Some(path.clone()));
+        let package = models::CATALOG.iter().find(|p| p.id == "kokoro_82m_int8").unwrap();
+        app.select_model(package);
+        let written = Config::read_from(&path).unwrap();
+        std::fs::remove_dir_all(&dir).ok();
+        assert_eq!(written.engine.family, "kokoro");
+        assert!(written.engine.model_path.ends_with("model_quantized.onnx"), "{}", written.engine.model_path);
+        assert_eq!(written.voice.per_language["fr"], "p-fenrir60", "les voix du modèle suivent");
+        assert!(written.reading.autoplay, "l'autoplay coupé du test n'est pas écrit");
+    }
+
+    #[test]
+    fn the_speed_set_while_reading_is_written_at_once() {
+        let (dir, path) = autosave_target("vitesse");
+        let mut app = app_reading(DOC);
+        app.set_config_target(Some(path.clone()));
+        app.config.voice.pitch = 0.5; // comme `--pitch 0.5`
+        app.nudge_speed(0.1);
+        let written = Config::read_from(&path).unwrap();
+        std::fs::remove_dir_all(&dir).ok();
+        assert!((written.voice.speed - 1.1).abs() < 1e-5, "{}", written.voice.speed);
+        assert_eq!(written.voice.pitch, 0.0, "l'option de la ligne de commande n'est pas écrite");
     }
 
     struct SlowEngine;

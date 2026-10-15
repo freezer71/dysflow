@@ -16,6 +16,10 @@ struct TextEditingView: View {
                 .foregroundStyle(Color(nsColor: style.theme.text))
                 .scrollContentBackground(.hidden)
                 .scrollIndicators(.automatic)
+                .padding(8)
+                // En édition, le fond se teinte : on voit qu'on écrit.
+                .background(RoundedRectangle(cornerRadius: 8)
+                    .fill(Color(nsColor: style.theme.text).opacity(0.05)))
                 .focused($focused)
                 .accessibilityLabel("Texte à modifier")
                 .accessibilityIdentifier("edition-texte")

@@ -1,59 +1,56 @@
 import AppKit
 
-/// Où se pose la fenêtre du panneau, mode par mode : le cadre de chaque
-/// mode, les bornes de taille, et la place du mode petit retenue quand
-/// l'utilisateur la déplace.
+/// Où se pose la fenêtre, forme par forme, et ce qui en est retenu : la
+/// place du mini quand l'utilisateur le déplace, le cadre du lecteur quand
+/// il le déplace ou le redimensionne.
 @MainActor
 final class PanelPlacement {
     private let window: NSWindow
     private let store: DisplayModeStore
-    /// Le mode affiché, lu à chaque déplacement.
+    /// La forme affichée, lue à chaque changement.
     private let mode: () -> DisplayMode
-    /// Vrai pendant que le code place la fenêtre : seul un déplacement de
-    /// l'utilisateur fixe la place du mode petit.
+    /// Vrai pendant que le code place la fenêtre : seul un geste de
+    /// l'utilisateur est retenu.
     private var placing = false
-    private var moveObserver: NSObjectProtocol?
+    private var observers: [NSObjectProtocol] = []
 
     init(window: NSWindow, store: DisplayModeStore, mode: @escaping () -> DisplayMode) {
         self.window = window
         self.store = store
         self.mode = mode
-        observeMoves()
+        observeChanges()
     }
 
-    var screenFrame: CGRect {
-        (NSScreen.main ?? NSScreen.screens[0]).visibleFrame
-    }
+    private var screens: [CGRect] { NSScreen.screens.map(\.visibleFrame) }
 
     /// L'écran principal (celui de la barre des menus).
     private var primaryScreenFrame: CGRect {
-        NSScreen.screens.first?.visibleFrame ?? screenFrame
+        NSScreen.screens.first?.visibleFrame ?? NSScreen.main?.visibleFrame ?? .zero
     }
 
-    func frame(for mode: DisplayMode, contentHeight: CGFloat) -> CGRect {
+    func frame(for mode: DisplayMode) -> CGRect {
         switch mode {
-        case .small:
-            return SmallPlacement.frame(savedOrigin: store.smallOrigin,
-                                        screens: NSScreen.screens.map(\.visibleFrame),
-                                        main: primaryScreenFrame)
-        case .large:
-            return PanelGeometry.expandedFrame(screen: screenFrame)
-        case .medium, .background:
-            return PanelGeometry.panelFrame(contentHeight: contentHeight, screen: screenFrame)
+        case .mini:
+            return MiniPlacement.frame(savedOrigin: store.miniOrigin, screens: screens, main: primaryScreenFrame)
+        case .reader, .hidden:
+            return ReaderPlacement.frame(saved: store.readerFrame, screens: screens, main: primaryScreenFrame)
         }
     }
 
-    /// Le mode petit ne se redimensionne pas ; les autres, si. Des bornes de
-    /// taille ne tiendraient pas : la vue hôte réécrit celles de la fenêtre
-    /// à chaque changement de contenu.
+    /// Le mini ne se redimensionne pas ; le lecteur, si, jamais sous sa
+    /// taille minimale (l'en-tête et la barre se chevaucheraient).
     func applySizeLimits(for mode: DisplayMode) {
-        if mode == .small {
+        if mode == .mini {
             window.styleMask.remove(.resizable)
+            window.minSize = MiniPlacement.size
         } else {
             window.styleMask.insert(.resizable)
+            window.minSize = ReaderPlacement.minimumSize
         }
     }
 
+    /// Animé, le cadre glisse d'une forme à l'autre (sauf « Réduire les
+    /// animations »).
     func place(_ frame: CGRect, animated: Bool) {
         placing = true
         defer { placing = false }
@@ -64,22 +61,31 @@ final class PanelPlacement {
         }
     }
 
-    private func observeMoves() {
-        moveObserver = NotificationCenter.default.addObserver(
+    private func observeChanges() {
+        for name in [NSWindow.didMoveNotification, NSWindow.didResizeNotification] {
             // Livré tout de suite (`queue: nil`), pendant que `placing` est
             // vrai : une file différée verrait chaque placement du code comme
-            // un déplacement de l'utilisateur.
-            forName: NSWindow.didMoveNotification, object: window, queue: nil
-        ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.windowMoved() }
+            // un geste de l'utilisateur.
+            observers.append(NotificationCenter.default.addObserver(
+                forName: name, object: window, queue: nil
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.windowChanged() }
+            })
         }
     }
 
-    /// La barre déplacée par l'utilisateur : sa place est retenue.
-    /// Un redimensionnement différé de la vue hôte (le haut fixe, l'origine
-    /// bouge) n'est pas un déplacement : seule la barre à sa taille compte.
-    func windowMoved() {
-        guard mode() == .small, !placing, window.frame.size == SmallPlacement.size else { return }
-        store.smallOrigin = window.frame.origin
+    /// Un geste de l'utilisateur : la place du mini (à sa taille seulement,
+    /// un redimensionnement différé de la vue hôte ne compte pas), ou le
+    /// cadre du lecteur.
+    func windowChanged() {
+        guard !placing else { return }
+        switch mode() {
+        case .mini:
+            if window.frame.size == MiniPlacement.size { store.miniOrigin = window.frame.origin }
+        case .reader:
+            store.readerFrame = window.frame
+        case .hidden:
+            break
+        }
     }
 }

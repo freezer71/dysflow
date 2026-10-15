@@ -3,32 +3,28 @@ import XCTest
 @MainActor
 final class ExpandedUITests: XCTestCase {
     // La vue hôte SwiftUI se présente comme un groupe ; les touches vont à
-    // l'app, donc à la fenêtre clé (voir PanelUITests).
-    func testSidebarSearchAndBack() {
+    // l'app, donc à la fenêtre clé.
+    func testHeaderButtonsOpenTheSidebarAndTheSearch() {
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--show-panel"]
         app.launch()
-        let panel = app.groups["panneau-lecture"]
-        XCTAssertTrue(panel.waitForExistence(timeout: 5))
-        app.typeKey(.return, modifierFlags: [])
-        let reader = app.groups["lecteur-agrandi"]
-        XCTAssertTrue(reader.waitForExistence(timeout: 2))
+        XCTAssertTrue(app.groups["lecteur"].waitForExistence(timeout: 5))
         let sommaire = app.outlines["sommaire"]
+        XCTAssertFalse(sommaire.exists, "le sommaire est fermé à l'ouverture")
+        app.buttons["bouton-sommaire"].click()
         XCTAssertTrue(sommaire.waitForExistence(timeout: 2))
-
         app.typeKey("t", modifierFlags: [])
         XCTAssertTrue(sommaire.waitForNonExistence(timeout: 2))
 
-        app.typeKey("/", modifierFlags: [])
+        app.buttons["bouton-rechercher"].click()
         let field = app.textFields["recherche"]
         XCTAssertTrue(field.waitForExistence(timeout: 2))
         field.typeText("promesses\r")
         XCTAssertTrue(app.staticTexts["resultats-recherche"].waitForExistence(timeout: 2))
-
         app.typeKey(.escape, modifierFlags: [])
-        app.typeKey(.escape, modifierFlags: [])
-        XCTAssertTrue(app.groups["panneau-lecture"].waitForExistence(timeout: 2))
+        XCTAssertTrue(field.waitForNonExistence(timeout: 2))
+        XCTAssertTrue(app.groups["lecteur"].exists, "Échap a fermé la recherche, pas le lecteur")
     }
 
     /// Au clavier seul : Tab entre dans le sommaire, ↓ choisit le titre
@@ -38,9 +34,8 @@ final class ExpandedUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--show-panel"]
         app.launch()
-        XCTAssertTrue(app.groups["panneau-lecture"].waitForExistence(timeout: 5))
-        app.typeKey(.return, modifierFlags: [])
-        XCTAssertTrue(app.groups["lecteur-agrandi"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.groups["lecteur"].waitForExistence(timeout: 5))
+        app.typeKey("t", modifierFlags: [])
         let crumb = app.staticTexts["fil-ariane"]
         XCTAssertTrue(crumb.waitForExistence(timeout: 2))
         XCTAssertEqual(crumb.value as? String ?? crumb.label, "Les monades")
@@ -52,8 +47,8 @@ final class ExpandedUITests: XCTestCase {
                                     "Les monades ▸ Exemples", "Les monades ▸ Exemples")
         let moved = XCTNSPredicateExpectation(predicate: predicate, object: crumb)
         XCTAssertEqual(XCTWaiter.wait(for: [moved], timeout: 2), .completed)
-        // Toujours agrandi : Entrée est allée à la liste, pas au panneau.
-        XCTAssertTrue(app.groups["lecteur-agrandi"].exists)
+        // Toujours le lecteur : Entrée est allée à la liste.
+        XCTAssertTrue(app.groups["lecteur"].exists)
     }
 
     /// Après une recherche, le focus quitte le champ (Espace lit, N avance) ;
@@ -63,10 +58,9 @@ final class ExpandedUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--show-panel"]
         app.launch()
-        XCTAssertTrue(app.groups["panneau-lecture"].waitForExistence(timeout: 5))
-        // Depuis le panneau, « / » agrandit puis ouvre le champ.
+        XCTAssertTrue(app.groups["lecteur"].waitForExistence(timeout: 5))
+        // « / » ouvre le champ.
         app.typeKey("/", modifierFlags: [])
-        XCTAssertTrue(app.groups["lecteur-agrandi"].waitForExistence(timeout: 2), "« / » n'a pas agrandi")
         let field = app.textFields["recherche"]
         XCTAssertTrue(field.waitForExistence(timeout: 2), "pas de champ")
         field.typeText("promesses\r")
@@ -109,8 +103,8 @@ final class ExpandedUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--show-panel"]
         app.launch()
-        XCTAssertTrue(app.groups["panneau-lecture"].waitForExistence(timeout: 5))
-        app.typeKey(.return, modifierFlags: [])
+        XCTAssertTrue(app.groups["lecteur"].waitForExistence(timeout: 5))
+        app.typeKey("t", modifierFlags: [])
         let outline = app.outlines["sommaire"]
         XCTAssertTrue(outline.waitForExistence(timeout: 2))
         let first = outline.outlineRows.element(boundBy: 0)

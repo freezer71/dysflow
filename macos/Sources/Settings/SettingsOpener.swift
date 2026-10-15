@@ -14,14 +14,11 @@ final class SettingsOpener {
     static let shared = SettingsOpener()
 
     private let activate: () -> Void
-    private let navigation: SettingsNavigation
     private var action: (() -> Void)?
     private var pending = false
 
-    init(activate: @escaping () -> Void = { NSApp.activate() },
-         navigation: SettingsNavigation? = nil) {
+    init(activate: @escaping () -> Void = { NSApp.activate() }) {
         self.activate = activate
-        self.navigation = navigation ?? .shared
     }
 
     /// L'action `openSettings` d'une vue ; la première seule est gardée.
@@ -36,9 +33,7 @@ final class SettingsOpener {
 
     /// Une app de barre des menus n'est pas au premier plan : on l'y met
     /// d'abord, sinon la fenêtre s'ouvrirait derrière l'application active.
-    /// Sans onglet, la fenêtre rouvre le dernier utilisé.
-    func open(tab: SettingsTab? = nil) {
-        if let tab { navigation.select(tab) }
+    func open() {
         activate()
         if let action { action() } else { pending = true }
     }

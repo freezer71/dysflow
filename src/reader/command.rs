@@ -19,7 +19,6 @@ pub enum Command {
     ChangeSpeed(f32),
     ChangeVolume(f32),
     ToggleMute,
-    ToggleBookmark,
     Search(String),
     SearchAdvance(isize),
     SearchCancel,
@@ -47,7 +46,6 @@ impl Command {
             Command::ChangeSpeed(delta) => app.change_speed(delta),
             Command::ChangeVolume(delta) => app.change_volume(delta),
             Command::ToggleMute => app.toggle_mute(),
-            Command::ToggleBookmark => app.toggle_bookmark(),
             // La recherche du terminal se tape touche par touche ; l'interface
             // la donne d'un bloc.
             Command::Search(query) => {

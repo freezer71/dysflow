@@ -1,5 +1,5 @@
-//! Ce que les onglets Modèles et Général effacent : modèles, téléchargement
-//! en cours, cache des documents, signets.
+//! Ce que l'app efface : modèles, téléchargement en cours, cache des
+//! documents.
 //!
 //! Un lecteur hors disque (`set_persistent(false)`, l'app de test) refuse
 //! tout effacement : un test d'interface ne vide jamais les données de
@@ -7,38 +7,12 @@
 
 use anyhow::{anyhow, bail, Result};
 
-use crate::bookmark::BookmarkStore;
 use crate::models::{self, ModelPackage};
 
 use super::Reader;
 
 /// Refus d'un lecteur hors disque.
 pub const TRIAL: &str = "mode d'essai : rien n'est modifié sur le disque";
-
-/// Un signet, quel que soit son document.
-#[derive(Debug, Clone, PartialEq)]
-pub struct StoredBookmark {
-    /// Identité du document (chemin, ou source et empreinte).
-    pub document: String,
-    /// Nom lisible du document.
-    pub label: String,
-    pub sentence: usize,
-    pub section_title: String,
-    pub snippet: String,
-    pub when: String,
-}
-
-/// Le nom d'un document pour l'œil : le fichier d'un chemin, la source d'un
-/// texte capturé (« sélection », « image »).
-pub fn document_label(identity: &str) -> String {
-    if identity.starts_with('/') {
-        return std::path::Path::new(identity)
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_else(|| identity.to_string());
-    }
-    identity.split(':').next().unwrap_or(identity).to_string()
-}
 
 impl Reader {
     /// Pourquoi ce modèle ne peut pas être supprimé maintenant, s'il ne le
@@ -98,50 +72,6 @@ impl Reader {
         crate::source::cache::clear()
     }
 
-    /// Tous les signets, tous documents confondus. Un texte ouvert a les
-    /// siens en mémoire : ils font foi.
-    pub fn all_bookmarks(&self) -> Vec<StoredBookmark> {
-        let items = match &self.session {
-            Some(app) => app.bookmarks.items.clone(),
-            None => BookmarkStore::load().0.items,
-        };
-        items
-            .into_iter()
-            .map(|b| StoredBookmark {
-                label: document_label(&b.document),
-                when: b.timestamp(),
-                document: b.document,
-                sentence: b.sentence_id,
-                section_title: b.section_title,
-                snippet: b.snippet,
-            })
-            .collect()
-    }
-
-    pub fn remove_bookmark(&mut self, document: &str, sentence: usize) -> Result<()> {
-        if !self.persist {
-            bail!(TRIAL);
-        }
-        let path = BookmarkStore::path().ok_or_else(|| anyhow!("répertoire de données introuvable"))?;
-        self.remove_bookmark_at(&path, document, sentence)
-    }
-
-    /// Retire le signet du fichier `path` et de celui du texte ouvert : sans
-    /// le second, le prochain signet posé réécrirait l'ancien. Le fichier est
-    /// un paramètre pour que les tests n'approchent jamais celui de
-    /// l'utilisateur.
-    fn remove_bookmark_at(&mut self, path: &std::path::Path, document: &str, sentence: usize) -> Result<()> {
-        let mut store = BookmarkStore::load_from(path).0;
-        if store.remove(document, sentence) {
-            // Écrire d'abord : si le disque refuse, la session garde le signet
-            // et l'interface ne ment pas.
-            store.save_to(path)?;
-        }
-        if let Some(app) = self.session.as_mut() {
-            app.bookmarks.remove(document, sentence);
-        }
-        Ok(())
-    }
 }
 
 #[cfg(test)]
@@ -195,71 +125,12 @@ mod tests {
         let mut r = reader_with(quiet());
         r.set_persistent(false);
         assert_eq!(r.clear_document_cache().unwrap_err().to_string(), TRIAL);
-        assert_eq!(r.remove_bookmark("a", 0).unwrap_err().to_string(), TRIAL);
     }
 
     #[test]
     fn cancelling_without_a_download_is_an_error() {
         let mut r = reader_with(quiet());
         assert!(r.cancel_download().is_err());
-    }
-
-    /// Une session dont le magasin est vide : jamais les signets réels.
-    fn open_isolated(r: &mut Reader) -> String {
-        r.open_text("Un. Deux.", "sélection", Instant::now());
-        r.session.as_mut().unwrap().bookmarks = BookmarkStore::default();
-        r.document_identity().unwrap().to_string()
-    }
-
-    fn scratch_file(name: &str) -> std::path::PathBuf {
-        let dir = std::env::temp_dir().join(format!("sillon-data-{name}-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        dir.join("bookmarks.json")
-    }
-
-    #[test]
-    fn removing_a_bookmark_also_forgets_it_in_the_open_session() {
-        let mut r = reader_with(quiet());
-        let identity = open_isolated(&mut r);
-        let path = scratch_file("remove");
-        // Le signet existe sur le disque (de test) et dans la session.
-        let mut store = BookmarkStore::default();
-        store.toggle(&identity, 1, 0, "Titre", "Deux.");
-        store.toggle(&identity, 0, 0, "Titre", "Un.");
-        store.save_to(&path).unwrap();
-        r.session.as_mut().unwrap().bookmarks.toggle(&identity, 1, 0, "Titre", "Deux.");
-
-        r.remove_bookmark_at(&path, &identity, 1).unwrap();
-
-        let on_disk = BookmarkStore::load_from(&path).0;
-        assert!(!on_disk.contains(&identity, 1));
-        assert!(on_disk.contains(&identity, 0), "les autres signets restent");
-        assert!(
-            !r.session().unwrap().bookmarks.contains(&identity, 1),
-            "la session ne le réécrira pas au prochain signet"
-        );
-        assert!(r.all_bookmarks().is_empty());
-        std::fs::remove_dir_all(path.parent().unwrap()).ok();
-    }
-
-    #[test]
-    fn the_open_session_lists_its_bookmarks_with_a_readable_name() {
-        let mut r = reader_with(quiet());
-        let identity = open_isolated(&mut r);
-        r.session.as_mut().unwrap().bookmarks.toggle(&identity, 0, 0, "Titre", "Un.");
-        let all = r.all_bookmarks();
-        assert_eq!(all.len(), 1);
-        assert_eq!(all[0].label, "sélection");
-        assert_eq!(all[0].snippet, "Un.");
-        assert_eq!(all[0].sentence, 0);
-    }
-
-    #[test]
-    fn documents_are_named_for_the_eye() {
-        assert_eq!(document_label("/Users/x/notes/cours.md"), "cours.md");
-        assert_eq!(document_label("sélection:00ab12"), "sélection");
-        assert_eq!(document_label("image:ff"), "image");
-        assert_eq!(document_label("presse-papiers"), "presse-papiers");
     }
 
     /// Installe un faux fichier de modèle dans le dossier isolé des tests.

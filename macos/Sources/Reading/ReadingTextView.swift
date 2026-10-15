@@ -8,8 +8,10 @@ final class ReadingTextView: NSTextView {
     var theme: Theme = .paper { didSet { if theme != oldValue { needsDisplay = true } } }
     var ruler = true
     var onContentHeight: ((CGFloat) -> Void)?
-    /// Un double clic : le mode édition (le texte n'est pas sélectionnable).
-    var onDoubleClick: (() -> Void)?
+    /// « Copier » du menu contextuel : l'app décide (sélection, sinon phrase).
+    var onCopy: (() -> Void)?
+    /// « Lire à partir d'ici » : l'endroit cliqué, en caractère du texte.
+    var onReadFrom: ((Int) -> Void)?
     /// L'horloge du suivi, remplaçable pour les tests.
     var now: () -> Date = Date.init
     /// Réduire les animations, remplaçable pour les tests.
@@ -74,7 +76,9 @@ final class ReadingTextView: NSTextView {
             self?.displayLink(target: target, selector: selector)
         }
         isEditable = false
-        isSelectable = false
+        // Le texte se sélectionne (glisser, double clic : un mot, triple
+        // clic : le paragraphe) ; il ne se modifie qu'en édition, ailleurs.
+        isSelectable = true
         drawsBackground = false
         textContainerInset = NSSize(width: 4, height: 8)
         isVerticallyResizable = true
@@ -88,14 +92,6 @@ final class ReadingTextView: NSTextView {
                          height: CGFloat.greatestFiniteMagnitude)
         textContainer?.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
         setAccessibilityLabel("Texte lu")
-    }
-
-    override func mouseDown(with event: NSEvent) {
-        if event.clickCount == 2, let onDoubleClick {
-            onDoubleClick()
-            return
-        }
-        super.mouseDown(with: event)
     }
 
     deinit {
@@ -129,6 +125,48 @@ final class ReadingTextView: NSTextView {
         if length > 4000 { return .greatestFiniteMagnitude }
         tlm.ensureLayout(for: tlm.documentRange)
         return tlm.usageBoundsForTextContainer.height + textContainerInset.height * 2
+    }
+
+    /// Le texte sélectionné, nil sans sélection.
+    var selectedText: String? {
+        let range = selectedRange()
+        guard range.length > 0, NSMaxRange(range) <= (string as NSString).length else { return nil }
+        return (string as NSString).substring(with: range)
+    }
+
+    // MARK: - Menu contextuel
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        let point = convert(event.locationInWindow, from: nil)
+        let index = characterIndex(under: point)
+        let menu = NSMenu()
+        let copy = NSMenuItem(title: "Copier", action: #selector(copyFromMenu(_:)), keyEquivalent: "")
+        copy.target = self
+        let read = NSMenuItem(title: "Lire à partir d'ici", action: #selector(readFromMenu(_:)), keyEquivalent: "")
+        read.target = self
+        read.representedObject = index
+        menu.items = [copy, read]
+        return menu
+    }
+
+    /// Le caractère sous le point. L'insertion la plus proche ne suffit pas :
+    /// sur la moitié droite de la dernière lettre d'un mot, elle tombe après
+    /// le mot, et « Lire à partir d'ici » partirait du mot suivant.
+    func characterIndex(under point: CGPoint) -> Int {
+        let index = characterIndexForInsertion(at: point)
+        if index > 0, let before = rect(for: NSRange(location: index - 1, length: 1)), before.contains(point) {
+            return index - 1
+        }
+        return index
+    }
+
+    @objc private func copyFromMenu(_ sender: Any?) {
+        onCopy?()
+    }
+
+    @objc private func readFromMenu(_ sender: NSMenuItem) {
+        guard let index = sender.representedObject as? Int else { return }
+        onReadFrom?(index)
     }
 
     /// Montre le mot lu et sa phrase. Sans mot (un bloc de code ou un tableau

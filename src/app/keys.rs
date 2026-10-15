@@ -1,49 +1,39 @@
 //! Correspondance touches → commandes, la même pour tous les écrans.
 //!
-//! Trois contextes se succèdent, du plus captif au plus général : la saisie d'un
-//! champ texte, l'écran de configuration, puis la lecture. Chacun consomme les
-//! touches qui lui reviennent avant de rendre la main.
+//! Deux contextes : la page des réglages, puis la lecture. Chacun consomme
+//! les touches qui lui reviennent.
 
-use super::config::Page;
 use super::{App, Panel};
 
 const VIEW_STEP: isize = 4;
 
-/// Aide de la vue de lecture.
+/// Aide de la vue de lecture : toutes les touches qui y agissent, et
+/// seulement elles.
 pub const HELP: &[(&str, &str)] = &[
     ("Espace", "Lecture / pause"),
     ("← →", "Phrase précédente / suivante"),
-    ("Maj+← →", "Recul / avance rapide"),
     ("↑ ↓", "Bloc précédent / suivant"),
     ("n / p", "Titre suivant / précédent"),
-    ("g / Début · Fin", "Début · fin du document"),
-    ("r", "Reprendre la phrase"),
-    ("+ / -", "Vitesse (immédiate)"),
-    ("1 2 3 4", "Vitesse 0,75× 1× 1,5× 2×"),
-    ("[ / ]", "Volume"),
-    ("m", "Couper le son"),
-    ("b", "Poser / retirer un signet"),
-    ("t / B", "Sommaire / signets"),
-    ("s", "Configuration et modèles"),
-    ("Pg↑ Pg↓", "Défiler sans déplacer la lecture"),
-    ("f", "Revenir à la lecture"),
+    ("Début", "Début du document"),
     ("/", "Chercher dans le document"),
     ("N / P", "Résultat suivant / précédent"),
-    ("? / h", "Aide"),
-    ("q / Échap", "Quitter"),
+    ("+ / -", "Vitesse (enregistrée)"),
+    ("t", "Sommaire : ↑ ↓ puis Entrée"),
+    ("s", "Réglages"),
+    ("Pg↑ Pg↓", "Relire sans déplacer la lecture"),
+    ("f", "Reprendre le suivi"),
+    ("?", "Aide"),
+    ("Échap", "Fermer le sommaire, sinon quitter"),
+    ("q", "Quitter"),
 ];
 
-/// Aide de l'écran de configuration.
+/// Aide de la page des réglages : toutes les touches qui y agissent.
 pub const CONFIG_HELP: &[(&str, &str)] = &[
-    ("1 … 5", "Ouvrir une rubrique directement"),
-    ("↑ ↓", "Se déplacer dans la liste"),
-    ("Entrée", "Ouvrir · éditer · installer · choisir"),
-    ("← →", "Modifier une valeur"),
-    ("Échap", "Revenir au menu, puis fermer"),
-    ("t", "Écouter un aperçu de la voix"),
-    ("a", "Montrer les réglages sans effet"),
-    ("d", "Supprimer un modèle (d deux fois) · annuler"),
-    ("w", "Enregistrer la configuration"),
+    ("↑ ↓", "Choisir un réglage"),
+    ("← → · Entrée", "Changer sa valeur, enregistrée aussitôt"),
+    ("t", "Écouter la voix"),
+    ("q · Échap · s", "Fermer les réglages"),
+    ("?", "Aide"),
 ];
 
 /// Une touche, sans le vocabulaire d'aucune bibliothèque.
@@ -103,61 +93,21 @@ pub fn handle(app: &mut App, key: Key) {
 }
 
 fn handle_config(app: &mut App, key: Key) {
-    // La saisie d'un champ texte capte tout, sauf sa validation et son abandon.
-    if app.screen.editing.is_some() {
-        match key.code {
-            KeyCode::Enter => app.config_commit_edit(),
-            KeyCode::Esc => app.config_cancel_edit(),
-            KeyCode::Backspace => app.config_edit_backspace(),
-            KeyCode::Char(c) => app.config_edit_push(c),
-            _ => {}
-        }
-        return;
-    }
-
-    let in_menu = app.screen.page == Page::Menu;
     match key.code {
-        // Échap recule d'un cran : d'une rubrique ouverte on revient au menu,
-        // et seulement ensuite on quitte l'écran.
-        KeyCode::Esc => {
-            if !app.config_back_to_menu() {
-                app.toggle_config();
-            }
-        }
-        KeyCode::Char('s') => app.toggle_config(),
-
-        // Un chiffre ouvre directement sa rubrique, depuis n'importe où.
-        KeyCode::Char(c @ '1'..='4') => {
-            app.config_goto_section(c as usize - '1' as usize);
-        }
-
-        KeyCode::Up if in_menu => app.config_move_section(-1),
-        KeyCode::Down if in_menu => app.config_move_section(1),
-        KeyCode::Enter | KeyCode::Right | KeyCode::Tab if in_menu => app.config_open_section(),
-        KeyCode::Left if in_menu => {}
-
+        // Fermer les réglages ne quitte jamais une lecture.
+        KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('s') => app.close_config(),
         KeyCode::Up => app.config_move_row(-1),
         KeyCode::Down => app.config_move_row(1),
-        KeyCode::Right => app.config_adjust(1),
-        KeyCode::Left => app.config_adjust(-1),
-        KeyCode::Enter => app.config_activate(),
-        KeyCode::Tab | KeyCode::BackTab => {
-            app.config_back_to_menu();
-        }
-
-        KeyCode::Char('a') => app.config_toggle_show_all(),
+        KeyCode::Right | KeyCode::Enter => app.config_adjust_and_save(1),
+        KeyCode::Left => app.config_adjust_and_save(-1),
         KeyCode::Char('t') => app.preview_voice(),
-        KeyCode::Char('d') | KeyCode::Delete => app.config_delete(),
-        KeyCode::Char('w') => app.save_config(),
-        KeyCode::Char('?') | KeyCode::Char('h') => app.show_help = true,
-        KeyCode::Char('q') => app.should_quit = true,
+        KeyCode::Char('?') => app.show_help = true,
         _ => {}
     }
 }
 
 fn handle_reader(app: &mut App, key: Key) {
-    // La saisie d'une recherche capte tout : sinon « b » poserait un signet au
-    // lieu de s'écrire.
+    // La saisie d'une recherche capte tout : sinon « q » quitterait au lieu de s'écrire.
     if app.search_input().is_some() {
         match key.code {
             KeyCode::Enter => app.search_commit(),
@@ -169,11 +119,10 @@ fn handle_reader(app: &mut App, key: Key) {
         return;
     }
 
-    let step = app.config.reading.seek_step as isize;
-
     match key.code {
-        KeyCode::Char('q') | KeyCode::Esc => {
-            // Échap referme d'abord le panneau ouvert.
+        KeyCode::Char('q') => app.should_quit = true,
+        KeyCode::Esc => {
+            // Échap referme d'abord le sommaire ; rien d'ouvert, il quitte.
             if app.panel != Panel::None {
                 app.panel = Panel::None;
             } else {
@@ -183,40 +132,28 @@ fn handle_reader(app: &mut App, key: Key) {
 
         KeyCode::Char(' ') => app.toggle_play(),
 
-        KeyCode::Right => app.seek_sentences(if key.shift { step } else { 1 }),
-        KeyCode::Left => app.seek_sentences(if key.shift { -step } else { -1 }),
+        KeyCode::Right => app.seek_sentences(1),
+        KeyCode::Left => app.seek_sentences(-1),
 
-        // Les flèches verticales pilotent le panneau ouvert, sinon le texte.
+        // Les flèches verticales pilotent le sommaire ouvert, sinon le texte.
         KeyCode::Up => match app.panel {
-            Panel::Contents | Panel::Bookmarks => app.move_selection(-1),
+            Panel::Contents => app.move_selection(-1),
             Panel::None => app.seek_block(-1),
         },
         KeyCode::Down => match app.panel {
-            Panel::Contents | Panel::Bookmarks => app.move_selection(1),
+            Panel::Contents => app.move_selection(1),
             Panel::None => app.seek_block(1),
         },
 
         KeyCode::Char('n') => app.seek_section(1),
         KeyCode::Char('p') => app.seek_section(-1),
-        KeyCode::Home | KeyCode::Char('g') => app.seek_start(),
-        KeyCode::End | KeyCode::Char('G') => app.seek_end(),
-        KeyCode::Char('r') => app.restart_sentence(),
+        KeyCode::Home => app.seek_start(),
 
-        KeyCode::Char('+') | KeyCode::Char('=') => app.change_speed(0.1),
-        KeyCode::Char('-') | KeyCode::Char('_') => app.change_speed(-0.1),
-        KeyCode::Char('1') => app.set_speed(0.75),
-        KeyCode::Char('2') => app.set_speed(1.0),
-        KeyCode::Char('3') => app.set_speed(1.5),
-        KeyCode::Char('4') => app.set_speed(2.0),
+        KeyCode::Char('+') => app.nudge_speed(0.1),
+        KeyCode::Char('-') => app.nudge_speed(-0.1),
 
-        KeyCode::Char(']') => app.change_volume(0.05),
-        KeyCode::Char('[') => app.change_volume(-0.05),
-        KeyCode::Char('m') => app.toggle_mute(),
-
-        KeyCode::Char('b') => app.toggle_bookmark(),
-        KeyCode::Char('B') => app.toggle_panel(Panel::Bookmarks),
-        KeyCode::Char('t') | KeyCode::Tab => app.toggle_panel(Panel::Contents),
-        KeyCode::Char('s') => app.toggle_config(),
+        KeyCode::Char('t') => app.toggle_panel(Panel::Contents),
+        KeyCode::Char('s') => app.open_config(),
         KeyCode::Char('f') => app.toggle_follow(),
 
         // Défiler fige la vue : on relit sans interrompre la voix.
@@ -228,9 +165,7 @@ fn handle_reader(app: &mut App, key: Key) {
         KeyCode::Char('P') => app.search_advance(-1),
 
         KeyCode::Enter => app.activate_selection(),
-        KeyCode::Char('d') => app.delete_selection(),
-        KeyCode::Char('w') => app.save_config(),
-        KeyCode::Char('?') | KeyCode::Char('h') => app.show_help = true,
+        KeyCode::Char('?') => app.show_help = true,
 
         _ => {}
     }
@@ -239,11 +174,64 @@ fn handle_reader(app: &mut App, key: Key) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::app::config::Field;
     use crate::app::tests::{app_reading, DOC};
     use std::time::Duration;
 
     fn press(app: &mut App, code: KeyCode) {
         handle(app, Key::plain(code));
+    }
+
+    #[test]
+    fn q_and_escape_close_the_settings_without_quitting() {
+        for code in [KeyCode::Char('q'), KeyCode::Esc, KeyCode::Char('s')] {
+            let mut app = app_reading(DOC);
+            press(&mut app, KeyCode::Char('s'));
+            assert!(app.show_config, "s ouvre les réglages");
+            press(&mut app, code);
+            assert!(!app.show_config, "{code:?} ferme les réglages");
+            assert!(!app.should_quit, "{code:?} ne quitte pas");
+        }
+    }
+
+    #[test]
+    fn closing_the_settings_with_nothing_to_read_quits() {
+        // `sillon --config` seul : derrière la page, il n'y a rien.
+        let mut app = app_reading("");
+        app.open_config();
+        press(&mut app, KeyCode::Esc);
+        assert!(app.should_quit);
+    }
+
+    #[test]
+    fn w_writes_nothing_any_more_in_the_settings() {
+        let mut app = app_reading(DOC);
+        app.open_config();
+        press(&mut app, KeyCode::Char('w'));
+        assert!(app.status().is_empty(), "w a écrit : {:?}", app.status());
+    }
+
+    #[test]
+    fn the_arrows_of_the_settings_write_at_once() {
+        let (dir, path) = crate::app::tests::autosave_target("fleches");
+        let mut app = app_reading(DOC);
+        app.set_config_target(Some(path.clone()));
+        app.open_config();
+        app.screen.select(Field::LineSpacing);
+        let before = app.config.reading.line_spacing;
+        press(&mut app, KeyCode::Right);
+        let after_right = crate::config::Config::read_from(&path).unwrap().reading.line_spacing;
+        press(&mut app, KeyCode::Enter);
+        let after_enter = crate::config::Config::read_from(&path).unwrap().reading.line_spacing;
+        std::fs::remove_dir_all(&dir).ok();
+        assert_eq!(after_right, before + 1, "→ écrit");
+        assert_eq!(after_enter, before + 2, "Entrée avance d'un cran et écrit");
+    }
+
+    #[test]
+    fn the_settings_help_lists_only_what_acts_there() {
+        let keys: Vec<&str> = CONFIG_HELP.iter().map(|(k, _)| *k).collect();
+        assert_eq!(keys, vec!["↑ ↓", "← → · Entrée", "t", "q · Échap · s", "?"]);
     }
 
     #[test]
@@ -270,14 +258,24 @@ mod tests {
     fn typing_a_query_never_reaches_the_player() {
         let mut app = app_reading(DOC);
         press(&mut app, KeyCode::Char('/'));
-        // « b » pose un signet en lecture : pendant une saisie, il ne doit
+        // « q » quitte en lecture : pendant une saisie, il ne doit
         // qu'écrire.
-        for c in "bq".chars() {
+        for c in "tq".chars() {
             press(&mut app, KeyCode::Char(c));
         }
-        assert_eq!(app.search_input(), Some("bq"));
-        assert!(!app.bookmarked_here(), "un signet a été posé pendant la saisie");
+        assert_eq!(app.search_input(), Some("tq"));
+        assert_eq!(app.panel, Panel::None, "le sommaire s'est ouvert pendant la saisie");
         assert!(!app.should_quit, "le lecteur a quitté pendant la saisie");
+    }
+
+    #[test]
+    fn bookmark_keys_do_nothing_any_more() {
+        let mut app = app_reading(DOC);
+        for c in ['b', 'B', 'd'] {
+            press(&mut app, KeyCode::Char(c));
+            assert_eq!(app.panel, Panel::None, "{c} a ouvert un panneau");
+            assert!(app.status().is_empty(), "{c} a parlé : {:?}", app.status());
+        }
     }
 
     #[test]
@@ -335,12 +333,84 @@ mod tests {
         assert_ne!(app.current_sentence(), first, "N n'a pas avancé");
     }
 
+    /// Ce qui ne doit pas bouger quand une touche retirée est pressée.
+    fn assert_untouched(app: &App, key: &str, volume: f32) {
+        assert_eq!(app.current_sentence(), 1, "{key} a déplacé la lecture");
+        assert_eq!(app.config.voice.speed, 1.0, "{key} a changé la vitesse");
+        assert_eq!(app.player.volume(), volume, "{key} a changé le volume");
+        assert!(!app.player.is_muted(), "{key} a coupé le son");
+        assert_eq!(app.panel, Panel::None, "{key} a ouvert un panneau");
+        assert!(!app.show_help, "{key} a ouvert l'aide");
+        assert!(!app.should_quit, "{key} a quitté");
+        assert!(app.status().is_empty(), "{key} a parlé : {:?}", app.status());
+    }
+
     #[test]
-    fn shift_with_an_arrow_seeks_by_the_configured_step() {
+    fn the_keys_taken_out_do_nothing_any_more() {
+        let mut app = app_reading(DOC);
+        app.seek_to(1);
+        let volume = app.player.volume();
+        for c in ['[', ']', 'm', '1', '2', '3', '4', 'g', 'G', 'r', 'w', '=', '_', 'h'] {
+            press(&mut app, KeyCode::Char(c));
+            assert_untouched(&app, &c.to_string(), volume);
+        }
+        for code in [KeyCode::End, KeyCode::Tab] {
+            press(&mut app, code);
+            assert_untouched(&app, &format!("{code:?}"), volume);
+        }
+    }
+
+    #[test]
+    fn home_goes_to_the_start_of_the_document() {
+        let mut app = app_reading(DOC);
+        app.seek_to(app.doc().sentences.len() - 1);
+        press(&mut app, KeyCode::Home);
+        assert_eq!(app.current_sentence(), 0);
+    }
+
+    #[test]
+    fn shift_with_an_arrow_moves_one_sentence_like_the_arrow() {
         let mut app = app_reading(DOC);
         app.config.reading.seek_step = 2;
         handle(&mut app, Key { code: KeyCode::Right, shift: true, ctrl: false });
-        assert_eq!(app.current_sentence(), 2);
+        assert_eq!(app.current_sentence(), 1, "plus de saut de plusieurs phrases");
+    }
+
+    #[test]
+    fn escape_closes_the_contents_then_quits() {
+        let mut app = app_reading(DOC);
+        press(&mut app, KeyCode::Char('t'));
+        assert_eq!(app.panel, Panel::Contents);
+        press(&mut app, KeyCode::Esc);
+        assert_eq!(app.panel, Panel::None, "Échap ferme d'abord le sommaire");
+        assert!(!app.should_quit);
+        press(&mut app, KeyCode::Esc);
+        assert!(app.should_quit, "rien d'ouvert : Échap quitte");
+    }
+
+    #[test]
+    fn q_quits_even_with_the_contents_open() {
+        let mut app = app_reading(DOC);
+        press(&mut app, KeyCode::Char('t'));
+        press(&mut app, KeyCode::Char('q'));
+        assert!(app.should_quit);
+    }
+
+    #[test]
+    fn the_help_names_every_reading_key_and_no_other() {
+        let keys: Vec<&str> = HELP.iter().map(|(k, _)| *k).collect();
+        for kept in [
+            "Espace", "← →", "↑ ↓", "n / p", "Début", "/", "N / P", "+ / -", "t", "s",
+            "Pg↑ Pg↓", "f", "?", "Échap", "q",
+        ] {
+            assert!(keys.contains(&kept), "{kept} manque à l'aide : {keys:?}");
+        }
+        for gone in [
+            "Maj+← →", "g / Début · Fin", "r", "1 2 3 4", "[ / ]", "m", "b", "t / B", "? / h",
+            "q / Échap",
+        ] {
+            assert!(!keys.contains(&gone), "{gone} est encore dans l'aide");
+        }
     }
 
     #[test]

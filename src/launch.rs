@@ -30,52 +30,52 @@ pub struct Args {
     pub speed: Option<f32>,
 
     /// Hauteur de voix (-1,0 à 1,0).
-    #[arg(long)]
+    #[arg(long, hide = true)]
     pub pitch: Option<f32>,
 
     /// Langue du texte.
-    #[arg(long)]
+    #[arg(long, hide = true)]
     pub language: Option<String>,
 
     /// Moteur de synthèse : auto ou system.
-    #[arg(long)]
+    #[arg(long, hide = true)]
     pub engine: Option<String>,
 
     /// Chemin du modèle (Kokoro).
-    #[arg(long)]
+    #[arg(long, hide = true)]
     pub model: Option<String>,
 
     /// Famille du modèle, par exemple kokoro.
-    #[arg(long)]
+    #[arg(long, hide = true)]
     pub family: Option<String>,
 
     /// Sessions de synthèse simultanées ; 0 laisse la famille décider.
-    #[arg(long)]
+    #[arg(long, hide = true)]
     pub sessions: Option<u32>,
 
     /// Phrases synthétisées en avance.
-    #[arg(long)]
+    #[arg(long, hide = true)]
     pub prefetch: Option<u32>,
 
     /// Traitement des blocs de code : announce, skip ou read.
-    #[arg(long)]
+    #[arg(long, hide = true)]
     pub code_blocks: Option<String>,
 
     /// Ne pas démarrer la lecture automatiquement.
-    #[arg(long)]
+    #[arg(long, hide = true)]
     pub no_autoplay: bool,
 
     /// Écrit la configuration résultante puis quitte.
-    #[arg(long)]
+    #[arg(long, hide = true)]
     pub write_config: bool,
 
     /// Affiche la configuration résultante puis quitte.
-    #[arg(long)]
+    #[arg(long, hide = true)]
     pub show_config: bool,
 
     /// Vérifie que Kokoro se charge (ONNX Runtime, sillon-espeak et ses
     /// données) puis quitte.
-    #[arg(long)]
+    #[arg(long, hide = true)]
     pub check_kokoro: bool,
 
     /// Écrit le markdown extrait du fichier puis quitte.
@@ -95,6 +95,26 @@ pub struct Args {
     pub config: bool,
 }
 
+/// Ce que `sillon` lancé seul dans un terminal affiche, avant de rendre la
+/// main : il n'y a rien à lire, mais tout à savoir pour lire.
+pub const SHORT_HELP: &str = "\
+sillon lit un texte à voix haute, en le montrant mot à mot.
+
+Quatre manières de lire :
+  sillon document.md        un fichier : markdown, texte, PDF, image
+  commande | sillon         ce qu'une commande écrit, au fil de l'eau
+  sillon --clip             le presse-papiers
+  l'app sillon (macOS)      ⌃⌥Espace lit la sélection
+
+Réglages : sillon --config · toutes les options : sillon --help
+";
+
+/// Vrai quand `sillon` est lancé seul dans un terminal : ni fichier, ni
+/// presse-papiers, ni réglages demandés, et rien qui arrive par un tube.
+pub fn nothing_to_read(args: &Args, stdin_is_terminal: bool) -> bool {
+    args.file.is_none() && !args.clip && !args.config && stdin_is_terminal
+}
+
 /// Ce que `prepare` rend : soit tout est dit, soit un lecteur attend son écran.
 pub enum Launch {
     /// Une option a répondu sur la sortie standard : rien à afficher.
@@ -106,8 +126,6 @@ pub struct Prepared {
     pub app: App,
     /// `--config` a été demandé explicitement.
     pub config_requested: bool,
-    /// Vrai quand il y a quelque chose à lire : fichier, collage ou flux.
-    pub has_input: bool,
     /// Redirection de `stderr` vers le journal. À garder tant que l'écran est
     /// ouvert, à lâcher avant d'afficher une erreur.
     pub quiet: Option<StderrRedirect>,
@@ -142,6 +160,13 @@ pub fn prepare(args: &Args) -> Result<Launch> {
             print!("{text}");
             return Ok(Launch::Done);
         }
+    }
+
+    // Lancé seul, sans rien à lire : dire comment lire plutôt qu'ouvrir un
+    // écran vide. `--config` ouvre les réglages.
+    if nothing_to_read(args, std::io::stdin().is_terminal()) {
+        print!("{SHORT_HELP}");
+        return Ok(Launch::Done);
     }
 
     // Le passage à Kokoro s'écrit sur la configuration du disque, jamais sur
@@ -186,7 +211,6 @@ pub fn prepare(args: &Args) -> Result<Launch> {
         }
     };
 
-    let has_input = args.file.is_some() || args.clip || stream.is_some();
     if (args.file.is_some() || args.clip) && builder.sentence_count() == 0 {
         drop(quiet);
         anyhow::bail!("aucun contenu lisible");
@@ -194,12 +218,15 @@ pub fn prepare(args: &Args) -> Result<Launch> {
 
     let player = crate::audio::Player::with_output(&config.app.output_device);
     let mut app = App::new(builder, stream, engine, config, source, notices, player);
+    // Kokoro s'installe seul au premier usage ; la voix du système lit
+    // en attendant.
+    app.install_default_voice();
     // Un fichier a une identité stable : sa lecture reprend où elle en était.
     // Un flux et un collage n'en ont pas — la même position leur désignerait
     // un autre texte.
     if let Some(path) = &args.file {
-        // Positions et signets ont pu être retenus sous le nom seul, par une
-        // version antérieure : ils suivent le document.
+        // Une position a pu être retenue sous le nom seul, par une version
+        // antérieure : elle suit le document.
         if let Some(former) = path.file_name().map(|n| n.to_string_lossy().into_owned()) {
             app.adopt_former_identity(&former);
         }
@@ -209,7 +236,6 @@ pub fn prepare(args: &Args) -> Result<Launch> {
     Ok(Launch::Ready(Box::new(Prepared {
         app,
         config_requested: args.config,
-        has_input,
         quiet,
     })))
 }
@@ -281,8 +307,8 @@ fn read_input(
             Ok((builder, None, identity))
         }
         None if std::io::stdin().is_terminal() => {
-            // Lancé sans rien : il n'y a rien à lire, mais tout à régler.
-            // Ouvrir la configuration vaut mieux qu'un message d'erreur.
+            // Seul `--config` arrive ici sans document : la page des réglages
+            // n'a rien à lire derrière elle.
             Ok((
                 DocumentBuilder::with_language(config.code_policy(), &config.default_language()),
                 None,
@@ -320,8 +346,8 @@ fn read_clipboard() -> Result<String> {
 }
 
 /// Le passage à Kokoro au terminal : un Kokoro installé est adopté, une
-/// seule fois ; installable seulement, il est signalé sans rien retenir
-/// (le terminal ne télécharge rien de lui-même). Rend l'avis.
+/// seule fois ; absent, il s'installe seul (`App::install_default_voice`)
+/// et rien n'est dit ici. Rend l'avis.
 pub fn migrate_terminal(config: &mut Config) -> Option<String> {
     migrate_terminal_in(config, &crate::models::available(), crate::models::is_installed)
 }
@@ -344,13 +370,13 @@ fn migrate_terminal_in(
             }
             config.align_voice_with_family();
             config.app.voice_migration = KOKORO_MIGRATION;
-            Some(format!("Nouvelle voix : Kokoro remplace {former}. L'ancien modèle reste installé (`s` pour y revenir)."))
+            Some(format!("Nouvelle voix : Kokoro remplace {former}. L'ancien modèle reste installé."))
         }
         Step::Record => {
             config.app.voice_migration = KOKORO_MIGRATION;
             None
         }
-        Step::Offer(_) => Some("Nouvelle voix Kokoro disponible : `s` pour l'installer.".to_string()),
+        Step::Offer(_) => None,
         Step::Nothing => None,
     }
 }
@@ -391,9 +417,7 @@ fn migrate_for_launch(
 
 /// Adopte un modèle installé si la configuration n'en désigne aucun.
 ///
-/// Le lecteur ne télécharge jamais de lui-même : quand rien n'est installé, il
-/// se contente de dire où aller le chercher, et lit avec la voix du système en
-/// attendant.
+/// Sans modèle, l'installation automatique s'en charge (`App::install_default_voice`).
 fn adopt_installed_model(config: &mut Config, notices: &mut Vec<String>) {
     let configured = config.engine.model_path.trim();
     if !configured.is_empty() {
@@ -406,19 +430,10 @@ fn adopt_installed_model(config: &mut Config, notices: &mut Vec<String>) {
         notices.push(format!("modèle introuvable : {configured}"));
         config.engine.model_path.clear();
     }
-    match crate::models::first_installed() {
-        Some(package) => {
-            if let Some(path) = crate::models::install_path(package) {
-                config.engine.model_path = path.to_string_lossy().into_owned();
-                config.engine.family = package.family.to_string();
-            }
-        }
-        None => {
-            if !crate::models::available().is_empty() {
-                notices.push(
-                    "aucun modèle installé — appuyez sur `s` pour en installer un".to_string(),
-                );
-            }
+    if let Some(package) = crate::models::first_installed() {
+        if let Some(path) = crate::models::install_path(package) {
+            config.engine.model_path = path.to_string_lossy().into_owned();
+            config.engine.family = package.family.to_string();
         }
     }
 }
@@ -484,10 +499,9 @@ mod tests {
     }
 
     #[test]
-    fn the_terminal_never_downloads_and_records_nothing_then() {
+    fn an_offer_says_nothing_since_the_install_is_automatic() {
         let mut config = on_supertonic();
-        let notice = migrate_terminal_in(&mut config, &[kokoro_int8()], |_| false);
-        assert!(notice.is_some_and(|n| n.contains("`s`")));
+        assert_eq!(migrate_terminal_in(&mut config, &[kokoro_int8()], |_| false), None);
         assert_eq!(config.app.voice_migration, 0, "rien de retenu sans adoption");
         assert_eq!(config.engine.family, "supertonic");
     }
@@ -497,6 +511,7 @@ mod tests {
         let mut config = on_supertonic();
         let notice = migrate_terminal_in(&mut config, &[kokoro_int8()], |_| true).expect("un avis");
         assert!(notice.starts_with("Nouvelle voix : Kokoro remplace supertonic."), "{notice}");
+        assert!(!notice.contains("`s`"), "plus de rubrique Modèles où revenir : {notice}");
         assert_eq!(config.engine.family, "kokoro");
         assert!(config.engine.model_path.ends_with("kokoro/model_quantized.onnx"), "{}", config.engine.model_path);
         assert_eq!(config.voice.per_language["fr"], "p-fenrir60");
@@ -611,5 +626,50 @@ mod tests {
         config.voice.voice = "voix-qui-n-existe-pas".into();
         assert!(!config.align_voice_with_family());
         assert_eq!(config.voice.voice, "voix-qui-n-existe-pas");
+    }
+
+    #[test]
+    fn nothing_to_read_only_from_a_bare_terminal() {
+        assert!(nothing_to_read(&Args::default(), true), "sillon seul, dans un terminal");
+        assert!(!nothing_to_read(&Args::default(), false), "cat notes.md | sillon lit le tube");
+        let file = Args { file: Some("notes.md".into()), ..Args::default() };
+        assert!(!nothing_to_read(&file, true));
+        let clip = Args { clip: true, ..Args::default() };
+        assert!(!nothing_to_read(&clip, true));
+        let config = Args { config: true, ..Args::default() };
+        assert!(!nothing_to_read(&config, true), "--config ouvre toujours les réglages");
+    }
+
+    #[test]
+    fn the_short_help_names_the_four_ways_to_read() {
+        for way in ["sillon document.md", "| sillon", "sillon --clip", "app", "--config", "--help"] {
+            assert!(SHORT_HELP.contains(way), "{way} manque :\n{SHORT_HELP}");
+        }
+    }
+
+    #[test]
+    fn help_shows_only_the_everyday_options() {
+        use clap::CommandFactory;
+        let help = Args::command().render_help().to_string();
+        for shown in ["[FILE]", "--clip", "--speed", "--voice", "--to-markdown", "--no-cache", "--config"] {
+            assert!(help.contains(shown), "{shown} manque :\n{help}");
+        }
+        for hidden in [
+            "--pitch", "--language", "--engine", "--model", "--family", "--sessions", "--prefetch",
+            "--code-blocks", "--no-autoplay", "--write-config", "--show-config", "--check-kokoro",
+        ] {
+            assert!(!help.contains(hidden), "{hidden} se voit encore :\n{help}");
+        }
+    }
+
+    #[test]
+    fn hidden_options_are_still_accepted() {
+        let args = Args::try_parse_from([
+            "sillon", "--pitch", "0.5", "--language", "en", "--engine", "system", "--sessions", "2",
+            "--prefetch", "4", "--code-blocks", "skip", "--no-autoplay", "--show-config",
+        ])
+        .expect("toujours acceptées");
+        assert_eq!(args.pitch, Some(0.5));
+        assert!(args.show_config);
     }
 }

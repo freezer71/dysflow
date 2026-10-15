@@ -19,6 +19,8 @@ enum SettingsDiff {
         if new.lineWidth != old.lineWidth { p.lineWidth = new.lineWidth }
         if new.lineSpacing != old.lineSpacing { p.lineSpacing = new.lineSpacing }
         if new.readingRuler != old.readingRuler { p.readingRuler = new.readingRuler }
+        if new.readingFont != old.readingFont { p.readingFont = new.readingFont }
+        if new.readingSize != old.readingSize { p.readingSize = new.readingSize }
         if new.keepVoiceMinutes != old.keepVoiceMinutes { p.keepVoiceMinutes = new.keepVoiceMinutes }
         if new.outputDevice != old.outputDevice { p.outputDevice = new.outputDevice }
         // Une voix par langue et par patch : la première langue changée part

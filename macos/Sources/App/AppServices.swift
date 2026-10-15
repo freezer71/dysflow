@@ -11,21 +11,8 @@ import SwiftUI
 final class AppServices {
     var model: ReaderModel?
     var panel: PanelController?
-    /// Lecture, pause, phrases et timeline venues d'ailleurs que du panneau.
-    var transport: Transport?
-    var notes: NotesWindowController?
-    /// « Lire le presse-papiers » : le presse-papiers seul (depuis le menu).
-    @ObservationIgnored var read: @MainActor () async -> Void = {}
-}
-
-/// Ouvre la fenêtre des réglages, sur un onglet ou le dernier ouvert.
-struct OpenSettingsTabAction {
-    let open: @MainActor (SettingsTab?) -> Void
-
-    @MainActor func callAsFunction(_ tab: SettingsTab?) { open(tab) }
-}
-
-extension EnvironmentValues {
-    /// Le panneau la pose (`PanelController.openSettings`) ; ailleurs, rien.
-    @Entry var openSettingsTab = OpenSettingsTabAction { _ in }
+    /// « Lire la sélection » : la sélection, sinon le presse-papiers.
+    @ObservationIgnored var readSelection: @MainActor () async -> Void = {}
+    /// « Ouvrir un fichier… » : le panneau d'ouverture.
+    @ObservationIgnored var chooseFile: @MainActor () -> Void = {}
 }

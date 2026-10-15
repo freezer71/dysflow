@@ -37,14 +37,6 @@ final class SettingsDiffTests: XCTestCase {
         XCTAssertEqual(p.outputDevice, "Casque")
     }
 
-    func testAnUnlistedValueStaysInTheMenu() {
-        let options: [(title: String, value: String)] = [("Annoncer", "announce"), ("Sauter", "skip")]
-        let kept = Choices.including(options, current: "lire") { "\($0) (écrit à la main)" }
-        XCTAssertEqual(kept.map(\.value), ["announce", "skip", "lire"])
-        XCTAssertEqual(kept.last?.title, "lire (écrit à la main)")
-        XCTAssertEqual(Choices.including(options, current: "skip") { $0 }.map(\.value), ["announce", "skip"])
-    }
-
     func testAVoicePerLanguageBecomesItsOwnPatch() {
         var old = SettingsView.defaults
         old.voicesByLanguage = []
@@ -74,5 +66,16 @@ final class SettingsDiffTests: XCTestCase {
                         LanguageVoice(language: "en", voice: "af_sky")])
         XCTAssertNil(patches.last?.speed, "le second patch ne redit que sa langue")
         XCTAssertTrue(SettingsDiff.patches(from: new, to: new).isEmpty)
+    }
+
+    func testFontAndSizeAreSentAlone() {
+        let old = SettingsView.defaults
+        var new = old
+        new.readingFont = "openDyslexic"
+        new.readingSize = 26
+        let patch = SettingsDiff.patch(from: old, to: new)
+        XCTAssertEqual(patch.readingFont, "openDyslexic")
+        XCTAssertEqual(patch.readingSize, 26)
+        XCTAssertNil(patch.lineSpacing)
     }
 }

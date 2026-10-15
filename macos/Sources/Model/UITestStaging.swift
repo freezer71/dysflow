@@ -1,14 +1,15 @@
 #if DEBUG
-/// Pour les tests d'interface seulement : le lecteur muet n'a ni offre, ni
-/// avis, ni configuration illisible. Ces arguments les posent dans
-/// l'instantané publié, pour que les tests les atteignent au clavier et les
+/// Pour les tests d'interface seulement : le lecteur muet n'a ni
+/// configuration illisible ni voix Kokoro. Ces arguments les posent dans
+/// ce qu'il rend, pour que les tests les atteignent au clavier et les
 /// passent à l'audit d'accessibilité. Compilé en Debug seulement : l'app
 /// livrée (Release) n'en contient rien.
 enum UITestStaging {
-    static let offer = "--ui-testing-offre"
-    static let notice = "--ui-testing-avis"
     static let unreadableConfig = "--ui-testing-config-illisible"
-    /// Les voix de Kokoro dans l'onglet Voix (le lecteur muet n'en a pas).
+    /// Un téléchargement de la voix en cours, puis en échec.
+    static let downloading = "--ui-testing-telechargement"
+    static let failedDownload = "--ui-testing-echec-voix"
+    /// Les voix de Kokoro dans les réglages (le lecteur muet n'en a pas).
     static let kokoro = "--ui-testing-kokoro"
 
     /// Les capacités de Kokoro telles que le moteur les donne
@@ -25,18 +26,16 @@ enum UITestStaging {
     }
 
     static func staging(for arguments: [String]) -> (@Sendable (inout Snapshot) -> Void)? {
-        let offer = arguments.contains(Self.offer)
-        let notice = arguments.contains(Self.notice)
         let unreadable = arguments.contains(unreadableConfig)
-        guard offer || notice || unreadable else { return nil }
+        let downloading = arguments.contains(Self.downloading)
+        let failed = arguments.contains(failedDownload)
+        guard unreadable || downloading || failed else { return nil }
         return { s in
-            if offer {
-                s.offer = VoiceOfferView(id: "kokoro_82m_mlx", bytes: 342_264_783, former: "F2", message: "")
-            }
-            if notice {
-                s.notice = "Nouvelle voix : Kokoro remplace F2."
-            }
             if unreadable { s.configUnreadable = true }
+            if downloading || failed {
+                s.download = DownloadView(id: "kokoro_82m_mlx", received: 100_000_000, total: 342_264_783,
+                                          failed: failed ? "réseau indisponible" : nil)
+            }
         }
     }
 

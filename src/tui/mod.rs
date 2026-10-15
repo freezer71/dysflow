@@ -28,7 +28,6 @@ pub fn run(mut app: App) -> Result<()> {
     // La position se retient même si la boucle a échoué : c'est justement
     // quand quelque chose casse qu'on tient à ne pas tout reprendre.
     app.remember_position();
-    app.flush_config();
     // Le terminal est restauré même si la boucle a échoué, et l'erreur de
     // la boucle passe avant celle de la restauration.
     let restored = restore(&mut terminal);
@@ -60,9 +59,6 @@ fn event_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) 
                     break;
                 }
             }
-            // Un choix de modèle s'écrit tout de suite : une fermeture
-            // brutale ne doit pas le perdre.
-            app.flush_config();
         }
         last_frame = Instant::now();
     }

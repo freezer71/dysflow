@@ -1,24 +1,53 @@
 import XCTest
 @testable import Sillon
 
+/// L'aide liste toutes les touches du lecteur, et chacune fait quelque chose.
 @MainActor
 final class HelpOverlayTests: XCTestCase {
-    func testTheHelpListsTheDisplayModes() {
-        XCTAssertTrue(HelpOverlay.rows.contains { $0 == ("⌘1 ⌘2 ⌘3", "Petit · moyen · grand") })
-        XCTAssertTrue(HelpOverlay.rows.contains { $0 == ("Échap", "Revenir · arrière-plan") })
-        XCTAssertFalse(HelpOverlay.rows.contains { $0.1 == "Revenir · masquer" })
-    }
-}
+    private let presses: [(String, [KeyPress])] = [
+        ("Espace", [KeyPress(characters: " ", keyCode: KeyCode.space)]),
+        ("← →", [KeyPress(characters: "", keyCode: KeyCode.left), KeyPress(characters: "", keyCode: KeyCode.right)]),
+        ("↑ ↓", [KeyPress(characters: "", keyCode: KeyCode.up), KeyPress(characters: "", keyCode: KeyCode.down)]),
+        ("Début", [KeyPress(characters: "", keyCode: KeyCode.home)]),
+        ("n p", [KeyPress(characters: "n"), KeyPress(characters: "p")]),
+        ("/ ⌘F", [KeyPress(characters: "/"), KeyPress(characters: "f", command: true)]),
+        ("N P", [KeyPress(characters: "N", shift: true), KeyPress(characters: "P", shift: true)]),
+        ("t", [KeyPress(characters: "t")]),
+        ("e", [KeyPress(characters: "e")]),
+        ("+ −", [KeyPress(characters: "+", shift: true), KeyPress(characters: "-")]),
+        ("⌘C", [KeyPress(characters: "c", command: true)]),
+        ("⌘V", [KeyPress(characters: "v", command: true)]),
+        ("⌘O", [KeyPress(characters: "o", command: true)]),
+        ("⌘M", [KeyPress(characters: "m", command: true)]),
+        ("⌘W", [KeyPress(characters: "w", command: true)]),
+        ("Échap", [KeyPress(characters: "", keyCode: KeyCode.escape)]),
+        ("?", [KeyPress(characters: "?", shift: true)]),
+        ("⌘,", [KeyPress(characters: ",", command: true)]),
+    ]
 
-@MainActor
-final class HelpOverlayKeysTests: XCTestCase {
-    func testTheHelpedCommandDigitsAreTheOnesTheKeyMapHandles() {
-        let help = HelpOverlay.rows.first { $0.1 == "Petit · moyen · grand" }?.0
-        XCTAssertEqual(help, "⌘1 ⌘2 ⌘3")
-        let modes: [(String, DisplayMode)] = [("1", .small), ("2", .medium), ("3", .large)]
-        for (digit, mode) in modes {
-            XCTAssertEqual(KeyMap.action(for: KeyPress(characters: digit, command: true)), .display(mode))
+    func testTheHelpListsEveryKeyAndEachOneWorks() {
+        XCTAssertEqual(HelpOverlay.rows.map(\.0), presses.map(\.0))
+        for (row, keys) in presses {
+            for key in keys { XCTAssertNotNil(KeyMap.action(for: key), "\(row) : sans action") }
         }
+    }
+
+    /// Le pied de l'aide dit vrai : seules « ? » et Échap la ferment, les
+    /// autres touches agissent dessous.
+    func testTheFooterNamesTheKeysThatCloseTheHelp() {
+        XCTAssertEqual(HelpOverlay.footer, "? ou Échap pour fermer")
+        guard case .showHelp? = KeyMap.action(for: KeyPress(characters: "?", shift: true)) else {
+            return XCTFail("« ? » ne bascule pas l'aide")
+        }
+        guard case .escape? = KeyMap.action(for: KeyPress(characters: "", keyCode: KeyCode.escape)) else {
+            return XCTFail("Échap ne ferme pas l'aide")
+        }
+    }
+
+    func testTheHelpSaysThatClosingStopsTheReading() {
+        XCTAssertTrue(HelpOverlay.rows.contains { $0 == ("⌘W", "Fermer (la lecture s'arrête)") })
+        XCTAssertTrue(HelpOverlay.rows.contains { $0 == ("⌘C", "Copier la sélection, sinon la phrase") })
+        XCTAssertTrue(HelpOverlay.rows.contains { $0 == ("Début", "Revenir au début") })
     }
 }
 

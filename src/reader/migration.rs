@@ -164,6 +164,31 @@ impl Reader {
         }
     }
 
+    /// L'installation automatique de la voix (plus d'onglet Modèles) : une
+    /// offre Kokoro en attente est acceptée ; sans offre, le Kokoro
+    /// recommandé se télécharge si aucun n'est installé, et devient la voix
+    /// active à la fin s'il n'y en a aucune. Idempotente : un téléchargement
+    /// qui court ne se double pas ; un échec se relance. Un lecteur hors
+    /// disque ne télécharge rien.
+    pub fn ensure_default_voice(&mut self, now: Instant) -> Result<()> {
+        if !self.persist {
+            return Ok(());
+        }
+        // Une issue pas encore relevée (fini, échoué) passe d'abord.
+        self.poll_download(now);
+        if self.download.as_ref().is_some_and(|d| !d.is_finished()) {
+            return Ok(());
+        }
+        if self.offer.is_some() {
+            return self.accept_offer(now);
+        }
+        let available = models::available_with(self.mlx);
+        match models::default_voice_to_install(&available, models::is_installed) {
+            Some(package) => self.install_voice(package.id),
+            None => Ok(()),
+        }
+    }
+
     /// Jamais sur une configuration illisible : elle serait réécrite avec
     /// les défauts.
     fn record_migration(&mut self) {
@@ -250,6 +275,7 @@ mod tests {
     use crate::models::{self, Download, Progress, CATALOG};
     use crate::tts::silent::SilentEngine;
     use crate::tts::TtsEngine;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex, MutexGuard};
     use std::time::Instant;
 
@@ -583,7 +609,6 @@ mod tests {
         r.switch_when_downloaded = Some((mlx.id.into(), "F2".into()));
         r.finish_migration(mlx.id, t0);
         r.open_text("Un texte.", "a", t0);
-        r.with_session(t0, |app| app.mark_config_dirty());
         r.close();
         r.rest();
         let after = std::fs::read(&path).unwrap();
@@ -644,6 +669,93 @@ mod tests {
     fn accepting_without_an_offer_is_an_error() {
         let mut r = offline_reader(on_supertonic());
         assert!(r.accept_offer(Instant::now()).is_err());
+        assert!(r.download().is_none());
+    }
+
+    /// Téléchargements démarrés par `counting_offline_reader` (sous
+    /// `models_lock` : un test à la fois).
+    static STARTS: AtomicUsize = AtomicUsize::new(0);
+
+    fn counting_offline_reader(config: Config) -> Reader {
+        let mut r = offline_reader(config);
+        r.start_download = |package| {
+            STARTS.fetch_add(1, Ordering::SeqCst);
+            Ok(Download::fake(package, false))
+        };
+        r
+    }
+
+    #[test]
+    fn without_kokoro_the_recommended_voice_installs_by_itself_once() {
+        let _guard = models_lock();
+        let mlx = by_id("kokoro_82m_mlx");
+        let _ = models::remove(mlx);
+        let mut r = counting_offline_reader(Config::default());
+        let before = STARTS.load(Ordering::SeqCst);
+        r.ensure_default_voice(Instant::now()).unwrap();
+        assert_eq!(r.download().map(|d| d.id), Some(mlx.id.to_string()));
+        r.ensure_default_voice(Instant::now()).unwrap();
+        assert_eq!(STARTS.load(Ordering::SeqCst), before + 1, "un seul téléchargement");
+        assert_eq!(r.offer(), None);
+
+        // Le téléchargement aboutit : Kokoro devient la voix active.
+        install_hollow(mlx);
+        r.download = Some(Download::fake(mlx, true));
+        r.tick(Instant::now());
+        assert_eq!(r.config().engine.family, "kokoro");
+        r.ensure_default_voice(Instant::now()).unwrap();
+        assert!(r.download().is_none(), "installé : plus rien à faire");
+        models::remove(mlx).unwrap();
+    }
+
+    #[test]
+    fn a_pending_offer_is_accepted_without_asking() {
+        let _guard = models_lock();
+        let _ = models::remove(by_id("kokoro_82m_mlx"));
+        let mut r = offered();
+        r.ensure_default_voice(Instant::now()).unwrap();
+        assert_eq!(r.offer(), None, "plus de question");
+        assert_eq!(r.download().map(|d| d.id), Some("kokoro_82m_mlx".to_string()));
+        assert_eq!(
+            r.switch_when_downloaded.as_ref().map(|(id, _)| id.as_str()),
+            Some("kokoro_82m_mlx"),
+            "le passage à Kokoro attend la fin"
+        );
+    }
+
+    #[test]
+    fn an_installed_kokoro_downloads_nothing() {
+        let _guard = models_lock();
+        let mlx = by_id("kokoro_82m_mlx");
+        install_hollow(mlx);
+        let mut r = offline_reader(Config::default());
+        r.ensure_default_voice(Instant::now()).unwrap();
+        assert!(r.download().is_none());
+        assert_eq!(r.offer(), None);
+        models::remove(mlx).unwrap();
+    }
+
+    /// « Réessayer » après un échec (réseau coupé) : l'échec reste affiché
+    /// jusqu'à l'appel suivant, qui relance.
+    #[test]
+    fn a_failed_installation_is_retried_by_the_next_call() {
+        let _guard = models_lock();
+        let mlx = by_id("kokoro_82m_mlx");
+        let _ = models::remove(mlx);
+        let mut r = offline_reader(Config::default());
+        r.download = Some(Download::fake_ended(mlx, Progress::Failed("réseau".into())));
+        r.tick(Instant::now());
+        assert!(r.download().and_then(|d| d.failed).is_some(), "l'échec reste affiché");
+        r.ensure_default_voice(Instant::now()).unwrap();
+        let download = r.download().expect("relancé");
+        assert_eq!(download.failed, None);
+    }
+
+    #[test]
+    fn a_reader_off_disk_installs_nothing() {
+        let mut r = offline_reader(Config::default());
+        r.set_persistent(false);
+        r.ensure_default_voice(Instant::now()).unwrap();
         assert!(r.download().is_none());
     }
 }

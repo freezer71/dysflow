@@ -36,9 +36,8 @@ private struct SettingsRoot: View {
     }
 }
 
-/// Le titre de la fenêtre (masqué, mais lu par Mission Control) suit la page (« Lecture », « Voix »…), comme le
-/// veut macOS ; l'identifiant d'accessibilité, lui, la nomme « Réglages »,
-/// et son contenu porte ce nom pour VoiceOver. `NSWindow.identifier` reste
+/// Le titre de la fenêtre (masqué, lu par Mission Control) est « Réglages » ;
+/// l'identifiant d'accessibilité la nomme de même, et son contenu porte ce nom pour VoiceOver. `NSWindow.identifier` reste
 /// à SwiftUI, qui retrouve sa fenêtre par lui. Les boutons réduire et
 /// agrandir, toujours grisés ici, sont retirés : macOS les expose mal
 /// (enfant que son parent ne déclare pas).

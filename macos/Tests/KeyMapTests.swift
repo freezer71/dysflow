@@ -1,6 +1,7 @@
 import XCTest
 @testable import Sillon
 
+/// La table de la spec 1.5, et rien d'autre.
 final class KeyMapTests: XCTestCase {
     private func act(_ c: String, _ code: UInt16 = 0, option: Bool = false,
                      shift: Bool = false, command: Bool = false, control: Bool = false) -> ReaderAction? {
@@ -8,122 +9,58 @@ final class KeyMapTests: XCTestCase {
                                     shift: shift, command: command, control: control))
     }
 
-    func testCommandDigitsChooseTheDisplayMode() {
-        XCTAssertEqual(act("1", command: true), .display(.small))
-        XCTAssertEqual(act("2", command: true), .display(.medium))
-        XCTAssertEqual(act("3", command: true), .display(.large))
-        // AZERTY : les mêmes touches, sans Maj.
-        XCTAssertEqual(act("&", command: true), .display(.small))
-        XCTAssertEqual(act("é", command: true), .display(.medium))
-        XCTAssertEqual(act("\"", command: true), .display(.large))
-        XCTAssertNil(act("4", command: true))
-        // Sans ⌘, les chiffres restent des vitesses.
-        XCTAssertEqual(act("1"), .command(.setSpeed(speed: 0.75)))
-    }
-
-    func testVOpensTheVoiceSettings() {
-        XCTAssertEqual(KeyMap.action(for: KeyPress(characters: "v")), .openVoiceSettings)
-        XCTAssertNil(KeyMap.action(for: KeyPress(characters: "v", option: true)))
-    }
-
-    func testVIsNotTakenWithCommandOrShift() {
-        XCTAssertNil(KeyMap.action(for: KeyPress(characters: "v", command: true)))
-        XCTAssertNil(KeyMap.action(for: KeyPress(characters: "V", shift: true)))
-    }
-
-    func testTheSeekStepComesFromTheSettings() {
-        let key = KeyPress(characters: "", keyCode: KeyCode.right, shift: true)
-        XCTAssertEqual(KeyMap.action(for: key, seekStep: 12), .command(.sentences(delta: 12)))
-    }
-
-    func testPlayAndWords() {
+    func testTheReadingKeys() {
         XCTAssertEqual(act(" ", KeyCode.space), .command(.togglePlay))
-        XCTAssertEqual(act("", KeyCode.left, option: true), .command(.words(delta: -1)))
-        XCTAssertEqual(act("", KeyCode.right, option: true), .command(.words(delta: 1)))
-    }
-
-    func testSentencesBlocksSections() {
         XCTAssertEqual(act("", KeyCode.left), .command(.sentences(delta: -1)))
         XCTAssertEqual(act("", KeyCode.right), .command(.sentences(delta: 1)))
-        XCTAssertEqual(act("", KeyCode.right, shift: true), .command(.sentences(delta: 5)))
-        // ↑ ↓ : une ligne affichée ; ⇧↑ ⇧↓ : un bloc.
         XCTAssertEqual(act("", KeyCode.up), .line(delta: -1))
         XCTAssertEqual(act("", KeyCode.down), .line(delta: 1))
-        XCTAssertEqual(act("", KeyCode.up, shift: true), .command(.blocks(delta: -1)))
-        XCTAssertEqual(act("", KeyCode.down, shift: true), .command(.blocks(delta: 1)))
+        XCTAssertEqual(act("", KeyCode.home), .command(.start), "Début : revenir au début")
         XCTAssertEqual(act("n"), .command(.sections(delta: 1)))
         XCTAssertEqual(act("p"), .command(.sections(delta: -1)))
-    }
-
-    func testSpeedVolumeAndMisc() {
-        XCTAssertEqual(act("+"), .command(.changeSpeed(delta: 0.1)))
+        XCTAssertEqual(act("+", shift: true), .command(.changeSpeed(delta: 0.1)))
         XCTAssertEqual(act("-"), .command(.changeSpeed(delta: -0.1)))
-        XCTAssertEqual(act("3"), .command(.setSpeed(speed: 1.5)))
-        XCTAssertEqual(act("]"), .command(.changeVolume(delta: 0.05)))
-        XCTAssertEqual(act("m"), .command(.toggleMute))
-        XCTAssertEqual(act("r"), .command(.restartSentence))
-        XCTAssertEqual(act("b"), .command(.toggleBookmark))
-        XCTAssertEqual(act("g"), .command(.start))
-        XCTAssertEqual(act("", KeyCode.end), .command(.end))
     }
 
-    func testCaseMattersForSearchAndBookmarks() {
-        XCTAssertEqual(act("N"), .command(.searchAdvance(delta: 1)))
-        XCTAssertEqual(act("P"), .command(.searchAdvance(delta: -1)))
-        XCTAssertEqual(act("B"), .toggleBookmarks)
-        XCTAssertEqual(act("t"), .toggleSidebar)
+    func testSearchSidebarEditAndHelp() {
         XCTAssertEqual(act("/"), .openSearch)
+        XCTAssertEqual(act("f", command: true), .openSearch)
+        XCTAssertEqual(act("N", shift: true), .command(.searchAdvance(delta: 1)))
+        XCTAssertEqual(act("P", shift: true), .command(.searchAdvance(delta: -1)))
+        XCTAssertEqual(act("t"), .toggleSidebar)
+        XCTAssertEqual(act("e"), .edit)
+        XCTAssertEqual(act("?", shift: true), .showHelp)
     }
 
-    func testWindowGestures() {
-        XCTAssertEqual(act("\r", KeyCode.enter), .expand)
-        XCTAssertEqual(act("", KeyCode.escape), .collapseOrHide)
-        XCTAssertEqual(act("c", command: true), .copySentence)
+    func testTheCommandKeys() {
+        XCTAssertEqual(act("c", command: true), .copy)
+        XCTAssertEqual(act("v", command: true), .paste)
+        XCTAssertEqual(act("o", command: true), .openFile)
+        XCTAssertEqual(act("m", command: true), .toggleSize)
+        XCTAssertEqual(act("w", command: true), .close)
         XCTAssertEqual(act(",", command: true), .openSettings)
-        XCTAssertEqual(act("?"), .showHelp)
+        XCTAssertEqual(act("", KeyCode.escape), .escape)
+        // ⌘A et les autres restent au texte (tout sélectionner).
+        XCTAssertNil(act("a", command: true))
     }
 
-    func testUnknownKeyIsIgnored() {
-        XCTAssertNil(act("z"))
-        XCTAssertNil(act("x", command: true))
+    /// Tout ce que la spec retire ne fait plus rien.
+    func testRemovedKeysDoNothing() {
+        for c in ["b", "B", "[", "]", "m", "r", "g", "v", "h", "=", "_", "1", "2", "3", "4", "&", "é", "\"", "'"] {
+            XCTAssertNil(act(c), "« \(c) » devait être retiré")
+        }
+        for digit in ["1", "2", "3"] { XCTAssertNil(act(digit, command: true), "⌘\(digit)") }
+        XCTAssertNil(act("", KeyCode.left, option: true), "⌥← (mot)")
+        XCTAssertNil(act("", KeyCode.right, shift: true), "⇧→ (saut)")
+        XCTAssertNil(act("", KeyCode.up, shift: true), "⇧↑ (bloc)")
+        XCTAssertNil(act("", KeyCode.down, option: true), "⌥↓ (volume)")
+        XCTAssertNil(act("", 119), "Fin")
+        XCTAssertNil(act("", KeyCode.enter), "⏎")
     }
 
-    func testLayoutIndependentVolume() {
-        // ⌥↑ et ⌥↓ pour le volume (indépendant du clavier)
-        XCTAssertEqual(act("", KeyCode.up, option: true), .command(.changeVolume(delta: 0.05)))
-        XCTAssertEqual(act("", KeyCode.down, option: true), .command(.changeVolume(delta: -0.05)))
-        // Les flèches sans Option restent des lignes, Option l'emporte sur Maj
-        XCTAssertEqual(act("", KeyCode.up), .line(delta: -1))
-        XCTAssertEqual(act("", KeyCode.down), .line(delta: 1))
-        XCTAssertEqual(act("", KeyCode.up, option: true, shift: true), .command(.changeVolume(delta: 0.05)))
-        // [ et ] restent disponibles pour QWERTY
-        XCTAssertEqual(act("["), .command(.changeVolume(delta: -0.05)))
-        XCTAssertEqual(act("]"), .command(.changeVolume(delta: 0.05)))
-    }
-
-    func testAZERTYSpeedAliases() {
-        // AZERTY non-décalées correspondent aux vitesses
-        XCTAssertEqual(act("&"), .command(.setSpeed(speed: 0.75)))
-        XCTAssertEqual(act("é"), .command(.setSpeed(speed: 1.0)))
-        XCTAssertEqual(act("\""), .command(.setSpeed(speed: 1.5)))
-        XCTAssertEqual(act("'"), .command(.setSpeed(speed: 2.0)))
-        // QWERTY décalées restent aussi
-        XCTAssertEqual(act("1"), .command(.setSpeed(speed: 0.75)))
-        XCTAssertEqual(act("2"), .command(.setSpeed(speed: 1.0)))
-        XCTAssertEqual(act("3"), .command(.setSpeed(speed: 1.5)))
-        XCTAssertEqual(act("4"), .command(.setSpeed(speed: 2.0)))
-    }
-
-    func testCharacterShortcutsBlockedByOptionAndControl() {
-        // Les raccourcis caractères sont bloqués par Option et Control
+    func testOptionAndControlBlockTheCharacterKeys() {
         XCTAssertNil(act("n", option: true))
-        XCTAssertNil(act("b", control: true))
-        XCTAssertNil(act("/", option: true))
-        // Mais les flèches conservent leur traitement avec Option
-        XCTAssertEqual(act("", KeyCode.left, option: true), .command(.words(delta: -1)))
-        XCTAssertEqual(act("", KeyCode.right, option: true), .command(.words(delta: 1)))
-        XCTAssertEqual(act("", KeyCode.left, shift: true), .command(.sentences(delta: -5)))
-        // ⌥⇧← : Option a la priorité
-        XCTAssertEqual(act("", KeyCode.left, option: true, shift: true), .command(.words(delta: -1)))
+        XCTAssertNil(act("t", control: true))
+        XCTAssertNil(act("c", option: true, command: true))
     }
 }

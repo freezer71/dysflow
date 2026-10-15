@@ -20,7 +20,7 @@ final class PanelKeyRouterTests: XCTestCase {
     func testATextFieldKeepsItsKeysButEscape() {
         let field = NSTextView()
         XCTAssertEqual(route(KeyCode.space, focus: field), .pass)
-        XCTAssertEqual(route(KeyCode.escape, focus: field, action: .collapseOrHide), .perform(.collapseOrHide))
+        XCTAssertEqual(route(KeyCode.escape, focus: field, action: .escape), .perform(.escape))
     }
 
     func testAListKeepsItsVerticalArrowsAndEnter() {
@@ -29,6 +29,15 @@ final class PanelKeyRouterTests: XCTestCase {
         XCTAssertEqual(route(KeyCode.enter, focus: list), .pass)
         XCTAssertEqual(route(KeyCode.down, option: true, focus: list), .perform(.command(.togglePlay)))
         XCTAssertEqual(route(KeyCode.space, focus: list), .perform(.command(.togglePlay)))
+    }
+
+    /// Le texte lu, sélectionnable, prend le focus au clic : ses touches
+    /// restent celles du lecteur (⌘C copie par l'app), ⌘A passe à la vue.
+    func testTheSelectableReadingTextKeepsTheReaderKeys() {
+        let reading = ReadingTextView()
+        XCTAssertEqual(route(KeyCode.space, focus: reading), .perform(.command(.togglePlay)))
+        XCTAssertEqual(route(8, command: true, focus: reading, action: .copy), .perform(.copy))
+        XCTAssertEqual(route(0, command: true, focus: reading, action: nil), .pass)
     }
 
     func testAKeyWithoutActionPasses() {

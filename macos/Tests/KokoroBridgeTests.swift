@@ -53,25 +53,28 @@ final class KokoroBridgeTests: XCTestCase {
         XCTAssertNil(SettingsDiff.patch(from: new, to: new).voiceForLanguage)
     }
 
-    /// Le lecteur muet ne migre ni ne propose rien ; répondre sans
-    /// proposition est une erreur dite.
+    /// Le lecteur muet ne migre ni ne propose rien.
     @MainActor
     func testTheSilentReaderNeitherMigratesNorOffers() async {
         let m = ReaderModel(reader: SillonReader.silent())
         let notice = await m.migrateVoice()
         XCTAssertNil(notice)
         XCTAssertNil(m.snapshot.offer)
-        do {
-            try await m.acceptVoiceOffer()
-            XCTFail("aucune proposition en attente")
-        } catch {
-            XCTAssertTrue(SettingsStore.message(of: error).contains("aucune proposition"))
-        }
-        await m.dismissVoiceOffer()
-        await m.dismissNotice()
         XCTAssertNil(m.snapshot.notice)
         XCTAssertFalse(m.snapshot.configUnreadable)
         XCTAssertFalse(m.voicePreparation.isRunning)
+    }
+
+    /// Seul un passage fait se dit : la phrase d'une proposition (sans
+    /// bouton pour y répondre) se tait, la voix par défaut s'en charge.
+    @MainActor
+    func testOnlyACompletedSwitchIsAnnounced() {
+        let offer = VoiceOfferView(id: "kokoro_82m_mlx", bytes: 342_264_783, former: "F2", message: "")
+        XCTAssertNil(AppDelegate.switchNotice(engine: "Nouvelle voix disponible (326,4 Mo) — Passer à Kokoro ?",
+                                              offer: offer))
+        XCTAssertEqual(AppDelegate.switchNotice(engine: "Nouvelle voix : Kokoro remplace F2.", offer: nil),
+                       "Nouvelle voix : Kokoro remplace F2.")
+        XCTAssertNil(AppDelegate.switchNotice(engine: nil, offer: nil))
     }
 
     /// « Remplacer » une configuration illisible passe par le moteur, hors

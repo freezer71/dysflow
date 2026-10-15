@@ -47,3 +47,11 @@ extension XCUIApplication {
         }
     }
 }
+
+extension XCUIElement {
+    func waitForLabel(_ label: String, timeout: TimeInterval = 2) -> Bool {
+        let predicate = NSPredicate(format: "label == %@", label)
+        let exp = XCTNSPredicateExpectation(predicate: predicate, object: self)
+        return XCTWaiter.wait(for: [exp], timeout: timeout) == .completed
+    }
+}

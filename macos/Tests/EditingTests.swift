@@ -6,8 +6,7 @@ final class EditingTests: XCTestCase {
     private var controller: PanelController!
 
     override func tearDown() async throws {
-        controller?.collapseOrHide()
-        controller?.collapseOrHide()
+        controller?.close()
         controller = nil
         try await super.tearDown()
     }
@@ -21,7 +20,7 @@ final class EditingTests: XCTestCase {
         XCTAssertTrue(waitUntil { model.refresh(); return model.snapshot.revision == 1 })
         let c = PanelController(model: model, store: DisplayModeStore(defaults: defaults))
         controller = c
-        c.apply(.choose(.medium))
+        c.apply(.choose(.reader))
         return c
     }
 
@@ -69,9 +68,9 @@ final class EditingTests: XCTestCase {
         let c = shownPanel("Un. Deux.")
         c.beginEditing()
         c.draft = "Un. Trois."
-        c.perform(.collapseOrHide)
+        c.perform(.escape)
         XCTAssertFalse(c.editing)
-        XCTAssertEqual(c.mode, .medium)
+        XCTAssertEqual(c.mode, .reader)
         XCTAssertTrue(waitUntil { c.model.refresh(); return c.model.snapshot.revision == 2 })
     }
 
@@ -87,12 +86,12 @@ final class EditingTests: XCTestCase {
         XCTAssertEqual(c.model.sourceText, "Un. Deux.")
     }
 
-    func testTheSmallBarOpensTheMediumPanelToEdit() {
+    func testTheMiniOpensTheReaderToEdit() {
         let c = shownPanel("Un. Deux.")
-        c.apply(.choose(.small))
+        c.apply(.choose(.mini))
         c.perform(.edit)
         XCTAssertTrue(c.editing)
-        XCTAssertEqual(c.mode, .medium)
+        XCTAssertEqual(c.mode, .reader)
     }
 
     /// Une image passée à l'OCR n'a pas de texte d'origine : le document est
