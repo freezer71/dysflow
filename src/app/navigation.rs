@@ -1,4 +1,4 @@
-//! Se repérer dans le texte : vue, recherche, reprise, signets, panneaux.
+//! Se repérer dans le texte : vue, recherche, reprise, sommaire.
 
 use super::*;
 
@@ -113,13 +113,12 @@ impl App {
             .unwrap_or_else(|| self.source.clone())
     }
 
-    /// Rattache à ce document ce qui a été retenu sous un ancien nom.
+    /// Rattache à ce document la position retenue sous un ancien nom.
     ///
-    /// Positions et signets étaient rattachés au nom du fichier seul ; ils le
-    /// sont désormais à son chemin. Rien de ce qui a été posé ne se perd.
+    /// Les positions étaient rattachées au nom du fichier seul ; elles le
+    /// sont désormais à son chemin. Rien de ce qui a été retenu ne se perd.
     pub fn adopt_former_identity(&mut self, former: &str) {
         self.positions.adopt(former, &self.source);
-        self.bookmarks.adopt(former, &self.source);
     }
 
     /// Retient la position dans ce document, et reprend où l'on s'était arrêté.
@@ -197,33 +196,6 @@ impl App {
         let _ = self.positions.save();
     }
 
-    pub fn toggle_bookmark(&mut self) {
-        let sentence_id = self.current_sentence();
-        let Some(sentence) = self.doc().sentence(sentence_id) else {
-            return;
-        };
-        let block_id = sentence.block_id;
-        // Un signet cite ce qu'on a sous les yeux, pas ce que le moteur entend.
-        let snippet = sentence.written();
-        let title = self
-            .doc()
-            .section_of_sentence(sentence_id)
-            .map(|s| s.title.clone())
-            .unwrap_or_else(|| "Sans titre".to_string());
-
-        let added = self
-            .bookmarks
-            .toggle(&self.source, sentence_id, block_id, &title, &snippet);
-        match self.bookmarks.save() {
-            Ok(()) => self.notify(if added { "Signet ajouté" } else { "Signet retiré" }),
-            Err(err) => self.notify(&format!("Signet non enregistré : {err}")),
-        }
-    }
-
-    pub fn bookmarked_here(&self) -> bool {
-        self.bookmarks.contains(&self.source, self.current_sentence())
-    }
-
     pub fn toggle_panel(&mut self, panel: Panel) {
         self.panel = if self.panel == panel { Panel::None } else { panel };
         self.selection = 0;
@@ -242,12 +214,11 @@ impl App {
             .collect()
     }
 
-    /// Déplace la sélection dans le panneau ouvert.
+    /// Déplace la sélection dans le sommaire ouvert.
     pub fn move_selection(&mut self, delta: isize) {
         let count = match self.panel {
             Panel::Contents => self.navigable_sections().len(),
-            Panel::Bookmarks => self.bookmarks.for_document(&self.source).count(),
-            _ => 0,
+            Panel::None => 0,
         };
         if count == 0 {
             return;
@@ -256,49 +227,19 @@ impl App {
         self.selection = next as usize;
     }
 
-    /// Saute à l'élément sélectionné dans le panneau.
+    /// Saute au titre sélectionné dans le sommaire.
     pub fn activate_selection(&mut self) {
-        match self.panel {
-            Panel::Contents => {
-                let target = self
-                    .navigable_sections()
-                    .get(self.selection)
-                    .and_then(|&id| self.doc().section(id))
-                    .and_then(|s| s.first_sentence);
-                if let Some(target) = target {
-                    self.seek_to(target);
-                    self.notify("Saut au titre");
-                }
-            }
-            Panel::Bookmarks => {
-                let target = self
-                    .bookmarks
-                    .for_document(&self.source)
-                    .nth(self.selection)
-                    .map(|b| b.sentence_id);
-                if let Some(target) = target {
-                    self.seek_to(target);
-                    self.notify("Saut au signet");
-                }
-            }
-            _ => {}
-        }
-    }
-
-    pub fn delete_selection(&mut self) {
-        if self.panel != Panel::Bookmarks {
+        if self.panel != Panel::Contents {
             return;
         }
         let target = self
-            .bookmarks
-            .for_document(&self.source)
-            .nth(self.selection)
-            .map(|b| b.sentence_id);
-        if let Some(sentence_id) = target {
-            self.bookmarks.remove(&self.source, sentence_id);
-            let _ = self.bookmarks.save();
-            self.selection = self.selection.saturating_sub(1);
-            self.notify("Signet supprimé");
+            .navigable_sections()
+            .get(self.selection)
+            .and_then(|&id| self.doc().section(id))
+            .and_then(|s| s.first_sentence);
+        if let Some(target) = target {
+            self.seek_to(target);
+            self.notify("Saut au titre");
         }
     }
 

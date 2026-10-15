@@ -1,4 +1,4 @@
-//! Barre de lecture, ligne d'état, panneaux (sommaire, signets) et aide.
+//! Barre de lecture, ligne d'état, sommaire et aide.
 
 use super::*;
 
@@ -97,9 +97,6 @@ pub(super) fn render_player(frame: &mut Frame, app: &App, area: Rect) {
             Style::default().fg(ACCENT),
         ));
     }
-    if app.bookmarked_here() {
-        second.push(Span::styled("  ⚑ signet", Style::default().fg(ACCENT)));
-    }
 
     let block = Block::default()
         .borders(Borders::ALL)
@@ -186,7 +183,7 @@ pub(super) fn status_spans(app: &App) -> Vec<Span<'static>> {
             Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
         ));
         spans.push(Span::styled(
-            " aide · espace lecture · / chercher · n/p titre · b signet ",
+            " aide · espace lecture · / chercher · n/p titre ",
             Style::default().fg(FAINT),
         ));
     }
@@ -237,7 +234,6 @@ pub(super) fn current_punctuation(app: &App) -> Option<&'static str> {
 pub(super) fn render_panel(frame: &mut Frame, app: &App, area: Rect) {
     let (title, lines) = match app.panel {
         Panel::Contents => ("Sommaire", contents_lines(app)),
-        Panel::Bookmarks => ("Signets", bookmark_lines(app)),
         Panel::None => return,
     };
 
@@ -289,35 +285,6 @@ pub(super) fn contents_lines(app: &App) -> Vec<Line<'static>> {
             ))
         })
         .collect()
-}
-
-pub(super) fn bookmark_lines(app: &App) -> Vec<Line<'static>> {
-    let items: Vec<_> = app.bookmarks.for_document(&app.source).collect();
-    if items.is_empty() {
-        return vec![Line::from(Span::styled(
-            "Aucun signet. `b` pour en poser un.",
-            Style::default().fg(DIM),
-        ))];
-    }
-
-    let mut lines = Vec::new();
-    for (i, bookmark) in items.iter().enumerate() {
-        let selected = i == app.selection;
-        let style = if selected {
-            Style::default().bg(ACCENT).fg(Color::Black)
-        } else {
-            Style::default().fg(NORMAL)
-        };
-        lines.push(Line::from(Span::styled(
-            truncate(&bookmark.snippet, 34),
-            style,
-        )));
-        lines.push(Line::from(Span::styled(
-            format!("  {} · {}", bookmark.timestamp(), truncate(&bookmark.section_title, 16)),
-            Style::default().fg(FAINT),
-        )));
-    }
-    lines
 }
 
 pub(super) fn render_help(

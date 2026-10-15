@@ -16,7 +16,6 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crate::audio::Player;
-use crate::bookmark::BookmarkStore;
 use crate::position::PositionStore;
 use crate::config::Config;
 use crate::doc::{Document, DocumentBuilder};
@@ -36,7 +35,6 @@ use crate::app::view::ViewAnchor;
 pub enum Panel {
     None,
     Contents,
-    Bookmarks,
 }
 
 /// Réglages d'affichage du texte, tels que la rubrique « Lecture » les fixe.
@@ -65,7 +63,6 @@ pub struct App {
     /// Dernier échec d'aperçu, pour l'app (le terminal le lit dans `screen`).
     pub preview_error: Option<String>,
     pub player: Player,
-    pub bookmarks: BookmarkStore,
     /// Positions retenues d'une session à l'autre.
     pub positions: PositionStore,
     /// Vrai quand ce document a une identité stable, donc une position qui
@@ -216,9 +213,7 @@ impl App {
         player.set_volume(config.voice.volume);
         player.set_speed(config.voice.speed);
 
-        let (bookmarks, bookmark_notice) = BookmarkStore::load();
         let mut notices = notices;
-        notices.extend(bookmark_notice);
         if let Some(err) = player.error() {
             notices.push(format!("sortie audio indisponible : {err}"));
         }
@@ -236,7 +231,6 @@ impl App {
             previewer,
             preview_error: None,
             player,
-            bookmarks,
             positions: PositionStore::load(),
             remembers_place: false,
             config,
@@ -906,13 +900,11 @@ pub(crate) mod tests {
         app.source = "/docs/test.md".to_string();
         let snippet = app.doc().sentence(2).unwrap().written();
         app.positions.record("test.md", 2, &snippet);
-        app.bookmarks.toggle("test.md", 1, 0, "Titre", "x");
 
         app.adopt_former_identity("test.md");
         app.resume_where_left();
 
         assert_eq!(app.current_sentence(), 2);
-        assert!(app.bookmarks.contains("/docs/test.md", 1));
     }
 
 

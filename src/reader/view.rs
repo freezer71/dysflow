@@ -66,8 +66,6 @@ pub struct Snapshot {
     /// Message d'état du lecteur.
     pub status: String,
     pub search: Option<SearchState>,
-    /// Vrai quand la phrase courante porte un signet.
-    pub bookmarked: bool,
     /// Nombre de phrases sautées.
     pub skipped: usize,
     /// Téléchargement de voix en cours ou échoué.
@@ -230,7 +228,6 @@ pub fn snapshot(reader: &Reader) -> Snapshot {
             position: s.position(),
             count: s.count(),
         }),
-        bookmarked: app.bookmarked_here(),
         skipped: app.skipped_count(),
         download: reader.download(),
         preview: reader.preview_view(),

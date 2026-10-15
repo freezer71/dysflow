@@ -22,8 +22,7 @@ pub const HELP: &[(&str, &str)] = &[
     ("1 2 3 4", "Vitesse 0,75× 1× 1,5× 2×"),
     ("[ / ]", "Volume"),
     ("m", "Couper le son"),
-    ("b", "Poser / retirer un signet"),
-    ("t / B", "Sommaire / signets"),
+    ("t", "Sommaire"),
     ("s", "Configuration et modèles"),
     ("Pg↑ Pg↓", "Défiler sans déplacer la lecture"),
     ("f", "Revenir à la lecture"),
@@ -156,8 +155,7 @@ fn handle_config(app: &mut App, key: Key) {
 }
 
 fn handle_reader(app: &mut App, key: Key) {
-    // La saisie d'une recherche capte tout : sinon « b » poserait un signet au
-    // lieu de s'écrire.
+    // La saisie d'une recherche capte tout : sinon « q » quitterait au lieu de s'écrire.
     if app.search_input().is_some() {
         match key.code {
             KeyCode::Enter => app.search_commit(),
@@ -188,11 +186,11 @@ fn handle_reader(app: &mut App, key: Key) {
 
         // Les flèches verticales pilotent le panneau ouvert, sinon le texte.
         KeyCode::Up => match app.panel {
-            Panel::Contents | Panel::Bookmarks => app.move_selection(-1),
+            Panel::Contents => app.move_selection(-1),
             Panel::None => app.seek_block(-1),
         },
         KeyCode::Down => match app.panel {
-            Panel::Contents | Panel::Bookmarks => app.move_selection(1),
+            Panel::Contents => app.move_selection(1),
             Panel::None => app.seek_block(1),
         },
 
@@ -213,8 +211,6 @@ fn handle_reader(app: &mut App, key: Key) {
         KeyCode::Char('[') => app.change_volume(-0.05),
         KeyCode::Char('m') => app.toggle_mute(),
 
-        KeyCode::Char('b') => app.toggle_bookmark(),
-        KeyCode::Char('B') => app.toggle_panel(Panel::Bookmarks),
         KeyCode::Char('t') | KeyCode::Tab => app.toggle_panel(Panel::Contents),
         KeyCode::Char('s') => app.toggle_config(),
         KeyCode::Char('f') => app.toggle_follow(),
@@ -228,7 +224,6 @@ fn handle_reader(app: &mut App, key: Key) {
         KeyCode::Char('P') => app.search_advance(-1),
 
         KeyCode::Enter => app.activate_selection(),
-        KeyCode::Char('d') => app.delete_selection(),
         KeyCode::Char('w') => app.save_config(),
         KeyCode::Char('?') | KeyCode::Char('h') => app.show_help = true,
 
@@ -270,14 +265,24 @@ mod tests {
     fn typing_a_query_never_reaches_the_player() {
         let mut app = app_reading(DOC);
         press(&mut app, KeyCode::Char('/'));
-        // « b » pose un signet en lecture : pendant une saisie, il ne doit
+        // « q » quitte en lecture : pendant une saisie, il ne doit
         // qu'écrire.
-        for c in "bq".chars() {
+        for c in "tq".chars() {
             press(&mut app, KeyCode::Char(c));
         }
-        assert_eq!(app.search_input(), Some("bq"));
-        assert!(!app.bookmarked_here(), "un signet a été posé pendant la saisie");
+        assert_eq!(app.search_input(), Some("tq"));
+        assert_eq!(app.panel, Panel::None, "le sommaire s'est ouvert pendant la saisie");
         assert!(!app.should_quit, "le lecteur a quitté pendant la saisie");
+    }
+
+    #[test]
+    fn bookmark_keys_do_nothing_any_more() {
+        let mut app = app_reading(DOC);
+        for c in ['b', 'B', 'd'] {
+            press(&mut app, KeyCode::Char(c));
+            assert_eq!(app.panel, Panel::None, "{c} a ouvert un panneau");
+            assert!(app.status().is_empty(), "{c} a parlé : {:?}", app.status());
+        }
     }
 
     #[test]

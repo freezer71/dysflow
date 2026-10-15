@@ -198,8 +198,8 @@ pub fn prepare(args: &Args) -> Result<Launch> {
     // Un flux et un collage n'en ont pas — la même position leur désignerait
     // un autre texte.
     if let Some(path) = &args.file {
-        // Positions et signets ont pu être retenus sous le nom seul, par une
-        // version antérieure : ils suivent le document.
+        // Une position a pu être retenue sous le nom seul, par une version
+        // antérieure : elle suit le document.
         if let Some(former) = path.file_name().map(|n| n.to_string_lossy().into_owned()) {
             app.adopt_former_identity(&former);
         }
