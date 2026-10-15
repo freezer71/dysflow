@@ -15,11 +15,17 @@ impl App {
     /// rend la main au terminal.
     pub fn close_config(&mut self) {
         self.stop_preview();
-        if self.doc().is_empty() && self.input_complete() {
+        if self.config_closes_to_quit() {
             self.should_quit = true;
             return;
         }
         self.show_config = false;
+    }
+
+    /// Fermer les réglages quitte quand rien ne se lit derrière et que
+    /// l'entrée est complète.
+    pub fn config_closes_to_quit(&self) -> bool {
+        self.doc().is_empty() && self.input_complete()
     }
 
     pub fn config_move_row(&mut self, delta: i32) {
@@ -149,6 +155,46 @@ impl App {
         if let Some(package) = self.screen.poll_download() {
             self.select_model(package);
         }
+    }
+
+    /// Au premier usage, la voix recommandée s'installe sans rien demander ;
+    /// la voix du système lit en attendant, et la fin du téléchargement la
+    /// remplace au même endroit du texte (`poll_download` → `select_model`).
+    /// Rien quand la voix du système est demandée exprès
+    /// (`engine = "system"`, `--engine system`).
+    pub fn install_default_voice(&mut self) {
+        if matches!(self.config.engine_preference(), tts::EnginePreference::System) {
+            return;
+        }
+        match models::ensure_default_voice(false, self.screen.download.as_ref()) {
+            Ok(Some(download)) => {
+                self.screen.install_error = None;
+                self.screen.download = Some(download);
+            }
+            Ok(None) => {}
+            Err(err) => {
+                self.screen.install_error =
+                    Some(format!("Voix non installée : {err:#} — nouvel essai au prochain lancement"));
+            }
+        }
+    }
+
+    /// Où en est l'installation de la voix, pour la ligne d'état et la page
+    /// des réglages : la progression, ou l'échec.
+    pub fn voice_install_status(&self) -> Option<String> {
+        if let Some(download) = &self.screen.download {
+            let progress = match download.progress() {
+                models::Progress::Running { received, total } => {
+                    format!("{} / {}", models::human_size(received), models::human_size(total))
+                }
+                _ => "fin…".to_string(),
+            };
+            return Some(format!(
+                "Installation de la voix {} : {progress} — la voix du système lit en attendant",
+                download.package.display_name
+            ));
+        }
+        self.screen.install_error.clone()
     }
 
     /// Répercute un changement de réglage sur la lecture.

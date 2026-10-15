@@ -54,7 +54,16 @@ impl Field {
     pub fn hint(&self, config: &Config) -> &'static str {
         match self {
             Field::VoiceFr | Field::VoiceEn if models::voices_follow_language(&config.engine.family) => {
-                "← → pour changer de voix, t pour l'écouter. Chaque document parle avec la voix de sa langue."
+                let language = self.language().expect("une ligne de voix a sa langue");
+                let choices = models::voices_for_family(&config.engine.family)
+                    .iter()
+                    .filter(|v| v.language == language)
+                    .count();
+                if choices > 1 {
+                    "← → pour changer de voix, t pour l'écouter. Chaque document parle avec la voix de sa langue."
+                } else {
+                    "t pour l'écouter. Chaque document parle avec la voix de sa langue."
+                }
             }
             Field::VoiceFr | Field::VoiceEn => "La voix du système lit tant que Kokoro n'est pas installé.",
             Field::Speed => {
@@ -174,6 +183,9 @@ pub struct ConfigScreen {
     pub row: usize,
     /// Téléchargement de la voix recommandée, lancé seul au premier usage.
     pub download: Option<models::Download>,
+    /// Pourquoi la voix recommandée n'a pas pu s'installer : dit jusqu'au
+    /// prochain lancement, qui réessaie.
+    pub install_error: Option<String>,
     /// Dernier message de la page (aperçu refusé…).
     pub notice: String,
 }
@@ -186,7 +198,7 @@ impl Default for ConfigScreen {
 
 impl ConfigScreen {
     pub fn new() -> Self {
-        Self { row: 0, download: None, notice: String::new() }
+        Self { row: 0, download: None, install_error: None, notice: String::new() }
     }
 
     pub fn current_field(&self) -> Field {
@@ -214,21 +226,20 @@ impl ConfigScreen {
         let package = download.package;
         let outcome = download.progress();
         self.download = None;
-        match outcome {
+        let reason = match outcome {
             models::Progress::Done => {
-                self.notice = format!("{} installé", package.display_name);
-                Some(package)
+                self.install_error = None;
+                return Some(package);
             }
-            models::Progress::Failed(err) => {
-                self.notice = format!("échec : {err}");
-                None
-            }
-            models::Progress::Cancelled => {
-                self.notice = "téléchargement interrompu (reprise possible)".to_string();
-                None
-            }
-            models::Progress::Running { .. } => None,
-        }
+            models::Progress::Running { .. } => return None,
+            models::Progress::Failed(err) => err,
+            models::Progress::Cancelled => "téléchargement interrompu".to_string(),
+        };
+        self.install_error = Some(format!(
+            "Voix {} non installée : {reason} — nouvel essai au prochain lancement",
+            package.display_name
+        ));
+        None
     }
 }
 
@@ -271,6 +282,14 @@ mod tests {
         Field::VoiceEn.adjust(&mut config, -2);
         assert_eq!(config.voice.per_language["en"], "af_heart", "la liste boucle");
         assert!(!config.voice.per_language.contains_key("fr"), "l'autre langue ne bouge pas");
+    }
+
+    #[test]
+    fn the_change_hint_is_for_languages_with_a_choice() {
+        let config = kokoro();
+        assert!(Field::VoiceEn.hint(&config).contains("← →"));
+        assert!(!Field::VoiceFr.hint(&config).contains("← →"), "une seule voix française");
+        assert!(Field::VoiceFr.hint(&config).contains("t pour l'écouter"));
     }
 
     #[test]

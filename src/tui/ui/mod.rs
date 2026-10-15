@@ -16,7 +16,6 @@ use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph, Wrap};
 use ratatui::Frame;
 
 use crate::doc::{BlockKind, Emphasis};
-use crate::models;
 use crate::app::{App, Panel, ReadingStyle};
 use crate::app::config::FIELDS;
 use crate::app::keys::{CONFIG_HELP, HELP};
@@ -140,6 +139,18 @@ mod tests {
         let footer = texts(&config_footer(&app)).join(" ");
         assert!(footer.contains("enregistrée aussitôt"), "{footer}");
         assert!(!footer.contains(" w "), "{footer}");
+    }
+
+    #[test]
+    fn the_status_line_tells_the_voice_is_installing() {
+        let mut app = crate::app::tests::app_reading("Une phrase.\n");
+        app.notices.clear();
+        let package = crate::models::CATALOG.iter().find(|p| p.id == "kokoro_82m_int8").unwrap();
+        app.screen.download = Some(crate::models::Download::fake(package, false));
+        let line = text_of(&status_spans(&app));
+        assert!(line.contains("Installation de la voix"), "{line:?}");
+        let footer = texts(&config_footer(&app)).join(" ");
+        assert!(footer.contains("Installation de la voix"), "{footer}");
     }
 
     #[test]

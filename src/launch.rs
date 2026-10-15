@@ -194,6 +194,9 @@ pub fn prepare(args: &Args) -> Result<Launch> {
 
     let player = crate::audio::Player::with_output(&config.app.output_device);
     let mut app = App::new(builder, stream, engine, config, source, notices, player);
+    // Kokoro s'installe seul au premier usage ; la voix du système lit
+    // en attendant.
+    app.install_default_voice();
     // Un fichier a une identité stable : sa lecture reprend où elle en était.
     // Un flux et un collage n'en ont pas — la même position leur désignerait
     // un autre texte.
@@ -320,8 +323,8 @@ fn read_clipboard() -> Result<String> {
 }
 
 /// Le passage à Kokoro au terminal : un Kokoro installé est adopté, une
-/// seule fois ; installable seulement, il est signalé sans rien retenir
-/// (le terminal ne télécharge rien de lui-même). Rend l'avis.
+/// seule fois ; absent, il s'installe seul (`App::install_default_voice`)
+/// et rien n'est dit ici. Rend l'avis.
 pub fn migrate_terminal(config: &mut Config) -> Option<String> {
     migrate_terminal_in(config, &crate::models::available(), crate::models::is_installed)
 }
@@ -344,13 +347,13 @@ fn migrate_terminal_in(
             }
             config.align_voice_with_family();
             config.app.voice_migration = KOKORO_MIGRATION;
-            Some(format!("Nouvelle voix : Kokoro remplace {former}. L'ancien modèle reste installé (`s` pour y revenir)."))
+            Some(format!("Nouvelle voix : Kokoro remplace {former}. L'ancien modèle reste installé."))
         }
         Step::Record => {
             config.app.voice_migration = KOKORO_MIGRATION;
             None
         }
-        Step::Offer(_) => Some("Nouvelle voix Kokoro disponible : `s` pour l'installer.".to_string()),
+        Step::Offer(_) => None,
         Step::Nothing => None,
     }
 }
@@ -391,9 +394,7 @@ fn migrate_for_launch(
 
 /// Adopte un modèle installé si la configuration n'en désigne aucun.
 ///
-/// Le lecteur ne télécharge jamais de lui-même : quand rien n'est installé, il
-/// se contente de dire où aller le chercher, et lit avec la voix du système en
-/// attendant.
+/// Sans modèle, l'installation automatique s'en charge (`App::install_default_voice`).
 fn adopt_installed_model(config: &mut Config, notices: &mut Vec<String>) {
     let configured = config.engine.model_path.trim();
     if !configured.is_empty() {
@@ -406,19 +407,10 @@ fn adopt_installed_model(config: &mut Config, notices: &mut Vec<String>) {
         notices.push(format!("modèle introuvable : {configured}"));
         config.engine.model_path.clear();
     }
-    match crate::models::first_installed() {
-        Some(package) => {
-            if let Some(path) = crate::models::install_path(package) {
-                config.engine.model_path = path.to_string_lossy().into_owned();
-                config.engine.family = package.family.to_string();
-            }
-        }
-        None => {
-            if !crate::models::available().is_empty() {
-                notices.push(
-                    "aucun modèle installé — appuyez sur `s` pour en installer un".to_string(),
-                );
-            }
+    if let Some(package) = crate::models::first_installed() {
+        if let Some(path) = crate::models::install_path(package) {
+            config.engine.model_path = path.to_string_lossy().into_owned();
+            config.engine.family = package.family.to_string();
         }
     }
 }
@@ -484,10 +476,9 @@ mod tests {
     }
 
     #[test]
-    fn the_terminal_never_downloads_and_records_nothing_then() {
+    fn an_offer_says_nothing_since_the_install_is_automatic() {
         let mut config = on_supertonic();
-        let notice = migrate_terminal_in(&mut config, &[kokoro_int8()], |_| false);
-        assert!(notice.is_some_and(|n| n.contains("`s`")));
+        assert_eq!(migrate_terminal_in(&mut config, &[kokoro_int8()], |_| false), None);
         assert_eq!(config.app.voice_migration, 0, "rien de retenu sans adoption");
         assert_eq!(config.engine.family, "supertonic");
     }
@@ -497,6 +488,7 @@ mod tests {
         let mut config = on_supertonic();
         let notice = migrate_terminal_in(&mut config, &[kokoro_int8()], |_| true).expect("un avis");
         assert!(notice.starts_with("Nouvelle voix : Kokoro remplace supertonic."), "{notice}");
+        assert!(!notice.contains("`s`"), "plus de rubrique Modèles où revenir : {notice}");
         assert_eq!(config.engine.family, "kokoro");
         assert!(config.engine.model_path.ends_with("kokoro/model_quantized.onnx"), "{}", config.engine.model_path);
         assert_eq!(config.voice.per_language["fr"], "p-fenrir60");

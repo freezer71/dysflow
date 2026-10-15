@@ -63,7 +63,7 @@ pub(super) fn config_lines(app: &App, width: usize) -> Vec<Line<'static>> {
 /// Le rappel des touches, puis le message du moment.
 pub(super) fn config_footer(app: &App) -> Vec<Line<'static>> {
     // Sans document derrière, fermer la page quitte : autant le dire.
-    let exit = if app.doc().is_empty() { "q quitter" } else { "Échap fermer" };
+    let exit = if app.config_closes_to_quit() { "q quitter" } else { "Échap fermer" };
     let mut lines = vec![Line::from(Span::styled(
         format!(" ↑↓ réglage · ←→ valeur, enregistrée aussitôt · t écouter · {exit}"),
         Style::default().fg(FAINT),
@@ -72,6 +72,7 @@ pub(super) fn config_footer(app: &App) -> Vec<Line<'static>> {
     // train de se produire.
     let message = app
         .preview_status()
+        .or_else(|| app.voice_install_status())
         .or_else(|| (!app.screen.notice.is_empty()).then(|| app.screen.notice.clone()))
         .or_else(|| (!app.status().is_empty()).then(|| app.status().to_string()));
     if let Some(message) = message {

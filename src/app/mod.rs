@@ -909,6 +909,85 @@ pub(crate) mod tests {
     }
 
     /// Un fichier `config.toml` propre au test, dans un dossier neuf.
+    fn kokoro_int8() -> &'static models::ModelPackage {
+        models::CATALOG.iter().find(|p| p.id == "kokoro_82m_int8").unwrap()
+    }
+
+    #[test]
+    fn the_system_voice_asked_for_installs_nothing() {
+        let mut app = app_reading(DOC);
+        app.config.engine.engine = "system".into(); // comme `--engine system`
+        app.install_default_voice();
+        assert!(app.screen.download.is_none());
+        assert_eq!(app.voice_install_status(), None);
+    }
+
+    /// Sans `kokoro-onnx`, le catalogue du terminal est vide : rien à
+    /// télécharger. (Avec la feature, l'appel téléchargerait pour de bon :
+    /// le test n'existe pas.)
+    #[cfg(not(feature = "kokoro-onnx"))]
+    #[test]
+    fn a_terminal_without_kokoro_installs_nothing() {
+        let mut app = app_reading(DOC);
+        app.install_default_voice();
+        assert!(app.screen.download.is_none());
+        assert_eq!(app.voice_install_status(), None);
+    }
+
+    #[test]
+    fn the_install_shows_its_progress() {
+        let mut app = app_reading(DOC);
+        app.screen.download = Some(models::Download::fake(kokoro_int8(), false));
+        let status = app.voice_install_status().expect("une progression");
+        assert!(status.contains("Installation de la voix"), "{status}");
+        assert!(status.contains("voix du système lit en attendant"), "{status}");
+    }
+
+    #[test]
+    fn a_failed_install_says_so_and_writes_nothing() {
+        let (dir, path) = autosave_target("echec");
+        let mut app = app_reading(DOC);
+        app.set_config_target(Some(path.clone()));
+        let family = app.config.engine.family.clone();
+        app.screen.download = Some(models::Download::fake_ended(
+            kokoro_int8(),
+            models::Progress::Failed("réseau injoignable".into()),
+        ));
+        app.tick();
+        let status = app.voice_install_status().expect("l'échec se dit");
+        let written = path.exists();
+        std::fs::remove_dir_all(&dir).ok();
+        assert!(status.contains("réseau injoignable"), "{status}");
+        assert!(status.contains("prochain lancement"), "{status}");
+        assert_eq!(app.config.engine.family, family, "la voix du système continue");
+        assert!(!written, "config.toml n'est pas touché");
+    }
+
+    #[test]
+    fn a_finished_install_becomes_the_voice_and_is_written() {
+        let (dir, path) = autosave_target("fini");
+        let mut app = app_reading(DOC);
+        app.set_config_target(Some(path.clone()));
+        app.screen.download = Some(models::Download::fake(kokoro_int8(), true));
+        app.tick();
+        let written = Config::read_from(&path).unwrap();
+        std::fs::remove_dir_all(&dir).ok();
+        assert_eq!(app.config.engine.family, "kokoro");
+        assert_eq!(written.engine.family, "kokoro");
+        assert_eq!(app.voice_install_status(), None, "plus rien à dire");
+    }
+
+    #[test]
+    fn the_footer_offers_to_quit_only_when_closing_quits() {
+        let mut app = app_reading("");
+        assert!(app.config_closes_to_quit(), "rien à lire, entrée complète");
+        app.input_done = false;
+        assert!(!app.config_closes_to_quit(), "l'entrée arrive encore : fermer ne quitte pas");
+        let mut reading = app_reading(DOC);
+        reading.input_done = true;
+        assert!(!reading.config_closes_to_quit());
+    }
+
     pub(crate) fn autosave_target(name: &str) -> (std::path::PathBuf, std::path::PathBuf) {
         let dir = std::env::temp_dir().join(format!("sillon-autosave-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);

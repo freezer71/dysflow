@@ -129,11 +129,6 @@ pub(super) fn status_spans(app: &App) -> Vec<Span<'static>> {
         return spans;
     }
 
-    // Un repli sur la voix du système est un état dégradé : il doit se voir en
-    // permanence, et dire comment en sortir. C'est la seule façon de rendre
-    // l'écran de configuration découvrable sans avoir lu de documentation.
-    let on_fallback = !models::available().is_empty() && models::first_installed().is_none();
-
     // La vue figée est un état, pas un événement : il survit au message qui
     // l'a annoncé, sans quoi on cherche pourquoi le texte ne défile plus.
     if !app.view.is_following() {
@@ -150,20 +145,14 @@ pub(super) fn status_spans(app: &App) -> Vec<Span<'static>> {
             format!(" {} ", app.status()),
             Style::default().fg(ACCENT),
         ));
-    } else if on_fallback {
+    } else if let Some(install) = app.voice_install_status() {
+        // L'installation de la voix est un état, pas un événement : elle se
+        // voit tant qu'elle dure, et son échec jusqu'au prochain lancement.
         spans.push(Span::styled(
-            " ⚠ voix système ",
+            " ⬇ voix ",
             Style::default().fg(Color::Black).bg(ACCENT).add_modifier(Modifier::BOLD),
         ));
-        spans.push(Span::styled(" appuyez sur ", Style::default().fg(NORMAL)));
-        spans.push(Span::styled(
-            "s",
-            Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
-        ));
-        spans.push(Span::styled(
-            " pour installer un vrai modèle ",
-            Style::default().fg(NORMAL),
-        ));
+        spans.push(Span::styled(format!(" {install} "), Style::default().fg(NORMAL)));
     } else if let Some(notice) = app.notices.last() {
         spans.push(Span::styled(format!(" {notice} "), Style::default().fg(DIM)));
     } else {
