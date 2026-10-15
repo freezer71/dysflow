@@ -404,6 +404,11 @@ pub struct SettingsView {
     /// La sortie audio choisie ; vide : celle du système.
     pub output_device: String,
     pub voices_by_language: Vec<LanguageVoice>,
+    /// La police du texte : `literata`, `atkinson` ou `openDyslexic` (les
+    /// `rawValue` de `ReadingFont`).
+    pub reading_font: String,
+    /// La taille du texte, en points (14 à 40).
+    pub reading_size: f32,
 }
 
 /// Une modification : `None` pour un réglage non touché.
@@ -428,6 +433,13 @@ pub struct SettingsPatch {
     pub output_device: Option<String>,
     /// La voix d'une langue (Kokoro : une voix par langue).
     pub voice_for_language: Option<LanguageVoice>,
+    /// La police du texte. Défaut `nil` côté Swift : les appels existants
+    /// de `SettingsPatch(…)` restent valides.
+    #[uniffi(default = None)]
+    pub reading_font: Option<String>,
+    /// La taille du texte, en points.
+    #[uniffi(default = None)]
+    pub reading_size: Option<f32>,
 }
 
 #[derive(uniffi::Record)]
@@ -842,6 +854,8 @@ fn settings_of(s: settings::SettingsView) -> SettingsView {
             .into_iter()
             .map(|(language, voice)| LanguageVoice { language, voice })
             .collect(),
+        reading_font: s.reading_font,
+        reading_size: s.reading_size,
     }
 }
 
@@ -865,6 +879,8 @@ fn patch_from(p: SettingsPatch) -> settings::SettingsPatch {
         keep_voice_minutes: p.keep_voice_minutes,
         output_device: p.output_device,
         voice_for_language: p.voice_for_language.map(|v| (v.language, v.voice)),
+        reading_font: p.reading_font,
+        reading_size: p.reading_size,
     }
 }
 
@@ -1191,6 +1207,27 @@ mod tests {
         assert_eq!(applied.voices_by_language, [LanguageVoice { language: "en".into(), voice: "am_fenrir".into() }]);
         assert_eq!(reader.migrate_voice(), None, "hors disque : rien ne bouge");
         assert_eq!(reader.measures().stalls, 0);
+    }
+
+    #[test]
+    fn the_reading_font_and_size_cross_the_bridge() {
+        let defaults = default_settings();
+        assert_eq!(defaults.reading_font, "literata");
+        assert_eq!(defaults.reading_size, 22.0);
+        let reader = SillonReader::silent();
+        let applied = reader.apply_patch(SettingsPatch {
+            reading_font: Some("openDyslexic".into()),
+            reading_size: Some(26.0),
+            ..Default::default()
+        });
+        assert_eq!(applied.reading_font, "openDyslexic");
+        assert_eq!(applied.reading_size, 26.0);
+        assert_eq!(reader.settings().reading_font, "openDyslexic");
+        // Le lecteur muet n'écrit rien, mais la réponse est la même.
+        let updated = reader
+            .update_settings(SettingsPatch { reading_size: Some(99.0), ..Default::default() })
+            .unwrap();
+        assert_eq!(updated.reading_size, 40.0, "ramenée dans les bornes");
     }
 
     #[test]
