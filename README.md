@@ -74,7 +74,7 @@ désinstaller, `rm -r $PREFIX/lib/sillon $PREFIX/bin/sillon`.
 Sur Mac, avec l'app dans `/Applications`, `./scripts/install-app-command.sh`
 pose à la place une commande `sillon` qui ouvre l'app : `sillon document.pdf`
 ouvre le panneau sur le document et le lit (reprise à la dernière position),
-`sillon` seul ouvre la page de notes. Le lecteur au terminal n'est alors plus
+`sillon` seul ouvre le lecteur. Le lecteur au terminal n'est alors plus
 la commande `sillon` (`$PREFIX/lib/sillon` reste, à retirer à la main) ; pour
 désinstaller la commande de l'app, `rm $PREFIX/bin/sillon`. Chacun des deux
 scripts prévient avant de remplacer l'autre, et ne le fait qu'après

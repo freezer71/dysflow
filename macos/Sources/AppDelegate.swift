@@ -52,10 +52,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var menuObserver: NSObjectProtocol?
     /// Les sorties audio branchées ou retirées : la liste se relit.
     private var outputWatcher: AudioDeviceWatcher?
-    /// Les pages de notes ; leur fenêtre s'ouvre quand on lance sillon soi-même.
-    private(set) var notes: NotesWindowController?
-    /// Lancé par macOS à l'ouverture de session : la fenêtre des notes ne
-    /// s'impose pas.
+    /// Lancé par macOS à l'ouverture de session : rien ne s'impose.
     private var launchedAtLogin = false
 
     /// Fichiers reçus avant que le lecteur soit prêt (au lancement, macOS
@@ -74,17 +71,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         openFile(files.last!)
     }
-
-    /// La fenêtre des notes fermée : rien à lire, le panneau se retire aussi
-    /// (sillon reste dans la barre des menus) ; en pleine lecture, il reste
-    /// pour garder la main sur le son.
-    private func notesClosed() {
-        guard !isUITesting, !isUnitTesting, let model, let panel else { return }
-        model.refresh()
-        if Self.hidesPanelWhenNotesClose(playing: model.snapshot.playing) { panel.apply(.hide) }
-    }
-
-    nonisolated static func hidesPanelWhenNotesClose(playing: Bool) -> Bool { !playing }
 
     private func openFile(_ url: URL) {
         guard let model, let panel else { return }
@@ -108,10 +94,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// sillon déjà lancé, rouvert depuis le Dock, le Finder, Spotlight ou un
-    /// lanceur : la page de notes.
+    /// lanceur : le lecteur.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        notes?.show()
+        guard let model else { return false }
+        model.refresh()
+        present(LaunchKind.reopenPresentation(hasDocument: model.snapshot.hasDocument))
         return false
+    }
+
+    /// Montre ce que décide `LaunchKind`. Le lecteur vide s'ouvre au mode
+    /// moyen ; la dernière taille, par « Afficher ».
+    private func present(_ presentation: LaunchPresentation) {
+        guard let panel else { return }
+        switch presentation {
+        case .nothing: break
+        case .emptyReader: panel.apply(.choose(.medium))
+        case .lastSize: panel.show()
+        }
     }
 
     /// Le modèle ne suit rien en pause et en arrière-plan : à l'ouverture
@@ -153,11 +152,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard terminationPending else { return }
         terminationPending = false
         NSApp.reply(toApplicationShouldTerminate: true)
-    }
-
-    /// Les notes s'écrivent d'un coup (synchrone), à la toute fin.
-    func applicationWillTerminate(_ notification: Notification) {
-        notes?.store.flush()
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -203,19 +197,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let settings = SettingsOpener.shared
         panel = PanelController(model: model, openSettings: { settings.open(tab: $0) })
         transport = Transport(model: model)
-        // Sous les tests, un dossier jetable : jamais les notes de l'utilisateur.
-        let notesDirectory = readerIsSilent
-            ? FileManager.default.temporaryDirectory.appendingPathComponent("sillon-notes-\(UUID().uuidString)")
-            : NotesStore.userDirectory
-        notes = NotesWindowController(store: NotesStore(directory: notesDirectory), read: { [model, panel] page in
-            guard let model, let panel else { return }
-            model.open(text: page.markdown, source: "note")
-            panel.apply(.readSelection)
-        }, closed: { [weak self] in self?.notesClosed() })
         services.model = model
         services.panel = panel
         services.transport = transport
-        services.notes = notes
         services.read = { [weak self] in await self?.read() }
         menuObserver = Self.refreshWhenAMenuOpens { [model] in model?.refresh() }
         outputWatcher = AudioDeviceWatcher { [weak model] in model?.refreshOutputs() }
@@ -225,13 +209,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // vidée, donc l'arrière-plan).
         panel.restore()
         if isUITesting {
-            model.open(text: Self.sample, source: "exemple")
-            if ProcessInfo.processInfo.arguments.contains("--show-panel") { panel.apply(.choose(.medium)) }
-            if ProcessInfo.processInfo.arguments.contains("--show-settings") {
+            let arguments = ProcessInfo.processInfo.arguments
+            // `--ui-testing-vide` : rien d'ouvert, comme un premier lancement.
+            if !arguments.contains("--ui-testing-vide") { model.open(text: Self.sample, source: "exemple") }
+            if arguments.contains("--show-panel") { panel.apply(.choose(.medium)) }
+            if arguments.contains("--show-settings") {
                 // L'icône de la barre des menus donne l'action dès qu'elle paraît.
                 settings.open()
             }
-            if ProcessInfo.processInfo.arguments.contains("--show-notes") { notes?.show() }
+            // Le chemin d'un lancement fait à la main, sous les tests.
+            if arguments.contains("--ui-testing-lancement-manuel") {
+                model.refresh()
+                present(LaunchKind.presentation(atLogin: false, withFiles: false,
+                                                hasDocument: model.snapshot.hasDocument))
+            }
         }
         guard !isUITesting, !isUnitTesting else { return }
         // Les raccourcis d'abord : l'alerte d'accessibilité bloque (runModal).
@@ -239,13 +230,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         LoginItem.enableOnFirstLaunch()
         Onboarding.runIfNeeded()
         startKokoro()
-        // Lancé avec un fichier : le panneau sur lui. Lancé à la main : la
-        // page de notes, comme une app ordinaire.
+        // Lancé avec un fichier : le lecteur sur lui. Lancé à la main : le
+        // lecteur. À la connexion : rien.
         if let file = pendingFiles.last {
             pendingFiles = []
             openFile(file)
-        } else if !launchedAtLogin, !launchedWithFiles {
-            notes?.show()
+        } else {
+            present(LaunchKind.presentation(atLogin: launchedAtLogin, withFiles: launchedWithFiles,
+                                            hasDocument: model.snapshot.hasDocument))
         }
     }
 

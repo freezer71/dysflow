@@ -13,7 +13,6 @@ final class AppServices {
     var panel: PanelController?
     /// Lecture, pause, phrases et timeline venues d'ailleurs que du panneau.
     var transport: Transport?
-    var notes: NotesWindowController?
     /// « Lire le presse-papiers » : le presse-papiers seul (depuis le menu).
     @ObservationIgnored var read: @MainActor () async -> Void = {}
 }

@@ -1,7 +1,7 @@
 #!/bin/sh
 # La commande `sillon` du Mac : ouvre l'app, pas le terminal.
 #
-#   sillon                 # la page de notes
+#   sillon                 # le lecteur
 #   sillon document.pdf    # le panneau, sur ce document (texte, PDF, image)
 #
 # Installée par ./scripts/install-app-command.sh dans ~/.local/bin/sillon.
