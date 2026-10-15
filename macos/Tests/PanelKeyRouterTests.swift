@@ -20,7 +20,7 @@ final class PanelKeyRouterTests: XCTestCase {
     func testATextFieldKeepsItsKeysButEscape() {
         let field = NSTextView()
         XCTAssertEqual(route(KeyCode.space, focus: field), .pass)
-        XCTAssertEqual(route(KeyCode.escape, focus: field, action: .collapseOrHide), .perform(.collapseOrHide))
+        XCTAssertEqual(route(KeyCode.escape, focus: field, action: .escape), .perform(.escape))
     }
 
     func testAListKeepsItsVerticalArrowsAndEnter() {

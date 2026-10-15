@@ -1,6 +1,7 @@
 import AppKit
 import KeyboardShortcuts
 import MediaPlayer
+import UniformTypeIdentifiers
 
 /// Point d'entrée AppKit : le lecteur vit aussi longtemps que l'app.
 @MainActor
@@ -84,6 +85,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
                 panel.show()
             }
+        }
+    }
+
+    /// ⌘O, « Ouvrir un fichier… » : le panneau d'ouverture, au-dessus du
+    /// lecteur (qui flotte). Une app de barre des menus passe d'abord au
+    /// premier plan, sinon le panneau s'ouvrirait derrière l'application active.
+    func chooseFile() {
+        let chooser = NSOpenPanel()
+        chooser.allowedContentTypes = OpenableFiles.types
+        chooser.allowsMultipleSelection = false
+        chooser.canChooseDirectories = false
+        chooser.message = "Choisissez un texte, un PDF ou une image à lire"
+        chooser.level = NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue + 1)
+        NSApp.activate()
+        chooser.begin { [weak self] response in
+            guard response == .OK, let url = chooser.url else { return }
+            MainActor.assumeIsolated { self?.openFile(url) }
         }
     }
 
@@ -195,7 +213,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model = ReaderModel(reader: reader)
         model.refresh()
         let settings = SettingsOpener.shared
-        panel = PanelController(model: model, openSettings: { settings.open(tab: $0) })
+        panel = PanelController(model: model, openSettings: { settings.open(tab: $0) },
+                                readClipboard: { [weak self] in Task { @MainActor in await self?.read() } },
+                                chooseFile: { [weak self] in self?.chooseFile() })
         transport = Transport(model: model)
         services.model = model
         services.panel = panel

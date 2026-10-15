@@ -26,6 +26,7 @@ final class PanelControllerTests: XCTestCase {
         model.open(text: text, source: "test")
         XCTAssertTrue(waitUntil { model.refresh(); return model.snapshot.revision == 1 })
         let c = PanelController(model: model, store: DisplayModeStore(defaults: defaults ?? freshDefaults()))
+        c.pasteboard = NSPasteboard(name: NSPasteboard.Name("fr.sillon.tests.copie"))
         controller = c
         c.show()
         settle(c)
@@ -118,25 +119,37 @@ final class PanelControllerTests: XCTestCase {
     func testCopiedMessageFadesButNotAnotherOne() {
         let c = shownPanel("Un. Deux.")
         c.messageDuration = 0.2
-        c.perform(.copySentence)
+        c.perform(.copy)
         XCTAssertEqual(c.model.message, "Phrase copiée")
         XCTAssertTrue(waitUntil(2) { c.model.message == nil })
 
-        c.perform(.copySentence)
+        c.perform(.copy)
         c.model.message = "Autre chose"
         RunLoop.main.run(until: Date().addingTimeInterval(0.5))
         XCTAssertEqual(c.model.message, "Autre chose")
     }
 
-    /// Le pas de l'avance rapide est celui des réglages, pas un 5 en dur.
-    func testShiftArrowUsesTheSeekStepOfTheSettings() {
-        let c = shownPanel("Un. Deux.")
-        let key = KeyPress(characters: "", keyCode: KeyCode.right, shift: true)
-        XCTAssertEqual(c.action(for: key), .command(.sentences(delta: 5)), "valeur par défaut")
-        c.reading.seekStep = 12
-        XCTAssertEqual(c.action(for: key), .command(.sentences(delta: 12)))
-        XCTAssertEqual(c.action(for: KeyPress(characters: "", keyCode: KeyCode.left, shift: true)),
-                       .command(.sentences(delta: -12)))
+    /// ⌘V et ⌘O passent à l'app : le presse-papiers lu, le panneau d'ouverture.
+    func testCommandVAndCommandOGoToTheApp() {
+        var pasted = 0
+        var chosen = 0
+        let model = ReaderModel(reader: SillonReader.silent())
+        let c = PanelController(model: model, store: DisplayModeStore(defaults: freshDefaults()),
+                                readClipboard: { pasted += 1 }, chooseFile: { chosen += 1 })
+        controller = c
+        c.perform(.paste)
+        c.perform(.openFile)
+        XCTAssertEqual(pasted, 1)
+        XCTAssertEqual(chosen, 1)
+    }
+
+    /// ⌘C sans sélection : la phrase en cours, dans le presse-papiers donné.
+    func testCommandCWithoutSelectionCopiesTheSentence() {
+        let c = shownPanel("Un deux. Trois.")
+        c.pasteboard.clearContents()
+        c.perform(.copy)
+        XCTAssertEqual(c.pasteboard.string(forType: .string), "Un deux.")
+        XCTAssertEqual(c.model.message, "Phrase copiée")
     }
 
     private var mainScreen: CGRect { NSScreen.screens[0].visibleFrame }
@@ -169,7 +182,7 @@ final class PanelControllerTests: XCTestCase {
         XCTAssertFalse(c.sidebarVisible)
         c.perform(.toggleSidebar)
         XCTAssertTrue(c.sidebarVisible)
-        c.perform(.collapseOrHide)
+        c.perform(.escape)
         XCTAssertFalse(c.sidebarVisible)
         XCTAssertEqual(c.mode, .reader, "Échap a d'abord fermé le sommaire")
     }
@@ -177,7 +190,7 @@ final class PanelControllerTests: XCTestCase {
     /// ⌘W, Échap ou la fermeture de la fenêtre : masqué et en pause, jamais le mini.
     func testClosingPausesAndNeverLeavesTheMini() {
         for close in [{ (c: PanelController) in c.perform(.close) },
-                      { (c: PanelController) in c.perform(.collapseOrHide) },
+                      { (c: PanelController) in c.perform(.escape) },
                       { (c: PanelController) in c.window.performClose(nil) }] {
             let c = shownPanel("Un. Deux.")
             c.perform(.command(.togglePlay))

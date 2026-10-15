@@ -30,7 +30,6 @@ final class PanelController {
     var reading = ReadingDisplay()
     /// Le sommaire, fermé à l'ouverture : le bouton ou « t » l'ouvre.
     var sidebarVisible = false
-    var bookmarksVisible = false
     var searchActive = false
     /// Compte les « / » : chacun rend le focus au champ, même déjà ouvert.
     private(set) var openSearchRequests = 0
@@ -43,17 +42,28 @@ final class PanelController {
     @ObservationIgnored private var draftOrigin = ""
     @ObservationIgnored private var resumeAfterEditing = false
 
+    /// Où va ⌘C : le presse-papiers général ; les tests en donnent un à eux.
+    @ObservationIgnored var pasteboard = NSPasteboard.general
+    /// ⌘V : l'app lit le presse-papiers (texte ou image).
+    @ObservationIgnored private let readClipboard: @MainActor () -> Void
+    /// ⌘O : l'app montre le panneau d'ouverture.
+    @ObservationIgnored private let chooseFile: @MainActor () -> Void
+
     /// Ouvre la fenêtre des réglages (un onglet, ou le dernier ouvert) :
-    /// `,` et `v` au clavier, l'écrou de la barre.
+    /// `,` au clavier, l'écrou de la barre.
     @ObservationIgnored let openSettings: @MainActor (SettingsTab?) -> Void
     /// La même, pour l'environnement des vues : une seule valeur, posée une
     /// fois, pour que SwiftUI n'y voie jamais de changement.
     @ObservationIgnored let openSettingsAction: OpenSettingsTabAction
 
     init(model: ReaderModel, store: DisplayModeStore? = nil,
-         openSettings: @escaping @MainActor (SettingsTab?) -> Void = { _ in }) {
+         openSettings: @escaping @MainActor (SettingsTab?) -> Void = { _ in },
+         readClipboard: @escaping @MainActor () -> Void = {},
+         chooseFile: @escaping @MainActor () -> Void = {}) {
         self.model = model
         self.openSettings = openSettings
+        self.readClipboard = readClipboard
+        self.chooseFile = chooseFile
         openSettingsAction = OpenSettingsTabAction(open: openSettings)
         let store = store ?? DisplayModeStore(defaults: Self.processDefaults)
         // Un lancement ne montre rien ; la dernière taille reste pour la suite.
@@ -207,10 +217,7 @@ final class PanelController {
 
     // MARK: - Clavier
 
-    /// L'action d'une touche, avec le pas d'avance rapide des réglages.
-    func action(for press: KeyPress) -> ReaderAction? {
-        KeyMap.action(for: press, seekStep: Int32(reading.seekStep))
-    }
+    func action(for press: KeyPress) -> ReaderAction? { KeyMap.action(for: press) }
 
     /// La phrase à dire, ou rien : jamais fenêtre masquée.
     /// L'annonceur voit tous les instantanés visibles, VoiceOver ou non, pour
@@ -239,7 +246,7 @@ final class PanelController {
         case .line(let delta): moveLine(delta)
         case .toggleSize: toggleSize()
         case .close: close()
-        case .collapseOrHide:
+        case .escape:
             // Échap : la saisie se valide, puis l'aide, la recherche et le
             // sommaire se ferment, puis le lecteur.
             if editing { finishEditing() }
@@ -247,10 +254,9 @@ final class PanelController {
             else if searchActive { searchActive = false; model.send(.searchCancel) }
             else if sidebarVisible, mode == .reader { sidebarVisible = false }
             else { close() }
-        case .copySentence:
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(model.currentSentenceText, forType: .string)
-            flash("Phrase copiée")
+        case .copy: copy()
+        case .paste: readClipboard()
+        case .openFile: chooseFile()
         case .openSearch:
             if mode != .reader { apply(.choose(.reader)) }
             searchActive = true
@@ -262,10 +268,6 @@ final class PanelController {
             } else {
                 sidebarVisible.toggle()
             }
-        case .toggleBookmarks:
-            if mode != .reader { apply(.choose(.reader)) }
-            sidebarVisible = true
-            bookmarksVisible.toggle()
         case .showHelp:
             // Le mini n'a pas la place : l'aide s'ouvre dans le lecteur.
             if mode == .mini {
@@ -276,11 +278,18 @@ final class PanelController {
             }
         case .openSettings:
             openSettings(nil)
-        case .openVoiceSettings:
-            openSettings(.voice)
         case .edit:
             beginEditing()
         }
+    }
+
+    /// ⌘C : la phrase en cours (la sélection arrive à la tâche suivante).
+    func copy() {
+        let sentence = model.currentSentenceText
+        guard !sentence.isEmpty else { return }
+        pasteboard.clearContents()
+        pasteboard.setString(sentence, forType: .string)
+        flash("Phrase copiée")
     }
 
     // MARK: - Édition

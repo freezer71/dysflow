@@ -68,7 +68,7 @@ final class EditingTests: XCTestCase {
         let c = shownPanel("Un. Deux.")
         c.beginEditing()
         c.draft = "Un. Trois."
-        c.perform(.collapseOrHide)
+        c.perform(.escape)
         XCTAssertFalse(c.editing)
         XCTAssertEqual(c.mode, .reader)
         XCTAssertTrue(waitUntil { c.model.refresh(); return c.model.snapshot.revision == 2 })

@@ -77,18 +77,24 @@ struct PanelContent: View {
 struct HelpOverlay: View {
     let theme: Theme
     static let rows: [(String, String)] = [
-        ("Espace", "Lecture / pause"), ("⌥← ⌥→", "Mot précédent / suivant"),
-        ("← →", "Phrase précédente / suivante"), ("⇧← ⇧→", "Recul / avance rapide"),
-        ("↑ ↓", "Ligne précédente / suivante"), ("⇧↑ ⇧↓", "Bloc précédent / suivant"),
+        ("Espace", "Lecture / pause"),
+        ("← →", "Phrase précédente / suivante"),
+        ("↑ ↓", "Ligne précédente / suivante"),
+        ("Début", "Revenir au début"),
         ("n p", "Titre suivant / précédent"),
-        ("+ −", "Vitesse"), ("1…4 · & é \" '", "Vitesses 0,75× 1× 1,5× 2×"),
-        ("⌥↑ ⌥↓", "Volume"), ("r", "Reprendre la phrase"),
-        ("/ · N P", "Chercher · résultat suivant / précédent"),
-        ("t · B · b", "Sommaire · signets · poser un signet"),
-        ("⌘C", "Copier la phrase"), ("e · double clic", "Modifier le texte"),
+        ("/ ⌘F", "Rechercher"),
+        ("N P", "Résultat suivant / précédent"),
+        ("t", "Sommaire"),
+        ("e", "Modifier le texte"),
+        ("+ −", "Vitesse"),
+        ("⌘C", "Copier la sélection, sinon la phrase"),
+        ("⌘V", "Lire le presse-papiers"),
+        ("⌘O", "Ouvrir un fichier"),
+        ("⌘M", "Réduire / agrandir"),
+        ("⌘W", "Fermer (la lecture s'arrête)"),
+        ("Échap", "Fermer la recherche ou le sommaire, sinon fermer"),
+        ("?", "Cette aide"),
         ("⌘,", "Réglages"),
-        ("v", "Réglages de la voix"),
-        ("⌘M", "Réduire / agrandir"), ("⌘W · Échap", "Fermer (la lecture s'arrête)"),
     ]
 
     var body: some View {

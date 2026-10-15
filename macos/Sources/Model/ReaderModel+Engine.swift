@@ -18,10 +18,6 @@ extension ReaderModel {
 
     // MARK: - Signets
 
-    /// Les signets du document, lus hors du fil principal.
-    func loadBookmarks() async -> [BookmarkView] {
-        await call { $0.bookmarks() }
-    }
     /// Tous les signets, tous documents confondus.
     func loadAllBookmarks() async -> [StoredBookmarkView] {
         await call { $0.allBookmarks() }

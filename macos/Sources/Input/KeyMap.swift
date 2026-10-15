@@ -4,7 +4,7 @@ import AppKit
 enum KeyCode {
     static let left: UInt16 = 123, right: UInt16 = 124, down: UInt16 = 125, up: UInt16 = 126
     static let enter: UInt16 = 36, escape: UInt16 = 53, space: UInt16 = 49
-    static let home: UInt16 = 115, end: UInt16 = 119
+    static let home: UInt16 = 115
 }
 
 struct KeyPress: Equatable {
@@ -41,76 +41,67 @@ enum ReaderAction: Equatable {
     /// Une ligne affichée plus haut ou plus bas : seule la vue sait où elle
     /// commence.
     case line(delta: Int)
-    case collapseOrHide, copySentence, openSearch
-    /// ⌘M : du lecteur au mini et retour.
-    case toggleSize
+    /// Échap : la saisie se valide, l'aide, la recherche ou le sommaire se
+    /// ferment, sinon le lecteur (comme ⌘W).
+    case escape
     /// ⌘W : fermer (la lecture s'arrête).
     case close
-    case toggleSidebar, toggleBookmarks, showHelp, openSettings, openVoiceSettings
-    /// Le texte devient modifiable (double clic, ou « e »).
+    /// ⌘M : du lecteur au mini et retour.
+    case toggleSize
+    /// ⌘C : la sélection, sinon la phrase en cours.
+    case copy
+    /// ⌘V : lire le presse-papiers.
+    case paste
+    /// ⌘O : le panneau d'ouverture.
+    case openFile
+    case openSearch, toggleSidebar, showHelp, openSettings
+    /// Le texte devient modifiable (bouton Modifier, ou « e »).
     case edit
 }
 
-/// Les touches du terminal, plus les gestes propres à la fenêtre.
+/// Les touches du lecteur : la table de la spec (1.5), rien d'autre.
 enum KeyMap {
-    static func action(for key: KeyPress, seekStep: Int32 = 5) -> ReaderAction? {
+    static func action(for key: KeyPress) -> ReaderAction? {
         if key.command {
+            if key.option || key.control { return nil }
             switch key.characters {
-            case "c": return .copySentence
-            case ",": return .openSettings
+            case "c": return .copy
+            case "v": return .paste
+            case "o": return .openFile
+            case "f": return .openSearch
             case "m": return .toggleSize
             case "w": return .close
+            case ",": return .openSettings
             default: return nil
             }
         }
+        if key.option || key.control { return nil }
 
-        // Les touches sans caractère : flèches, entrée, etc.
+        // Les touches sans caractère.
         switch key.keyCode {
         case KeyCode.space: return .command(.togglePlay)
-        case KeyCode.escape: return .collapseOrHide
+        case KeyCode.escape: return .escape
         case KeyCode.home: return .command(.start)
-        case KeyCode.end: return .command(.end)
         case KeyCode.left, KeyCode.right:
-            let sign: Int32 = key.keyCode == KeyCode.left ? -1 : 1
-            if key.option { return .command(.words(delta: sign)) }
-            if key.shift { return .command(.sentences(delta: sign * seekStep)) }
-            return .command(.sentences(delta: sign))
+            guard !key.shift else { return nil }
+            return .command(.sentences(delta: key.keyCode == KeyCode.left ? -1 : 1))
         case KeyCode.up, KeyCode.down:
-            // ⌥ volume, ⇧ bloc, sinon ligne affichée
-            let sign: Int32 = key.keyCode == KeyCode.up ? -1 : 1
-            if key.option { return .command(.changeVolume(delta: -0.05 * Float(sign))) }
-            if key.shift { return .command(.blocks(delta: sign)) }
-            return .line(delta: Int(sign))
+            guard !key.shift else { return nil }
+            return .line(delta: key.keyCode == KeyCode.up ? -1 : 1)
         default: break
         }
-
-        // Les raccourcis caractères : bloqués si Option ou Control
-        if key.option || key.control { return nil }
 
         switch key.characters {
         case "n": return .command(.sections(delta: 1))
         case "p": return .command(.sections(delta: -1))
         case "N": return .command(.searchAdvance(delta: 1))
         case "P": return .command(.searchAdvance(delta: -1))
-        case "+", "=": return .command(.changeSpeed(delta: 0.1))
-        case "-", "_": return .command(.changeSpeed(delta: -0.1))
-        // QWERTY et accents French AZERTY non décalés
-        case "1", "&": return .command(.setSpeed(speed: 0.75))
-        case "2", "é": return .command(.setSpeed(speed: 1.0))
-        case "3", "\"": return .command(.setSpeed(speed: 1.5))
-        case "4", "'": return .command(.setSpeed(speed: 2.0))
-        case "[": return .command(.changeVolume(delta: -0.05))
-        case "]": return .command(.changeVolume(delta: 0.05))
-        case "m": return .command(.toggleMute)
-        case "r": return .command(.restartSentence)
-        case "b": return .command(.toggleBookmark)
-        case "g": return .command(.start)
-        case "B": return .toggleBookmarks
-        case "t": return .toggleSidebar
+        case "+": return .command(.changeSpeed(delta: 0.1))
+        case "-": return .command(.changeSpeed(delta: -0.1))
         case "/": return .openSearch
-        case "?", "h": return .showHelp
-        case "v": return .openVoiceSettings
+        case "t": return .toggleSidebar
         case "e": return .edit
+        case "?": return .showHelp
         default: return nil
         }
     }

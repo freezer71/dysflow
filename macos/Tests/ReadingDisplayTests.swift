@@ -1,16 +1,14 @@
 import XCTest
 @testable import Sillon
 
-/// Le panneau lit des réglages du moteur l'interlignage, la règle et le pas
-/// de l'avance rapide.
+/// Le panneau lit des réglages du moteur l'interlignage et la règle.
 final class ReadingDisplayTests: XCTestCase {
     func testTakesWhatThePanelNeedsFromTheSettings() {
         var s = SettingsView.defaults
-        s.lineSpacing = 3; s.readingRuler = false; s.seekStep = 12
+        s.lineSpacing = 3; s.readingRuler = false
         let d = ReadingDisplay(s)
         XCTAssertEqual(d.lineSpacing, 3)
         XCTAssertFalse(d.readingRuler)
-        XCTAssertEqual(d.seekStep, 12)
         XCTAssertEqual(ReadingDisplay(), ReadingDisplay(SettingsView.defaults))
     }
 
