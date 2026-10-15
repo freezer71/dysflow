@@ -1,6 +1,6 @@
 import KeyboardShortcuts
 
-/// Les temps de la barre réduite et du menu, calculés sans vue.
+/// Les temps du mini, calculés sans vue.
 enum PlaybackTime {
     /// Le temps restant estimé, jamais négatif ; nil tant que la durée
     /// n'est pas connue.
@@ -26,11 +26,6 @@ enum PlaybackTime {
             return "\(PlayerBar.time(elapsed)) sur \(PlayerBar.time(total))"
         }
         return "\(Int(Timeline.clamped(Double(progress)) * 100)) %"
-    }
-
-    /// La ligne du menu de la barre des menus.
-    static func menuLine(elapsed: Double?, total: Double?) -> String? {
-        remaining(elapsed: elapsed, total: total).map { "Reste environ " + PlayerBar.time($0) }
     }
 
     /// La barre réduite sans document.

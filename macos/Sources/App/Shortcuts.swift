@@ -3,11 +3,10 @@ import os
 import ServiceManagement
 
 extension KeyboardShortcuts.Name {
+    /// Lire la sélection, sinon le presse-papiers.
     static let readSelection = Self("readSelection", default: .init(.space, modifiers: [.control, .option]))
+    /// Afficher le lecteur dans sa dernière taille, ou le masquer.
     static let showPanel = Self("showPanel", default: .init(.s, modifiers: [.control, .option]))
-    static let playPause = Self("playPause", default: .init(.p, modifiers: [.control, .option]))
-    static let nextSentence = Self("nextSentence", default: .init(.rightArrow, modifiers: [.control, .option]))
-    static let previousSentence = Self("previousSentence", default: .init(.leftArrow, modifiers: [.control, .option]))
 }
 
 /// « Ouvrir à la connexion », activé au premier lancement.

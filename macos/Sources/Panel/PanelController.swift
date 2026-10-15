@@ -48,6 +48,8 @@ final class PanelController {
     @ObservationIgnored private let readClipboard: @MainActor () -> Void
     /// ⌘O : l'app montre le panneau d'ouverture.
     @ObservationIgnored private let chooseFile: @MainActor () -> Void
+    /// Un fichier déposé : l'app l'ouvre.
+    @ObservationIgnored private let openFile: @MainActor (URL) -> Void
 
     /// Ouvre la fenêtre des réglages (un onglet, ou le dernier ouvert) :
     /// `,` au clavier, l'écrou de la barre.
@@ -59,11 +61,13 @@ final class PanelController {
     init(model: ReaderModel, store: DisplayModeStore? = nil,
          openSettings: @escaping @MainActor (SettingsTab?) -> Void = { _ in },
          readClipboard: @escaping @MainActor () -> Void = {},
-         chooseFile: @escaping @MainActor () -> Void = {}) {
+         chooseFile: @escaping @MainActor () -> Void = {},
+         openFile: @escaping @MainActor (URL) -> Void = { _ in }) {
         self.model = model
         self.openSettings = openSettings
         self.readClipboard = readClipboard
         self.chooseFile = chooseFile
+        self.openFile = openFile
         openSettingsAction = OpenSettingsTabAction(open: openSettings)
         let store = store ?? DisplayModeStore(defaults: Self.processDefaults)
         // Un lancement ne montre rien ; la dernière taille reste pour la suite.
@@ -96,6 +100,15 @@ final class PanelController {
     /// pour que ↑ ↓ visent les mêmes lignes.
     var shadowTextWidth: CGFloat {
         placement.frame(for: .reader).width - 2 * PanelGeometry.horizontalPadding
+    }
+
+    /// Un dépôt sur la fenêtre : le dernier fichier s'ouvre. Faux si rien
+    /// n'était un fichier.
+    @discardableResult
+    func openDropped(_ urls: [URL]) -> Bool {
+        guard let file = DroppedFiles.file(from: urls) else { return false }
+        openFile(file)
+        return true
     }
 
     // MARK: - Formes

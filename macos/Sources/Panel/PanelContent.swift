@@ -36,6 +36,8 @@ struct PanelContent: View {
             // La barre de titre est transparente et invisible : sans cela, sa
             // zone sûre repousse le contenu de ~30 pt et rogne le texte.
             .ignoresSafeArea()
+            // Un fichier (Markdown, texte, PDF, image) déposé sur le lecteur ou le mini.
+            .dropDestination(for: URL.self) { urls, _ in controller.openDropped(urls) }
             .onChange(of: controller.model.snapshot) { _, s in controller.announce(s) }
             // Un réglage écrit (interlignage, règle, pas d'avance) s'applique
             // au panneau ouvert, sans attendre sa prochaine ouverture.

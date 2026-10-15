@@ -23,11 +23,6 @@ final class PlaybackTimeTests: XCTestCase {
         XCTAssertEqual(PlaybackTime.timelineValue(elapsed: nil, total: nil, progress: 0.4), "40 %")
     }
 
-    func testTheMenuLine() {
-        XCTAssertEqual(PlaybackTime.menuLine(elapsed: 56, total: 176), "Reste environ 2:00")
-        XCTAssertNil(PlaybackTime.menuLine(elapsed: nil, total: 176))
-    }
-
     func testNothingToReadNamesTheChosenShortcut() {
         let space = KeyboardShortcuts.Shortcut(.space, modifiers: [.control, .option])
         XCTAssertEqual(PlaybackTime.emptyText(shortcut: space), "Rien à lire — ⌃⌥Espace")

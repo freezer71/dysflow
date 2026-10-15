@@ -11,10 +11,10 @@ import SwiftUI
 final class AppServices {
     var model: ReaderModel?
     var panel: PanelController?
-    /// Lecture, pause, phrases et timeline venues d'ailleurs que du panneau.
-    var transport: Transport?
-    /// « Lire le presse-papiers » : le presse-papiers seul (depuis le menu).
-    @ObservationIgnored var read: @MainActor () async -> Void = {}
+    /// « Lire la sélection » : la sélection, sinon le presse-papiers.
+    @ObservationIgnored var readSelection: @MainActor () async -> Void = {}
+    /// « Ouvrir un fichier… » : le panneau d'ouverture.
+    @ObservationIgnored var chooseFile: @MainActor () -> Void = {}
 }
 
 /// Ouvre la fenêtre des réglages, sur un onglet ou le dernier ouvert.

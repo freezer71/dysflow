@@ -215,12 +215,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let settings = SettingsOpener.shared
         panel = PanelController(model: model, openSettings: { settings.open(tab: $0) },
                                 readClipboard: { [weak self] in Task { @MainActor in await self?.read() } },
-                                chooseFile: { [weak self] in self?.chooseFile() })
+                                chooseFile: { [weak self] in self?.chooseFile() },
+                                openFile: { [weak self] in self?.openFile($0) })
         transport = Transport(model: model)
         services.model = model
         services.panel = panel
-        services.transport = transport
-        services.read = { [weak self] in await self?.read() }
+        services.readSelection = { [weak self] in await self?.readSelection() }
+        services.chooseFile = { [weak self] in self?.chooseFile() }
         menuObserver = Self.refreshWhenAMenuOpens { [model] in model?.refresh() }
         outputWatcher = AudioDeviceWatcher { [weak model] in model?.refreshOutputs() }
         Task { [model] in await model?.loadOutput() }
@@ -234,6 +235,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // L'icône de la barre des menus donne l'action dès qu'elle paraît.
                 settings.open()
             }
+            // Le seul ⌃⌥S, pour son test d'interface (quitter d'abord le
+            // sillon installé, qui tiendrait le même raccourci).
+            if arguments.contains("--ui-testing-raccourcis") { installToggleShortcut() }
             // Le chemin d'un lancement fait à la main, sous les tests.
             if arguments.contains("--ui-testing-lancement-manuel") {
                 model.refresh()
@@ -342,6 +346,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// « Lire la sélection » du menu : comme ⌃⌥Espace ; sans la chaîne de
+    /// capture (sous les tests), le presse-papiers seul.
+    func readSelection() async {
+        if let chain = captureChain {
+            await read(capture: { await chain.capture() })
+        } else {
+            await read()
+        }
+    }
+
     private func installNowPlaying() {
         let model = model!
         let nowPlaying = NowPlaying(
@@ -363,16 +377,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             CopySource(pasteboard: SystemPasteboard(), keys: SystemKeystrokes()),
         ])
         KeyboardShortcuts.onKeyUp(for: .readSelection) { [unowned self] in
-            Task { @MainActor in
-                guard let chain = self.captureChain else { return }
-                await self.read(capture: { await chain.capture() })
-            }
+            Task { @MainActor in await self.readSelection() }
         }
+        installToggleShortcut()
+    }
+
+    /// ⌃⌥S : afficher le lecteur dans sa dernière taille, ou le masquer.
+    private func installToggleShortcut() {
         KeyboardShortcuts.onKeyUp(for: .showPanel) { [unowned self] in self.panel.toggleVisibility() }
-        // Sans document, rien ne part (Transport).
-        KeyboardShortcuts.onKeyUp(for: .playPause) { [unowned self] in _ = self.transport.perform(.toggle) }
-        KeyboardShortcuts.onKeyUp(for: .nextSentence) { [unowned self] in _ = self.transport.perform(.next) }
-        KeyboardShortcuts.onKeyUp(for: .previousSentence) { [unowned self] in _ = self.transport.perform(.previous) }
     }
 
     static let sample = """

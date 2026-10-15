@@ -7,11 +7,9 @@ struct ShortcutsTab: View {
     var body: some View {
         SettingsPage(title: "Raccourcis", subtitle: "Des touches qui marchent depuis n'importe quelle application.") {
             SettingsGroup(title: "Raccourcis globaux") {
-                row("Lire la sélection", "Le texte sélectionné, ou copié", .readSelection, id: "raccourci-lecture-selection")
-                row("Afficher sillon", "Ramène le panneau devant", .showPanel, id: "raccourci-afficher")
-                row("Lecture / pause", nil, .playPause, id: "raccourci-lecture")
-                row("Phrase suivante", nil, .nextSentence, id: "raccourci-phrase-suivante")
-                row("Phrase précédente", nil, .previousSentence, id: "raccourci-phrase-precedente")
+                row("Lire la sélection", "Le texte sélectionné, sinon le presse-papiers", .readSelection,
+                    id: "raccourci-lecture-selection")
+                row("Afficher / masquer le lecteur", "Dans sa dernière taille", .showPanel, id: "raccourci-afficher")
             }
             Callout(symbol: "info.circle", text: Self.voiceOverNote, identifier: "raccourcis-note-voiceover")
         }

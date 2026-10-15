@@ -112,20 +112,3 @@ private struct BarButtonBody: View {
             .onHover { hovering = $0 }
     }
 }
-
-/// Les sorties, en liste à cocher : la même dans la barre des menus et dans
-/// le bouton du panneau.
-struct OutputPicker: View {
-    let model: ReaderModel
-
-    var body: some View {
-        Picker("Sortie audio", selection: Binding(get: { model.outputDevice },
-                                                  set: { model.chooseOutput($0) })) {
-            ForEach(AudioOutputChoices.choices(model.outputs, chosen: model.outputDevice)) { choice in
-                Text(choice.title).tag(choice.value)
-            }
-        }
-        .pickerStyle(.inline)
-        .labelsHidden()
-    }
-}
