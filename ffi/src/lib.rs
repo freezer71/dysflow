@@ -1283,4 +1283,34 @@ mod tests {
         reader.ensure_default_voice().expect("idempotente");
         assert!(reader.snapshot().download.is_none());
     }
+
+    /// La barre de progression cliquable de l'app convertit une fraction en
+    /// phrase par `DocView.sentence_count` et `ReaderCommand::SeekTo`, sans
+    /// commande dédiée : `Snapshot.progress` doit rester « phrase courante
+    /// (plus l'avancement dans la phrase) / nombre de phrases ».
+    #[test]
+    fn progress_is_the_sentence_over_the_sentence_count() {
+        let reader = SillonReader::silent();
+        reader.open_text("Un. Deux. Trois. Quatre.".into(), "test".into());
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while reader.snapshot().revision != 1 {
+            assert!(Instant::now() < deadline, "texte jamais publié");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        let count = reader.document().sentence_count;
+        assert_eq!(count, 4);
+        reader.command(ReaderCommand::SeekTo { sentence: 2 });
+        while reader.snapshot().sentence != 2 {
+            assert!(Instant::now() < deadline, "saut jamais appliqué");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        let progress = reader.snapshot().progress;
+        assert!((0.5..0.75).contains(&progress), "{progress}");
+        // La conversion de l'app : partie entière de fraction × nombre,
+        // bornée à la dernière phrase.
+        let at = |fraction: f32| ((fraction * count as f32) as u32).min(count - 1);
+        assert_eq!(at(0.6), 2);
+        assert_eq!(at(1.0), 3, "le bout de la barre : la dernière phrase");
+        assert_eq!(at(0.0), 0);
+    }
 }
