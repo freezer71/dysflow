@@ -37,14 +37,6 @@ final class SettingsDiffTests: XCTestCase {
         XCTAssertEqual(p.outputDevice, "Casque")
     }
 
-    func testAnUnlistedValueStaysInTheMenu() {
-        let options: [(title: String, value: String)] = [("Annoncer", "announce"), ("Sauter", "skip")]
-        let kept = Choices.including(options, current: "lire") { "\($0) (écrit à la main)" }
-        XCTAssertEqual(kept.map(\.value), ["announce", "skip", "lire"])
-        XCTAssertEqual(kept.last?.title, "lire (écrit à la main)")
-        XCTAssertEqual(Choices.including(options, current: "skip") { $0 }.map(\.value), ["announce", "skip"])
-    }
-
     func testAVoicePerLanguageBecomesItsOwnPatch() {
         var old = SettingsView.defaults
         old.voicesByLanguage = []

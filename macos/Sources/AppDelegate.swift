@@ -213,7 +213,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model = ReaderModel(reader: reader)
         model.refresh()
         let settings = SettingsOpener.shared
-        panel = PanelController(model: model, openSettings: { settings.open(tab: $0) },
+        panel = PanelController(model: model, openSettings: { settings.open() },
                                 readClipboard: { [weak self] in Task { @MainActor in await self?.read() } },
                                 chooseFile: { [weak self] in self?.chooseFile() },
                                 openFile: { [weak self] in self?.openFile($0) })
@@ -289,7 +289,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // préparation, sur la voix qui en sort.
         migration = Task { @MainActor [weak self] in
             guard let self, let model = self.model else { return }
-            if let notice = Self.launchNotice(engine: await model.migrateVoice(), offer: model.snapshot.offer) {
+            // L'avis du passage (s'il y en a un) se dit une fois dans le lecteur.
+            if let notice = await model.migrateVoice() {
                 model.message = notice
                 self.panel.post(notice)
             }
@@ -300,14 +301,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Le passage au lancement, gardé : une lecture l'attend après la
     /// capture (le ⌘C simulé ne patiente pas), pour partir sur la bonne voix.
     private var migration: Task<Void, Never>?
-
-    /// L'avis du lancement : une offre en attente se dit à la façon de
-    /// l'app (taille comprise, où y répondre) ; sinon l'avis du moteur
-    /// (passage fait).
-    static func launchNotice(engine: String?, offer: VoiceOfferView?) -> String? {
-        if let offer { return VoiceTab.launchNotice(offer) }
-        return engine
-    }
 
     /// Kokoro est peut-être devenu la voix active (lancement, voix choisie,
     /// proposition acceptée, téléchargement fini) : les noyaux Metal se

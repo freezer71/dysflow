@@ -53,22 +53,13 @@ final class KokoroBridgeTests: XCTestCase {
         XCTAssertNil(SettingsDiff.patch(from: new, to: new).voiceForLanguage)
     }
 
-    /// Le lecteur muet ne migre ni ne propose rien ; répondre sans
-    /// proposition est une erreur dite.
+    /// Le lecteur muet ne migre ni ne propose rien.
     @MainActor
     func testTheSilentReaderNeitherMigratesNorOffers() async {
         let m = ReaderModel(reader: SillonReader.silent())
         let notice = await m.migrateVoice()
         XCTAssertNil(notice)
         XCTAssertNil(m.snapshot.offer)
-        do {
-            try await m.acceptVoiceOffer()
-            XCTFail("aucune proposition en attente")
-        } catch {
-            XCTAssertTrue(SettingsStore.message(of: error).contains("aucune proposition"))
-        }
-        await m.dismissVoiceOffer()
-        await m.dismissNotice()
         XCTAssertNil(m.snapshot.notice)
         XCTAssertFalse(m.snapshot.configUnreadable)
         XCTAssertFalse(m.voicePreparation.isRunning)

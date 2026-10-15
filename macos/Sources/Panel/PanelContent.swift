@@ -23,7 +23,6 @@ struct PanelContent: View {
     var body: some View {
         content(controller.model)
             .environment(\.panelTheme, theme)
-            .environment(\.openSettingsTab, controller.openSettingsAction)
             .background(
                 RoundedRectangle(cornerRadius: 12)
                     .fill(Color(nsColor: theme.background))

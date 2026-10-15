@@ -51,15 +51,11 @@ final class PanelController {
     /// Un fichier déposé : l'app l'ouvre.
     @ObservationIgnored private let openFile: @MainActor (URL) -> Void
 
-    /// Ouvre la fenêtre des réglages (un onglet, ou le dernier ouvert) :
-    /// `,` au clavier, l'écrou de la barre.
-    @ObservationIgnored let openSettings: @MainActor (SettingsTab?) -> Void
-    /// La même, pour l'environnement des vues : une seule valeur, posée une
-    /// fois, pour que SwiftUI n'y voie jamais de changement.
-    @ObservationIgnored let openSettingsAction: OpenSettingsTabAction
+    /// Ouvre la fenêtre des réglages : ⌘, au clavier.
+    @ObservationIgnored let openSettings: @MainActor () -> Void
 
     init(model: ReaderModel, store: DisplayModeStore? = nil,
-         openSettings: @escaping @MainActor (SettingsTab?) -> Void = { _ in },
+         openSettings: @escaping @MainActor () -> Void = {},
          readClipboard: @escaping @MainActor () -> Void = {},
          chooseFile: @escaping @MainActor () -> Void = {},
          openFile: @escaping @MainActor (URL) -> Void = { _ in }) {
@@ -68,7 +64,6 @@ final class PanelController {
         self.readClipboard = readClipboard
         self.chooseFile = chooseFile
         self.openFile = openFile
-        openSettingsAction = OpenSettingsTabAction(open: openSettings)
         let store = store ?? DisplayModeStore(defaults: Self.processDefaults)
         // Un lancement ne montre rien ; la dernière taille reste pour la suite.
         store.state = store.state.relaunched
@@ -290,7 +285,7 @@ final class PanelController {
                 helpVisible.toggle()
             }
         case .openSettings:
-            openSettings(nil)
+            openSettings()
         case .edit:
             beginEditing()
         }

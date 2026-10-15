@@ -233,11 +233,6 @@ final class ReaderModel {
         reader.prepareVoice()
         wake()
     }
-    /// Le repos se voit tout de suite (grâce), même fenêtre masquée.
-    func restVoice() {
-        reader.restVoice()
-        wake()
-    }
 
     // MARK: - Réglages
 

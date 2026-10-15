@@ -243,19 +243,4 @@ final class ReaderModelTickingTests: XCTestCase {
         XCTAssertFalse(m.isTicking)
     }
 
-    /// « Mettre la voix au repos » : l'état est relu (grâce), même panneau
-    /// masqué — « À l'écoute » et le menu le voient.
-    func testRestingTheVoiceIsSeenWithoutWaitingForTheScreen() {
-        let m = hiddenModel()
-        XCTAssertFalse(m.isTicking)
-        m.restVoice()
-        // Fenêtre masquée : la grâce relance la relecture à la seconde, pas
-        // le lien d'affichage.
-        XCTAssertEqual(m.cadence, .second, "la grâce relance le suivi")
-        XCTAssertTrue(waitUntil { () -> Bool in
-            self.frames.tick()
-            if case .resting = m.snapshot.voice { return true }
-            return false
-        })
-    }
 }

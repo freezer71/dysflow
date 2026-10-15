@@ -16,15 +16,3 @@ final class AppServices {
     /// « Ouvrir un fichier… » : le panneau d'ouverture.
     @ObservationIgnored var chooseFile: @MainActor () -> Void = {}
 }
-
-/// Ouvre la fenêtre des réglages, sur un onglet ou le dernier ouvert.
-struct OpenSettingsTabAction {
-    let open: @MainActor (SettingsTab?) -> Void
-
-    @MainActor func callAsFunction(_ tab: SettingsTab?) { open(tab) }
-}
-
-extension EnvironmentValues {
-    /// Le panneau la pose (`PanelController.openSettings`) ; ailleurs, rien.
-    @Entry var openSettingsTab = OpenSettingsTabAction { _ in }
-}
