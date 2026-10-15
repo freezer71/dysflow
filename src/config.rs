@@ -108,6 +108,14 @@ impl Default for VoiceConfig {
     }
 }
 
+/// Les polices de lecture de l'app, par l'identifiant que `ReadingFont`
+/// (Swift) leur donne : la valeur de `[reading] font`.
+pub const READING_FONTS: &[&str] = &["literata", "atkinson", "openDyslexic"];
+/// Bornes et défaut de `[reading] size`, en points : celles du curseur de l'app.
+pub const READING_SIZE_MIN: f32 = 14.0;
+pub const READING_SIZE_MAX: f32 = 40.0;
+pub const READING_SIZE_DEFAULT: f32 = 22.0;
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct ReadingConfig {
@@ -127,6 +135,12 @@ pub struct ReadingConfig {
     pub line_spacing: u32,
     /// Souligne d'un fond la ligne où se trouve le mot prononcé.
     pub reading_ruler: bool,
+    /// Police du texte dans l'app : l'une des `READING_FONTS`. Le terminal
+    /// ne l'utilise pas.
+    pub font: String,
+    /// Taille du texte dans l'app, en points (14 à 40). Le terminal ne
+    /// l'utilise pas.
+    pub size: f32,
 }
 
 impl Default for ReadingConfig {
@@ -138,6 +152,8 @@ impl Default for ReadingConfig {
             line_width: 0,
             line_spacing: 1,
             reading_ruler: true,
+            font: READING_FONTS[0].to_string(),
+            size: READING_SIZE_DEFAULT,
         }
     }
 }
@@ -231,6 +247,15 @@ impl Config {
             self.reading.line_width = self.reading.line_width.clamp(40, 120);
         }
         self.reading.line_spacing = self.reading.line_spacing.min(3);
+        // Une police inconnue de l'app (écrite à la main, ancienne version)
+        // reprend la première ; la casse n'importe pas.
+        let font = self.reading.font.trim().to_string();
+        self.reading.font = READING_FONTS
+            .iter()
+            .find(|known| known.eq_ignore_ascii_case(&font))
+            .map_or_else(|| defaults.reading.font.clone(), |known| known.to_string());
+        self.reading.size = finite(self.reading.size, defaults.reading.size)
+            .clamp(READING_SIZE_MIN, READING_SIZE_MAX);
         self
     }
 
@@ -469,5 +494,51 @@ mod tests {
         assert_eq!(config.voice.per_language["fr"], "p-fenrir60");
         assert_eq!(config.voice.per_language["en"], "af_bella");
         assert!(!config.align_voice_with_family(), "rien à refaire");
+    }
+
+    #[test]
+    fn the_reading_font_and_size_default_to_literata_at_22_points() {
+        let config = Config::default();
+        assert_eq!(config.reading.font, "literata");
+        assert_eq!(config.reading.size, 22.0);
+        assert_eq!(READING_FONTS, ["literata", "atkinson", "openDyslexic"], "les rawValue de ReadingFont (Swift)");
+    }
+
+    #[test]
+    fn a_config_written_before_the_font_keeps_the_defaults() {
+        let parsed: Config = toml::from_str("[reading]\nline_spacing = 2\n").unwrap();
+        assert_eq!(parsed.reading.line_spacing, 2);
+        assert_eq!(parsed.reading.font, "literata");
+        assert_eq!(parsed.reading.size, 22.0);
+    }
+
+    #[test]
+    fn font_and_size_round_trip_through_toml() {
+        let mut config = Config::default();
+        config.reading.font = "openDyslexic".into();
+        config.reading.size = 30.0;
+        let text = toml::to_string_pretty(&config).unwrap();
+        assert!(text.contains("font = \"openDyslexic\""), "{text}");
+        assert!(text.contains("size = 30.0"), "{text}");
+        assert_eq!(toml::from_str::<Config>(&text).unwrap(), config);
+    }
+
+    /// Une police écrite à la main (casse libre, nom inconnu) ou une taille
+    /// hors du curseur de l'app (14 à 40) reviennent à ce que l'app affiche.
+    #[test]
+    fn an_unknown_font_or_a_size_out_of_bounds_is_brought_back() {
+        let read = |font: &str, size: &str| -> Config {
+            toml::from_str::<Config>(&format!("[reading]\nfont = \"{font}\"\nsize = {size}\n"))
+                .unwrap()
+                .normalised()
+        };
+        assert_eq!(read("OPENDYSLEXIC", "22.0").reading.font, "openDyslexic");
+        assert_eq!(read(" atkinson ", "22.0").reading.font, "atkinson");
+        assert_eq!(read("comic", "22.0").reading.font, "literata", "inconnue : le défaut");
+        assert_eq!(read("", "22.0").reading.font, "literata");
+        assert_eq!(read("literata", "3.0").reading.size, 14.0);
+        assert_eq!(read("literata", "99.0").reading.size, 40.0);
+        assert_eq!(read("literata", "nan").reading.size, 22.0, "NaN redevient le défaut");
+        assert_eq!(read("atkinson", "18.0").reading.size, 18.0, "une valeur sage ne bouge pas");
     }
 }
