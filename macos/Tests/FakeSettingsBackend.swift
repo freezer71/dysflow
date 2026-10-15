@@ -42,6 +42,9 @@ final class FakeSettingsBackend: SettingsBackend {
         if let v = patch.threads { stored.threads = v }
         if let v = patch.lineSpacing { stored.lineSpacing = min(v, 3) }
         if let v = patch.codeBlocks { stored.codeBlocks = v }
+        if let v = patch.readingFont { stored.readingFont = v }
+        if let v = patch.readingSize { stored.readingSize = min(max(v, 14), 40) }
+        if let v = patch.readingRuler { stored.readingRuler = v }
         if let v = patch.voiceForLanguage {
             stored.voicesByLanguage.removeAll { $0.language == v.language }
             stored.voicesByLanguage.append(v)

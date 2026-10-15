@@ -246,6 +246,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         guard !isUITesting, !isUnitTesting else { return }
+        // Police et taille : des préférences vers config.toml, une fois.
+        Task { @MainActor [model = model!, panel = panel!] in
+            model.refresh()
+            if await ReadingPreferencesMigration.run(defaults: .standard, backend: model,
+                                                     configUnreadable: model.snapshot.configUnreadable) {
+                panel.reloadReading()
+            }
+        }
         // Les raccourcis d'abord : l'alerte d'accessibilité bloque (runModal).
         installShortcuts()
         LoginItem.enableOnFirstLaunch()

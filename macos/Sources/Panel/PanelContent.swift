@@ -3,8 +3,6 @@ import SwiftUI
 
 struct PanelContent: View {
     let controller: PanelController
-    @AppStorage(DisplayDefaults.fontKey) private var fontName = ReadingFont.literata.rawValue
-    @AppStorage(DisplayDefaults.sizeKey) private var size = DisplayDefaults.defaultSize
     @Environment(\.colorScheme) private var colorScheme
     /// Suit « Augmenter le contraste » en direct, sans relancer l'app.
     @State private var increaseContrast = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
@@ -15,8 +13,8 @@ struct PanelContent: View {
     }
 
     private var style: ReadingStyle {
-        ReadingStyle(font: ReadingFont(rawValue: fontName) ?? .literata,
-                     size: CGFloat(size),
+        ReadingStyle(font: controller.reading.font,
+                     size: controller.reading.size,
                      lineSpacing: controller.reading.lineSpacing,
                      ruler: controller.reading.readingRuler,
                      theme: theme)

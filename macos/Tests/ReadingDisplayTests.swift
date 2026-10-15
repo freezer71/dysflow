@@ -18,4 +18,17 @@ final class ReadingDisplayTests: XCTestCase {
         p.speed = 1.2
         XCTAssertFalse(p.isEmpty)
     }
+
+    /// Police et taille viennent de config.toml, comme l'interlignage.
+    func testFontAndSizeComeFromTheSettings() {
+        var s = SettingsView.defaults
+        XCTAssertEqual(ReadingDisplay(s).font, .literata)
+        XCTAssertEqual(ReadingDisplay(s).size, 22)
+        s.readingFont = "atkinson"; s.readingSize = 31
+        XCTAssertEqual(ReadingDisplay(s).font, .atkinson)
+        XCTAssertEqual(ReadingDisplay(s).size, 31)
+        s.readingFont = "inconnue"; s.readingSize = .nan
+        XCTAssertEqual(ReadingDisplay(s).font, .literata, "police inconnue : la police par défaut")
+        XCTAssertEqual(ReadingDisplay(s).size, 22, "taille illisible : la taille par défaut")
+    }
 }

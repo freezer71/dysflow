@@ -75,4 +75,15 @@ final class SettingsDiffTests: XCTestCase {
         XCTAssertNil(patches.last?.speed, "le second patch ne redit que sa langue")
         XCTAssertTrue(SettingsDiff.patches(from: new, to: new).isEmpty)
     }
+
+    func testFontAndSizeAreSentAlone() {
+        let old = SettingsView.defaults
+        var new = old
+        new.readingFont = "openDyslexic"
+        new.readingSize = 26
+        let patch = SettingsDiff.patch(from: old, to: new)
+        XCTAssertEqual(patch.readingFont, "openDyslexic")
+        XCTAssertEqual(patch.readingSize, 26)
+        XCTAssertNil(patch.lineSpacing)
+    }
 }

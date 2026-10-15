@@ -1,12 +1,6 @@
 import AppKit
 import CoreText
 
-enum DisplayDefaults {
-    static let fontKey = "readingFont"
-    static let sizeKey = "readingSize"
-    static let defaultSize: Double = 22
-}
-
 /// Les polices de lecture, embarquées dans l'app.
 enum ReadingFont: String, CaseIterable, Identifiable {
     case literata, atkinson, openDyslexic

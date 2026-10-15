@@ -12,7 +12,8 @@ extension SettingsPatch {
             voice: nil, language: nil, speed: nil, pitch: nil, volume: nil, engine: nil,
             threads: nil, sessions: nil, prefetch: nil, codeBlocks: nil, autoplay: nil,
             seekStep: nil, lineWidth: nil, lineSpacing: nil, readingRuler: nil,
-            keepVoiceMinutes: nil, outputDevice: nil, voiceForLanguage: nil)
+            keepVoiceMinutes: nil, outputDevice: nil, voiceForLanguage: nil,
+            readingFont: nil, readingSize: nil)
     }
 
     var isEmpty: Bool { self == .empty }

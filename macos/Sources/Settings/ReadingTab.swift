@@ -3,8 +3,6 @@ import SwiftUI
 /// Onglet Lecture : l'affichage du texte et la façon de le parcourir.
 struct ReadingTab: View {
     @Bindable var store: SettingsStore
-    @AppStorage(DisplayDefaults.fontKey) private var fontName = ReadingFont.literata.rawValue
-    @AppStorage(DisplayDefaults.sizeKey) private var size = DisplayDefaults.defaultSize
 
     var body: some View {
         SettingsPage(title: "Lecture", subtitle: "L'affichage du texte et la façon de le parcourir.") {
@@ -13,15 +11,20 @@ struct ReadingTab: View {
                 SettingRow(title: "Police de lecture", detail: "Le texte lu, dans le panneau") {
                     PopUpPicker(label: "Police de lecture", identifier: "police-lecture",
                                 options: ReadingFont.allCases.map { ($0.label, $0.rawValue) },
-                                selection: $fontName)
+                                selection: Binding(get: { ReadingFont(rawValue: store.values.readingFont)?.rawValue
+                                                              ?? ReadingFont.literata.rawValue },
+                                                   set: { store.set(\.readingFont, $0) }))
                         .fixedSize()
                 }
                 SettingRow(title: "Taille") {
-                    Slider(value: $size, in: 14...40, step: 1) { Text("Taille : \(Int(size)) pt") }
-                        .notionSlider()
-                        .accessibilityLabel("Taille du texte")
-                        .accessibilityValue("\(Int(size)) points")
-                    ValueText("\(Int(size)) pt")
+                    Slider(value: store.binding(\.readingSize), in: 14...40, step: 1) {
+                        Text("Taille : \(Int(store.values.readingSize)) pt")
+                    }
+                    .notionSlider()
+                    .accessibilityLabel("Taille du texte")
+                    .accessibilityIdentifier("taille-texte")
+                    .accessibilityValue("\(Int(store.values.readingSize)) points")
+                    ValueText("\(Int(store.values.readingSize)) pt")
                 }
                 SettingRow(title: "Interlignage", detail: "L'air entre deux lignes") {
                     ValueText("\(store.values.lineSpacing)", width: 20)
