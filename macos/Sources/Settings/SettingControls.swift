@@ -43,13 +43,3 @@ enum SizeFormat {
         return "\(f.string(from: NSNumber(value: value)) ?? "\(value)") \(units[unit])"
     }
 }
-
-/// Le nom français d'une langue : « fr » → « Français ».
-enum LanguageName {
-    private static let french = Locale(identifier: "fr_FR")
-
-    static func display(_ code: String) -> String {
-        guard let name = french.localizedString(forLanguageCode: code), name != code else { return code }
-        return name.prefix(1).uppercased() + name.dropFirst()
-    }
-}

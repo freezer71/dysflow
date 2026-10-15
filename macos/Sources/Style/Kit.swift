@@ -132,26 +132,6 @@ struct SettingRow<Control: View>: View {
     }
 }
 
-/// Un texte d'appoint, sous une ligne ou en bas d'un groupe.
-struct SettingNote: View {
-    let text: String
-    var identifier: String?
-
-    init(_ text: String, identifier: String? = nil) {
-        self.text = text
-        self.identifier = identifier
-    }
-
-    var body: some View {
-        Text(text)
-            .font(Typo.detail)
-            .foregroundStyle(Palette.muted)
-            .fixedSize(horizontal: false, vertical: true)
-            .padding(.vertical, 6)
-            .accessibilityIdentifier(identifier ?? "")
-    }
-}
-
 /// Le filet d'un pixel, entre deux zones.
 struct Rule: View {
     var body: some View {
@@ -254,7 +234,6 @@ struct NotionButtonStyle: ButtonStyle {
 extension ButtonStyle where Self == NotionButtonStyle {
     static var notion: NotionButtonStyle { NotionButtonStyle() }
     static var notionPrimary: NotionButtonStyle { NotionButtonStyle(kind: .primary) }
-    static var notionDanger: NotionButtonStyle { NotionButtonStyle(kind: .danger) }
     static var notionPlain: NotionButtonStyle { NotionButtonStyle(kind: .plain) }
 }
 

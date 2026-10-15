@@ -103,6 +103,5 @@ final class VoiceSectionTests: XCTestCase {
         XCTAssertEqual(SettingFormat.decimal(1.25), "1,25")
         XCTAssertEqual(SettingFormat.decimal(1), "1")
         XCTAssertEqual(SettingFormat.percent(0.6), "60 %")
-        XCTAssertEqual(LanguageName.display("de"), "Allemand")
     }
 }

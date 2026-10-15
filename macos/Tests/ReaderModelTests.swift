@@ -67,7 +67,7 @@ final class ReaderModelTests: XCTestCase {
         let m = model("# Monades\n\nUn. Deux.\n\n## Exemples\n\nTrois.")
         XCTAssertEqual(m.tableOfContents.map(\.title), ["Monades", "Exemples"])
         XCTAssertEqual(m.sectionPositions, SectionMarkers.positions(m.document))
-        m.send(.end)
+        m.send(.sections(delta: 1))
         XCTAssertTrue(waitUntil { m.refresh(); return m.breadcrumb == "Monades ▸ Exemples" })
         m.open(text: "# Autre\n\nTexte.", source: "b")
         XCTAssertTrue(waitUntil { m.refresh(); return m.snapshot.revision == 2 })
