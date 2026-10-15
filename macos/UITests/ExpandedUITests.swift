@@ -4,27 +4,27 @@ import XCTest
 final class ExpandedUITests: XCTestCase {
     // La vue hôte SwiftUI se présente comme un groupe ; les touches vont à
     // l'app, donc à la fenêtre clé.
-    func testSidebarSearchAndBack() {
+    func testHeaderButtonsOpenTheSidebarAndTheSearch() {
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--show-panel"]
         app.launch()
-        let panel = app.groups["lecteur"]
-        XCTAssertTrue(panel.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.groups["lecteur"].waitForExistence(timeout: 5))
         let sommaire = app.outlines["sommaire"]
+        XCTAssertFalse(sommaire.exists, "le sommaire est fermé à l'ouverture")
+        app.buttons["bouton-sommaire"].click()
         XCTAssertTrue(sommaire.waitForExistence(timeout: 2))
-
         app.typeKey("t", modifierFlags: [])
         XCTAssertTrue(sommaire.waitForNonExistence(timeout: 2))
 
-        app.typeKey("/", modifierFlags: [])
+        app.buttons["bouton-rechercher"].click()
         let field = app.textFields["recherche"]
         XCTAssertTrue(field.waitForExistence(timeout: 2))
         field.typeText("promesses\r")
         XCTAssertTrue(app.staticTexts["resultats-recherche"].waitForExistence(timeout: 2))
-
         app.typeKey(.escape, modifierFlags: [])
-        XCTAssertTrue(app.groups["lecteur"].exists)
+        XCTAssertTrue(field.waitForNonExistence(timeout: 2))
+        XCTAssertTrue(app.groups["lecteur"].exists, "Échap a fermé la recherche, pas le lecteur")
     }
 
     /// Au clavier seul : Tab entre dans le sommaire, ↓ choisit le titre
@@ -35,6 +35,7 @@ final class ExpandedUITests: XCTestCase {
         app.launchArguments = ["--ui-testing", "--show-panel"]
         app.launch()
         XCTAssertTrue(app.groups["lecteur"].waitForExistence(timeout: 5))
+        app.typeKey("t", modifierFlags: [])
         let crumb = app.staticTexts["fil-ariane"]
         XCTAssertTrue(crumb.waitForExistence(timeout: 2))
         XCTAssertEqual(crumb.value as? String ?? crumb.label, "Les monades")
@@ -103,6 +104,7 @@ final class ExpandedUITests: XCTestCase {
         app.launchArguments = ["--ui-testing", "--show-panel"]
         app.launch()
         XCTAssertTrue(app.groups["lecteur"].waitForExistence(timeout: 5))
+        app.typeKey("t", modifierFlags: [])
         let outline = app.outlines["sommaire"]
         XCTAssertTrue(outline.waitForExistence(timeout: 2))
         let first = outline.outlineRows.element(boundBy: 0)

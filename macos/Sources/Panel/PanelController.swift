@@ -28,7 +28,8 @@ final class PanelController {
     /// Réglages de lecture du moteur (interlignage, règle), relus à chaque
     /// ouverture et à chaque réglage écrit.
     var reading = ReadingDisplay()
-    var sidebarVisible = true
+    /// Le sommaire, fermé à l'ouverture : le bouton ou « t » l'ouvre.
+    var sidebarVisible = false
     var bookmarksVisible = false
     var searchActive = false
     /// Compte les « / » : chacun rend le focus au champ, même déjà ouvert.

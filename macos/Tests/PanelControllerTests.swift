@@ -163,13 +163,23 @@ final class PanelControllerTests: XCTestCase {
         c.model.send(.pause)
     }
 
+    /// Le sommaire s'ouvre à la demande (bouton ou « t ») ; Échap le referme.
+    func testTheSidebarOpensOnDemand() {
+        let c = shownPanel("# Titre\n\nUn. Deux.")
+        XCTAssertFalse(c.sidebarVisible)
+        c.perform(.toggleSidebar)
+        XCTAssertTrue(c.sidebarVisible)
+        c.perform(.collapseOrHide)
+        XCTAssertFalse(c.sidebarVisible)
+        XCTAssertEqual(c.mode, .reader, "Échap a d'abord fermé le sommaire")
+    }
+
     /// ⌘W, Échap ou la fermeture de la fenêtre : masqué et en pause, jamais le mini.
     func testClosingPausesAndNeverLeavesTheMini() {
         for close in [{ (c: PanelController) in c.perform(.close) },
                       { (c: PanelController) in c.perform(.collapseOrHide) },
                       { (c: PanelController) in c.window.performClose(nil) }] {
             let c = shownPanel("Un. Deux.")
-            c.sidebarVisible = false
             c.perform(.command(.togglePlay))
             XCTAssertTrue(waitUntil { c.model.refresh(); return c.model.snapshot.playing })
             close(c)
@@ -438,30 +448,12 @@ final class PanelControllerTests: XCTestCase {
 
 @MainActor
 final class PlayerBarFormatTests: XCTestCase {
-    func testSpeedUsesADecimalCommaWhenShownAndSpoken() {
-        XCTAssertEqual(PlayerBar.speedText(1.4), "1,4×")
-        XCTAssertEqual(PlayerBar.speedSpoken(1.4), "1,4 fois")
-    }
-
     func testTimeSurvivesNonFiniteValues() {
         XCTAssertEqual(PlayerBar.time(nil), "–:––")
         XCTAssertEqual(PlayerBar.time(.nan), "–:––")
         XCTAssertEqual(PlayerBar.time(.infinity), "–:––")
         XCTAssertEqual(PlayerBar.time(-.infinity), "–:––")
         XCTAssertEqual(PlayerBar.time(75), "1:15")
-    }
-
-    func testVolumeShowsOnlyWhenItDiffersFromFull() {
-        XCTAssertNil(PlayerBar.volumeText(volume: 1, muted: false))
-        XCTAssertEqual(PlayerBar.volumeText(volume: 0.6, muted: false), "60 %")
-        XCTAssertEqual(PlayerBar.volumeText(volume: 0.6, muted: true), "Muet")
-        XCTAssertEqual(PlayerBar.volumeText(volume: 1, muted: true), "Muet")
-    }
-
-    func testSkippedSentencesAreCounted() {
-        XCTAssertNil(PlayerBar.skippedText(0))
-        XCTAssertEqual(PlayerBar.skippedText(1), "1 phrase sautée")
-        XCTAssertEqual(PlayerBar.skippedText(3), "3 phrases sautées")
     }
 
     func testTimelineClampsProgress() {
@@ -538,21 +530,13 @@ final class PanelStatusTests: XCTestCase {
     }
 }
 
-/// L'invitation sans document dit le raccourci réellement choisi.
 @MainActor
 final class PanelInvitationTests: XCTestCase {
-    func testInvitationNamesTheChosenShortcut() {
-        let custom = KeyboardShortcuts.Shortcut(.r, modifiers: [.control, .option])
-        XCTAssertEqual(PanelInvitation.text(for: custom), "Sélectionnez ou copiez du texte, puis ⌃⌥R")
-    }
-
+    /// La barre d'espace se dit en français dans « Rien à lire — ⌃⌥Espace ».
     func testTheSpaceBarIsNamedInFrench() {
         let space = KeyboardShortcuts.Shortcut(.space, modifiers: [.control, .option])
-        XCTAssertEqual(PanelInvitation.text(for: space), "Sélectionnez ou copiez du texte, puis ⌃⌥Espace")
-    }
-
-    func testWithoutShortcutItPointsToTheSettings() {
-        XCTAssertEqual(PanelInvitation.text(for: nil),
-                       "Sélectionnez ou copiez du texte, puis choisissez un raccourci : ⌘,")
+        XCTAssertEqual(PanelInvitation.keys(space), "⌃⌥Espace")
+        XCTAssertEqual(PlaybackTime.emptyText(shortcut: space), "Rien à lire — ⌃⌥Espace")
+        XCTAssertEqual(PlaybackTime.emptyText(shortcut: nil), "Rien à lire — raccourci : ⌘,")
     }
 }

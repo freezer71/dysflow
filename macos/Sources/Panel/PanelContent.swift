@@ -62,7 +62,7 @@ struct PanelContent: View {
                         .frame(width: controller.shadowTextWidth, height: 40)
                 }
         case .reader:
-            ExpandedReader(controller: controller, style: style)
+            ReaderView(controller: controller, style: style)
                 .padding(.horizontal, PanelGeometry.horizontalPadding)
                 .padding(.vertical, 18)
         case .hidden:
@@ -141,14 +141,9 @@ enum PanelStatus {
     }
 }
 
-/// L'invitation du panneau vide, avec le raccourci « Lire » réellement choisi.
+/// L'invitation du lecteur vide, et un raccourci tel qu'il s'écrit.
 enum PanelInvitation {
-    @MainActor
-    static func text(for shortcut: KeyboardShortcuts.Shortcut?) -> String {
-        let start = "Sélectionnez ou copiez du texte, puis "
-        guard let shortcut else { return start + "choisissez un raccourci : ⌘," }
-        return start + keys(shortcut)
-    }
+    static let text = "Collez un texte (⌘V) ou déposez un fichier"
 
     /// Le raccourci tel qu'il s'écrit (« ⌃⌥Espace »). La bibliothèque nomme
     /// la barre d'espace dans la langue de l'app, qui peut retomber sur
