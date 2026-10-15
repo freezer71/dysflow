@@ -49,88 +49,27 @@ struct PanelContent: View {
     @ViewBuilder
     private func content(_ model: ReaderModel) -> some View {
         switch controller.mode {
-        case .small:
+        case .mini:
             MiniPlayerView(model: model, theme: theme, perform: controller.perform)
-                // La vue hôte agrandit la fenêtre jusqu'au minimum du contenu,
-                // plus la zone sûre de la barre de titre (32 pt) : 16 + 32
-                // ferait 48, le haut fixe. La fenêtre fixe la taille
-                // (SmallPlacement.size) ; le contenu, centré, n'impose rien.
+                // La fenêtre fixe la taille (MiniPlacement.size) ; le contenu,
+                // centré, n'impose rien.
                 .frame(minHeight: 0, maxHeight: .infinity)
                 // ↑ ↓ suivent le texte même invisible : une copie cachée de
-                // la vue de lecture, à la largeur du mode moyen. Un fond ne
-                // compte pas dans la taille de la barre.
+                // la vue de lecture, à la largeur du lecteur. Un fond ne
+                // compte pas dans la taille du mini.
                 .background(alignment: .topLeading) {
                     ReadingView(model: model, style: style, lines: controller.lines, shadow: true)
                         .frame(width: controller.shadowTextWidth, height: 40)
                 }
-        case .large:
+        case .reader:
             ExpandedReader(controller: controller, style: style)
                 .padding(.horizontal, PanelGeometry.horizontalPadding)
                 .padding(.vertical, 18)
-        case .background:
-            // Fenêtre retirée : rien à tenir à jour. Une vue de lecture gardée
-            // là serait remise à jour à chaque instantané publié (mesuré :
-            // 30 fois en 10 s de lecture), et la vue hôte agrandirait la
-            // fenêtre cachée à la taille du moyen.
+        case .hidden:
+            // Fenêtre retirée : rien à tenir à jour (une vue de lecture gardée
+            // là serait remise à jour à chaque instantané publié).
             Color.clear
-        case .medium where controller.editing:
-            TextEditingView(controller: controller, style: style)
-                .padding(.horizontal, PanelGeometry.horizontalPadding)
-                .padding(.vertical, 18)
-        case .medium:
-            VStack(alignment: .leading, spacing: 14) {
-                ReadingView(model: model, style: style, lines: controller.lines,
-                            onDoubleClick: { controller.beginEditing() }) { height in
-                    controller.contentHeightChanged(height)
-                }
-                // Sans document, l'invitation occupe la zone du texte, au
-                // centre, à la taille des contrôles.
-                .overlay {
-                    if !model.snapshot.hasDocument {
-                        VStack(spacing: 10) {
-                            LogoMark()
-                                .frame(width: 28, height: 28)
-                                .foregroundStyle(Color(nsColor: theme.past))
-                            Text(PanelInvitation.text(for: KeyboardShortcuts.getShortcut(for: .readSelection)))
-                                .font(.system(size: 13))
-                                .multilineTextAlignment(.center)
-                                .foregroundStyle(Color(nsColor: theme.chrome))
-                                .accessibilityIdentifier("invitation")
-                        }
-                    }
-                }
-                PlayerBar(model: model, theme: theme)
-                HStack(spacing: 14) {
-                    hint("⏎", "agrandir")
-                    hint("esc", "masquer")
-                    hint("?", "raccourcis")
-                    // Le message prend place dans la rangée des aides : la
-                    // hauteur réservée autour du texte (PanelGeometry.chrome)
-                    // ne change pas quand il paraît.
-                    if let message = PanelStatus.line(message: model.message, snapshot: model.snapshot,
-                                                         preparing: model.voicePreparation.isRunning) {
-                        Spacer(minLength: 8)
-                        Text(message)
-                            .font(.system(size: 13))
-                            .lineLimit(1)
-                            .foregroundStyle(Color(nsColor: theme.chrome))
-                    }
-                }
-            }
-            .padding(.horizontal, PanelGeometry.horizontalPadding)
-            .padding(.vertical, 18)
         }
-    }
-
-    private func hint(_ key: String, _ label: String) -> some View {
-        HStack(spacing: 6) {
-            Keycap(key: key, color: Color(nsColor: theme.chrome),
-                   fill: Color(nsColor: theme.text).opacity(0.07))
-            Text(label)
-        }
-        .font(.system(size: 13))
-        .foregroundStyle(Color(nsColor: theme.chrome))
-        .accessibilityElement(children: .combine)
     }
 }
 
@@ -146,11 +85,10 @@ struct HelpOverlay: View {
         ("⌥↑ ⌥↓", "Volume"), ("r", "Reprendre la phrase"),
         ("/ · N P", "Chercher · résultat suivant / précédent"),
         ("t · B · b", "Sommaire · signets · poser un signet"),
-        ("⏎", "Agrandir"), ("⌘1 ⌘2 ⌘3", "Petit · moyen · grand"),
         ("⌘C", "Copier la phrase"), ("e · double clic", "Modifier le texte"),
         ("⌘,", "Réglages"),
         ("v", "Réglages de la voix"),
-        ("Échap", "Revenir · arrière-plan"),
+        ("⌘M", "Réduire / agrandir"), ("⌘W · Échap", "Fermer (la lecture s'arrête)"),
     ]
 
     var body: some View {

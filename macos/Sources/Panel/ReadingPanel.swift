@@ -1,27 +1,10 @@
 import AppKit
 
-/// Tailles du panneau, calculées sans fenêtre pour être éprouvées.
+/// Les mesures du lecteur.
 enum PanelGeometry {
-    /// Barre de lecture, aides et marges autour du texte.
-    static let chrome: CGFloat = 116
-    static let minimumHeight: CGFloat = 150
     static let maximumWidth: CGFloat = 760
-    /// La marge de chaque côté du contenu, moyen et grand modes.
+    /// La marge de chaque côté du contenu.
     static let horizontalPadding: CGFloat = 22
-
-    static func panelFrame(contentHeight: CGFloat, screen: CGRect) -> CGRect {
-        let width = min(maximumWidth, screen.width * 0.6)
-        let wanted = contentHeight >= .greatestFiniteMagnitude / 2
-            ? .greatestFiniteMagnitude : contentHeight + chrome
-        let height = min(max(wanted, minimumHeight), screen.height * 0.45)
-        // Le haut du panneau à un quart de l'écran, comme Spotlight.
-        let top = screen.maxY - screen.height * 0.25
-        return CGRect(x: screen.midX - width / 2, y: top - height, width: width, height: height)
-    }
-
-    static func expandedFrame(screen: CGRect) -> CGRect {
-        screen.insetBy(dx: 24, dy: 24)
-    }
 }
 
 /// Le niveau du panneau : au-dessus des autres fenêtres, sauf quand la

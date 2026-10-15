@@ -50,17 +50,17 @@ final class MiniPlayerViewTests: XCTestCase {
         worst.speed = 10
         let bar = MiniPlayerBar(model: model, snapshot: worst, message: nil, theme: .paper) { _ in }
         let host = NSHostingView(rootView: bar)
-        host.frame = CGRect(origin: .zero, size: SmallPlacement.size)
+        host.frame = CGRect(origin: .zero, size: MiniPlacement.size)
         host.layoutSubtreeIfNeeded()
         let ideal = host.fittingSize
-        XCTAssertLessThanOrEqual(ideal.width, SmallPlacement.size.width, "déborde de \(ideal.width - SmallPlacement.size.width) pt")
-        XCTAssertLessThanOrEqual(ideal.height, SmallPlacement.size.height)
+        XCTAssertLessThanOrEqual(ideal.width, MiniPlacement.size.width, "déborde de \(ideal.width - MiniPlacement.size.width) pt")
+        XCTAssertLessThanOrEqual(ideal.height, MiniPlacement.size.height)
         // Les textes fixes de la rangée du haut laissent 30 pt à la timeline.
         let fixed = HStack(spacing: 8) {
             Text("99:59").monospacedDigit().fixedSize()
             Text("-99:59").monospacedDigit().fixedSize()
         }.font(.system(size: 13))
-        let room = SmallPlacement.size.width - 2 * MiniBarMetrics.margin - 16 - NSHostingView(rootView: fixed).fittingSize.width
+        let room = MiniPlacement.size.width - 2 * MiniBarMetrics.margin - 16 - NSHostingView(rootView: fixed).fittingSize.width
         XCTAssertGreaterThanOrEqual(room, 30)
         let speed = NSHostingView(rootView: SpeedLabel(speed: 10).fixedSize().font(.system(size: 13)))
         XCTAssertLessThanOrEqual(speed.fittingSize.width, MiniBarMetrics.side)
@@ -108,14 +108,14 @@ final class MiniPlayerViewTests: XCTestCase {
         let bar = MiniPlayerBar(model: model, snapshot: model.snapshot,
                                 message: "Aucune ligne de ce côté", theme: .paper) { _ in }
         let host = NSHostingView(rootView: bar)
-        host.frame = CGRect(origin: .zero, size: SmallPlacement.size)
+        host.frame = CGRect(origin: .zero, size: MiniPlacement.size)
         host.layoutSubtreeIfNeeded()
-        XCTAssertLessThanOrEqual(host.fittingSize.height, SmallPlacement.size.height)
-        XCTAssertLessThanOrEqual(host.fittingSize.width, SmallPlacement.size.width)
+        XCTAssertLessThanOrEqual(host.fittingSize.height, MiniPlacement.size.height)
+        XCTAssertLessThanOrEqual(host.fittingSize.width, MiniPlacement.size.width)
     }
 
     func testTheBarIs340By88() {
-        XCTAssertEqual(SmallPlacement.size, CGSize(width: 340, height: 88))
+        XCTAssertEqual(MiniPlacement.size, CGSize(width: 340, height: 88))
     }
 
     /// Ligne précédente, mot précédent, [lecture], mot suivant, ligne suivante.
@@ -160,8 +160,8 @@ final class MiniPlayerViewTests: XCTestCase {
     func testTheEmptyBarFitsItsHeight() {
         let model = ReaderModel(reader: SillonReader.silent())
         let host = NSHostingView(rootView: MiniPlayerView(model: model, theme: .paper) { _ in })
-        host.frame = CGRect(origin: .zero, size: SmallPlacement.size)
+        host.frame = CGRect(origin: .zero, size: MiniPlacement.size)
         host.layoutSubtreeIfNeeded()
-        XCTAssertLessThanOrEqual(host.fittingSize.height, SmallPlacement.size.height)
+        XCTAssertLessThanOrEqual(host.fittingSize.height, MiniPlacement.size.height)
     }
 }

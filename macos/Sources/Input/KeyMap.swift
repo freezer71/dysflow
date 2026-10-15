@@ -41,9 +41,11 @@ enum ReaderAction: Equatable {
     /// Une ligne affichée plus haut ou plus bas : seule la vue sait où elle
     /// commence.
     case line(delta: Int)
-    case expand, collapseOrHide, copySentence, openSearch
-    /// ⌘1, ⌘2, ⌘3 : petit, moyen, grand.
-    case display(DisplayMode)
+    case collapseOrHide, copySentence, openSearch
+    /// ⌘M : du lecteur au mini et retour.
+    case toggleSize
+    /// ⌘W : fermer (la lecture s'arrête).
+    case close
     case toggleSidebar, toggleBookmarks, showHelp, openSettings, openVoiceSettings
     /// Le texte devient modifiable (double clic, ou « e »).
     case edit
@@ -56,10 +58,8 @@ enum KeyMap {
             switch key.characters {
             case "c": return .copySentence
             case ",": return .openSettings
-            // QWERTY et AZERTY non décalé : les mêmes touches physiques.
-            case "1", "&": return .display(.small)
-            case "2", "é": return .display(.medium)
-            case "3", "\"": return .display(.large)
+            case "m": return .toggleSize
+            case "w": return .close
             default: return nil
             }
         }
@@ -67,7 +67,6 @@ enum KeyMap {
         // Les touches sans caractère : flèches, entrée, etc.
         switch key.keyCode {
         case KeyCode.space: return .command(.togglePlay)
-        case KeyCode.enter: return .expand
         case KeyCode.escape: return .collapseOrHide
         case KeyCode.home: return .command(.start)
         case KeyCode.end: return .command(.end)

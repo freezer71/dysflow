@@ -4,92 +4,75 @@ import XCTest
 final class DisplayModeTests: XCTestCase {
     private let start = DisplayState.initial
 
-    func testAtFirstNothingIsShownAndMediumComesBack() {
-        XCTAssertEqual(start.current, .background)
-        XCTAssertEqual(start.lastVisible, .medium)
+    func testAtFirstNothingIsShownAndTheReaderComesBack() {
+        XCTAssertEqual(start.current, .hidden)
+        XCTAssertEqual(start.lastVisible, .reader)
     }
 
-    func testChoosingAVisibleModeRemembersIt() {
-        let s = start.applying(.choose(.small))
-        XCTAssertEqual(s.current, .small)
-        XCTAssertEqual(s.lastVisible, .small)
+    /// ⌃⌥Espace, ⌘V, un fichier, « Afficher le lecteur » : la dernière
+    /// taille ; une forme visible ne change pas.
+    func testShowGivesTheLastSizeAndKeepsAVisibleForm() {
+        XCTAssertEqual(start.applying(.show).current, .reader)
+        let mini = start.applying(.choose(.mini))
+        XCTAssertEqual(mini.applying(.show), mini)
+        XCTAssertEqual(mini.applying(.close).applying(.show).current, .mini)
     }
 
-    /// Échap dans le grand mode : d'abord le moyen, puis l'arrière-plan.
-    func testEscapeIsTwoStepsFromLarge() {
-        let large = start.applying(.choose(.large))
-        let medium = large.applying(.escape)
-        XCTAssertEqual(medium.current, .medium)
-        XCTAssertEqual(medium.lastVisible, .medium)
-        let hidden = medium.applying(.escape)
-        XCTAssertEqual(hidden.current, .background)
-        XCTAssertEqual(hidden.lastVisible, .medium)
+    /// ⌘M : du lecteur au mini et retour ; masqué, rien.
+    func testToggleSizeSwitchesBetweenReaderAndMini() {
+        let reader = start.applying(.show)
+        XCTAssertEqual(reader.applying(.toggleSize).current, .mini)
+        XCTAssertEqual(reader.applying(.toggleSize).lastVisible, .mini)
+        XCTAssertEqual(reader.applying(.toggleSize).applying(.toggleSize).current, .reader)
+        XCTAssertEqual(start.applying(.toggleSize), start)
     }
 
-    func testEscapeFromSmallGoesToTheBackground() {
-        let s = start.applying(.choose(.small)).applying(.escape)
-        XCTAssertEqual(s.current, .background)
-        XCTAssertEqual(s.lastVisible, .small)
+    /// Fermer : masqué, jamais le mini ; la taille fermée revient ensuite.
+    func testClosingNeverLeavesTheMini() {
+        let closed = start.applying(.show).applying(.close)
+        XCTAssertEqual(closed.current, .hidden)
+        XCTAssertEqual(closed.lastVisible, .reader)
+        XCTAssertEqual(closed.applying(.close), closed)
     }
 
-    func testEscapeInTheBackgroundStaysThere() {
-        XCTAssertEqual(start.applying(.escape), start)
+    /// ⌃⌥S : affiche la dernière taille, ou masque.
+    func testToggleVisibilityShowsOrHides() {
+        let mini = start.applying(.choose(.mini))
+        let hidden = mini.applying(.toggleVisibility)
+        XCTAssertEqual(hidden.current, .hidden)
+        XCTAssertEqual(hidden.applying(.toggleVisibility).current, .mini)
     }
 
-    /// ⌘W, fermeture : l'arrière-plan d'un coup, même depuis le grand mode.
-    func testHideGoesStraightToTheBackground() {
-        let s = start.applying(.choose(.large)).applying(.hide)
-        XCTAssertEqual(s.current, .background)
-        XCTAssertEqual(s.lastVisible, .large)
+    /// Fermer et ⌃⌥S qui masque arrêtent la lecture ; réduire et agrandir non.
+    func testOnlyHidingStopsTheReading() {
+        let reader = start.applying(.show)
+        XCTAssertTrue(reader.hides(reader.applying(.close)))
+        XCTAssertTrue(reader.hides(reader.applying(.toggleVisibility)))
+        XCTAssertFalse(reader.hides(reader.applying(.toggleSize)))
+        XCTAssertFalse(start.hides(start.applying(.close)), "déjà masqué")
     }
 
-    /// ⌃⌥S : le dernier mode visible.
-    func testShowLastBringsBackTheLastVisibleMode() {
-        let s = start.applying(.choose(.small)).applying(.escape).applying(.showLast)
-        XCTAssertEqual(s.current, .small)
+    /// Le dernier mode visible n'est jamais « masqué ».
+    func testLastVisibleIsNeverHidden() {
+        let s = DisplayState(current: .hidden, lastVisible: .hidden)
+        XCTAssertEqual(s.lastVisible, .reader)
+        XCTAssertEqual(start.applying(.choose(.hidden)).lastVisible, .reader)
     }
 
-    /// Le dernier mode visible n'est jamais l'arrière-plan : ⌃⌥S montre
-    /// toujours quelque chose.
-    func testLastVisibleIsNeverTheBackground() {
-        let s = DisplayState(current: .background, lastVisible: .background)
-        XCTAssertEqual(s.lastVisible, .medium)
-        XCTAssertEqual(s.applying(.showLast).current, .medium)
-        XCTAssertEqual(start.applying(.choose(.background)).lastVisible, .medium)
+    /// Une relance ne montre rien et garde la dernière taille.
+    func testARelaunchShowsNothingButKeepsTheLastSize() {
+        let mini = start.applying(.choose(.mini)).relaunched
+        XCTAssertEqual(mini.current, .hidden)
+        XCTAssertEqual(mini.lastVisible, .mini)
     }
 
-    /// ⌃⌥Espace garde le mode visible ; depuis l'arrière-plan, le moyen.
-    func testReadSelectionKeepsAVisibleModeAndOpensMediumFromTheBackground() {
-        let small = start.applying(.choose(.small))
-        XCTAssertEqual(small.applying(.readSelection), small)
-        let opened = small.applying(.escape).applying(.readSelection)
-        XCTAssertEqual(opened.current, .medium)
-        XCTAssertEqual(opened.lastVisible, .medium)
-    }
-
-    /// Fermer pendant la lecture garde la barre du mode petit : on garde
-    /// la main sur le son sans rouvrir le lecteur.
-    func testClosingWhilePlayingLeavesTheMiniPlayer() {
-        let medium = start.applying(.choose(.medium))
-        XCTAssertEqual(medium.applying(.escape, playing: true).current, .small)
-        XCTAssertEqual(medium.applying(.hide, playing: true).current, .small)
-        let large = start.applying(.choose(.large))
-        XCTAssertEqual(large.applying(.hide, playing: true).current, .small)
-        // Échap depuis le grand passe d'abord au moyen, comme sans lecture.
-        XCTAssertEqual(large.applying(.escape, playing: true).current, .medium)
-        // « Afficher sillon » rend le mode fermé, pas la barre.
-        XCTAssertEqual(medium.applying(.hide, playing: true).applying(.showLast).current, .medium)
-    }
-
-    func testTheMiniPlayerClosesForGoodAndPauseClosesAsBefore() {
-        let small = start.applying(.choose(.small))
-        XCTAssertEqual(small.applying(.escape, playing: true).current, .background)
-        XCTAssertEqual(small.applying(.hide, playing: true).current, .background)
-        let medium = start.applying(.choose(.medium))
-        XCTAssertEqual(medium.applying(.hide, playing: false).current, .background)
-    }
-
-    func testOnlyTheBackgroundIsInvisible() {
-        XCTAssertEqual(DisplayMode.allCases.filter { !$0.isVisible }, [.background])
+    /// Les valeurs retenues par la version précédente se traduisent.
+    func testModesStoredBeforeTheUpdateAreTranslated() {
+        XCTAssertEqual(DisplayMode.stored("small"), .mini)
+        XCTAssertEqual(DisplayMode.stored("medium"), .reader)
+        XCTAssertEqual(DisplayMode.stored("large"), .reader)
+        XCTAssertEqual(DisplayMode.stored("background"), .hidden)
+        XCTAssertEqual(DisplayMode.stored("mini"), .mini)
+        XCTAssertNil(DisplayMode.stored("géant"))
     }
 }

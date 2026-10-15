@@ -10,110 +10,65 @@ final class DisplayModeStoreTests: XCTestCase {
         return defaults
     }
 
-    func testAFreshStoreStartsInTheBackground() {
-        XCTAssertEqual(DisplayModeStore(defaults: freshDefaults()).state, .initial)
-        XCTAssertNil(DisplayModeStore(defaults: freshDefaults()).smallOrigin)
+    func testAFreshStoreStartsHidden() {
+        let store = DisplayModeStore(defaults: freshDefaults())
+        XCTAssertEqual(store.state, .initial)
+        XCTAssertNil(store.miniOrigin)
+        XCTAssertNil(store.readerFrame)
     }
 
-    func testTheModeSurvivesARelaunch() {
+    func testTheLastSizeSurvivesARelaunch() {
         let defaults = freshDefaults()
-        let state = DisplayState.initial.applying(.choose(.small)).applying(.escape)
+        let state = DisplayState.initial.applying(.choose(.mini)).applying(.close)
         DisplayModeStore(defaults: defaults).state = state
         XCTAssertEqual(DisplayModeStore(defaults: defaults).state, state)
-        XCTAssertEqual(DisplayModeStore(defaults: defaults).state.lastVisible, .small)
+        XCTAssertEqual(DisplayModeStore(defaults: defaults).state.lastVisible, .mini)
+    }
+
+    /// Préférences de la version précédente : traduites, pas perdues.
+    func testModesStoredBeforeTheUpdateAreTranslated() {
+        let defaults = freshDefaults()
+        defaults.set("background", forKey: DisplayModeStore.currentKey)
+        defaults.set("small", forKey: DisplayModeStore.lastVisibleKey)
+        XCTAssertEqual(DisplayModeStore(defaults: defaults).state,
+                       DisplayState(current: .hidden, lastVisible: .mini))
+        defaults.set("large", forKey: DisplayModeStore.currentKey)
+        XCTAssertEqual(DisplayModeStore(defaults: defaults).state.current, .reader)
     }
 
     func testUnreadableValuesFallBackToTheDefaults() {
         let defaults = freshDefaults()
         defaults.set("géant", forKey: DisplayModeStore.currentKey)
-        defaults.set("background", forKey: DisplayModeStore.lastVisibleKey)
+        defaults.set("hidden", forKey: DisplayModeStore.lastVisibleKey)
         XCTAssertEqual(DisplayModeStore(defaults: defaults).state, .initial)
     }
 
-    func testTheSmallBarPlaceSurvivesARelaunch() {
+    func testTheMiniPlaceSurvivesARelaunch() {
         let defaults = freshDefaults()
-        DisplayModeStore(defaults: defaults).smallOrigin = CGPoint(x: 120, y: 640)
-        XCTAssertEqual(DisplayModeStore(defaults: defaults).smallOrigin, CGPoint(x: 120, y: 640))
-        defaults.set(["a"], forKey: DisplayModeStore.smallOriginKey)
-        XCTAssertNil(DisplayModeStore(defaults: defaults).smallOrigin, "valeur illisible : pas de place")
-        let store = DisplayModeStore(defaults: defaults)
-        store.smallOrigin = CGPoint(x: 1, y: 2)
-        store.smallOrigin = nil
-        XCTAssertNil(DisplayModeStore(defaults: defaults).smallOrigin)
+        DisplayModeStore(defaults: defaults).miniOrigin = CGPoint(x: 120, y: 640)
+        XCTAssertEqual(DisplayModeStore(defaults: defaults).miniOrigin, CGPoint(x: 120, y: 640))
+        defaults.set(["a"], forKey: DisplayModeStore.miniOriginKey)
+        XCTAssertNil(DisplayModeStore(defaults: defaults).miniOrigin, "valeur illisible : pas de place")
     }
 
-    /// Sous les tests, le mode ne va jamais dans les préférences réelles.
+    func testTheReaderFrameSurvivesARelaunch() {
+        let defaults = freshDefaults()
+        let frame = CGRect(x: 100, y: 200, width: 700, height: 480)
+        DisplayModeStore(defaults: defaults).readerFrame = frame
+        XCTAssertEqual(DisplayModeStore(defaults: defaults).readerFrame, frame)
+        defaults.set([1, 2, Double.nan, 4], forKey: DisplayModeStore.readerFrameKey)
+        XCTAssertNil(DisplayModeStore(defaults: defaults).readerFrame, "valeur illisible : pas de cadre")
+        let store = DisplayModeStore(defaults: defaults)
+        store.readerFrame = nil
+        XCTAssertNil(DisplayModeStore(defaults: defaults).readerFrame)
+    }
+
+    /// Sous les tests, la forme ne va jamais dans les préférences réelles.
     func testUnderTestsTheModeIsNotStoredInTheUserDefaults() {
         let defaults = DisplayModeStore.processDefaults()
         XCTAssertFalse(defaults === UserDefaults.standard)
         let before = UserDefaults.standard.string(forKey: DisplayModeStore.currentKey)
-        DisplayModeStore(defaults: defaults).state = DisplayState(current: .large, lastVisible: .large)
+        DisplayModeStore(defaults: defaults).state = DisplayState(current: .reader, lastVisible: .reader)
         XCTAssertEqual(UserDefaults.standard.string(forKey: DisplayModeStore.currentKey), before)
-    }
-}
-
-final class SmallPlacementTests: XCTestCase {
-    private let main = CGRect(x: 0, y: 0, width: 1440, height: 875)
-    private let side = CGRect(x: 1440, y: 0, width: 1920, height: 1055)
-
-    func testWithoutASavedPlaceTheBarSitsOnTheMainScreen() {
-        let frame = SmallPlacement.frame(savedOrigin: nil, screens: [main, side], main: main)
-        XCTAssertEqual(frame, SmallPlacement.defaultFrame(on: main))
-        XCTAssertEqual(frame.size, SmallPlacement.size)
-        XCTAssertTrue(main.contains(frame))
-    }
-
-    func testASavedPlaceOnAScreenIsKept() {
-        let frame = SmallPlacement.frame(savedOrigin: CGPoint(x: 1600, y: 500), screens: [main, side], main: main)
-        XCTAssertEqual(frame.origin, CGPoint(x: 1600, y: 500))
-    }
-
-    func testAPlaceOnAnUnpluggedScreenComesBackToTheMainScreen() {
-        let frame = SmallPlacement.frame(savedOrigin: CGPoint(x: 1600, y: 500), screens: [main], main: main)
-        XCTAssertEqual(frame, SmallPlacement.defaultFrame(on: main))
-    }
-
-    func testABarHalfOffTheEdgeIsPulledBackOnScreen() {
-        let frame = SmallPlacement.frame(savedOrigin: CGPoint(x: 1400, y: 100), screens: [main], main: main)
-        XCTAssertEqual(frame.origin, CGPoint(x: 1440 - 340, y: 100))
-        XCTAssertTrue(main.contains(frame))
-        // Deux écrans : celui qui en montre le plus la reçoit.
-        let shared = SmallPlacement.frame(savedOrigin: CGPoint(x: 1400, y: 100), screens: [main, side], main: main)
-        XCTAssertEqual(shared.origin, CGPoint(x: 1440, y: 100))
-    }
-
-    func testWithoutAnyScreenTheMainFrameIsUsed() {
-        XCTAssertEqual(SmallPlacement.frame(savedOrigin: CGPoint(x: 5, y: 5), screens: [], main: main),
-                       SmallPlacement.defaultFrame(on: main))
-    }
-
-    func testASecondScreenWithANegativeOriginKeepsItsPlace() {
-        let left = CGRect(x: -1920, y: -100, width: 1920, height: 1080)
-        let origin = CGPoint(x: -1000, y: 300)
-        let frame = SmallPlacement.frame(savedOrigin: origin, screens: [main, left], main: main)
-        XCTAssertEqual(frame, CGRect(origin: origin, size: SmallPlacement.size))
-        // À cheval sur x = 0 : l'écran qui en montre le plus la reçoit, entière.
-        let straddling = CGPoint(x: -SmallPlacement.size.width * 0.75, y: 300)
-        let pulled = SmallPlacement.frame(savedOrigin: straddling, screens: [main, left], main: main)
-        XCTAssertEqual(pulled.origin, CGPoint(x: -SmallPlacement.size.width, y: 300))
-        XCTAssertTrue(left.contains(pulled))
-        let other = CGPoint(x: -SmallPlacement.size.width * 0.25, y: 300)
-        let onMain = SmallPlacement.frame(savedOrigin: other, screens: [main, left], main: main)
-        XCTAssertEqual(onMain.origin, CGPoint(x: 0, y: 300))
-        XCTAssertTrue(main.contains(onMain))
-    }
-
-    func testABarNearTheTopEdgeStaysBelowTheMenuBar() {
-        // visibleFrame : la barre des menus (24 pt) est déjà retranchée.
-        let visible = CGRect(x: 0, y: 0, width: 1440, height: 851)
-        let frame = SmallPlacement.frame(savedOrigin: CGPoint(x: 200, y: 851 - 10), screens: [visible], main: visible)
-        XCTAssertEqual(frame.maxY, visible.maxY)
-        XCTAssertTrue(visible.contains(frame))
-        XCTAssertEqual(frame.size, SmallPlacement.size)
-    }
-
-    func testAPlaceFarOutsideEveryScreenReturnsToTheDefaultFrame() {
-        let frame = SmallPlacement.frame(savedOrigin: CGPoint(x: 9000, y: -7000), screens: [main, side], main: main)
-        XCTAssertEqual(frame, SmallPlacement.defaultFrame(on: main))
     }
 }

@@ -19,15 +19,7 @@ struct MenuContent: View {
             Task { @MainActor in await app.read() }
         }
         // Toujours là, même relancée en arrière-plan : de quoi revenir.
-        Button("Afficher sillon") { app.panel?.show() }
-        Menu("Taille") {
-            Button("Petit") { app.panel?.apply(.choose(.small)) }
-                .keyboardShortcut("1", modifiers: .command)
-            Button("Moyen") { app.panel?.apply(.choose(.medium)) }
-                .keyboardShortcut("2", modifiers: .command)
-            Button("Grand") { app.panel?.apply(.choose(.large)) }
-                .keyboardShortcut("3", modifiers: .command)
-        }
+        Button("Afficher le lecteur") { app.panel?.show() }
         Divider()
         Button(s?.playing == true ? "Pause" : "Lecture") { _ = app.transport?.perform(.toggle) }
             .globalKeyboardShortcut(.playPause)

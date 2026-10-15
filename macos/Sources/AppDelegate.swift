@@ -82,7 +82,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 } catch {
                     model.message = "Impossible d'ouvrir « \(url.lastPathComponent) »"
                 }
-                panel.apply(.readSelection)
+                panel.show()
             }
         }
     }
@@ -102,13 +102,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return false
     }
 
-    /// Montre ce que décide `LaunchKind`. Le lecteur vide s'ouvre au mode
-    /// moyen ; la dernière taille, par « Afficher ».
+    /// Montre ce que décide `LaunchKind`. Le lecteur vide, toujours en
+    /// grand ; la dernière taille, par « Afficher ».
     private func present(_ presentation: LaunchPresentation) {
         guard let panel else { return }
         switch presentation {
         case .nothing: break
-        case .emptyReader: panel.apply(.choose(.medium))
+        case .emptyReader: panel.apply(.choose(.reader))
         case .lastSize: panel.show()
         }
     }
@@ -205,14 +205,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         outputWatcher = AudioDeviceWatcher { [weak model] in model?.refreshOutputs() }
         Task { [model] in await model?.loadOutput() }
         if !readerIsSilent { installNowPlaying() }
-        // Le mode laissé à la dernière fermeture (sous les tests : suite
-        // vidée, donc l'arrière-plan).
-        panel.restore()
         if isUITesting {
             let arguments = ProcessInfo.processInfo.arguments
             // `--ui-testing-vide` : rien d'ouvert, comme un premier lancement.
             if !arguments.contains("--ui-testing-vide") { model.open(text: Self.sample, source: "exemple") }
-            if arguments.contains("--show-panel") { panel.apply(.choose(.medium)) }
+            if arguments.contains("--show-panel") { panel.apply(.choose(.reader)) }
             if arguments.contains("--show-settings") {
                 // L'icône de la barre des menus donne l'action dès qu'elle paraît.
                 settings.open()
@@ -319,8 +316,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 readClipboard: { ClipboardSnapshot(pasteboard: pasteboard).read() },
                 openImage: { try await model.openImage($0) },
                 say: { model.message = $0 },
-                // Le mode en cours ; depuis l'arrière-plan, le moyen.
-                show: { panel.apply(.readSelection) }
+                // La forme en cours ; masqué, la dernière taille.
+                show: { panel.show() }
             ).run()
         }
     }
@@ -351,7 +348,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 await self.read(capture: { await chain.capture() })
             }
         }
-        KeyboardShortcuts.onKeyUp(for: .showPanel) { [unowned self] in self.panel.show() }
+        KeyboardShortcuts.onKeyUp(for: .showPanel) { [unowned self] in self.panel.toggleVisibility() }
         // Sans document, rien ne part (Transport).
         KeyboardShortcuts.onKeyUp(for: .playPause) { [unowned self] in _ = self.transport.perform(.toggle) }
         KeyboardShortcuts.onKeyUp(for: .nextSentence) { [unowned self] in _ = self.transport.perform(.next) }

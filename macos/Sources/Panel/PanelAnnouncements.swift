@@ -23,12 +23,12 @@ final class PanelAnnouncements {
         announcer.reseed(with: s)
     }
 
-    /// La phrase à dire, ou rien : jamais en arrière-plan (fenêtre retirée).
+    /// La phrase à dire, ou rien : jamais fenêtre masquée.
     /// L'annonceur voit tous les instantanés visibles, VoiceOver ou non, pour
     /// que son état reste à jour.
-    func text(for s: Snapshot, doc: DocView, background: Bool) -> String? {
+    func text(for s: Snapshot, doc: DocView, hidden: Bool) -> String? {
         let text = announcer.announcement(for: s, doc: doc)
-        return background ? nil : text
+        return hidden ? nil : text
     }
 
     private func postToVoiceOver(_ text: String) {

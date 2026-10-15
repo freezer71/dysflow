@@ -1,18 +1,18 @@
 import XCTest
 
-/// Audit d'accessibilité du panneau et du lecteur agrandi. Écrit pour être
-/// lancé à la main : `-only-testing:SillonUITests/AccessibilityAuditUITests`.
+/// Audit d'accessibilité du lecteur et du mini. Écrit pour être lancé à la
+/// main : `-only-testing:SillonUITests/AccessibilityAuditUITests`.
 @MainActor
 final class AccessibilityAuditUITests: XCTestCase {
-    func testPanelAndExpandedPassTheAudit() throws {
+    func testReaderAndMiniPassTheAudit() throws {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--show-panel"]
         app.launch()
-        let panel = app.groups["panneau-lecture"]
-        XCTAssertTrue(panel.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.groups["lecteur"].waitForExistence(timeout: 5))
         try app.performAccessibilityAuditOutsideTouchBar()
-        panel.typeKey(.return, modifierFlags: [])
-        XCTAssertTrue(app.groups["lecteur-agrandi"].waitForExistence(timeout: 2))
-        try app.performAccessibilityAuditOutsideTouchBar()
+        app.typeKey("m", modifierFlags: .command)
+        let mini = app.groups["lecteur-mini"]
+        XCTAssertTrue(mini.waitForExistence(timeout: 2))
+        try app.performAccessibilityAuditOutsideTouchBar(visibleIn: mini)
     }
 }

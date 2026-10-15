@@ -1,72 +1,84 @@
-/// Les quatre façons de montrer sillon. Une seule fenêtre : chaque mode
-/// change son contenu et sa taille ; l'arrière-plan la retire, la lecture
-/// continue.
+/// Les deux formes de sillon, et « masqué ». Une seule fenêtre : le
+/// lecteur (texte, en-tête, barre) ou le mini (une barre flottante).
 enum DisplayMode: String, Equatable, CaseIterable {
-    case small, medium, large, background
+    case mini, reader, hidden
 
-    var isVisible: Bool { self != .background }
+    var isVisible: Bool { self != .hidden }
+
+    /// Une valeur retenue, y compris celles de la version précédente
+    /// (petit, moyen, grand, arrière-plan) ; nil si elle est illisible.
+    static func stored(_ raw: String) -> DisplayMode? {
+        if let mode = DisplayMode(rawValue: raw) { return mode }
+        switch raw {
+        case "small": return .mini
+        case "medium", "large": return .reader
+        case "background": return .hidden
+        default: return nil
+        }
+    }
 }
 
-/// Ce qui fait changer de mode.
+/// Ce qui fait changer de forme.
 enum DisplayEvent: Equatable {
-    /// ⌘1, ⌘2, ⌘3, ⏎, le sous-menu « Taille ».
+    /// Une forme précise : le lecteur vide au lancement manuel, l'édition,
+    /// la recherche ou l'aide demandées depuis le mini.
     case choose(DisplayMode)
-    /// Échap : du grand au moyen, sinon l'arrière-plan.
-    case escape
-    /// ⌘W, fermeture de la fenêtre : l'arrière-plan d'un coup.
-    case hide
-    /// ⌃⌥S, « Afficher sillon » : le dernier mode visible.
-    case showLast
-    /// ⌃⌥Espace : le mode en cours ; depuis l'arrière-plan, le moyen.
-    case readSelection
+    /// ⌃⌥Espace, ⌘V, un fichier, « Afficher le lecteur » : la dernière
+    /// taille ; une forme visible ne change pas.
+    case show
+    /// ⌃⌥S : la dernière taille, ou masqué.
+    case toggleVisibility
+    /// ⌘M, « Réduire », « Agrandir » : du lecteur au mini et retour.
+    case toggleSize
+    /// ⌘W, Échap, le bouton fermer : masqué (jamais le mini).
+    case close
 }
 
-/// Le mode courant et le dernier mode visible — jamais l'arrière-plan, pour
-/// que ⌃⌥S montre toujours quelque chose. Sans état caché : testé seul.
+/// La forme courante et la dernière forme visible — jamais « masqué », pour
+/// que toute ouverture montre quelque chose. Sans état caché : testé seul.
 struct DisplayState: Equatable {
     private(set) var current: DisplayMode
     private(set) var lastVisible: DisplayMode
 
-    static let initial = DisplayState(current: .background, lastVisible: .medium)
+    static let initial = DisplayState(current: .hidden, lastVisible: .reader)
 
     init(current: DisplayMode, lastVisible: DisplayMode) {
         self.current = current
         if current.isVisible {
             self.lastVisible = current
         } else {
-            // Un dernier mode « arrière-plan » (préférence abîmée) : le moyen.
-            self.lastVisible = lastVisible.isVisible ? lastVisible : .medium
+            // Une dernière forme « masqué » (préférence abîmée) : le lecteur.
+            self.lastVisible = lastVisible.isVisible ? lastVisible : .reader
         }
     }
 
-    /// `playing` : la voix lit. Fermer le moyen ou le grand ne retire alors
-    /// pas la fenêtre : la barre du mode petit reste, pour garder la main sur
-    /// le son. Depuis la barre, la fermeture la retire, lecture comprise.
-    func applying(_ event: DisplayEvent, playing: Bool = false) -> DisplayState {
+    func applying(_ event: DisplayEvent) -> DisplayState {
         switch event {
         case .choose(let mode):
             return DisplayState(current: mode, lastVisible: lastVisible)
-        case .escape:
-            if current == .large { return DisplayState(current: .medium, lastVisible: lastVisible) }
-            return closing(playing: playing)
-        case .hide:
-            return closing(playing: playing)
-        case .showLast:
-            return DisplayState(current: lastVisible, lastVisible: lastVisible)
-        case .readSelection:
-            return current.isVisible ? self : DisplayState(current: .medium, lastVisible: lastVisible)
+        case .show:
+            return current.isVisible ? self : DisplayState(current: lastVisible, lastVisible: lastVisible)
+        case .toggleVisibility:
+            return current.isVisible ? DisplayState(current: .hidden, lastVisible: current)
+                                     : DisplayState(current: lastVisible, lastVisible: lastVisible)
+        case .toggleSize:
+            switch current {
+            case .mini: return DisplayState(current: .reader, lastVisible: .reader)
+            case .reader: return DisplayState(current: .mini, lastVisible: .mini)
+            case .hidden: return self
+            }
+        case .close:
+            return DisplayState(current: .hidden, lastVisible: current.isVisible ? current : lastVisible)
         }
     }
 
-    /// La fenêtre se ferme : l'arrière-plan, sauf pendant la lecture depuis
-    /// le moyen ou le grand, où la barre prend sa place. « Afficher sillon »
-    /// rendra ensuite le mode fermé, pas la barre.
-    private func closing(playing: Bool) -> DisplayState {
-        guard playing, current == .medium || current == .large else {
-            return DisplayState(current: .background, lastVisible: lastVisible)
-        }
-        var next = DisplayState(current: .small, lastVisible: lastVisible)
-        next.lastVisible = current
-        return next
+    /// La fenêtre disparaît : la lecture s'arrête.
+    func hides(_ next: DisplayState) -> Bool {
+        current.isVisible && !next.current.isVisible
+    }
+
+    /// Après un lancement, rien n'est montré ; la dernière taille reste.
+    var relaunched: DisplayState {
+        DisplayState(current: .hidden, lastVisible: lastVisible)
     }
 }

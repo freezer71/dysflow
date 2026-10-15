@@ -1,11 +1,12 @@
 import Foundation
 
-/// Retient le mode courant, le dernier mode visible et la place du mode
-/// petit, d'un lancement à l'autre.
+/// Retient la forme courante, la dernière forme visible, la place du mini
+/// et le cadre du lecteur, d'un lancement à l'autre.
 final class DisplayModeStore {
     static let currentKey = "affichage.mode"
     static let lastVisibleKey = "affichage.dernierVisible"
-    static let smallOriginKey = "affichage.petit.origine"
+    static let miniOriginKey = "affichage.petit.origine"
+    static let readerFrameKey = "affichage.lecteur.cadre"
 
     private let defaults: UserDefaults
 
@@ -13,12 +14,13 @@ final class DisplayModeStore {
         self.defaults = defaults
     }
 
-    /// Une valeur illisible retombe sur l'état initial (arrière-plan, moyen).
+    /// Une valeur illisible retombe sur l'état initial (masqué, lecteur) ;
+    /// celles de la version précédente se traduisent (`DisplayMode.stored`).
     var state: DisplayState {
         get {
-            let current = defaults.string(forKey: Self.currentKey).flatMap(DisplayMode.init(rawValue:))
+            let current = defaults.string(forKey: Self.currentKey).flatMap(DisplayMode.stored)
                 ?? DisplayState.initial.current
-            let last = defaults.string(forKey: Self.lastVisibleKey).flatMap(DisplayMode.init(rawValue:))
+            let last = defaults.string(forKey: Self.lastVisibleKey).flatMap(DisplayMode.stored)
                 ?? DisplayState.initial.lastVisible
             return DisplayState(current: current, lastVisible: last)
         }
@@ -28,21 +30,43 @@ final class DisplayModeStore {
         }
     }
 
-    /// Le coin bas gauche de la barre du mode petit, là où l'utilisateur l'a
-    /// laissée ; nil tant qu'il ne l'a pas déplacée.
-    var smallOrigin: CGPoint? {
+    /// Le coin bas gauche du mini, là où l'utilisateur l'a laissé ; nil
+    /// tant qu'il ne l'a pas déplacé.
+    var miniOrigin: CGPoint? {
         get {
-            guard let xy = defaults.array(forKey: Self.smallOriginKey) as? [Double], xy.count == 2,
-                  xy.allSatisfy(\.isFinite) else { return nil }
+            guard let xy = numbers(Self.miniOriginKey, count: 2) else { return nil }
             return CGPoint(x: xy[0], y: xy[1])
         }
         set {
             if let p = newValue {
-                defaults.set([Double(p.x), Double(p.y)], forKey: Self.smallOriginKey)
+                defaults.set([Double(p.x), Double(p.y)], forKey: Self.miniOriginKey)
             } else {
-                defaults.removeObject(forKey: Self.smallOriginKey)
+                defaults.removeObject(forKey: Self.miniOriginKey)
             }
         }
+    }
+
+    /// Le cadre du lecteur tel que l'utilisateur l'a laissé ; nil tant
+    /// qu'il ne l'a ni déplacé ni redimensionné.
+    var readerFrame: CGRect? {
+        get {
+            guard let f = numbers(Self.readerFrameKey, count: 4) else { return nil }
+            return CGRect(x: f[0], y: f[1], width: f[2], height: f[3])
+        }
+        set {
+            if let r = newValue {
+                defaults.set([Double(r.minX), Double(r.minY), Double(r.width), Double(r.height)],
+                             forKey: Self.readerFrameKey)
+            } else {
+                defaults.removeObject(forKey: Self.readerFrameKey)
+            }
+        }
+    }
+
+    private func numbers(_ key: String, count: Int) -> [Double]? {
+        guard let values = defaults.array(forKey: key) as? [Double], values.count == count,
+              values.allSatisfy(\.isFinite) else { return nil }
+        return values
     }
 
     /// Les préférences de l'utilisateur, sauf sous les tests (unitaires ou
@@ -56,42 +80,5 @@ final class DisplayModeStore {
         guard let suite = UserDefaults(suiteName: name) else { return .standard }
         suite.removePersistentDomain(forName: name)
         return suite
-    }
-}
-
-/// La barre du mode petit : taille fixe, place retenue, toujours sur un
-/// écran visible.
-enum SmallPlacement {
-    static let size = CGSize(width: 340, height: 88)
-
-    /// La place retenue si un écran en montre au moins un bout (ramenée
-    /// entière sur l'écran qui en montre le plus) ; sinon — écran débranché,
-    /// rien de retenu — la place par défaut sur l'écran principal.
-    static func frame(savedOrigin: CGPoint?, screens: [CGRect], main: CGRect) -> CGRect {
-        if let origin = savedOrigin {
-            let wanted = CGRect(origin: origin, size: size)
-            let best = screens.max { area($0.intersection(wanted)) < area($1.intersection(wanted)) }
-            if let screen = best, area(screen.intersection(wanted)) > 0 {
-                return clamp(wanted, into: screen)
-            }
-        }
-        return defaultFrame(on: main)
-    }
-
-    /// Centrée, le haut au quart de l'écran, comme le panneau.
-    static func defaultFrame(on screen: CGRect) -> CGRect {
-        let top = screen.maxY - screen.height * 0.25
-        return CGRect(x: screen.midX - size.width / 2, y: top - size.height,
-                      width: size.width, height: size.height)
-    }
-
-    private static func clamp(_ r: CGRect, into s: CGRect) -> CGRect {
-        CGRect(x: min(max(r.minX, s.minX), s.maxX - r.width),
-               y: min(max(r.minY, s.minY), s.maxY - r.height),
-               width: r.width, height: r.height)
-    }
-
-    private static func area(_ r: CGRect) -> CGFloat {
-        r.isNull ? 0 : r.width * r.height
     }
 }

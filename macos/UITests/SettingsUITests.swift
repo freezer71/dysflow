@@ -117,7 +117,7 @@ final class SettingsUITests: XCTestCase {
     /// L'écrou du panneau ouvre les réglages sur l'onglet Voix.
     func testTheGearOpensTheVoiceTab() throws {
         let app = launch(["--show-panel"])
-        let panel = app.groups["panneau-lecture"]
+        let panel = app.groups["lecteur"]
         XCTAssertTrue(panel.waitForExistence(timeout: 5))
         let gear = panel.buttons["reglages-voix"]
         XCTAssertTrue(gear.exists)
@@ -131,7 +131,7 @@ final class SettingsUITests: XCTestCase {
     /// `v` dans le panneau fait comme l'écrou.
     func testVFromThePanelOpensTheVoiceTab() throws {
         let app = launch(["--show-panel"])
-        let panel = app.groups["panneau-lecture"]
+        let panel = app.groups["lecteur"]
         XCTAssertTrue(panel.waitForExistence(timeout: 5))
         panel.typeKey("v", modifierFlags: [])
         let window = app.windows["Réglages"]
@@ -148,7 +148,7 @@ final class SettingsUITests: XCTestCase {
         XCTAssertTrue(window.descendants(matching: .any)["onglet-avance"].waitForExistence(timeout: 3))
         window.typeKey("w", modifierFlags: .command)
         XCTAssertTrue(window.waitForNonExistence(timeout: 3))
-        let panel = app.groups["panneau-lecture"]
+        let panel = app.groups["lecteur"]
         XCTAssertTrue(panel.waitForExistence(timeout: 5))
         panel.typeKey(",", modifierFlags: .command)
         XCTAssertTrue(window.waitForExistence(timeout: 5))

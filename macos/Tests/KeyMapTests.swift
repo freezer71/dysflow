@@ -8,17 +8,11 @@ final class KeyMapTests: XCTestCase {
                                     shift: shift, command: command, control: control))
     }
 
-    func testCommandDigitsChooseTheDisplayMode() {
-        XCTAssertEqual(act("1", command: true), .display(.small))
-        XCTAssertEqual(act("2", command: true), .display(.medium))
-        XCTAssertEqual(act("3", command: true), .display(.large))
-        // AZERTY : les mêmes touches, sans Maj.
-        XCTAssertEqual(act("&", command: true), .display(.small))
-        XCTAssertEqual(act("é", command: true), .display(.medium))
-        XCTAssertEqual(act("\"", command: true), .display(.large))
-        XCTAssertNil(act("4", command: true))
-        // Sans ⌘, les chiffres restent des vitesses.
-        XCTAssertEqual(act("1"), .command(.setSpeed(speed: 0.75)))
+    func testCommandMAndCommandWChangeTheForm() {
+        XCTAssertEqual(act("m", command: true), .toggleSize)
+        XCTAssertEqual(act("w", command: true), .close)
+        XCTAssertNil(act("1", command: true), "⌘1 ⌘2 ⌘3 retirés")
+        XCTAssertNil(act("", KeyCode.enter), "⏎ n'agrandit plus")
     }
 
     func testVOpensTheVoiceSettings() {
@@ -76,7 +70,6 @@ final class KeyMapTests: XCTestCase {
     }
 
     func testWindowGestures() {
-        XCTAssertEqual(act("\r", KeyCode.enter), .expand)
         XCTAssertEqual(act("", KeyCode.escape), .collapseOrHide)
         XCTAssertEqual(act("c", command: true), .copySentence)
         XCTAssertEqual(act(",", command: true), .openSettings)
