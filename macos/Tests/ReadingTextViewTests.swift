@@ -297,8 +297,23 @@ final class ReadingTextViewTests: XCTestCase {
         let menu = try XCTUnwrap(view.menu(for: event))
         XCTAssertEqual(menu.items.map(\.title), ["Copier", "Lire à partir d'ici"])
         menu.performActionForItem(at: 1)
-        XCTAssertTrue((15...21).contains(readFrom ?? -1), "endroit : \(String(describing: readFrom))")
+        XCTAssertTrue((15..<21).contains(readFrom ?? -1), "endroit : \(String(describing: readFrom))")
         menu.performActionForItem(at: 0)
         XCTAssertEqual(copies, 1)
+    }
+
+    /// Un clic droit sur la moitié droite de la dernière lettre d'un mot
+    /// désigne ce mot, pas l'insertion qui le suit (le mot suivant).
+    func testReadFromHereOnTheLastLetterStaysOnTheWord() throws {
+        var readFrom: Int?
+        view.onReadFrom = { readFrom = $0 }
+        let last = try XCTUnwrap(view.rectForTesting(NSRange(location: 20, length: 1)))
+        let inWindow = view.convert(CGPoint(x: last.maxX - 0.5, y: last.midY), to: nil)
+        let event = try XCTUnwrap(NSEvent.mouseEvent(with: .rightMouseDown, location: inWindow, modifierFlags: [],
+                                                     timestamp: 0, windowNumber: window.windowNumber, context: nil,
+                                                     eventNumber: 0, clickCount: 1, pressure: 1))
+        let menu = try XCTUnwrap(view.menu(for: event))
+        menu.performActionForItem(at: 1)
+        XCTAssertEqual(readFrom, 20, "endroit : \(String(describing: readFrom))")
     }
 }

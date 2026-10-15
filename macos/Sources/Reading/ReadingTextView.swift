@@ -138,7 +138,7 @@ final class ReadingTextView: NSTextView {
 
     override func menu(for event: NSEvent) -> NSMenu? {
         let point = convert(event.locationInWindow, from: nil)
-        let index = characterIndexForInsertion(at: point)
+        let index = characterIndex(under: point)
         let menu = NSMenu()
         let copy = NSMenuItem(title: "Copier", action: #selector(copyFromMenu(_:)), keyEquivalent: "")
         copy.target = self
@@ -147,6 +147,17 @@ final class ReadingTextView: NSTextView {
         read.representedObject = index
         menu.items = [copy, read]
         return menu
+    }
+
+    /// Le caractère sous le point. L'insertion la plus proche ne suffit pas :
+    /// sur la moitié droite de la dernière lettre d'un mot, elle tombe après
+    /// le mot, et « Lire à partir d'ici » partirait du mot suivant.
+    func characterIndex(under point: CGPoint) -> Int {
+        let index = characterIndexForInsertion(at: point)
+        if index > 0, let before = rect(for: NSRange(location: index - 1, length: 1)), before.contains(point) {
+            return index - 1
+        }
+        return index
     }
 
     @objc private func copyFromMenu(_ sender: Any?) {
