@@ -29,14 +29,14 @@ struct ReaderView: View {
             if !controller.editing {
                 ReaderBar(controller: controller, theme: style.theme, markers: model.sectionPositions)
             }
-            if let line = PanelStatus.line(message: model.message, snapshot: model.snapshot,
-                                           preparing: model.voicePreparation.isRunning) {
+            if let line = PanelStatus.line(message: model.message, snapshot: model.snapshot) {
                 Text(line)
                     .font(.system(size: 13))
                     .lineLimit(2)
                     .foregroundStyle(Color(nsColor: style.theme.chrome))
                     .accessibilityIdentifier("etat-lecteur")
             }
+            VoiceStatusLine(model: model, color: Color(nsColor: style.theme.chrome))
         }
     }
 }

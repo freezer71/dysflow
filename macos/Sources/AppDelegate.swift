@@ -280,8 +280,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// Le passage à Kokoro (une fois, avec un avis), puis la préparation des
-    /// noyaux Metal, maintenant et à chaque fois que la voix active a pu
+    /// Le passage à Kokoro (une fois, avec un avis), l'installation
+    /// automatique de la voix, puis la préparation des noyaux Metal, maintenant et à chaque fois que la voix active a pu
     /// changer.
     private func startKokoro() {
         model.onVoiceMayHaveChanged = { [weak self] in self?.kokoroBecameActive() }
@@ -295,6 +295,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 model.message = notice
                 self.panel.post(notice)
             }
+            // Puis la voix s'installe seule s'il le faut (rapide : le
+            // téléchargement, lui, court à part).
+            await model.installDefaultVoice()
             self.kokoroBecameActive()
         }
     }

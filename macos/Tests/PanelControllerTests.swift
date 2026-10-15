@@ -506,68 +506,29 @@ final class PlayerBarFormatTests: XCTestCase {
     }
 }
 
-/// La ligne de message du panneau : ce que l'app dit, sinon ce que le
-/// lecteur dit, sinon la voix de repli.
+/// La ligne de message du lecteur : ce que l'app vient de dire, sinon ce
+/// que le lecteur dit ; rien sur la voix (VoiceStatus s'en charge).
 @MainActor
 final class PanelStatusTests: XCTestCase {
     private func snapshot(status: String = "", voice: VoiceState = .ready) -> Snapshot {
-        var s = SillonReader.silent().snapshot()
-        s.hasDocument = true
+        var s = Snapshot.sample(voice: voice)
         s.status = status
-        s.voice = voice
         return s
     }
 
-    func testAReloadingVoiceSaysSo() {
-        XCTAssertEqual(PanelStatus.line(message: nil, snapshot: snapshot(voice: .loading)),
-                       "Voix en chargement…")
-        XCTAssertEqual(PanelStatus.line(message: nil, snapshot: snapshot(status: "Signet ajouté", voice: .loading)),
-                       "Signet ajouté", "le lecteur parle d'abord")
-    }
-
-    /// La toute première préparation des noyaux Metal : le texte de la spec,
-    /// plutôt que « Voix en chargement… », même voix déjà chargée.
-    func testAFirstPreparationSaysSo() {
-        XCTAssertEqual(PanelStatus.line(message: nil, snapshot: snapshot(voice: .loading), preparing: true),
-                       "Voix en préparation (première fois)…")
-        XCTAssertEqual(PanelStatus.line(message: nil, snapshot: snapshot(voice: .ready), preparing: true),
-                       "Voix en préparation (première fois)…")
-        XCTAssertEqual(PanelStatus.line(message: nil, snapshot: snapshot(status: "Signet ajouté", voice: .loading),
-                                        preparing: true),
-                       "Signet ajouté", "le lecteur parle d'abord")
-        XCTAssertEqual(PanelStatus.line(message: nil, snapshot: snapshot(voice: .fallback(reason: "x")), preparing: true),
-                       "Voix du système — installer une voix : ⌘,", "en repli, c'est la voix du système qui parle")
-    }
-
     func testAppMessageWins() {
-        XCTAssertEqual(PanelStatus.line(message: "Phrase copiée",
-                                        snapshot: snapshot(status: "Signet ajouté")), "Phrase copiée")
+        XCTAssertEqual(PanelStatus.line(message: "Phrase copiée", snapshot: snapshot(status: "Sortie audio débranchée")),
+                       "Phrase copiée")
     }
 
     func testReaderStatusShows() {
-        XCTAssertEqual(PanelStatus.line(message: nil, snapshot: snapshot(status: "Aucun mot de ce côté")),
-                       "Aucun mot de ce côté")
+        XCTAssertEqual(PanelStatus.line(message: nil, snapshot: snapshot(status: "Sortie audio débranchée")),
+                       "Sortie audio débranchée")
     }
 
-    /// Une voix dont aucune session ne s'ouvre le dit, au lieu de rester muette.
-    func testAnUnavailableVoiceSaysWhy() {
-        XCTAssertEqual(PanelStatus.line(message: nil, snapshot: snapshot(voice: .unavailable(reason: "x"))),
-                       "Voix indisponible : x")
-        XCTAssertEqual(PanelStatus.line(message: nil, snapshot: snapshot(status: "Voix indisponible : x",
-                                                                          voice: .unavailable(reason: "x"))),
-                       "Voix indisponible : x", "le statut du lecteur le dit déjà")
-    }
-
-    func testFallbackVoiceSaysHowToInstallOne() {
-        let s = snapshot(voice: .fallback(reason: "modèle absent"))
-        XCTAssertEqual(PanelStatus.line(message: nil, snapshot: s),
-                       "Voix du système — installer une voix : ⌘,")
-        XCTAssertEqual(PanelStatus.line(message: nil, snapshot: snapshot(status: "Signet ajouté",
-                                                                          voice: .fallback(reason: "x"))),
-                       "Signet ajouté")
-    }
-
-    func testNothingToSay() {
+    func testTheVoiceIsNotSaidHere() {
+        XCTAssertNil(PanelStatus.line(message: nil, snapshot: snapshot(voice: .fallback(reason: "x"))))
+        XCTAssertNil(PanelStatus.line(message: nil, snapshot: snapshot(voice: .loading)))
         XCTAssertNil(PanelStatus.line(message: nil, snapshot: snapshot()))
     }
 }

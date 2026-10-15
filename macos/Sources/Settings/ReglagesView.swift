@@ -25,6 +25,10 @@ struct ReglagesView: View {
                 ShortcutsSection()
                 StartupSection()
             }
+            // En bas, discret : l'état de la voix si elle n'est pas prête.
+            VoiceStatusLine(model: model)
+                .padding(.horizontal, 36)
+                .padding(.vertical, 10)
         }
         .background(Palette.page)
         // La barre de titre est transparente : la page monte jusqu'en haut.

@@ -6,6 +6,9 @@
 /// livrée (Release) n'en contient rien.
 enum UITestStaging {
     static let unreadableConfig = "--ui-testing-config-illisible"
+    /// Un téléchargement de la voix en cours, puis en échec.
+    static let downloading = "--ui-testing-telechargement"
+    static let failedDownload = "--ui-testing-echec-voix"
     /// Les voix de Kokoro dans les réglages (le lecteur muet n'en a pas).
     static let kokoro = "--ui-testing-kokoro"
 
@@ -23,8 +26,17 @@ enum UITestStaging {
     }
 
     static func staging(for arguments: [String]) -> (@Sendable (inout Snapshot) -> Void)? {
-        guard arguments.contains(unreadableConfig) else { return nil }
-        return { s in s.configUnreadable = true }
+        let unreadable = arguments.contains(unreadableConfig)
+        let downloading = arguments.contains(Self.downloading)
+        let failed = arguments.contains(failedDownload)
+        guard unreadable || downloading || failed else { return nil }
+        return { s in
+            if unreadable { s.configUnreadable = true }
+            if downloading || failed {
+                s.download = DownloadView(id: "kokoro_82m_mlx", received: 100_000_000, total: 342_264_783,
+                                          failed: failed ? "réseau indisponible" : nil)
+            }
+        }
     }
 
     /// Le lecteur donné, avec la mise en scène demandée par les arguments ;

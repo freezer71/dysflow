@@ -37,6 +37,20 @@ final class ReaderModel {
     /// La préparation des noyaux Metal de Kokoro (`KokoroWarmUp`), observée
     /// par l'onglet Voix.
     @ObservationIgnored let voicePreparation = VoicePreparation()
+    /// Le dernier refus de l'installation automatique de la voix ; nil après
+    /// une réussite. Avec « Réessayer » dans la ligne d'état.
+    var voiceSetupError: String?
+
+    /// Au lancement et à chaque « Réessayer ».
+    func installDefaultVoice() async {
+        do {
+            try await ensureDefaultVoice()
+            voiceSetupError = nil
+        } catch {
+            voiceSetupError = SettingsStore.message(of: error)
+        }
+    }
+
     /// La sortie audio choisie et les sorties branchées.
     @ObservationIgnored let audioOutputs: AudioOutputs
 

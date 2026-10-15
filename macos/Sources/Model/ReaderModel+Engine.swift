@@ -41,6 +41,14 @@ extension ReaderModel {
         wake()
         return notice
     }
+    /// L'installation automatique de la voix (plan 1) : accepte l'offre de
+    /// Kokoro, ou télécharge le Kokoro recommandé, sans rien demander ;
+    /// sans effet pendant un téléchargement. La progression : `snapshot.download`.
+    func ensureDefaultVoice() async throws {
+        try await tryCall { try $0.ensureDefaultVoice() }
+        wake()
+        onVoiceMayHaveChanged?()
+    }
     /// « Remplacer » un `config.toml` illisible (une copie est gardée à
     /// côté), hors du fil principal.
     func replaceUnreadableConfig() async throws {
