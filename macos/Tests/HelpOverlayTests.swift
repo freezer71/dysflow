@@ -32,6 +32,18 @@ final class HelpOverlayTests: XCTestCase {
         }
     }
 
+    /// Le pied de l'aide dit vrai : seules « ? » et Échap la ferment, les
+    /// autres touches agissent dessous.
+    func testTheFooterNamesTheKeysThatCloseTheHelp() {
+        XCTAssertEqual(HelpOverlay.footer, "? ou Échap pour fermer")
+        guard case .showHelp? = KeyMap.action(for: KeyPress(characters: "?", shift: true)) else {
+            return XCTFail("« ? » ne bascule pas l'aide")
+        }
+        guard case .escape? = KeyMap.action(for: KeyPress(characters: "", keyCode: KeyCode.escape)) else {
+            return XCTFail("Échap ne ferme pas l'aide")
+        }
+    }
+
     func testTheHelpSaysThatClosingStopsTheReading() {
         XCTAssertTrue(HelpOverlay.rows.contains { $0 == ("⌘W", "Fermer (la lecture s'arrête)") })
         XCTAssertTrue(HelpOverlay.rows.contains { $0 == ("⌘C", "Copier la sélection, sinon la phrase") })

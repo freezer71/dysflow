@@ -72,7 +72,9 @@ struct PanelContent: View {
     }
 }
 
-/// Les raccourcis, en surimpression ; n'importe quelle touche la ferme.
+/// Les raccourcis, en surimpression ; « ? » ou Échap la ferment (les autres
+/// touches agissent dessous). Trop haute pour le lecteur, la liste défile
+/// entre le titre et le pied, qui restent visibles.
 struct HelpOverlay: View {
     let theme: Theme
     static let rows: [(String, String)] = [
@@ -96,22 +98,23 @@ struct HelpOverlay: View {
         ("⌘,", "Réglages"),
     ]
 
+    /// Ce qui ferme vraiment l'aide.
+    static let footer = "? ou Échap pour fermer"
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Raccourcis")
                 .font(.system(size: 14, weight: .semibold))
                 .accessibilityAddTraits(.isHeader)
-            Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 7) {
-                ForEach(Self.rows, id: \.0) { row in
-                    GridRow {
-                        Keycap(key: row.0, color: Color(nsColor: theme.text),
-                               fill: Color(nsColor: theme.text).opacity(0.07))
-                        Text(row.1).font(.system(size: 13))
-                            .foregroundStyle(Color(nsColor: theme.chrome))
-                    }
-                }
+            // Entière si elle tient, sinon elle défile dans la place laissée.
+            ViewThatFits(in: .vertical) {
+                keys
+                ScrollView(.vertical) { keys }
+                    .scrollIndicators(.automatic)
+                    // La largeur des touches, pas celle du lecteur.
+                    .fixedSize(horizontal: true, vertical: false)
             }
-            Text("Une touche pour fermer")
+            Text(Self.footer)
                 .font(.system(size: 12))
                 .foregroundStyle(Color(nsColor: theme.chrome))
         }
@@ -120,7 +123,21 @@ struct HelpOverlay: View {
         .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color(nsColor: theme.border)))
         .shadow(color: .black.opacity(0.12), radius: 18, y: 8)
         .foregroundStyle(Color(nsColor: theme.text))
+        .padding(16)
         .accessibilityIdentifier("aide-raccourcis")
+    }
+
+    private var keys: some View {
+        Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 7) {
+            ForEach(Self.rows, id: \.0) { row in
+                GridRow {
+                    Keycap(key: row.0, color: Color(nsColor: theme.text),
+                           fill: Color(nsColor: theme.text).opacity(0.07))
+                    Text(row.1).font(.system(size: 13))
+                        .foregroundStyle(Color(nsColor: theme.chrome))
+                }
+            }
+        }
     }
 }
 
