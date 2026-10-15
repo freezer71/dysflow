@@ -33,6 +33,7 @@ struct ReglagesView: View {
         .navigationTitle("Réglages")
         .frame(width: 620, height: 680)
         .font(Typo.body)
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("page-reglages")
         .task {
             AppDelegate.shared?.settingsStore = store

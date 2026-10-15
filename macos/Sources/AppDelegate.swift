@@ -290,12 +290,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         migration = Task { @MainActor [weak self] in
             guard let self, let model = self.model else { return }
             // L'avis du passage (s'il y en a un) se dit une fois dans le lecteur.
-            if let notice = await model.migrateVoice() {
+            let engine = await model.migrateVoice()
+            if let notice = Self.switchNotice(engine: engine, offer: model.snapshot.offer) {
                 model.message = notice
                 self.panel.post(notice)
             }
             self.kokoroBecameActive()
         }
+    }
+
+    /// L'avis du lancement : seulement un passage fait. Une proposition
+    /// (`offer`) n'a plus de bouton pour y répondre : sa phrase se tait, la
+    /// voix par défaut l'accepte d'elle-même.
+    static func switchNotice(engine: String?, offer: VoiceOfferView?) -> String? {
+        offer == nil ? engine : nil
     }
 
     /// Le passage au lancement, gardé : une lecture l'attend après la
