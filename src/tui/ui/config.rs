@@ -446,7 +446,7 @@ pub(super) fn render_config_footer(frame: &mut Frame, app: &App, area: Rect) {
     } else if app.screen.current_section() == Section::Models {
         "↑↓ modèle · Entrée installer/choisir · t écouter · d d supprimer · Échap menu".to_string()
     } else {
-        "↑↓ réglage · ←→ valeur · Entrée éditer · a tout voir · w enregistrer · Échap menu"
+        "↑↓ réglage · ←→ valeur, enregistrée aussitôt · Entrée éditer · a tout voir · Échap menu"
             .to_string()
     };
 

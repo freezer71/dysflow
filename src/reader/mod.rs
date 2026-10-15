@@ -220,20 +220,6 @@ impl Reader {
         self.config.save_to(path)
     }
 
-    /// Le choix fait dans le texte ouvert (modèle pris au terminal) s'écrit
-    /// à la mise au repos et à la fermeture — jamais par-dessus un fichier
-    /// illisible.
-    fn flush_session_config(app: &mut App, unreadable: bool, path: Option<&Path>) {
-        if unreadable || !app.config_needs_saving() {
-            return;
-        }
-        if let Some(path) = path {
-            if app.config.save_to(path).is_ok() {
-                app.config_saved();
-            }
-        }
-    }
-
     /// « Remplacer » : la copie illisible est gardée à côté
     /// (`config.toml.illisible`, puis `-2`, `-3`… : jamais une copie écrasée),
     /// puis les réglages en cours sont écrits ; les écritures reprennent.
@@ -415,7 +401,6 @@ impl Reader {
             return;
         };
         app.remember_position();
-        Self::flush_session_config(&mut app, self.config_unreadable, self.config_path.as_deref());
         self.config = app.config.clone();
         self.resting_at = Some(app.current_sentence());
         drop(app);
@@ -426,12 +411,10 @@ impl Reader {
         self.engine = None;
     }
 
-    /// Fermeture de l'app : rien de ce qui a été lu ou réglé ne se perd.
+    /// Fermeture de l'app : rien de ce qui a été lu ne se perd.
     pub fn close(&mut self) {
-        let (unreadable, path) = (self.config_unreadable, self.config_path.clone());
         if let Some(app) = self.session.as_mut() {
             app.remember_position();
-            Self::flush_session_config(app, unreadable, path.as_deref());
         }
     }
 

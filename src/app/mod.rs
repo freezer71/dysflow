@@ -119,8 +119,6 @@ pub struct App {
     /// Vrai dès la première phrase produite : le démarrage ne s'annonce qu'une
     /// fois, même quand un changement de voix vide le cache ensuite.
     synthesis_started: bool,
-    /// Un choix fait à l'écran attend d'être écrit dans `config.toml`.
-    config_dirty: bool,
 
     /// Où l'enregistrement automatique écrit (`config.toml` ; un fichier
     /// temporaire sous test). `None` : rien ne s'écrit.
@@ -260,7 +258,6 @@ impl App {
             notices,
             started_at: Instant::now(),
             synthesis_started: false,
-            config_dirty: false,
             config_target: Config::path(),
         };
         if !has_stream {
@@ -921,7 +918,7 @@ pub(crate) mod tests {
     }
 
     /// Un fichier `config.toml` propre au test, dans un dossier neuf.
-    fn autosave_target(name: &str) -> (std::path::PathBuf, std::path::PathBuf) {
+    pub(crate) fn autosave_target(name: &str) -> (std::path::PathBuf, std::path::PathBuf) {
         let dir = std::env::temp_dir().join(format!("sillon-autosave-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
@@ -948,7 +945,6 @@ pub(crate) mod tests {
         std::fs::remove_dir_all(&dir).ok();
         assert_eq!(app.config.reading.line_spacing, before + 1, "appliqué");
         assert_eq!(written.reading.line_spacing, before + 1, "écrit sans w");
-        assert!(!app.config_needs_saving());
     }
 
     #[test]
@@ -1013,13 +1009,32 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn choosing_a_model_asks_for_the_configuration_to_be_written() {
-        // Le choix ne survivait pas au relancement : seul `w` écrivait, et le
-        // premier modèle installé revenait à la place de celui qu'on avait pris.
+    fn choosing_a_model_is_written_at_once() {
+        // Le choix ne survivait au relancement que si `w` l'écrivait.
+        let (dir, path) = autosave_target("modele");
         let mut app = app_reading(DOC);
-        assert!(!app.config_needs_saving());
-        app.select_model(&models::CATALOG[0]);
-        assert!(app.config_needs_saving());
+        app.set_config_target(Some(path.clone()));
+        let package = models::CATALOG.iter().find(|p| p.id == "kokoro_82m_int8").unwrap();
+        app.select_model(package);
+        let written = Config::read_from(&path).unwrap();
+        std::fs::remove_dir_all(&dir).ok();
+        assert_eq!(written.engine.family, "kokoro");
+        assert!(written.engine.model_path.ends_with("model_quantized.onnx"), "{}", written.engine.model_path);
+        assert_eq!(written.voice.per_language["fr"], "p-fenrir60", "les voix du modèle suivent");
+        assert!(written.reading.autoplay, "l'autoplay coupé du test n'est pas écrit");
+    }
+
+    #[test]
+    fn the_speed_set_while_reading_is_written_at_once() {
+        let (dir, path) = autosave_target("vitesse");
+        let mut app = app_reading(DOC);
+        app.set_config_target(Some(path.clone()));
+        app.config.voice.pitch = 0.5; // comme `--pitch 0.5`
+        app.nudge_speed(0.1);
+        let written = Config::read_from(&path).unwrap();
+        std::fs::remove_dir_all(&dir).ok();
+        assert!((written.voice.speed - 1.1).abs() < 1e-5, "{}", written.voice.speed);
+        assert_eq!(written.voice.pitch, 0.0, "l'option de la ligne de commande n'est pas écrite");
     }
 
     struct SlowEngine;

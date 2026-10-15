@@ -19,7 +19,7 @@ pub const HELP: &[(&str, &str)] = &[
     ("Début", "Début du document"),
     ("/", "Chercher dans le document"),
     ("N / P", "Résultat suivant / précédent"),
-    ("+ / -", "Vitesse"),
+    ("+ / -", "Vitesse (enregistrée)"),
     ("t", "Sommaire : ↑ ↓ puis Entrée"),
     ("s", "Réglages"),
     ("Pg↑ Pg↓", "Relire sans déplacer la lecture"),
@@ -34,12 +34,11 @@ pub const CONFIG_HELP: &[(&str, &str)] = &[
     ("1 … 5", "Ouvrir une rubrique directement"),
     ("↑ ↓", "Se déplacer dans la liste"),
     ("Entrée", "Ouvrir · éditer · installer · choisir"),
-    ("← →", "Modifier une valeur"),
+    ("← →", "Modifier une valeur (enregistrée aussitôt)"),
     ("Échap", "Revenir au menu, puis fermer"),
     ("t", "Écouter un aperçu de la voix"),
     ("a", "Montrer les réglages sans effet"),
     ("d", "Supprimer un modèle (d deux fois) · annuler"),
-    ("w", "Enregistrer la configuration"),
 ];
 
 /// Une touche, sans le vocabulaire d'aucune bibliothèque.
@@ -102,7 +101,7 @@ fn handle_config(app: &mut App, key: Key) {
     // La saisie d'un champ texte capte tout, sauf sa validation et son abandon.
     if app.screen.editing.is_some() {
         match key.code {
-            KeyCode::Enter => app.config_commit_edit(),
+            KeyCode::Enter => app.config_commit_edit_and_save(),
             KeyCode::Esc => app.config_cancel_edit(),
             KeyCode::Backspace => app.config_edit_backspace(),
             KeyCode::Char(c) => app.config_edit_push(c),
@@ -134,8 +133,8 @@ fn handle_config(app: &mut App, key: Key) {
 
         KeyCode::Up => app.config_move_row(-1),
         KeyCode::Down => app.config_move_row(1),
-        KeyCode::Right => app.config_adjust(1),
-        KeyCode::Left => app.config_adjust(-1),
+        KeyCode::Right => app.config_adjust_and_save(1),
+        KeyCode::Left => app.config_adjust_and_save(-1),
         KeyCode::Enter => app.config_activate(),
         KeyCode::Tab | KeyCode::BackTab => {
             app.config_back_to_menu();
@@ -144,7 +143,6 @@ fn handle_config(app: &mut App, key: Key) {
         KeyCode::Char('a') => app.config_toggle_show_all(),
         KeyCode::Char('t') => app.preview_voice(),
         KeyCode::Char('d') | KeyCode::Delete => app.config_delete(),
-        KeyCode::Char('w') => app.save_config(),
         KeyCode::Char('?') | KeyCode::Char('h') => app.show_help = true,
         KeyCode::Char('q') => app.should_quit = true,
         _ => {}
@@ -194,8 +192,8 @@ fn handle_reader(app: &mut App, key: Key) {
         KeyCode::Char('p') => app.seek_section(-1),
         KeyCode::Home => app.seek_start(),
 
-        KeyCode::Char('+') => app.change_speed(0.1),
-        KeyCode::Char('-') => app.change_speed(-0.1),
+        KeyCode::Char('+') => app.nudge_speed(0.1),
+        KeyCode::Char('-') => app.nudge_speed(-0.1),
 
         KeyCode::Char('t') => app.toggle_panel(Panel::Contents),
         KeyCode::Char('s') => app.toggle_config(),
@@ -224,6 +222,29 @@ mod tests {
 
     fn press(app: &mut App, code: KeyCode) {
         handle(app, Key::plain(code));
+    }
+
+    #[test]
+    fn w_writes_nothing_any_more_in_the_settings() {
+        let mut app = app_reading(DOC);
+        app.show_config = true;
+        press(&mut app, KeyCode::Char('w'));
+        assert!(app.status().is_empty(), "w a écrit : {:?}", app.status());
+    }
+
+    #[test]
+    fn the_arrows_of_the_settings_write_at_once() {
+        let (dir, path) = crate::app::tests::autosave_target("fleches");
+        let mut app = app_reading(DOC);
+        app.set_config_target(Some(path.clone()));
+        app.show_config = true;
+        app.screen.goto_section(2); // Lecture
+        app.screen.row = 1; // Interlignage
+        let before = app.config.reading.line_spacing;
+        press(&mut app, KeyCode::Right);
+        let written = crate::config::Config::read_from(&path).unwrap();
+        std::fs::remove_dir_all(&dir).ok();
+        assert_eq!(written.reading.line_spacing, before + 1);
     }
 
     #[test]

@@ -609,7 +609,6 @@ mod tests {
         r.switch_when_downloaded = Some((mlx.id.into(), "F2".into()));
         r.finish_migration(mlx.id, t0);
         r.open_text("Un texte.", "a", t0);
-        r.with_session(t0, |app| app.mark_config_dirty());
         r.close();
         r.rest();
         let after = std::fs::read(&path).unwrap();

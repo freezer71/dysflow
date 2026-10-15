@@ -84,7 +84,7 @@ impl App {
         if field.is_text(&self.config) {
             self.screen.editing = Some(field.raw_text(&self.config));
         } else {
-            self.config_adjust(1);
+            self.config_adjust_and_save(1);
         }
     }
 
@@ -197,9 +197,6 @@ impl App {
         self.config.engine.model_path = path.to_string_lossy().into_owned();
         self.config.engine.family = package.family.to_string();
         self.config.engine.engine = "auto".to_string();
-        // Le choix doit survivre au relancement : sans écriture, le premier
-        // modèle installé revenait à la place de celui qu'on avait pris.
-        self.config_dirty = true;
         // Le modèle change, ses voix aussi : celle qui était retenue n'existe
         // peut-être plus.
         let remplacée = self.config.align_voice_with_family();
@@ -211,6 +208,10 @@ impl App {
         } else {
             format!("{} sélectionné — t pour l'écouter", package.display_name)
         };
+        // Le choix doit survivre au relancement : il s'écrit tout de suite.
+        if let Err(err) = self.save_model_choice() {
+            self.notify(&format!("Modèle choisi, non enregistré : {err:#}"));
+        }
     }
 
     // ----------------------------------------------------------- aperçu de voix
@@ -416,39 +417,6 @@ impl App {
         self.notify(&format!("Moteur : {}", self.synth.engine_name()));
     }
 
-    pub fn save_config(&mut self) {
-        match self.config.save() {
-            Ok(path) => {
-                self.config_dirty = false;
-                self.notify(&format!("Configuration écrite : {}", path.display()));
-            }
-            Err(err) => self.notify(&format!("Écriture impossible : {err}")),
-        }
-    }
-
-    /// Vrai quand un choix fait à l'écran n'est pas encore sur le disque.
-    pub fn config_needs_saving(&self) -> bool {
-        self.config_dirty
-    }
-
-    /// La configuration vient d'être écrite ailleurs (le lecteur de l'app,
-    /// à son chemin).
-    pub fn config_saved(&mut self) {
-        self.config_dirty = false;
-    }
-
-    #[cfg(test)]
-    pub(crate) fn mark_config_dirty(&mut self) {
-        self.config_dirty = true;
-    }
-
-    /// Écrit la configuration si un choix l'attend, sans rien dire.
-    pub fn flush_config(&mut self) {
-        if self.config_dirty && self.config.save().is_ok() {
-            self.config_dirty = false;
-        }
-    }
-
     /// Où l'enregistrement automatique écrit ; `None` : nulle part.
     pub fn set_config_target(&mut self, path: Option<std::path::PathBuf>) {
         self.config_target = path;
@@ -492,6 +460,29 @@ impl App {
         if let Err(err) = self.save_field(field) {
             self.notify(&format!("Réglage appliqué, non enregistré : {err:#}"));
         }
+    }
+
+    /// `+` et `-` pendant la lecture : la vitesse change sur-le-champ, et
+    /// s'enregistre comme si elle avait été réglée dans la page.
+    pub fn nudge_speed(&mut self, delta: f32) {
+        self.change_speed(delta);
+        self.report_save(Field::Speed);
+    }
+
+    /// Écrit le modèle choisi — moteur, chemin, famille, et la voix de
+    /// chaque langue qu'il apporte — sur le fichier relu : rien d'autre ne
+    /// bouge, et un fichier illisible n'est jamais réécrit.
+    fn save_model_choice(&self) -> anyhow::Result<()> {
+        let path = self
+            .config_target
+            .clone()
+            .ok_or_else(|| anyhow::anyhow!("répertoire de configuration introuvable"))?;
+        let mut on_disk = Config::read_from(&path)?;
+        on_disk.engine.engine = self.config.engine.engine.clone();
+        on_disk.engine.model_path = self.config.engine.model_path.clone();
+        on_disk.engine.family = self.config.engine.family.clone();
+        on_disk.align_voice_with_family();
+        on_disk.save_to(&path)
     }
 
     /// Ce que la fermeture doit dire, si elle ne peut pas être immédiate.
