@@ -456,6 +456,10 @@ impl Reader {
         self.config.engine.model_path = model_path.to_string();
         self.config.engine.family = family.to_string();
         self.config.align_voice_with_family();
+        // Choisir Kokoro dans l'app donne une seule voix aux deux langues.
+        if self.config.unify_voices() {
+            self.config.app.single_voice = true;
+        }
     }
 
     pub fn download(&self) -> Option<DownloadView> {
@@ -575,6 +579,15 @@ impl Place {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn switching_to_kokoro_gives_both_languages_one_voice() {
+        let mut r = reader_on("");
+        r.switch_voice_config("/m/kokoro", "kokoro");
+        let c = r.config();
+        assert_eq!(c.voice.per_language["fr"], "p-fenrir60");
+        assert_eq!(c.voice.per_language["fr"], c.voice.per_language["en"]);
+    }
+
     #[test]
     fn one_voice_for_every_language() {
         let mut c = Config::default();

@@ -29,6 +29,10 @@ pub struct AppConfig {
     pub keep_voice_minutes: i64,
     /// Migrations de voix déjà faites ou refusées (1 : le passage à Kokoro).
     pub voice_migration: u32,
+    /// Une voix pour toutes les langues : l'unification de Kokoro, faite une
+    /// fois au lancement de l'app (une voix anglaise choisie plus tard dans le
+    /// terminal n'est plus réécrite).
+    pub single_voice: bool,
     /// La sortie audio, par son nom ; vide : celle du système, qui suit
     /// macOS. Choisie, le son n'en sort jamais : retirée, la lecture se met
     /// en pause au lieu de passer aux haut-parleurs.
@@ -37,7 +41,7 @@ pub struct AppConfig {
 
 impl Default for AppConfig {
     fn default() -> Self {
-        Self { keep_voice_minutes: 10, voice_migration: 0, output_device: String::new() }
+        Self { keep_voice_minutes: 10, voice_migration: 0, single_voice: false, output_device: String::new() }
     }
 }
 

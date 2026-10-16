@@ -94,10 +94,13 @@ impl Reader {
         if !self.persist || self.config_unreadable {
             return None;
         }
-        // Une voix pour tout : la voix française devient celle de chaque
-        // langue (jamais ici sur une configuration illisible, déjà écartée).
+        // Une voix pour tout, une seule fois : la voix française devient celle
+        // de chaque langue (jamais ici sur une configuration illisible, déjà
+        // écartée). Ensuite, une voix choisie à part n'est plus réécrite.
         self.sync_config();
-        if self.config.unify_voices() {
+        if !self.config.app.single_voice && models::voices_follow_language(&self.config.engine.family) {
+            self.config.unify_voices();
+            self.config.app.single_voice = true;
             if let Some(app) = self.session.as_mut() {
                 app.config = self.config.clone();
             }
@@ -719,6 +722,41 @@ mod tests {
         r.ensure_default_voice(Instant::now()).unwrap();
         assert!(r.download().is_none(), "installé : plus rien à faire");
         models::remove(mlx).unwrap();
+    }
+
+    fn kokoro_with(fr: &str, en: &str) -> Config {
+        let mut c = Config::default();
+        c.engine.family = "kokoro".into();
+        c.app.voice_migration = KOKORO_MIGRATION;
+        c.voice.per_language.insert("fr".into(), fr.into());
+        c.voice.per_language.insert("en".into(), en.into());
+        c
+    }
+
+    #[test]
+    fn the_launch_unifies_the_voices_once_and_marks_it() {
+        let mut r = offline_reader(kokoro_with("p-fenrir60", "af_bella"));
+        r.migrate_voice(Instant::now());
+        assert_eq!(r.config().voice.per_language["en"], "p-fenrir60");
+        assert!(r.config().app.single_voice);
+    }
+
+    #[test]
+    fn a_marked_config_keeps_the_voice_chosen_since() {
+        let mut c = kokoro_with("p-fenrir60", "am_fenrir");
+        c.app.single_voice = true;
+        let mut r = offline_reader(c);
+        r.migrate_voice(Instant::now());
+        assert_eq!(r.config().voice.per_language["en"], "am_fenrir");
+    }
+
+    #[test]
+    fn an_unreadable_config_is_never_unified() {
+        let mut r = offline_reader(kokoro_with("p-fenrir60", "af_bella"));
+        r.set_config_unreadable(true);
+        r.migrate_voice(Instant::now());
+        assert_eq!(r.config().voice.per_language["en"], "af_bella");
+        assert!(!r.config().app.single_voice);
     }
 
     #[test]
