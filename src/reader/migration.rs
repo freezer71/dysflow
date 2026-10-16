@@ -176,8 +176,9 @@ impl Reader {
         }
     }
 
-    /// L'installation automatique de la voix (plus d'onglet Modèles) : une
-    /// offre Kokoro en attente est acceptée ; sans offre, le Kokoro
+    /// L'installation automatique de la voix (plus d'onglet Modèles) : la
+    /// voix de macOS choisie reste ; sinon une offre Kokoro en attente est
+    /// acceptée ; sans offre, le Kokoro
     /// recommandé se télécharge si aucun n'est installé, et devient la voix
     /// active à la fin s'il n'y en a aucune. Idempotente : un téléchargement
     /// qui court ne se double pas ; un échec se relance. Un lecteur hors
@@ -191,12 +192,13 @@ impl Reader {
         if self.download.as_ref().is_some_and(|d| !d.is_finished()) {
             return Ok(());
         }
-        if self.offer.is_some() {
-            return self.accept_offer(now);
-        }
-        // La voix de macOS choisie : on ne la remplace pas par Kokoro.
+        // La voix de macOS choisie : on ne la remplace pas par Kokoro, même
+        // proposé (une configuration neuve reçoit la proposition).
         if self.current_config().engine_preference() == crate::tts::EnginePreference::System {
             return Ok(());
+        }
+        if self.offer.is_some() {
+            return self.accept_offer(now);
         }
         let available = models::available_with(self.mlx);
         match models::default_voice_to_install(&available, models::is_installed) {
@@ -207,7 +209,7 @@ impl Reader {
 
     /// Jamais sur une configuration illisible : elle serait réécrite avec
     /// les défauts.
-    fn record_migration(&mut self) {
+    pub(super) fn record_migration(&mut self) {
         if self.config_unreadable {
             return;
         }
@@ -768,6 +770,123 @@ mod tests {
         let mut r = counting_offline_reader(config);
         r.ensure_default_voice(Instant::now()).unwrap();
         assert!(r.download().is_none(), "rien ne se télécharge : l'utilisateur a choisi macOS");
+    }
+
+    /// Une proposition en attente (configuration neuve, `plan` propose
+    /// Kokoro) ne l'emporte pas sur la voix de macOS choisie.
+    #[test]
+    fn a_pending_offer_does_not_override_a_system_engine() {
+        let _guard = models_lock();
+        let _ = models::remove(by_id("kokoro_82m_mlx"));
+        let mut config = Config::default();
+        config.engine.engine = "system".into();
+        let mut r = counting_offline_reader(config);
+        r.migrate_voice(Instant::now());
+        r.ensure_default_voice(Instant::now()).unwrap();
+        assert!(r.download().is_none(), "la voix de macOS choisie ne se remplace pas");
+        assert_eq!(r.config().engine.engine, "system");
+    }
+
+    #[test]
+    fn choosing_macos_while_kokoro_downloads_keeps_macos() {
+        let _guard = models_lock();
+        let mlx = by_id("kokoro_82m_mlx");
+        let _ = models::remove(mlx);
+        let mut r = offered();
+        r.accept_offer(Instant::now()).unwrap();
+        r.use_voice("system", Instant::now()).unwrap();
+        assert!(r.switch_when_downloaded.is_none(), "le choix de macOS répond à la proposition");
+        assert_eq!(r.config().app.voice_migration, KOKORO_MIGRATION, "la réponse est retenue");
+        // Le téléchargement finit quand même : la voix de macOS reste.
+        install_hollow(mlx);
+        r.download = Some(Download::fake(mlx, true));
+        r.tick(Instant::now());
+        assert_eq!(r.config().engine.engine, "system");
+        assert_eq!(r.notice(), None, "pas d'avis « Kokoro remplace »");
+        assert_eq!(r.offer(), None);
+        models::remove(mlx).unwrap();
+    }
+
+    #[test]
+    fn choosing_macos_answers_a_pending_offer() {
+        let _guard = models_lock();
+        let _ = models::remove(by_id("kokoro_82m_mlx"));
+        for config in [on_supertonic(), Config::default()] {
+            let mut r = counting_offline_reader(config);
+            assert!(r.migrate_voice(Instant::now()).is_some());
+            assert!(r.offer().is_some(), "proposition en attente");
+            r.use_voice("system", Instant::now()).unwrap();
+            assert_eq!(r.offer(), None);
+            assert_eq!(r.config().app.voice_migration, KOKORO_MIGRATION);
+            assert_eq!(r.migrate_voice(Instant::now()), None);
+            r.ensure_default_voice(Instant::now()).unwrap();
+            assert!(r.download().is_none(), "rien ne se télécharge");
+            assert_eq!(r.config().engine.engine, "system");
+            // Ni au lancement suivant.
+            let mut again = counting_offline_reader(relaunched(r.config()));
+            assert_eq!(again.migrate_voice(Instant::now()), None);
+            again.ensure_default_voice(Instant::now()).unwrap();
+            assert!(again.download().is_none(), "rien ne se télécharge à la relance");
+            assert_eq!(again.offer(), None);
+        }
+    }
+
+    /// Une proposition déjà en attente alors que macOS est déjà choisi : le
+    /// choisir de nouveau y répond aussi.
+    #[test]
+    fn choosing_macos_again_answers_the_offer_too() {
+        let _guard = models_lock();
+        let _ = models::remove(by_id("kokoro_82m_mlx"));
+        let mut config = Config::default();
+        config.engine.engine = "system".into();
+        let mut r = counting_offline_reader(config);
+        r.migrate_voice(Instant::now());
+        assert!(r.offer().is_some());
+        r.use_voice("system", Instant::now()).unwrap();
+        assert_eq!(r.offer(), None);
+        assert_eq!(r.config().app.voice_migration, KOKORO_MIGRATION);
+    }
+
+    #[test]
+    fn macos_then_back_to_the_same_package() {
+        let _guard = models_lock();
+        let mlx = by_id("kokoro_82m_mlx");
+        install_hollow(mlx);
+        let mut r = offline_reader(Config::default());
+        r.use_voice(mlx.id, Instant::now()).unwrap();
+        r.use_voice("system", Instant::now()).unwrap();
+        assert_eq!(r.config().engine.engine, "system");
+        r.use_voice(mlx.id, Instant::now()).unwrap();
+        assert_eq!(r.config().engine.engine, "auto");
+        let rows = r.voices();
+        assert!(!rows[0].active, "la voix de macOS n'a plus la main");
+        assert!(rows.iter().find(|v| v.id == mlx.id).is_some_and(|v| v.active), "la ligne du paquet est active");
+        models::remove(mlx).unwrap();
+    }
+
+    /// Un téléchargement annulé laisse des fichiers : la ligne le dit, et
+    /// « Supprimer » les retire même si le paquet n'est pas installé.
+    #[test]
+    fn a_cancelled_download_leaves_files_that_can_be_removed() {
+        let _guard = models_lock();
+        let mlx = by_id("kokoro_82m_mlx");
+        let _ = models::remove(mlx);
+        let mut r = offline_reader(Config::default());
+        let row = |r: &Reader| r.voices().into_iter().find(|v| v.id == mlx.id).unwrap();
+        assert!(!row(&r).has_files, "rien sur le disque");
+        assert!(!r.voices()[0].has_files, "la voix de macOS n'a pas de fichiers à nous");
+        let root = models::models_dir().unwrap();
+        let (_, main, _) = models::planned_files_in(&root, mlx).into_iter().next().unwrap();
+        let part = main.with_extension("part");
+        std::fs::create_dir_all(part.parent().unwrap()).unwrap();
+        std::fs::File::create(&part).unwrap().set_len(1234).unwrap();
+        let partial = row(&r);
+        assert!(!partial.installed);
+        assert!(partial.has_files);
+        assert_eq!(partial.disk_bytes, 1234, "la place qu'il occupe");
+        r.remove_model(mlx.id).unwrap();
+        assert!(!row(&r).has_files, "tout est parti");
+        assert!(!part.exists());
     }
 
     #[test]

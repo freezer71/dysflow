@@ -4,7 +4,8 @@
 //! les ajoute dans Réglages Système > Accessibilité > Contenu énoncé.
 
 use std::process::Command;
-use std::sync::OnceLock;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SystemVoice {
@@ -34,21 +35,75 @@ pub fn parse_say_voices(listing: &str) -> Vec<SystemVoice> {
         .collect()
 }
 
-/// Les voix de ce Mac, lues une fois. Vide hors macOS ou si `say` manque.
-pub fn system_voices() -> &'static [SystemVoice] {
-    static VOICES: OnceLock<Vec<SystemVoice>> = OnceLock::new();
-    VOICES.get_or_init(|| {
-        if !cfg!(target_os = "macos") {
-            return Vec::new();
+/// Une relecture plus rapprochée que ceci reprend la liste déjà lue : rouvrir
+/// les réglages plusieurs fois de suite ne relance pas `say` à chaque fois.
+const FRESH: Duration = Duration::from_secs(2);
+
+/// La liste lue, et quand.
+#[derive(Default)]
+struct Cache {
+    read_at: Option<Instant>,
+    voices: Vec<SystemVoice>,
+}
+
+impl Cache {
+    /// La liste, lue par `read` si elle ne l'a jamais été.
+    fn get(&mut self, now: Instant, read: impl FnOnce() -> Vec<SystemVoice>) -> Vec<SystemVoice> {
+        if self.read_at.is_none() {
+            self.store(now, read());
         }
-        Command::new("say")
-            .args(["-v", "?"])
-            .output()
-            .ok()
-            .filter(|o| o.status.success())
-            .map(|o| parse_say_voices(&String::from_utf8_lossy(&o.stdout)))
-            .unwrap_or_default()
-    })
+        self.voices.clone()
+    }
+
+    /// Relit la liste, sauf lue il y a moins de `FRESH`.
+    fn refresh(&mut self, now: Instant, read: impl FnOnce() -> Vec<SystemVoice>) {
+        if self.read_at.is_none_or(|at| now.saturating_duration_since(at) >= FRESH) {
+            self.store(now, read());
+        }
+    }
+
+    fn store(&mut self, now: Instant, voices: Vec<SystemVoice>) {
+        self.read_at = Some(now);
+        self.voices = voices;
+    }
+}
+
+static CACHE: Mutex<Cache> = Mutex::new(Cache { read_at: None, voices: Vec::new() });
+
+fn cache() -> std::sync::MutexGuard<'static, Cache> {
+    CACHE.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+/// Lance `say -v '?'`. Vide hors macOS ou si `say` manque.
+fn read_say() -> Vec<SystemVoice> {
+    if !cfg!(target_os = "macos") {
+        return Vec::new();
+    }
+    Command::new("say")
+        .args(["-v", "?"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| parse_say_voices(&String::from_utf8_lossy(&o.stdout)))
+        .unwrap_or_default()
+}
+
+/// Les voix de ce Mac, telles que lues la dernière fois (lues ici si elles
+/// ne l'ont jamais été).
+pub fn system_voices() -> Vec<SystemVoice> {
+    cache().get(Instant::now(), read_say)
+}
+
+/// Relit les voix de ce Mac : une voix ajoutée dans Réglages Système depuis
+/// la dernière lecture apparaît. Appelée quand les réglages rechargent les
+/// capacités, hors du fil du lecteur (`say` prend quelques dizaines de ms).
+pub fn refresh_system_voices() {
+    // `say` tourne hors du verrou : un `system_voices()` concurrent n'attend pas.
+    let stale = cache().read_at.is_none_or(|at| at.elapsed() >= FRESH);
+    if stale {
+        let voices = read_say();
+        cache().refresh(Instant::now(), || voices);
+    }
 }
 
 #[cfg(test)]
@@ -72,6 +127,38 @@ Kyoko               ja_JP    # こんにちは、私の名前はKyokoです。
     fn only_french_and_english_voices_are_kept() {
         let names: Vec<String> = parse_say_voices(LISTING).into_iter().map(|v| v.name).collect();
         assert_eq!(names, ["Amélie", "Eddy (French (France))", "Samantha"]);
+    }
+
+    fn voice(name: &str) -> SystemVoice {
+        SystemVoice { name: name.into(), locale: "fr_FR".into() }
+    }
+
+    #[test]
+    fn the_list_is_read_once_then_kept() {
+        let mut cache = Cache::default();
+        let t0 = Instant::now();
+        assert_eq!(cache.get(t0, || vec![voice("Thomas")]), [voice("Thomas")]);
+        assert_eq!(cache.get(t0 + Duration::from_secs(60), || panic!("pas relue")), [voice("Thomas")]);
+    }
+
+    /// Une voix ajoutée dans Réglages Système apparaît à la relecture que
+    /// font les réglages, sans relancer l'app.
+    #[test]
+    fn a_refresh_shows_a_voice_added_since() {
+        let mut cache = Cache::default();
+        let t0 = Instant::now();
+        cache.get(t0, || vec![voice("Thomas")]);
+        cache.refresh(t0 + FRESH, || vec![voice("Thomas"), voice("Audrey")]);
+        assert_eq!(cache.get(t0 + FRESH, || panic!("pas relue")), [voice("Thomas"), voice("Audrey")]);
+    }
+
+    #[test]
+    fn a_refresh_right_after_a_read_keeps_the_list() {
+        let mut cache = Cache::default();
+        let t0 = Instant::now();
+        cache.get(t0, || vec![voice("Thomas")]);
+        cache.refresh(t0 + Duration::from_millis(500), || panic!("lue il y a moins de FRESH"));
+        assert_eq!(cache.get(t0, || panic!("pas relue")), [voice("Thomas")]);
     }
 
     #[test]

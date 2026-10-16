@@ -460,6 +460,8 @@ pub struct VoiceModel {
     pub kind: String,
     pub disk_bytes: u64,
     pub system: bool,
+    /// Des fichiers du paquet sont sur le disque, même incomplets.
+    pub has_files: bool,
 }
 
 #[derive(uniffi::Object)]
@@ -579,6 +581,9 @@ impl SillonReader {
     }
 
     pub fn capabilities(&self) -> ModelCapabilities {
+        // Les voix de macOS se relisent ici, hors du fil du lecteur : une
+        // voix ajoutée dans Réglages Système apparaît sans relancer l'app.
+        sillon::tts::system_voices::refresh_system_voices();
         self.handle
             .ask(|reader| {
                 let c = reader.capabilities();
@@ -625,6 +630,7 @@ impl SillonReader {
                         kind: v.kind,
                         disk_bytes: v.disk_bytes,
                         system: v.system,
+                        has_files: v.has_files,
                     })
                     .collect()
             })

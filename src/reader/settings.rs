@@ -238,6 +238,9 @@ pub struct VoiceModel {
     pub disk_bytes: u64,
     /// Ligne du système (voix de macOS) : jamais téléchargée ni supprimée.
     pub system: bool,
+    /// Des fichiers du paquet sont sur le disque, même incomplets (un
+    /// téléchargement annulé) : de quoi proposer « Supprimer ».
+    pub has_files: bool,
 }
 
 /// Une voix intégrée du modèle actif.
@@ -279,6 +282,7 @@ fn system_voice_row(active: bool) -> VoiceModel {
         kind: "speech".into(),
         disk_bytes: 0,
         system: true,
+        has_files: false,
     }
 }
 
@@ -310,6 +314,7 @@ pub fn voice_model(p: &models::ModelPackage, active_path: &str, system_chosen: b
         .into(),
         disk_bytes: models::installed_bytes(p),
         system: false,
+        has_files: models::has_files(p),
     }
 }
 
@@ -491,6 +496,15 @@ impl Reader {
     /// texte, et la lecture reprend si elle tournait.
     pub fn use_voice(&mut self, id: &str, now: Instant) -> Result<()> {
         if id == "system" {
+            // Choisir macOS répond à la proposition de Kokoro : plus de
+            // proposition, plus de passage qui attendrait la fin d'un
+            // téléchargement, et la réponse est retenue (rien ne se
+            // retélécharge au lancement suivant).
+            let offered = self.offer.take().is_some();
+            let waiting = self.switch_when_downloaded.take().is_some();
+            if offered || waiting {
+                self.record_migration();
+            }
             self.sync_config();
             if self.config.engine_preference() == crate::tts::EnginePreference::System {
                 return Ok(());

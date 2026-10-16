@@ -383,11 +383,13 @@ pub fn ensure_default_voice(mlx: bool, running: Option<&Download>) -> Result<Opt
     }
 }
 
-/// Octets présents sur disque pour ce paquet : fichier principal et compagnons.
+/// Octets présents sur disque pour ce paquet : fichier principal et
+/// compagnons, ou leur `.part` (un téléchargement interrompu occupe aussi de
+/// la place).
 pub fn installed_bytes_in(root: &Path, package: &ModelPackage) -> u64 {
     std::iter::once(main_path_in(root, package))
         .chain(package.companions.iter().map(|c| companion_path_in(root, package, c)))
-        .filter_map(|p| size_of(&p))
+        .filter_map(|p| size_of(&p).or_else(|| size_of(&p.with_extension("part"))))
         .sum()
 }
 
@@ -1325,6 +1327,21 @@ mod tests {
         std::fs::File::create(&voice).unwrap().set_len(10).unwrap();
         assert_eq!(installed_bytes_in(&root, mlx), mlx.total_bytes() - mlx.companions[3].bytes + 10);
         assert!(is_truncated_in(&root, mlx));
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    /// Un téléchargement interrompu occupe la place de ses `.part` : elle se
+    /// compte, pour dire ce que « Supprimer » libère.
+    #[test]
+    fn the_part_files_count_in_the_bytes_on_disk() {
+        let root = scratch("octets-part");
+        let mlx = package("kokoro_82m_mlx");
+        let main = main_path_in(&root, mlx).with_extension("part");
+        std::fs::create_dir_all(main.parent().unwrap()).unwrap();
+        std::fs::File::create(&main).unwrap().set_len(1000).unwrap();
+        let config = companion_path_in(&root, mlx, &mlx.companions[0]);
+        std::fs::File::create(&config).unwrap().set_len(7).unwrap();
+        assert_eq!(installed_bytes_in(&root, mlx), 1007);
         std::fs::remove_dir_all(&root).ok();
     }
 
