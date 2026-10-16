@@ -113,3 +113,47 @@ Tous identiques à l'amont, sauf :
 La session de flux (`makeStreamSession`, `step`, `finish`, `Delta`) est
 gardée telle quelle. Une session ou un modèle à la fois ; après avoir
 libéré une session, `Memory.clearCache()`.
+
+## STT : Whisper
+
+Même dépôt, même commit `244458d` : `STT/Whisper/{WhisperAudio,WhisperConfig,
+WhisperLayers,WhisperModel}.swift` ← `Sources/MLXAudioSTT/Models/Whisper/`
+(sans le `README.md`). `WhisperConfig.swift` et `WhisperLayers.swift` sont
+identiques à l'amont.
+
+Changements :
+- `WhisperAudio.swift` : `import MLXAudioCore` retiré ; `MLXAudioCore.melFilters(`
+  devient `KokoroMLX.melFilters(` (la méthode statique `melFilters(nMels:)`
+  masque la fonction globale de `STT/DSP.swift`, d'où la qualification) ;
+- `WhisperModel.swift` : `import HuggingFace` et `import MLXAudioCore`
+  retirés ; `fromPretrained` et `downloadTokenizerAssets` (téléchargement du
+  vocabulaire depuis openai/whisper-*) supprimés ; `fromDirectory(_:)` rendu
+  synchrone, sans `cache`. Il exige `config.json` et `multilingual.tiktoken`
+  (sinon `STTError.modelNotInitialized`), refuse un `n_vocab` autre que 51865
+  ou 51866 (`STTError.invalidInput` : les modèles `.en` ont une autre table),
+  lit le vocabulaire avant les poids, et, sans `generation_config.json` (cas
+  des dépôts mlx-community), prend les ids spéciaux et `suppress_tokens` de
+  `WhisperSpecialTokens`. `init(config:generationConfig:)` passe interne : seul
+  `fromDirectory` fabrique un modèle, toujours avec son vocabulaire (le
+  `fatalError` de `transcribeChunk` devient inatteignable). En flux, le texte
+  partiel est décodé avec `dropIncompleteTail` (pas de U+FFFD transitoire au
+  milieu d'un caractère réparti sur deux jetons).
+- `WhisperTokenizer.swift` : réécrit, sans swift-transformers. Même API pour
+  `WhisperModel` (`buildPromptTokens`, `resolveLanguage`, `decode(tokens:)`) ;
+  la lecture de `tokenizer_config.json` / `added_tokens_decoder` est retirée.
+
+Ajout de Sillon : `STT/Whisper/TiktokenDecoder.swift`, avec
+- `TiktokenDecoder` : lit `multilingual.tiktoken` (« base64 rang », rangs
+  contigus ; la ligne `= 50256` est un jeton vide) et ne fait que ids → texte
+  (octets concaténés puis UTF-8). Tout id hors de la table est un jeton
+  spécial : omis avec `skipSpecial`, écrit `<|id|>` sinon ;
+- `WhisperSpecialTokens` : les ids spéciaux de Whisper multilingue déduits de
+  `n_vocab` (99 langues pour 51865, 100 pour 51866 avec `yue`), vérifiés contre
+  les `generation_config.json` d'openai/whisper-tiny et
+  openai/whisper-large-v3-turbo. Pour turbo, tout ce qui suit les langues
+  (tâche, `notimestamps`, horodatages) est décalé de +1.
+
+Le décodeur HF pouvait retirer l'espace avant la ponctuation
+(`clean_up_tokenization_spaces`) ; tiktoken, la référence d'OpenAI, ne nettoie
+rien, et nous non plus. Toujours passer `language` (`"fr"`, `"en"`) : aucune
+détection de langue n'est codée.
