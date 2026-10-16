@@ -25,7 +25,13 @@ enum SettingsDiff {
         if new.outputDevice != old.outputDevice { p.outputDevice = new.outputDevice }
         // Une voix par langue et par patch : la première langue changée part
         // avec les autres champs, les suivantes dans `patches`.
-        p.voiceForLanguage = changedVoices(from: old, to: new).first
+        // Plusieurs langues qui prennent la même voix : un seul champ, écrit
+        // d'un coup par le moteur.
+        if let family = sharedVoice(from: old, to: new) {
+            p.familyVoice = family
+        } else {
+            p.voiceForLanguage = changedVoices(from: old, to: new).first
+        }
         return p
     }
 
@@ -35,12 +41,22 @@ enum SettingsDiff {
     static func patches(from old: SettingsView, to new: SettingsView) -> [SettingsPatch] {
         let first = patch(from: old, to: new)
         if first.isEmpty { return [] }
+        if sharedVoice(from: old, to: new) != nil { return [first] }
         let others = changedVoices(from: old, to: new).dropFirst().map { voice -> SettingsPatch in
             var p = SettingsPatch.empty
             p.voiceForLanguage = voice
             return p
         }
         return [first] + others
+    }
+
+    /// La voix commune à toutes les langues changées, s'il y en a au moins
+    /// deux et qu'elles prennent la même.
+    private static func sharedVoice(from old: SettingsView, to new: SettingsView) -> String? {
+        let changed = changedVoices(from: old, to: new)
+        guard changed.count >= 2, let voice = changed.first?.voice,
+              changed.allSatisfy({ $0.voice == voice }) else { return nil }
+        return voice
     }
 
     private static func changedVoices(from old: SettingsView, to new: SettingsView) -> [LanguageVoice] {
