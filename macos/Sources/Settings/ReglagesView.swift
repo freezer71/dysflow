@@ -8,6 +8,10 @@ struct ReglagesView: View {
     /// Panneau masqué, l'état de la voix (aperçu, téléchargement) n'est plus
     /// relu : la fenêtre le relit à 4 Hz, tant qu'elle est visible seulement.
     @State private var refresh: RefreshLoop
+    /// La table des modèles, la place qu'ils occupent et celle qui reste.
+    @State private var rows: [VoiceModel] = []
+    @State private var used: UInt64 = 0
+    @State private var free: UInt64?
 
     init(model: ReaderModel) {
         self.model = model
@@ -20,7 +24,8 @@ struct ReglagesView: View {
             ConfigUnreadableBanner(model: model, store: store)
             SettingsPage(title: "Réglages") {
                 ErrorText(store.error, identifier: "erreur-reglages")
-                VoiceSection(model: model, store: store)
+                VoiceSection(model: model, store: store, rows: rows, used: used, free: free,
+                             onChange: { await reloadModels() })
                 ReadingSection(store: store)
                 ShortcutsSection()
                 StartupSection()
@@ -42,6 +47,7 @@ struct ReglagesView: View {
         .task {
             AppDelegate.shared?.settingsStore = store
             await store.load()
+            await loadModels()
         }
         // La relecture suit la fenêtre réelle ; fermée, ce qui attend sa pause part.
         .background(WindowVisibility(onVisible: { refresh.setVisible($0) },
@@ -49,10 +55,24 @@ struct ReglagesView: View {
         .onDisappear { refresh.setVisible(false); closeWindow() }
         // La vitesse changée depuis le lecteur, resté visible à côté.
         .onChange(of: model.snapshot.speed) { _, _ in followReader() }
-        // Une voix installée (téléchargement fini) : ses voix apparaissent.
+        // Un modèle installé (téléchargement fini) : sa ligne et ses voix changent.
         .onChange(of: ReaderModel.isDownloading(model.snapshot.download)) { was, running in
-            if was, !running { Task { await store.reload() } }
+            if was, !running { Task { await reloadModels() } }
         }
+    }
+
+    /// Les lignes de la table et la place, lues hors du fil principal.
+    private func loadModels() async {
+        rows = await model.loadModels()
+        used = await model.modelsDiskUsage()
+        free = await model.freeSpace()
+    }
+
+    /// Après une action de la table ou un téléchargement : les modèles, puis
+    /// réglages et capacités (le modèle utilisé, donc ses voix, a pu changer).
+    private func reloadModels() async {
+        await loadModels()
+        await store.reload()
     }
 
     private func followReader() {

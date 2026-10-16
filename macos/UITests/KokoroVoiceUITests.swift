@@ -30,33 +30,31 @@ final class KokoroVoiceUITests: XCTestCase {
         XCTAssertFalse(window.sliders["Volume"].exists)
     }
 
-    /// Kokoro : une voix et un « Écouter » par langue, la vitesse.
-    func testKokoroShowsOneVoicePerLanguage() throws {
+    /// Kokoro : une voix pour toutes les langues, son « Écouter », la vitesse.
+    func testKokoroShowsOneVoiceForEveryLanguage() throws {
         continueAfterFailure = false
         let (app, window) = settings(["--ui-testing-kokoro"])
-        let french = window.popUpButtons["voix-francaise"]
-        XCTAssertTrue(french.waitForExistence(timeout: 3), "voix française absente")
-        XCTAssertEqual(french.value as? String, "p-fenrir60 · française, recommandée")
-        let english = window.popUpButtons["voix-anglaise"]
-        XCTAssertEqual(english.value as? String, "af_bella · américaine, femme, recommandée")
-        english.click()
-        XCTAssertEqual(app.menuItems.matching(NSPredicate(format: "title CONTAINS ' · américaine'")).count, 3)
+        let voice = window.popUpButtons["voix-unique"]
+        XCTAssertTrue(voice.waitForExistence(timeout: 3), "voix absente")
+        voice.click()
+        XCTAssertEqual(app.menuItems.matching(NSPredicate(format: "title CONTAINS ' · '")).count, 4,
+                       "toutes les voix du modèle, quelle que soit leur langue")
         app.typeKey(.escape, modifierFlags: [])
-        XCTAssertTrue(window.buttons["ecouter-fr"].exists)
-        XCTAssertTrue(window.buttons["ecouter-en"].exists)
+        XCTAssertTrue(window.buttons["ecouter-voix"].exists)
+        XCTAssertFalse(window.popUpButtons["voix-francaise"].exists, "plus de voix par langue")
+        XCTAssertFalse(window.popUpButtons["voix-anglaise"].exists)
         XCTAssertTrue(window.sliders["vitesse"].exists)
         assertNothingRemovedIsBack(in: window)
         try app.performAccessibilityAuditOutsideTouchBar()
     }
 
-    /// Sans Kokoro (voix du système) : la vitesse et la sortie audio, ni
-    /// voix par langue ni « Écouter ».
-    func testWithoutKokoroOnlySpeedAndOutputRemain() throws {
+    /// Sans Kokoro : la vitesse et la sortie audio, jamais de voix par langue.
+    func testWithoutKokoroThereIsNoVoicePerLanguage() throws {
         continueAfterFailure = false
         let (app, window) = settings([])
         XCTAssertTrue(window.sliders["vitesse"].waitForExistence(timeout: 3), "vitesse absente")
         XCTAssertTrue(window.popUpButtons["sortie-audio"].exists, "sortie audio absente")
-        XCTAssertFalse(window.popUpButtons["voix-francaise"].exists, "pas de voix par langue sans Kokoro")
+        XCTAssertFalse(window.popUpButtons["voix-francaise"].exists, "pas de voix par langue")
         XCTAssertFalse(window.popUpButtons["voix-anglaise"].exists)
         XCTAssertFalse(window.buttons["ecouter-fr"].exists)
         assertNothingRemovedIsBack(in: window)

@@ -1,17 +1,46 @@
 import KeyboardShortcuts
 import SwiftUI
 
-/// Voix : une voix et un « Écouter » par langue (quand Kokoro parle), la
-/// vitesse, la sortie audio.
+/// Voix : la table des modèles de lecture, une voix pour toutes les langues
+/// et son « Écouter », la place occupée, la vitesse, la sortie audio.
 struct VoiceSection: View {
     let model: ReaderModel
     @Bindable var store: SettingsStore
+    /// Les modèles (lecture et dictée), tels que le moteur les donne.
+    let rows: [VoiceModel]
+    /// Octets occupés par les modèles ; libres sur le disque, si on le sait.
+    let used: UInt64
+    let free: UInt64?
+    /// Relit les modèles et les réglages après une action de la table.
+    let onChange: () async -> Void
 
     var body: some View {
         SettingsGroup(title: "Voix") {
-            if Self.showsKokoroVoices(store.capabilities, voice: model.snapshot.voice) {
-                languageVoicePicker("fr", title: "Voix française", identifier: "voix-francaise")
-                languageVoicePicker("en", title: "Voix anglaise", identifier: "voix-anglaise")
+            ModelsTable(rows: rows.filter { $0.kind == "speech" }, model: model,
+                        fallback: "La lecture passera à la voix de macOS.", onChange: onChange)
+            if !store.capabilities.voices.isEmpty && !Self.suggestsModels(model.snapshot.voice) {
+                SettingRow(title: "Voix", detail: "Lit tout le texte, quelle que soit sa langue") {
+                    HStack(spacing: 8) {
+                        PopUpPicker(label: "Voix", identifier: "voix-unique",
+                                    options: store.capabilities.voices.map { (title: $0.label, value: $0.id) },
+                                    selection: Binding(get: { Self.voice(in: store.values, store.capabilities) },
+                                                       set: { store.setFamilyVoice($0) }))
+                            .frame(width: 260)
+                        Button {
+                            let voice = Self.voice(in: store.values, store.capabilities)
+                            Task { await store.listen(language: Self.language(of: voice, store.capabilities)) }
+                        } label: {
+                            HStack(spacing: 5) {
+                                Image(systemName: "play.fill").font(.system(size: 10))
+                                Text("Écouter")
+                            }
+                        }
+                        .buttonStyle(.notion)
+                        .fixedSize()
+                        .accessibilityLabel("Écouter la voix")
+                        .accessibilityIdentifier("ecouter-voix")
+                    }
+                }
                 if let line = Self.previewLine(model.snapshot.preview, refusal: store.previewNote) {
                     HStack {
                         Text(line)
@@ -26,7 +55,18 @@ struct VoiceSection: View {
                     }
                     .padding(.vertical, 4)
                 }
+                if store.capabilities.family == "system" {
+                    Link("Ajouter des voix dans Réglages Système…",
+                         destination: URL(string: "x-apple.systempreferences:com.apple.preference.universalaccess")!)
+                        .font(Typo.detail)
+                        .padding(.bottom, 4)
+                }
             }
+            Text(ModelTable.footer(used: used, free: free))
+                .font(Typo.detail)
+                .foregroundStyle(Palette.muted)
+                .padding(.vertical, 4)
+                .accessibilityIdentifier("place-modeles")
             SettingRow(title: "Vitesse", detail: "Dans le lecteur : + et −, ou la vitesse de la barre") {
                 Slider(value: Binding(get: { store.values.speed },
                                       set: { store.set(\.speed, SettingFormat.rounded($0)) }),
@@ -54,40 +94,6 @@ struct VoiceSection: View {
         }
     }
 
-    /// Une voix par langue (Kokoro), chacune avec son « Écouter ».
-    @ViewBuilder private func languageVoicePicker(_ language: String, title: String, identifier: String) -> some View {
-        SettingRow(title: title, detail: language == "fr" ? "Lit les passages en français" : "Lit les passages en anglais") {
-            HStack(spacing: 8) {
-                PopUpPicker(label: title, identifier: identifier,
-                            options: Self.voiceOptions(store.capabilities, language: language),
-                            selection: Binding(get: { Self.voice(for: language, in: store.values, store.capabilities) },
-                                               set: { store.setVoice($0, language: language) }))
-                    .frame(width: 220)
-                Button {
-                    Task { await store.listen(language: language) }
-                } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: "play.fill").font(.system(size: 10))
-                        Text("Écouter")
-                    }
-                }
-                .buttonStyle(.notion)
-                .fixedSize()
-                .accessibilityLabel("Écouter la \(title.lowercased())")
-                .accessibilityIdentifier("ecouter-\(language)")
-            }
-        }
-    }
-
-    /// Kokoro choisit sa voix par langue.
-    static func followsLanguage(_ c: ModelCapabilities) -> Bool { c.family == "kokoro" }
-
-    /// Les voix Kokoro ne se montrent que si Kokoro parle vraiment : sinon
-    /// « Écouter la voix française » ferait entendre la voix du système.
-    static func showsKokoroVoices(_ c: ModelCapabilities, voice: VoiceState) -> Bool {
-        followsLanguage(c) && !suggestsModels(voice)
-    }
-
     /// Voix de repli ou voix muette.
     static func suggestsModels(_ state: VoiceState) -> Bool {
         switch state {
@@ -96,20 +102,17 @@ struct VoiceSection: View {
         }
     }
 
-    static func voices(_ c: ModelCapabilities, language: String) -> [VoiceChoice] {
-        c.voices.filter { $0.language == language }
+    /// La voix en place : la française (une voix pour tout ; la voix de
+    /// macOS garde la sienne dans `voice`) ; absente du modèle : sa première.
+    static func voice(in values: SettingsView, _ c: ModelCapabilities) -> String {
+        let chosen = c.family == "system" ? values.voice
+            : values.voicesByLanguage.first(where: { $0.language == "fr" })?.voice
+        return c.voices.first(where: { $0.id == chosen })?.id ?? c.voices.first?.id ?? ""
     }
 
-    /// La voix en place pour une langue ; rien de choisi, ou une voix qui
-    /// n'est plus proposée : la recommandée (la première de la langue).
-    static func voice(for language: String, in values: SettingsView, _ c: ModelCapabilities) -> String {
-        let listed = voices(c, language: language)
-        let chosen = values.voicesByLanguage.first(where: { $0.language == language })?.voice
-        return listed.first(where: { $0.id == chosen })?.id ?? listed.first?.id ?? ""
-    }
-
-    static func voiceOptions(_ c: ModelCapabilities, language: String) -> [(title: String, value: String)] {
-        voices(c, language: language).map { (title: $0.label, value: $0.id) }
+    /// L'aperçu se dit dans la langue de la voix.
+    static func language(of voice: String, _ c: ModelCapabilities) -> String {
+        c.voices.first(where: { $0.id == voice })?.language ?? "fr"
     }
 
     static func previewLine(_ preview: PreviewView, refusal: String?) -> String? {

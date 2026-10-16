@@ -24,6 +24,16 @@ final class ModelTableTests: XCTestCase {
         XCTAssertEqual(ModelTable.state(row(), download: other), .notInstalled)
     }
 
+    /// VoiceOver dit de chaque ligne son nom, si elle est utilisée, son état
+    /// et sa taille.
+    func testEachRowSaysItsNameUseStateAndSize() {
+        let used = ModelsTable.label(row(installed: true, active: true, disk: 342_000_000), .installed)
+        XCTAssertTrue(used.hasPrefix("Kokoro 82M · MLX, utilisé, installé, "), used)
+        XCTAssertEqual(ModelsTable.label(row(system: true), .system), "Voix de macOS, non utilisé, sur ce Mac")
+        XCTAssertTrue(ModelsTable.label(row(), .notInstalled).contains("non installé"))
+        XCTAssertTrue(ModelsTable.label(row(), .downloading(0.5)).hasSuffix("téléchargement 50 %"))
+    }
+
     func testOneDownloadAtATime() {
         let running = DownloadView(id: "autre", received: 1, total: 2, failed: nil)
         XCTAssertFalse(ModelTable.canDownload(row(), download: running))
