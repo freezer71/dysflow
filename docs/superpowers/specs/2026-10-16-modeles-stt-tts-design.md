@@ -129,18 +129,37 @@ Swift, même interface ; les temps des mots viennent de
 
 ### Dictée : moteurs nouveaux
 
-`DictationEngine` (protocole Swift existant) a déjà la bonne forme. Une
-classe `MLXDictationEngine` par famille, ou une seule paramétrée par
-`Runtime` : micro par `AVAudioSinkNode` (comme `SystemDictationEngine`),
-rééchantillonnage en 16 kHz mono, puis :
-- Parakeet, Whisper, Voxtral Realtime : `generateStream`, texte provisoire
-  au fil de l'eau (`.text(_, isFinal: false)`) ;
-- Canary : pas de flux ; le texte arrive à la fin (`finish`). La fiche le
-  dit (« Texte à la fin de la dictée »).
+**Révisé le 16 oct. 2026 (lot 2), décisions de l'utilisateur :**
 
-`Dictation.makeEngine()` choisit selon `[dictation] model`. Modèle choisi
-absent (supprimé, fichiers manquants) : dictée de macOS, et la section
-Dictée le dit.
+- **Copie des fichiers utiles, pas de dépendance mlx-audio-swift.** Le
+  paquet tirerait ~10 paquets (swift-syntax, mlx-swift-lm…), compilerait
+  16 modèles et son propre téléchargement Hugging Face, et lierait la
+  version de MLX à son calendrier. Parakeet, Canary, Voxtral Realtime et
+  Whisper sont copiés depuis mlx-audio-swift (commit `244458d`, MIT) dans le
+  framework MLX existant, comme Kokoro, sans `fromPretrained` ni import
+  `HuggingFace`/`MLXLMCommon` ; MLX reste en 0.32.3, lié une fois. Whisper
+  lit son vocabulaire dans `multilingual.tiktoken` par un petit décodeur à
+  nous (pas de swift-transformers) si le relevé le confirme possible.
+  (Remplace la puce « mlx-audio-swift en dépendance » de l'approche
+  retenue pour la dictée ; Qwen3-TTS sera tranché au lot 3.)
+- **Relecture glissante** pour Parakeet, Whisper et Canary, qui ne
+  transcrivent qu'un enregistrement terminé : toutes les ~1,5 s, le modèle
+  relit tout ce qui a été dit depuis le début, le texte provisoire se met à
+  jour (`.text(_, isFinal: false)`) ; à la fin, une dernière lecture donne
+  le texte définitif. Une relecture ne démarre pas tant que la précédente
+  court. Voxtral Realtime, lui, transcrit au fil de l'eau (session
+  `step`/`finish`, délai 480 ms).
+- **Variantes légères** : Parakeet TDT 0.6B v3 (2,5 Go, seule version
+  mlx-community), Whisper tiny, small et large-v3-turbo en 4 bits (23 Mo,
+  140 Mo, 464 Mo), Canary 1b-v2 q8 (1,1 Go), Voxtral Mini 4B Realtime
+  4 bits (3,1 Go).
+
+Un **aiguilleur** (`RoutingDictationEngine`, conforme à `DictationEngine`)
+est donné au contrôleur de dictée : à chaque `start`, il passe au moteur du
+modèle choisi (`dictationModel` dans `UserDefaults`, `system` par défaut).
+Micro par `AVAudioSinkNode` (comme `SystemDictationEngine`), 16 kHz mono.
+Modèle choisi absent (supprimé, fichiers manquants) ou qui ne se charge
+pas : dictée de macOS, et la section Dictée le dit.
 
 ### Mémoire
 
