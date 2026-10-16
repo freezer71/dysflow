@@ -47,8 +47,8 @@ final class VoiceSectionTests: XCTestCase {
         values.voice = ""
         XCTAssertEqual(VoiceSection.voice(in: values, macVoices), "")
         XCTAssertEqual(VoiceSection.language(of: "", macVoices), "fr")
-        XCTAssertEqual(VoiceSection.voiceOptions(macVoices).first?.title, "Voix par défaut de macOS")
-        XCTAssertEqual(VoiceSection.voiceOptions(macVoices).map(\.value), ["", "Thomas", "Samantha"])
+        XCTAssertEqual(VoiceSection.voiceOptions(macVoices, quality: [:]).first?.title, "Voix par défaut de macOS")
+        XCTAssertEqual(VoiceSection.voiceOptions(macVoices, quality: [:]).map(\.value), ["", "Thomas", "Samantha"])
     }
 
     func testAMacVoiceNotListedShowsTheMacDefault() {
@@ -124,5 +124,17 @@ final class VoiceSectionTests: XCTestCase {
         XCTAssertEqual(SettingFormat.decimal(1.25), "1,25")
         XCTAssertEqual(SettingFormat.decimal(1), "1")
         XCTAssertEqual(SettingFormat.percent(0.6), "60 %")
+    }
+
+    func testPremiumMacVoicesComeFirst() {
+        let ordered = VoiceSection.ordered(["Thomas", "Amélie (Premium)", "Audrey (Améliorée)"],
+                                           quality: ["Amélie (Premium)": 3, "Audrey (Améliorée)": 2])
+        XCTAssertEqual(ordered, ["Amélie (Premium)", "Audrey (Améliorée)", "Thomas"])
+    }
+
+    /// Les voix Premium passent en tête, après la voix par défaut de macOS.
+    func testTheMacDefaultStaysFirstBeforePremiumVoices() {
+        let options = VoiceSection.voiceOptions(macVoices, quality: ["Samantha": 3])
+        XCTAssertEqual(options.map(\.value), ["", "Samantha", "Thomas"])
     }
 }

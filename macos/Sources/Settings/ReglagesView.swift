@@ -29,7 +29,9 @@ struct ReglagesView: View {
                              onChange: { await reloadModels() })
                 ReadingSection(store: store)
                 ShortcutsSection()
-                if Dictation.isSupported { DictationSection() }
+                if Dictation.isSupported {
+                    DictationSection(model: model, rows: rows, onChange: { await reloadModels() })
+                }
                 PermissionsSection()
                 StartupSection()
             }

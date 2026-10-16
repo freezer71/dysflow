@@ -62,6 +62,22 @@ enum ModelTable {
         return ("Supprimer \(row.name) ?", message)
     }
 
+    /// Ce que VoiceOver entend d'un téléchargement : un palier de 25 % franchi
+    /// entre deux relectures (« Téléchargement de Parakeet v3 : 25 % »),
+    /// sinon rien.
+    static func progressAnnouncement(name: String, previous: Double?, current: Double) -> String? {
+        let before = Int((min(max(previous ?? 0, 0), 1) * 4).rounded(.down))
+        let now = Int((min(max(current, 0), 1) * 4).rounded(.down))
+        guard now > before else { return nil }
+        return "Téléchargement de \(name) : \(now * 25) %"
+    }
+
+    /// La part reçue d'un téléchargement en cours, `nil` sinon.
+    static func fraction(_ download: DownloadView?) -> Double? {
+        guard let d = download, d.failed == nil, d.total > 0 else { return nil }
+        return Double(d.received) / Double(d.total)
+    }
+
     static func footer(used: UInt64, free: UInt64?) -> String {
         let freeText = free.map { " · \(bytes($0)) libres" } ?? ""
         return "\(bytes(used)) utilisés par les modèles\(freeText)"
