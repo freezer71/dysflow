@@ -403,7 +403,23 @@ impl Reader {
     }
 
     pub fn capabilities(&self) -> ModelCapabilities {
-        let family = self.current_config().engine.family.clone();
+        let config = self.current_config();
+        if config.engine_preference() == crate::tts::EnginePreference::System {
+            return ModelCapabilities {
+                family: "system".to_string(),
+                voices: crate::tts::system_voices::system_voices()
+                    .iter()
+                    .map(|v| VoiceChoice {
+                        id: v.name.clone(),
+                        label: format!("{} · {}", v.name, v.locale),
+                        language: v.language().to_string(),
+                    })
+                    .collect(),
+                languages: vec!["fr".into(), "en".into()],
+                honoured: vec!["voice".into()],
+            };
+        }
+        let family = config.engine.family.clone();
         ModelCapabilities {
             voices: models::voices_for_family(&family)
                 .iter()
@@ -624,6 +640,24 @@ mod tests {
         assert!(unknown.voices.is_empty());
         assert!(unknown.honoured.is_empty());
         assert_eq!(unknown.languages.len(), 7);
+    }
+
+    #[test]
+    fn the_system_voice_offers_the_voices_of_the_mac() {
+        let mut config = Config::default();
+        config.reading.autoplay = false;
+        config.engine.engine = "system".into();
+        let r = Reader::new(
+            config,
+            Box::new(|_| Arc::new(SilentEngine) as Arc<dyn TtsEngine>),
+            Box::new(|_: &str| Player::silent()),
+            Instant::now(),
+        );
+        let caps = r.capabilities();
+        assert_eq!(caps.family, "system");
+        assert_eq!(caps.honoured, ["voice"]);
+        assert_eq!(caps.languages, ["fr", "en"]);
+        assert!(caps.voices.iter().all(|v| matches!(v.language.as_str(), "fr" | "en")));
     }
 
     #[test]
