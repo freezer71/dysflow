@@ -16,14 +16,9 @@ pub const TRIAL: &str = "mode d'essai : rien n'est modifié sur le disque";
 
 impl Reader {
     /// Pourquoi ce modèle ne peut pas être supprimé maintenant, s'il ne le
-    /// peut pas : il est actif, ou il se télécharge.
+    /// peut pas : il se télécharge. Le modèle utilisé se supprime : la voix
+    /// de macOS prend alors la main.
     pub fn removal_refusal(&self, package: &ModelPackage) -> Option<String> {
-        if models::is_active_package(&self.current_config().engine.model_path, package) {
-            return Some(format!(
-                "{} est le modèle actif : choisissez-en un autre avant de le supprimer",
-                package.display_name
-            ));
-        }
         if self.download.as_ref().is_some_and(|d| d.package.id == package.id && !d.is_finished()) {
             return Some(format!(
                 "{} se télécharge : annulez d'abord le téléchargement",
@@ -34,18 +29,29 @@ impl Reader {
     }
 
     pub fn remove_model(&mut self, id: &str) -> Result<()> {
+        if id == "system" {
+            bail!("Les voix de macOS se gèrent dans Réglages Système");
+        }
         let package = self.package(id)?;
-        self.remove_package(package)
+        self.remove_package_at(package, std::time::Instant::now())
     }
 
     /// Le cœur de `remove_model`, sur un paquet déjà résolu (le catalogue
-    /// disponible dépend des familles compilées).
-    fn remove_package(&mut self, package: &ModelPackage) -> Result<()> {
+    /// disponible dépend des familles compilées). Le modèle utilisé passe
+    /// d'abord la main à la voix de macOS (la lecture continue avec elle),
+    /// puis ses fichiers partent.
+    pub(crate) fn remove_package_at(&mut self, package: &ModelPackage, now: std::time::Instant) -> Result<()> {
         if let Some(reason) = self.removal_refusal(package) {
             bail!(reason);
         }
         if !self.persist {
             bail!(TRIAL);
+        }
+        let config = self.current_config();
+        if config.engine_preference() != crate::tts::EnginePreference::System
+            && models::is_active_package(&config.engine.model_path, package)
+        {
+            self.use_voice("system", now)?;
         }
         models::remove(package)
     }
@@ -97,19 +103,6 @@ mod tests {
         let mut config = Config::default();
         config.reading.autoplay = false;
         config
-    }
-
-    #[test]
-    fn the_active_model_cannot_be_removed() {
-        let first = &models::CATALOG[0];
-        let second = &models::CATALOG[1];
-        let path = models::install_path(first).expect("répertoire des modèles (isolé sous test)");
-        let mut config = quiet();
-        config.engine.model_path = path.to_string_lossy().into_owned();
-        let r = reader_with(config);
-        let reason = r.removal_refusal(first).expect("refusé");
-        assert!(reason.contains("modèle actif"), "{reason}");
-        assert_eq!(r.removal_refusal(second), None);
     }
 
     #[test]
@@ -165,25 +158,54 @@ mod tests {
         ..models::CATALOG[0]
     };
 
+    /// Comme `DISPOSABLE`, pour le test du modèle utilisé : deux tests qui
+    /// installent et suppriment le même fichier se marcheraient dessus.
+    static DISPOSABLE_ACTIVE: ModelPackage = ModelPackage {
+        id: "essai_suppression_actif",
+        family: "essai_suppression_actif",
+        companions: &[],
+        ..models::CATALOG[0]
+    };
+
     #[test]
     fn an_installed_model_is_really_deleted() {
         let package = &DISPOSABLE;
         let path = install_fake(package);
         let mut r = reader_with(quiet());
-        r.remove_package(package).unwrap();
+        r.remove_package_at(package, Instant::now()).unwrap();
         assert!(!path.exists());
     }
 
     #[test]
-    fn the_active_model_survives_a_removal_attempt() {
-        let package = &models::CATALOG[1];
+    fn removing_the_active_model_switches_to_the_system_voice_first() {
+        let package = &DISPOSABLE_ACTIVE;
         let path = install_fake(package);
         let mut config = quiet();
         config.engine.model_path = path.to_string_lossy().into_owned();
         let mut r = reader_with(config);
-        assert!(r.remove_package(package).is_err());
-        assert!(path.exists());
-        std::fs::remove_file(&path).ok();
+        assert_eq!(r.removal_refusal(package), None, "le modèle utilisé se supprime aussi");
+        r.remove_package_at(package, Instant::now()).unwrap();
+        assert_eq!(r.config().engine.engine, "system");
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn removing_the_active_model_with_an_open_text_keeps_the_reader_alive() {
+        let package = &DISPOSABLE_ACTIVE;
+        let path = install_fake(package);
+        let mut config = quiet();
+        config.engine.model_path = path.to_string_lossy().into_owned();
+        let mut r = reader_with(config);
+        r.open_text("Un. Deux.", "a", Instant::now());
+        r.remove_package_at(package, Instant::now()).unwrap();
+        assert_eq!(r.config().engine.engine, "system");
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn the_system_row_cannot_be_removed() {
+        let mut r = reader_with(quiet());
+        assert!(r.remove_model("system").unwrap_err().to_string().contains("macOS"));
     }
 
     #[test]

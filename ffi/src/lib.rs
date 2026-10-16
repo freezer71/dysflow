@@ -457,6 +457,9 @@ pub struct VoiceModel {
     pub pace: String,
     pub voices_label: String,
     pub licenses: String,
+    pub kind: String,
+    pub disk_bytes: u64,
+    pub system: bool,
 }
 
 #[derive(uniffi::Object)]
@@ -619,10 +622,18 @@ impl SillonReader {
                         pace: v.pace,
                         voices_label: v.voices_label,
                         licenses: v.licenses,
+                        kind: v.kind,
+                        disk_bytes: v.disk_bytes,
+                        system: v.system,
                     })
                     .collect()
             })
             .unwrap_or_default()
+    }
+
+    /// Octets occupés par les modèles que l'app sait charger.
+    pub fn models_disk_usage(&self) -> u64 {
+        sillon::models::available_with(true).into_iter().map(sillon::models::installed_bytes).sum()
     }
 
     pub fn install_voice(&self, id: String) -> Result<(), SillonError> {
