@@ -14,6 +14,9 @@ struct VoiceSection: View {
     let free: UInt64?
     /// Relit les modèles et les réglages après une action de la table.
     let onChange: () async -> Void
+    /// La qualité des voix de macOS de la liste, relue quand la liste change
+    /// (pas à chaque affichage).
+    @State private var macQuality: [String: Int] = [:]
 
     var body: some View {
         SettingsGroup(title: "Voix") {
@@ -23,7 +26,7 @@ struct VoiceSection: View {
                 SettingRow(title: "Voix", detail: "Lit tout le texte, quelle que soit sa langue") {
                     HStack(spacing: 8) {
                         PopUpPicker(label: "Voix", identifier: "voix-unique",
-                                    options: Self.voiceOptions(store.capabilities),
+                                    options: Self.voiceOptions(store.capabilities, quality: macQuality),
                                     selection: Binding(get: { Self.voice(in: store.values, store.capabilities) },
                                                        set: { store.setFamilyVoice($0) }))
                             .frame(width: 260)
@@ -91,6 +94,11 @@ struct VoiceSection: View {
             }
         }
         // Un aperçu qui échoue après coup (synthèse refusée) se dit aussi.
+        .task(id: store.capabilities.voices.map(\.id)) {
+            let c = store.capabilities
+            macQuality = c.family == "system"
+                ? Self.quality(of: c.voices.map(\.id), voices: Self.installedMacVoices()) : [:]
+        }
         .onChange(of: model.snapshot.preview.error) { _, error in
             if let error { Announcement.post(error) }
         }
@@ -110,12 +118,11 @@ struct VoiceSection: View {
 
     /// Les voix du menu : celles du modèle ; la voix de macOS ajoute en tête
     /// sa voix par défaut, puis ses voix Premium et Améliorées.
-    static func voiceOptions(_ c: ModelCapabilities,
-                             quality: @autoclosure () -> [String: Int] = macVoiceQuality())
+    static func voiceOptions(_ c: ModelCapabilities, quality: [String: Int] = [:])
         -> [(title: String, value: String)] {
         guard c.family == "system" else { return c.voices.map { (title: $0.label, value: $0.id) } }
         let byID = Dictionary(c.voices.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        let listed = ordered(c.voices.map(\.id), quality: quality()).compactMap { id in
+        let listed = ordered(c.voices.map(\.id), quality: quality).compactMap { id in
             byID[id].map { (title: $0.label, value: $0.id) }
         }
         return [(title: macDefaultVoice, value: "")] + listed
@@ -132,26 +139,63 @@ struct VoiceSection: View {
             .map(\.element)
     }
 
-    /// La qualité des voix de macOS, par nom (celui que `say` donne). Une
-    /// voix Premium ou Améliorée nommée sans sa qualité (« Zoe ») vaut aussi
-    /// sous les noms que `say` peut lui donner (« Zoe (Premium) »).
-    static func macVoiceQuality() -> [String: Int] {
-        var quality: [String: Int] = [:]
-        func note(_ name: String, _ level: Int) { quality[name] = max(quality[name] ?? 1, level) }
-        for voice in AVSpeechSynthesisVoice.speechVoices() {
+    /// Une voix de macOS vue par AVFoundation : son nom et sa qualité
+    /// (3 Premium, 2 Améliorée, 1 sinon).
+    struct MacVoice: Equatable {
+        let name: String
+        let quality: Int
+    }
+
+    /// Les voix installées, lues une fois par liste de voix.
+    static func installedMacVoices() -> [MacVoice] {
+        AVSpeechSynthesisVoice.speechVoices().map { voice in
             let level = switch voice.quality {
             case .premium: 3
             case .enhanced: 2
             default: 1
             }
-            guard level > 1 else { continue }
-            note(voice.name, level)
-            if !voice.name.contains("(") {
-                let suffixes = level == 3 ? ["Premium"] : ["Enhanced", "Améliorée"]
-                for suffix in suffixes { note("\(voice.name) (\(suffix))", level) }
-            }
+            return MacVoice(name: voice.name, quality: level)
         }
-        return quality
+    }
+
+    /// La qualité de chaque voix listée par `say` (`ids`), d'après les voix
+    /// d'AVFoundation. `say` écrit la qualité après le nom : « Zoe (Premium) »,
+    /// « Audrey (Améliorée) », « Thomas (Amélioré) », « Ava (Enhanced) ». Une
+    /// voix ainsi marquée vaut sa qualité si AVFoundation a une voix de ce nom
+    /// et de cette qualité. Un nom seul qui a un jumeau marqué dans la liste
+    /// est la voix compacte : 1. Sans voix AVFoundation de ce nom : 1.
+    nonisolated static func quality(of ids: [String], voices: [MacVoice]) -> [String: Int] {
+        let parsed = ids.map { (id: $0, name: split($0)) }
+        let twinned = Set(parsed.filter { $0.name.level != nil }.map(\.name.base))
+        var result: [String: Int] = [:]
+        for (id, name) in parsed {
+            let matches = voices.filter { split($0.name).base == name.base }
+            let level: Int
+            if let marked = name.level {
+                level = matches.contains { $0.quality == marked } ? marked : 1
+            } else if twinned.contains(name.base) {
+                level = 1
+            } else {
+                level = matches.map(\.quality).max() ?? 1
+            }
+            result[id] = level
+        }
+        return result
+    }
+
+    /// « Zoe (Premium) » : le nom de base (en minuscules) et la qualité que
+    /// dit la parenthèse, `nil` si elle n'en dit pas.
+    nonisolated private static func split(_ name: String) -> (base: String, level: Int?) {
+        guard name.hasSuffix(")"), let open = name.range(of: " (", options: .backwards) else {
+            return (name.trimmingCharacters(in: .whitespaces).lowercased(), nil)
+        }
+        let base = String(name[..<open.lowerBound]).trimmingCharacters(in: .whitespaces).lowercased()
+        let tag = name[open.upperBound...].dropLast().lowercased()
+        switch tag {
+        case "premium": return (base, 3)
+        case "enhanced", "améliorée", "amélioré": return (base, 2)
+        default: return (name.lowercased(), nil)
+        }
     }
 
     /// La voix en place. Kokoro : la française (une voix pour tout), absente

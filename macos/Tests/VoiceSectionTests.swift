@@ -137,4 +137,42 @@ final class VoiceSectionTests: XCTestCase {
         let options = VoiceSection.voiceOptions(macVoices, quality: ["Samantha": 3])
         XCTAssertEqual(options.map(\.value), ["", "Samantha", "Thomas"])
     }
+
+    private typealias Mac = VoiceSection.MacVoice
+
+    /// « Zoe » et « Zoe (Premium) » côte à côte : seule la seconde monte.
+    func testOnlyTheMarkedTwinIsPromoted() {
+        let q = VoiceSection.quality(of: ["Zoe", "Zoe (Premium)"],
+                                     voices: [Mac(name: "Zoe", quality: 1), Mac(name: "Zoe", quality: 3)])
+        XCTAssertEqual(q["Zoe (Premium)"], 3)
+        XCTAssertEqual(q["Zoe"], 1, "la voix compacte reste à sa place")
+    }
+
+    /// `say` en français accorde : « Thomas (Amélioré) ».
+    func testAMasculineEnhancedVoiceIsMatched() {
+        let q = VoiceSection.quality(of: ["Thomas (Amélioré)", "Audrey (Améliorée)"],
+                                     voices: [Mac(name: "Thomas", quality: 2), Mac(name: "Audrey", quality: 2)])
+        XCTAssertEqual(q["Thomas (Amélioré)"], 2)
+        XCTAssertEqual(q["Audrey (Améliorée)"], 2)
+    }
+
+    func testAnEnglishEnhancedVoiceIsMatchedWhateverTheCase() {
+        let q = VoiceSection.quality(of: ["Ava (enhanced)"], voices: [Mac(name: "Ava (Enhanced)", quality: 2)])
+        XCTAssertEqual(q["Ava (enhanced)"], 2)
+    }
+
+    /// Sans voix AVFoundation du même nom, ni la parenthèse ni rien d'autre
+    /// ne fait monter une voix.
+    func testWithoutAMatchingVoiceTheQualityIsOne() {
+        let q = VoiceSection.quality(of: ["Zoe (Premium)", "Thomas"], voices: [Mac(name: "Amélie", quality: 3)])
+        XCTAssertEqual(q["Zoe (Premium)"], 1)
+        XCTAssertEqual(q["Thomas"], 1)
+    }
+
+    /// Une voix Premium que `say` nomme sans parenthèse monte si elle n'a pas
+    /// de jumeau marqué.
+    func testABareNameWithoutTwinTakesItsQuality() {
+        let q = VoiceSection.quality(of: ["Amélie"], voices: [Mac(name: "Amélie", quality: 3)])
+        XCTAssertEqual(q["Amélie"], 3)
+    }
 }
