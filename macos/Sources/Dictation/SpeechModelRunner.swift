@@ -19,8 +19,13 @@ protocol LoadedSpeechModel: AnyObject {
 final class SpeechModelRunner: @unchecked Sendable {
     typealias Loader = (URL) throws -> LoadedSpeechModel
 
-    /// Sans usage pendant ce temps, le modèle est libéré (poids et cache).
-    let releaseAfter: Duration
+    /// Sans usage pendant ce temps, le modèle est libéré (poids et cache) ;
+    /// `nil` : jamais de lui-même. Suit `keep_voice_minutes`
+    /// (`idleDelay(keepVoiceMinutes:)`), relu à chaque dictée.
+    var releaseAfter: Duration? {
+        get { idle.withLock { $0.delay } }
+        set { idle.withLock { $0.delay = newValue } }
+    }
 
     private let load: Loader
     private let gate: MLXGate
@@ -33,18 +38,31 @@ final class SpeechModelRunner: @unchecked Sendable {
     private let idle = OSAllocatedUnfairLock(initialState: Idle())
 
     private struct Idle {
+        var delay: Duration?
         var generation = 0
         var task: Task<Void, Never>?
     }
 
     init(load: @escaping Loader,
          gate: MLXGate = .shared,
-         releaseAfter: Duration = .seconds(10 * 60),
+         releaseAfter: Duration? = .seconds(10 * 60),
          clearCache: @escaping () -> Void = KokoroRunner.clearCache) {
         self.load = load
         self.gate = gate
-        self.releaseAfter = releaseAfter
         self.clearCache = clearCache
+        idle.withLock { $0.delay = releaseAfter }
+    }
+
+    /// Le plus court délai de libération : jamais entre deux relectures
+    /// d'une même dictée (1,5 s d'écart au plus, hors lecture).
+    static let shortestDelay: Duration = .seconds(5)
+
+    /// Le délai de libération d'après `keep_voice_minutes`, comme la voix :
+    /// négatif, jamais de lui-même ; 0, dès la dictée finie (après
+    /// `shortestDelay`) ; sinon ce nombre de minutes sans usage.
+    static func idleDelay(keepVoiceMinutes minutes: Int64) -> Duration? {
+        guard minutes >= 0 else { return nil }
+        return max(.seconds(min(minutes, 1_000_000) * 60), shortestDelay)
     }
 
     deinit {
@@ -109,14 +127,16 @@ final class SpeechModelRunner: @unchecked Sendable {
         clearCache()
     }
 
-    /// Repousse la libération : `releaseAfter` à partir de maintenant. Une
+    /// Repousse la libération : `releaseAfter` à partir de maintenant (rien
+    /// si `nil`). Une
     /// libération déjà réveillée mais dépassée (un usage est venu entre-temps)
     /// ne fait rien.
     private func touch() {
-        let delay = releaseAfter
         idle.withLock { state in
             state.generation &+= 1
             state.task?.cancel()
+            state.task = nil
+            guard let delay = state.delay else { return }
             let generation = state.generation
             state.task = Task.detached(priority: .utility) { [weak self] in
                 try? await Task.sleep(for: delay)

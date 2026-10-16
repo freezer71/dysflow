@@ -417,7 +417,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private(set) var dictationRouter: RoutingDictationEngine?
 
     private func installDictation() {
-        guard let engine = Dictation.makeEngine(directory: { [weak model] id in model?.modelDirectory(id) })
+        guard let engine = Dictation.makeEngine(
+            directory: { [weak model] id in model?.modelDirectory(id) },
+            keepVoiceMinutes: { [weak model] in await model?.loadSettings().keepVoiceMinutes })
         else { return }
         dictationRouter = engine
         let controller = DictationController(engine: engine,

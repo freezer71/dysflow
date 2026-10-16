@@ -97,11 +97,18 @@ final class FakeDictationEngine: DictationEngine {
     /// Ce que le moteur rend en finissant (le dernier résultat définitif).
     var finalText: String?
 
+    /// Le micro ouvert, le démarrage attend cette porte (un modèle qui se
+    /// charge), puis échoue avec `lateError` s'il y en a une.
+    var loading: TestGate?
+    var lateError: DictationError?
+
     func start(locale: Locale, events: @escaping @MainActor @Sendable (DictationEvent) -> Void) async throws {
         started.append(locale)
         if let startError { throw startError }
         self.events = events
         events(.listening)
+        if let loading { await loading.wait() }
+        if let lateError { throw lateError }
     }
 
     func finish() async {
@@ -208,6 +215,28 @@ final class DictationControllerTests: XCTestCase {
         XCTAssertEqual(c.missingPermission, .accessibility)
         let gone = await eventuallyTrue { c.phase == .hidden }
         XCTAssertTrue(gone)
+    }
+
+    /// Le modèle échoue à se charger après le second appui : le message
+    /// d'échec reste, rien n'est saisi (la saisie ne passe pas par-dessus).
+    func testALateStartFailureDuringFinishingIsShown() async {
+        let c = makeController()
+        let loading = TestGate()
+        engine.loading = loading
+        engine.lateError = .failed("chargement")
+        c.closing = .milliseconds(300)
+        c.failureDuration = .seconds(5)
+        c.toggle()
+        _ = await eventuallyTrue { c.phase == .listening }
+        c.toggle()
+        XCTAssertEqual(c.phase, .finishing)
+        loading.open()
+        let failed = await eventuallyTrue { c.phase == .failed(DictationError.failed("chargement").message) }
+        XCTAssertTrue(failed)
+        try? await Task.sleep(for: .milliseconds(500))
+        XCTAssertEqual(c.phase, .failed(DictationError.failed("chargement").message), "le message reste")
+        XCTAssertTrue(inserted.isEmpty, "rien n'est saisi")
+        XCTAssertTrue(presenter.visible)
     }
 
     func testARefusedMicrophoneIsSaid() async {

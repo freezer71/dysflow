@@ -361,6 +361,11 @@ struct DictationSection: View {
                         use: { row in chosen = row.id == Self.systemID ? DictationModel.system : row.id },
                         removed: { row in if row.id == chosen { chosen = DictationModel.system } },
                         onChange: onChange)
+                // Le modèle choisi change (un autre, la dictée de macOS, ou le
+                // sien supprimé) : l'ancien quitte la mémoire, son repli s'efface.
+                .onChange(of: chosen) { old, new in
+                    if old != new { AppDelegate.shared?.dictationRouter?.releaseModel() }
+                }
             // Le modèle choisi n'a pas pu servir : la dictée de macOS l'a
             // remplacé. Le message en entier, sous la table.
             if let notice = Self.notice(AppDelegate.shared?.dictationRouter?.fallbackNotice, chosen: chosen) {

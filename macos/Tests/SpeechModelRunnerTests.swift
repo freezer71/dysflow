@@ -53,4 +53,33 @@ final class SpeechModelRunnerTests: XCTestCase {
         await fulfillment(of: [released], timeout: 5)
         do { _ = try await runner.transcribe([], language: "fr"); XCTFail("libéré") } catch {}
     }
+
+    /// `keep_voice_minutes`, comme la voix : négatif, jamais ; 0, peu après
+    /// (jamais entre deux relectures) ; sinon ces minutes.
+    func testTheDelayFollowsKeepVoiceMinutes() {
+        XCTAssertNil(SpeechModelRunner.idleDelay(keepVoiceMinutes: -1))
+        XCTAssertEqual(SpeechModelRunner.idleDelay(keepVoiceMinutes: 0), SpeechModelRunner.shortestDelay)
+        XCTAssertEqual(SpeechModelRunner.idleDelay(keepVoiceMinutes: 3), .seconds(180))
+    }
+
+    /// Le délai change en route : le suivant usage le prend.
+    func testTheDelayCanChange() async throws {
+        let released = expectation(description: "libéré")
+        let runner = SpeechModelRunner(load: { _ in Echo() }, releaseAfter: nil,
+                                       clearCache: { released.fulfill() })
+        XCTAssertNil(runner.releaseAfter)
+        runner.releaseAfter = .milliseconds(50)
+        try await runner.prepare(directory: URL(fileURLWithPath: "/x"))
+        await fulfillment(of: [released], timeout: 5)
+    }
+
+    /// `release` (le modèle choisi supprimé) : le modèle part tout de suite.
+    func testReleaseUnloadsAtOnce() async throws {
+        let clears = Clears()
+        let runner = SpeechModelRunner(load: { _ in Echo() }, clearCache: clears.clear)
+        try await runner.prepare(directory: URL(fileURLWithPath: "/x"))
+        runner.release()
+        XCTAssertEqual(clears.count, 1)
+        do { _ = try await runner.transcribe([], language: "fr"); XCTFail("libéré") } catch {}
+    }
 }

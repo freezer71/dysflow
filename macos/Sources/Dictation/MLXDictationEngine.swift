@@ -64,8 +64,10 @@ final class MLXDictationEngine: DictationEngine {
     // L'état est vidé avant chaque attente : une dictée suivante, lancée
     // pendant cette attente, garde le sien.
     func finish() async {
-        guard let capture, let events else { return }
+        // Avant tout : un `finish` arrivé avant l'ouverture du micro arrête
+        // aussi le démarrage en cours.
         generation &+= 1
+        guard let capture, let events else { return }
         capture.stop()
         let loop = loop, load = load, language = language
         clear()

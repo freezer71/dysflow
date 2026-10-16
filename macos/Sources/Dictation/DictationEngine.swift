@@ -111,17 +111,30 @@ enum Dictation {
     /// L'aiguilleur : le modèle choisi, sinon la dictée de macOS.
     /// `directory` : le dossier d'un paquet installé (le moteur Rust), `nil`
     /// s'il manque. Un seul coureur de modèles, partagé par toutes les
-    /// dictées : le modèle reste chargé d'une dictée à l'autre.
+    /// dictées : le modèle reste chargé d'une dictée à l'autre, et se libère
+    /// après `keep_voice_minutes` sans usage, comme la voix (`keepVoiceMinutes`,
+    /// relu au début de chaque dictée, sans la retarder).
     @MainActor
-    static func makeEngine(directory: @escaping (String) -> URL?) -> RoutingDictationEngine? {
+    static func makeEngine(directory: @escaping (String) -> URL?,
+                           keepVoiceMinutes: @escaping @Sendable () async -> Int64?) -> RoutingDictationEngine? {
         #if compiler(>=6.2)
         if #available(macOS 26, *) {
             let runner = SpeechModelRunner(load: SpeechModels.load, clearCache: SpeechModels.release)
-            return RoutingDictationEngine(
+            let router = RoutingDictationEngine(
                 system: SystemDictationEngine(),
                 chosen: { DictationModel.stored() },
                 directory: directory,
+                runner: runner,
                 make: { id, folder in makeModelEngine(id: id, directory: folder, runner: runner) })
+            let refresh: @MainActor () -> Void = {
+                Task.detached(priority: .utility) {
+                    guard let minutes = await keepVoiceMinutes() else { return }
+                    runner.releaseAfter = SpeechModelRunner.idleDelay(keepVoiceMinutes: minutes)
+                }
+            }
+            router.willStart = refresh
+            refresh()
+            return router
         }
         #endif
         return nil
