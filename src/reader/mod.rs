@@ -83,6 +83,8 @@ pub struct Reader {
     switch_when_downloaded: Option<(String, String)>,
     /// Lance un téléchargement (jamais le réseau sous test).
     start_download: fn(&'static crate::models::ModelPackage) -> anyhow::Result<crate::models::Download>,
+    /// L'espace libre du volume des modèles (jamais le disque sous test).
+    free_space: fn() -> Option<u64>,
     /// La sortie choisie, vue une fois par seconde au plus (`watch_output`).
     output_watch: Option<OutputWatch>,
     /// Une sortie de ce nom est-elle branchée ? Remplaçable sous test.
@@ -127,6 +129,7 @@ impl Reader {
             offer: None,
             switch_when_downloaded: None,
             start_download: crate::models::Download::start,
+            free_space: crate::models::free_space,
             output_watch: None,
             output_present: crate::audio::player::output_present,
         }

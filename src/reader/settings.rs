@@ -488,6 +488,17 @@ impl Reader {
         if self.download.as_ref().is_some_and(|d| !d.is_finished()) {
             return Err(anyhow!("téléchargement déjà en cours"));
         }
+        // Mieux vaut refuser tout de suite que remplir le disque à moitié.
+        if let Some(free) = (self.free_space)() {
+            let missing = package.total_bytes().saturating_sub(models::installed_bytes(package));
+            if free < missing {
+                return Err(anyhow!(
+                    "Il manque {} sur le disque pour {}",
+                    models::human_size(missing - free),
+                    package.display_name
+                ));
+            }
+        }
         self.download = Some((self.start_download)(package)?);
         Ok(())
     }
@@ -517,6 +528,9 @@ impl Reader {
             return self.save_config();
         }
         let package = self.package(id)?;
+        if package.kind != models::Kind::Speech {
+            return Err(anyhow!("{} sert à la dictée, pas à la lecture", package.display_name));
+        }
         let path = models::install_path(package)
             .filter(|_| models::is_installed(package))
             .ok_or_else(|| anyhow!("voix non installée : {id}"))?;
@@ -586,8 +600,9 @@ impl Reader {
             self.finish_migration(&id, now);
             return;
         }
+        // Un modèle de dictée ne devient jamais la voix.
         let none_active = !self.voices().iter().any(|v| v.active);
-        if none_active {
+        if none_active && package.kind == models::Kind::Speech {
             let _ = self.use_voice(&id, now);
         }
     }
@@ -698,6 +713,23 @@ mod tests {
             Box::new(|_: &str| Player::silent()),
             Instant::now(),
         )
+    }
+
+    #[test]
+    fn a_dictation_model_cannot_become_the_voice() {
+        let mut r = reader_on("");
+        r.set_mlx_compute(true);
+        let err = r.use_voice("parakeet_tdt_v3", Instant::now()).unwrap_err().to_string();
+        assert!(err.contains("dictée"), "{err}");
+    }
+
+    #[test]
+    fn a_download_larger_than_the_free_space_is_refused() {
+        let mut r = reader_on("");
+        r.set_mlx_compute(true);
+        r.free_space = || Some(1_000);
+        let err = r.install_voice("parakeet_tdt_v3").unwrap_err().to_string();
+        assert!(err.contains("Il manque"), "{err}");
     }
 
     #[test]

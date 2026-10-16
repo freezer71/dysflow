@@ -38,6 +38,14 @@ pub enum Runtime {
     KokoroMlx,
     /// Kokoro par ONNX Runtime : seulement avec la feature `kokoro-onnx`.
     KokoroOnnx,
+    /// Dictée, dans l'app seulement : calcul MLX côté Swift.
+    ParakeetMlx,
+    /// Dictée, dans l'app seulement : calcul MLX côté Swift.
+    WhisperMlx,
+    /// Dictée, dans l'app seulement : calcul MLX côté Swift.
+    CanaryMlx,
+    /// Dictée, dans l'app seulement : calcul MLX côté Swift.
+    VoxtralRealtimeMlx,
 }
 
 /// Ce que fait un modèle : lire à voix haute, ou écrire ce qu'on dicte.
@@ -222,6 +230,202 @@ pub const CATALOG: &[ModelPackage] = &[
         voices_label: KOKORO_VOICES_LABEL,
         licenses: "Poids et voix Apache-2.0 · ONNX Runtime MIT · espeak-ng GPL-3.0 (programme séparé)",
     },
+    ModelPackage {
+        id: "parakeet_tdt_v3",
+        family: "parakeet_tdt_v3",
+        display_name: "Parakeet v3",
+        description: "Reconnaît vite et bien vingt-cinq langues européennes, sur la puce graphique.",
+        precision: "bf16",
+        languages: &["fr", "en"],
+        repo: "mlx-community/parakeet-tdt-0.6b-v3",
+        revision: "ed2b7e8c15f9aaa0b5772e2efb986255eaef7e15",
+        file: "model.safetensors",
+        languages_label: "25 langues européennes",
+        bytes: 2_508_288_736,
+        recommended: true,
+        pace: "Relecture toutes les 1,5 s",
+        companions: &[
+            Companion {
+                repo: "mlx-community/parakeet-tdt-0.6b-v3",
+                revision: "ed2b7e8c15f9aaa0b5772e2efb986255eaef7e15",
+                file: "config.json",
+                dest: "config.json",
+                bytes: 244_093,
+            },
+        ],
+        runtime: Runtime::ParakeetMlx,
+        kind: Kind::Dictation,
+        voices_label: "",
+        licenses: "CC-BY-4.0 (poids et code)",
+    },
+    ModelPackage {
+        id: "whisper_tiny_4bit",
+        family: "whisper_tiny_4bit",
+        display_name: "Whisper tiny",
+        description: "Le plus petit Whisper : rapide, pour un texte court ou une machine juste.",
+        precision: "4 bits",
+        languages: &["fr", "en"],
+        repo: "mlx-community/whisper-tiny-4bit",
+        revision: "064afea920b0373f8e19d51dc698bfbb91f501ff",
+        file: "model.safetensors",
+        languages_label: "99 langues",
+        bytes: 22_029_431,
+        recommended: false,
+        pace: "Relecture toutes les 1,5 s",
+        companions: &[
+            Companion {
+                repo: "mlx-community/whisper-tiny-4bit",
+                revision: "064afea920b0373f8e19d51dc698bfbb91f501ff",
+                file: "config.json",
+                dest: "config.json",
+                bytes: 335,
+            },
+            Companion {
+                repo: "mlx-community/whisper-tiny-4bit",
+                revision: "064afea920b0373f8e19d51dc698bfbb91f501ff",
+                file: "multilingual.tiktoken",
+                dest: "multilingual.tiktoken",
+                bytes: 816_730,
+            },
+        ],
+        runtime: Runtime::WhisperMlx,
+        kind: Kind::Dictation,
+        voices_label: "",
+        licenses: "Apache-2.0",
+    },
+    ModelPackage {
+        id: "whisper_small_4bit",
+        family: "whisper_small_4bit",
+        display_name: "Whisper small",
+        description: "Un bon compromis entre taille et justesse, en quatre-vingt-dix-neuf langues.",
+        precision: "4 bits",
+        languages: &["fr", "en"],
+        repo: "mlx-community/whisper-small-4bit",
+        revision: "1ac90abbb1b2f53863bfd2a483a3c31d792c3e5b",
+        file: "model.safetensors",
+        languages_label: "99 langues",
+        bytes: 139_111_057,
+        recommended: false,
+        pace: "Relecture toutes les 1,5 s",
+        companions: &[
+            Companion {
+                repo: "mlx-community/whisper-small-4bit",
+                revision: "1ac90abbb1b2f53863bfd2a483a3c31d792c3e5b",
+                file: "config.json",
+                dest: "config.json",
+                bytes: 339,
+            },
+            Companion {
+                repo: "mlx-community/whisper-small-4bit",
+                revision: "1ac90abbb1b2f53863bfd2a483a3c31d792c3e5b",
+                file: "multilingual.tiktoken",
+                dest: "multilingual.tiktoken",
+                bytes: 816_730,
+            },
+        ],
+        runtime: Runtime::WhisperMlx,
+        kind: Kind::Dictation,
+        voices_label: "",
+        licenses: "Apache-2.0",
+    },
+    ModelPackage {
+        id: "whisper_large_v3_turbo_4bit",
+        family: "whisper_large_v3_turbo_4bit",
+        display_name: "Whisper large-v3-turbo",
+        description: "Le plus juste des Whisper de la liste, au prix d'un téléchargement plus lourd.",
+        precision: "4 bits",
+        languages: &["fr", "en"],
+        repo: "mlx-community/whisper-large-v3-turbo-4bit",
+        revision: "0f058d38170d183f9fdee07908f5b515d91793a8",
+        file: "model.safetensors",
+        languages_label: "99 langues",
+        bytes: 463_462_982,
+        recommended: false,
+        pace: "Relecture toutes les 1,5 s",
+        companions: &[
+            Companion {
+                repo: "mlx-community/whisper-large-v3-turbo-4bit",
+                revision: "0f058d38170d183f9fdee07908f5b515d91793a8",
+                file: "config.json",
+                dest: "config.json",
+                bytes: 341,
+            },
+            Companion {
+                repo: "mlx-community/whisper-large-v3-turbo-4bit",
+                revision: "0f058d38170d183f9fdee07908f5b515d91793a8",
+                file: "multilingual.tiktoken",
+                dest: "multilingual.tiktoken",
+                bytes: 816_730,
+            },
+        ],
+        runtime: Runtime::WhisperMlx,
+        kind: Kind::Dictation,
+        voices_label: "",
+        licenses: "Apache-2.0",
+    },
+    ModelPackage {
+        id: "canary_1b_v2_q8",
+        family: "canary_1b_v2_q8",
+        display_name: "Canary 1b-v2",
+        description: "Reconnaissance et traduction de vingt-cinq langues européennes, quantifié en 8 bits.",
+        precision: "q8",
+        languages: &["fr", "en"],
+        repo: "Mediform/canary-1b-v2-mlx-q8",
+        revision: "0b6b32ee10f30c89e3ead7249bb636445e3019ee",
+        file: "model.safetensors",
+        languages_label: "25 langues européennes",
+        bytes: 1_136_436_574,
+        recommended: false,
+        pace: "Relecture toutes les 1,5 s",
+        companions: &[
+            Companion {
+                repo: "Mediform/canary-1b-v2-mlx-q8",
+                revision: "0b6b32ee10f30c89e3ead7249bb636445e3019ee",
+                file: "config.json",
+                dest: "config.json",
+                bytes: 673_039,
+            },
+        ],
+        runtime: Runtime::CanaryMlx,
+        kind: Kind::Dictation,
+        voices_label: "",
+        licenses: "CC-BY-4.0",
+    },
+    ModelPackage {
+        id: "voxtral_realtime_4bit",
+        family: "voxtral_realtime_4bit",
+        display_name: "Voxtral Realtime",
+        description: "Écrit au fil de la parole, sans attendre la fin de la phrase.",
+        precision: "4 bits",
+        languages: &["fr", "en"],
+        repo: "mlx-community/Voxtral-Mini-4B-Realtime-2602-4bit",
+        revision: "fdebf7b2af834a1db4b8a3c99ab7480b333adf9e",
+        file: "model.safetensors",
+        languages_label: "13 langues",
+        bytes: 3_133_798_126,
+        recommended: false,
+        pace: "Au fil de la parole",
+        companions: &[
+            Companion {
+                repo: "mlx-community/Voxtral-Mini-4B-Realtime-2602-4bit",
+                revision: "fdebf7b2af834a1db4b8a3c99ab7480b333adf9e",
+                file: "config.json",
+                dest: "config.json",
+                bytes: 1_513,
+            },
+            Companion {
+                repo: "mlx-community/Voxtral-Mini-4B-Realtime-2602-4bit",
+                revision: "fdebf7b2af834a1db4b8a3c99ab7480b333adf9e",
+                file: "tekken.json",
+                dest: "tekken.json",
+                bytes: 14_910_348,
+            },
+        ],
+        runtime: Runtime::VoxtralRealtimeMlx,
+        kind: Kind::Dictation,
+        voices_label: "",
+        licenses: "Apache-2.0",
+    },
 ];
 
 /// Catalogue restreint à ce que ce binaire sait charger.
@@ -233,7 +437,11 @@ pub fn available_with(mlx: bool) -> Vec<&'static ModelPackage> {
     CATALOG
         .iter()
         .filter(|p| match p.runtime {
-            Runtime::KokoroMlx => mlx,
+            Runtime::KokoroMlx
+            | Runtime::ParakeetMlx
+            | Runtime::WhisperMlx
+            | Runtime::CanaryMlx
+            | Runtime::VoxtralRealtimeMlx => mlx,
             Runtime::KokoroOnnx => !mlx && cfg!(feature = "kokoro-onnx"),
         })
         .collect()
@@ -349,7 +557,7 @@ pub fn first_installed() -> Option<&'static ModelPackage> {
 /// Comme `first_installed`, pour un lecteur dont l'app fournit (ou non) le
 /// calcul MLX.
 pub fn first_installed_with(mlx: bool) -> Option<&'static ModelPackage> {
-    available_with(mlx).into_iter().find(|p| is_installed(p))
+    available_with(mlx).into_iter().find(|p| p.kind == Kind::Speech && is_installed(p))
 }
 
 /// Le paquet que l'installation automatique télécharge : le Kokoro
@@ -1018,7 +1226,7 @@ mod tests {
 
     #[test]
     fn kokoro_reads_aloud() {
-        assert!(CATALOG.iter().all(|p| p.kind == Kind::Speech));
+        assert!(CATALOG.iter().filter(|p| p.family == "kokoro").all(|p| p.kind == Kind::Speech));
     }
     use super::*;
 
@@ -1073,20 +1281,67 @@ mod tests {
 
     #[test]
     fn kokoro_is_the_recommended_voice_wherever_it_runs() {
-        assert!(CATALOG.iter().filter(|p| p.recommended).all(|p| p.family == "kokoro"));
+        let speech = |p: &&ModelPackage| p.kind == Kind::Speech;
+        assert!(CATALOG.iter().filter(speech).filter(|p| p.recommended).all(|p| p.family == "kokoro"));
         for mlx in [true, false] {
-            let recommended = available_with(mlx).into_iter().filter(|p| p.recommended).count();
-            assert!(recommended <= 1, "deux paquets recommandés côte à côte (mlx = {mlx})");
+            for kind in [Kind::Speech, Kind::Dictation] {
+                let recommended = available_with(mlx).into_iter().filter(|p| p.kind == kind && p.recommended).count();
+                assert!(recommended <= 1, "deux paquets recommandés côte à côte (mlx = {mlx}, {kind:?})");
+            }
         }
     }
 
     /// Un seul modèle au catalogue : Kokoro, en MLX ou en int8. Supertonic et
     /// MagpieTTS n'y sont plus, même compilés.
     #[test]
-    fn kokoro_is_the_only_catalogued_model() {
-        let ids: Vec<&str> = CATALOG.iter().map(|p| p.id).collect();
+    fn kokoro_is_the_only_speech_model() {
+        let ids: Vec<&str> = CATALOG.iter().filter(|p| p.kind == Kind::Speech).map(|p| p.id).collect();
         assert_eq!(ids, ["kokoro_82m_mlx", "kokoro_82m_int8"]);
-        assert!(available().iter().chain(available_with(true).iter()).all(|p| p.family == "kokoro"));
+        assert!(available()
+            .iter()
+            .chain(available_with(true).iter())
+            .filter(|p| p.kind == Kind::Speech)
+            .all(|p| p.family == "kokoro"));
+    }
+
+    #[test]
+    fn dictation_packages_each_have_their_own_folder() {
+        let dictation: Vec<&ModelPackage> = CATALOG.iter().filter(|p| p.kind == Kind::Dictation).collect();
+        assert_eq!(dictation.len(), 6);
+        for p in &dictation {
+            assert_eq!(p.family, p.id, "{} : un dossier par paquet", p.id);
+        }
+    }
+
+    #[test]
+    fn dictation_is_only_offered_to_the_app() {
+        assert!(available_with(false).iter().all(|p| p.kind == Kind::Speech));
+        assert_eq!(available_with(true).iter().filter(|p| p.kind == Kind::Dictation).count(), 6);
+    }
+
+    #[test]
+    fn a_dictation_model_is_never_the_first_voice() {
+        // Même installé, un modèle de dictée ne lit pas.
+        assert!(first_installed_with(true).is_none_or(|p| p.kind == Kind::Speech));
+    }
+
+    #[test]
+    fn whisper_reads_its_vocabulary_from_tiktoken() {
+        let p = CATALOG.iter().find(|p| p.id == "whisper_tiny_4bit").unwrap();
+        assert!(p.companions.iter().any(|c| c.dest == "multilingual.tiktoken"));
+        assert!(p.companions.iter().any(|c| c.dest == "config.json"));
+    }
+
+    #[test]
+    fn dictation_packages_are_pinned_to_their_own_repo() {
+        let parakeet = package("parakeet_tdt_v3");
+        assert_eq!(parakeet.total_bytes(), 2_508_288_736 + 244_093);
+        assert!(parakeet.recommended);
+        for p in CATALOG.iter().filter(|p| p.kind == Kind::Dictation) {
+            assert_eq!(p.revision.len(), 40, "{}", p.id);
+            assert!(p.companions.iter().all(|c| c.repo == p.repo && c.revision == p.revision), "{}", p.id);
+            assert_eq!(p.file, "model.safetensors", "{}", p.id);
+        }
     }
 
     #[test]
@@ -1215,7 +1470,7 @@ mod tests {
     fn every_catalogued_family_names_its_voices() {
         // C'est la promesse du catalogue : aucun modèle n'exige qu'on lui
         // fabrique une voix avant de pouvoir l'écouter.
-        for package in CATALOG {
+        for package in CATALOG.iter().filter(|p| p.kind == Kind::Speech) {
             assert!(
                 !voices_for_family(package.family).is_empty(),
                 "{} n'expose aucune voix nommée",
