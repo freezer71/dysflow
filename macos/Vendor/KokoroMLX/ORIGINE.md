@@ -92,3 +92,24 @@ longue dictée : Sillon appellera `generate` avec `maxTokens: 1024` (la table
 de positions du décodeur fait 1 024 ; au-delà, la dernière position est
 répétée). `language` (`"fr"`, `"en"`…) sert de langue source et cible : pas de
 détection automatique.
+
+## STT : Voxtral Realtime
+
+Même dépôt, même commit `244458d` : `STT/VoxtralRealtime/*.swift` ←
+`Sources/MLXAudioSTT/Models/VoxtralRealtime/` (8 fichiers, sans le
+`README.md`).
+
+Tous identiques à l'amont, sauf :
+- `VoxtralRealtimeAudio.swift`, `VoxtralRealtimeStreamSession.swift` :
+  `import MLXAudioCore` retiré ;
+- `VoxtralRealtime.swift` : `import MLXAudioCore`, `import MLXAudioVAD`,
+  `import MLXLMCommon` et `import HuggingFace` retirés ; la surcharge
+  `generate(audio:generationParameters:vad:)` (découpage par détection de
+  voix, Silero) supprimée, elle seule employait `MLXAudioVAD` ;
+  `fromPretrained` supprimé. Reste `fromDirectory(_:)` (`config.json`,
+  `tekken.json` et tous les `*.safetensors` du dossier). La quantification
+  passe par la `BaseConfiguration` locale.
+
+La session de flux (`makeStreamSession`, `step`, `finish`, `Delta`) est
+gardée telle quelle. Une session ou un modèle à la fois ; après avoir
+libéré une session, `Memory.clearCache()`.
