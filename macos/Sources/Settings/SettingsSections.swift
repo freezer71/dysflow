@@ -22,7 +22,7 @@ struct VoiceSection: View {
                 SettingRow(title: "Voix", detail: "Lit tout le texte, quelle que soit sa langue") {
                     HStack(spacing: 8) {
                         PopUpPicker(label: "Voix", identifier: "voix-unique",
-                                    options: store.capabilities.voices.map { (title: $0.label, value: $0.id) },
+                                    options: Self.voiceOptions(store.capabilities),
                                     selection: Binding(get: { Self.voice(in: store.values, store.capabilities) },
                                                        set: { store.setFamilyVoice($0) }))
                             .frame(width: 260)
@@ -102,11 +102,25 @@ struct VoiceSection: View {
         }
     }
 
-    /// La voix en place : la française (une voix pour tout ; la voix de
-    /// macOS garde la sienne dans `voice`) ; absente du modèle : sa première.
+    /// Avec la voix de macOS, « Voix par défaut de macOS » (valeur vide) :
+    /// celle que `say` prend quand aucune n'est choisie.
+    static let macDefaultVoice = "Voix par défaut de macOS"
+
+    /// Les voix du menu : celles du modèle ; la voix de macOS ajoute en tête
+    /// sa voix par défaut.
+    static func voiceOptions(_ c: ModelCapabilities) -> [(title: String, value: String)] {
+        let listed = c.voices.map { (title: $0.label, value: $0.id) }
+        return c.family == "system" ? [(title: macDefaultVoice, value: "")] + listed : listed
+    }
+
+    /// La voix en place. Kokoro : la française (une voix pour tout), absente
+    /// du modèle, sa première. Voix de macOS : `voice`, vide ou absente de la
+    /// liste, la voix par défaut ("") — celle qui parle vraiment.
     static func voice(in values: SettingsView, _ c: ModelCapabilities) -> String {
-        let chosen = c.family == "system" ? values.voice
-            : values.voicesByLanguage.first(where: { $0.language == "fr" })?.voice
+        if c.family == "system" {
+            return c.voices.contains(where: { $0.id == values.voice }) ? values.voice : ""
+        }
+        let chosen = values.voicesByLanguage.first(where: { $0.language == "fr" })?.voice
         return c.voices.first(where: { $0.id == chosen })?.id ?? c.voices.first?.id ?? ""
     }
 

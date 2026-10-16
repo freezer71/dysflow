@@ -38,12 +38,14 @@ struct ModelsTable: View {
                 .padding(.top, 6)
         }
         .padding(.vertical, 6)
-        .confirmationDialog(confirming.map { ModelTable.confirmation($0, fallback: fallback).title } ?? "",
-                            isPresented: Binding(get: { confirming != nil },
-                                                 set: { if !$0 { confirming = nil } }),
-                            presenting: confirming) { row in
-            Button("Supprimer", role: .destructive) { act { try await model.removeModel(row.id) } }
+        .alert(confirming.map { ModelTable.confirmation($0, fallback: fallback).title } ?? "",
+               isPresented: Binding(get: { confirming != nil },
+                                    set: { if !$0 { confirming = nil } }),
+               presenting: confirming) { row in
+            // Annuler par défaut : Retour et Échap ne suppriment rien.
             Button("Annuler", role: .cancel) {}
+                .keyboardShortcut(.defaultAction)
+            Button("Supprimer", role: .destructive) { act { try await model.removeModel(row.id) } }
         } message: { row in
             Text(ModelTable.confirmation(row, fallback: fallback).message)
         }

@@ -34,6 +34,35 @@ final class VoiceSectionTests: XCTestCase {
         XCTAssertEqual(VoiceSection.language(of: "inconnue", caps), "fr")
     }
 
+    private let macVoices = ModelCapabilities(
+        family: "system",
+        voices: [VoiceChoice(id: "Thomas", label: "Thomas · fr_FR", language: "fr"),
+                 VoiceChoice(id: "Samantha", label: "Samantha · en_US", language: "en")],
+        languages: ["fr", "en"], honoured: ["voice"])
+
+    /// Aucune voix de macOS choisie : le menu dit la voix par défaut (celle
+    /// que `say` prend), pas la première de la liste ; l'aperçu en français.
+    func testNoMacVoiceChosenShowsTheMacDefault() {
+        var values = SettingsView.defaults
+        values.voice = ""
+        XCTAssertEqual(VoiceSection.voice(in: values, macVoices), "")
+        XCTAssertEqual(VoiceSection.language(of: "", macVoices), "fr")
+        XCTAssertEqual(VoiceSection.voiceOptions(macVoices).first?.title, "Voix par défaut de macOS")
+        XCTAssertEqual(VoiceSection.voiceOptions(macVoices).map(\.value), ["", "Thomas", "Samantha"])
+    }
+
+    func testAMacVoiceNotListedShowsTheMacDefault() {
+        var values = SettingsView.defaults
+        values.voice = "Inconnue"
+        XCTAssertEqual(VoiceSection.voice(in: values, macVoices), "")
+    }
+
+    /// Kokoro n'a pas de voix par défaut à part : ses seules voix.
+    func testKokoroOptionsAreItsVoicesOnly() {
+        XCTAssertEqual(VoiceSection.voiceOptions(Capabilities.kokoro).map(\.value),
+                       Capabilities.kokoro.voices.map(\.id))
+    }
+
     func testSizesAreWrittenTheFrenchWayInBase1000() {
         XCTAssertEqual(SizeFormat.bytes(342_264_783), "342 Mo")
         XCTAssertEqual(SizeFormat.bytes(92_361_055), "92,4 Mo")
