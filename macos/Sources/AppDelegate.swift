@@ -412,8 +412,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var dictationTargetObserver: NSObjectProtocol?
     private var modifierTap: ModifierTapMonitor?
 
+    /// L'aiguilleur de la dictée : la section Dictée des réglages lit son
+    /// `fallbackNotice` (`AppDelegate.shared?.dictationRouter`).
+    private(set) var dictationRouter: RoutingDictationEngine?
+
     private func installDictation() {
-        guard let engine = Dictation.makeEngine() else { return }
+        guard let engine = Dictation.makeEngine(directory: { [weak model] id in model?.modelDirectory(id) })
+        else { return }
+        dictationRouter = engine
         let controller = DictationController(engine: engine,
                                              insert: { await TextInserter.system().insert($0) })
         // La pause part toujours : le moteur l'ignore voix au repos, et

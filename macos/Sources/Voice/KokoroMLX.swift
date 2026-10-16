@@ -65,9 +65,15 @@ final class KokoroMLXCompute: KokoroCompute, @unchecked Sendable {
         self.gate = gate
     }
 
-    /// Plafond mesuré au spike : 1 Go, cache réduit à 64 Mo.
+    /// Plafond mesuré au spike : 1 Go, cache réduit à 64 Mo. Posés au
+    /// chargement seulement (globaux au processus) : un modèle de dictée qui
+    /// se charge pose les siens, puis remet ceux-ci quand il est libéré
+    /// (`SpeechModels`).
+    static let memoryLimit = 1 << 30
+    static let cacheLimit = 64 << 20
+
     static func loadRunner(_ directory: URL) throws -> KokoroForward {
-        try KokoroRunner.load(directory: directory, memoryLimit: 1 << 30, cacheLimit: 64 << 20)
+        try KokoroRunner.load(directory: directory, memoryLimit: memoryLimit, cacheLimit: cacheLimit)
     }
 
     /// Synthèses faites depuis le lancement (la mesure vérifie qu'il n'y en

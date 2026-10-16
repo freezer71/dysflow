@@ -10,7 +10,7 @@ import os
 /// (`AVAudioSinkNode`), à chaque cycle audio (~10 ms), sur le fil audio ; le
 /// tampon est sous verrou, `samples()` et `drain()` se lisent de n'importe
 /// quel fil. `start` et `stop` s'appellent d'un même fil (le principal).
-/// L'autorisation du micro se demande avant `start`.
+/// L'autorisation du micro se demande avant `start` (`requirePermission`).
 final class MicrophoneCapture: @unchecked Sendable {
     static let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16_000,
                                       channels: 1, interleaved: false)!
@@ -67,6 +67,20 @@ final class MicrophoneCapture: @unchecked Sendable {
 
     deinit {
         audio?.stop()
+    }
+
+    /// L'autorisation du micro, demandée la première fois ; refusée :
+    /// `DictationError.microphoneDenied`. Commune à toutes les dictées.
+    static func requirePermission() async throws {
+        switch AVCaptureDevice.authorizationStatus(for: .audio) {
+        case .authorized:
+            return
+        case .notDetermined:
+            if await AVCaptureDevice.requestAccess(for: .audio) { return }
+            throw DictationError.microphoneDenied
+        default:
+            throw DictationError.microphoneDenied
+        }
     }
 
     /// Ouvre le micro ; le tampon repart de zéro.

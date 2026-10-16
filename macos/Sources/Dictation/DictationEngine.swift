@@ -71,8 +71,35 @@ enum DictationLanguage: String, CaseIterable {
     }
 }
 
+/// Le modèle de dictée choisi dans les réglages : `"system"` (la dictée de
+/// macOS), ou l'id d'un paquet du catalogue (`parakeet_tdt_v3`, …).
+enum DictationModel {
+    static let defaultsKey = "dictationModel"
+    static let system = "system"
+
+    static func stored(_ defaults: UserDefaults = .standard) -> String {
+        defaults.string(forKey: defaultsKey) ?? system
+    }
+
+    /// Le nom montré (« Parakeet v3 »).
+    static func label(_ id: String) -> String {
+        switch id {
+        case system: "Dictée de macOS"
+        case "parakeet_tdt_v3": "Parakeet v3"
+        case "whisper_tiny_4bit": "Whisper tiny"
+        case "whisper_small_4bit": "Whisper small"
+        case "whisper_large_v3_turbo_4bit": "Whisper large-v3-turbo"
+        case "canary_1b_v2_q8": "Canary 1b-v2"
+        case "voxtral_realtime_4bit": "Voxtral Realtime"
+        default: id.isEmpty ? "Le modèle de dictée" : id
+        }
+    }
+}
+
 /// La dictée demande la reconnaissance de la parole de macOS 26
-/// (`SpeechAnalyzer`), sur l'appareil : rien ne quitte le Mac.
+/// (`SpeechAnalyzer`), sur l'appareil : rien ne quitte le Mac. Les modèles
+/// de dictée (MLX) passent par le même aiguilleur, avec la dictée de macOS
+/// en repli.
 enum Dictation {
     static var isSupported: Bool {
         #if compiler(>=6.2)
@@ -81,11 +108,36 @@ enum Dictation {
         return false
     }
 
+    /// L'aiguilleur : le modèle choisi, sinon la dictée de macOS.
+    /// `directory` : le dossier d'un paquet installé (le moteur Rust), `nil`
+    /// s'il manque. Un seul coureur de modèles, partagé par toutes les
+    /// dictées : le modèle reste chargé d'une dictée à l'autre.
     @MainActor
-    static func makeEngine() -> DictationEngine? {
+    static func makeEngine(directory: @escaping (String) -> URL?) -> RoutingDictationEngine? {
         #if compiler(>=6.2)
-        if #available(macOS 26, *) { return SystemDictationEngine() }
+        if #available(macOS 26, *) {
+            let runner = SpeechModelRunner(load: SpeechModels.load, clearCache: SpeechModels.release)
+            return RoutingDictationEngine(
+                system: SystemDictationEngine(),
+                chosen: { DictationModel.stored() },
+                directory: directory,
+                make: { id, folder in makeModelEngine(id: id, directory: folder, runner: runner) })
+        }
         #endif
         return nil
+    }
+
+    /// Le moteur d'un modèle : Voxtral au fil de la parole, les autres en
+    /// relecture glissante.
+    @MainActor
+    static func makeModelEngine(id: String, directory: URL, runner: SpeechModelRunner) -> DictationEngine? {
+        switch id {
+        case "voxtral_realtime_4bit":
+            VoxtralDictationEngine(runner: runner, directory: directory)
+        case "parakeet_tdt_v3", "canary_1b_v2_q8", _ where id.hasPrefix("whisper_"):
+            MLXDictationEngine(runner: runner, directory: directory)
+        default:
+            nil
+        }
     }
 }

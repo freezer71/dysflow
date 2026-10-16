@@ -45,7 +45,7 @@ final class SystemDictationEngine: DictationEngine {
         let id = generation
         func stillWanted() throws { if generation != id { throw CancellationError() } }
         let began = ContinuousClock.now
-        try await Self.requireMicrophone()
+        try await MicrophoneCapture.requirePermission()
         try stillWanted()
         let ready: Prepared
         if let known = prepared[locale.identifier] {
@@ -130,18 +130,6 @@ final class SystemDictationEngine: DictationEngine {
     }
 
     // MARK: - Préparation
-
-    private static func requireMicrophone() async throws {
-        switch AVCaptureDevice.authorizationStatus(for: .audio) {
-        case .authorized:
-            return
-        case .notDetermined:
-            if await AVCaptureDevice.requestAccess(for: .audio) { return }
-            throw DictationError.microphoneDenied
-        default:
-            throw DictationError.microphoneDenied
-        }
-    }
 
     /// Une fois par langue : le meilleur transcripteur que ce Mac sait faire
     /// tourner, la langue installée, le format qu'il attend.
