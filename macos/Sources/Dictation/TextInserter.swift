@@ -2,11 +2,21 @@ import AppKit
 import ApplicationServices
 import Carbon.HIToolbox
 
+/// Ce que le texte dicté laisse voir une fois dans le presse-papiers.
+enum PasteboardPrivacy: Equatable {
+    /// Une copie ordinaire, que l'utilisateur reprend avec ⌘V.
+    case normal
+    /// Le temps du ⌘V : ni gardé par les historiques de presse-papiers, ni
+    /// envoyé aux autres appareils (presse-papiers universel).
+    case transient
+    /// Pour un champ de mot de passe : comme `transient`, et marqué
+    /// confidentiel (les gestionnaires de presse-papiers ne l'affichent pas).
+    case concealed
+}
+
 /// Le presse-papiers, quand la dictée y pose son texte.
 protocol PasteboardWriting: PasteboardAccess {
-    /// `transient` : marqué pour que les historiques de presse-papiers ne le
-    /// gardent pas (il n'y est que le temps du ⌘V).
-    func write(_ text: String, transient: Bool)
+    func write(_ text: String, privacy: PasteboardPrivacy)
 }
 
 protocol PasteKeystroke {
@@ -65,11 +75,12 @@ struct TextInserter {
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return .nothing }
         if let reason = copyReason() {
-            pasteboard.write(text, transient: false)
+            // Un champ de mot de passe : le texte peut en être un.
+            pasteboard.write(text, privacy: reason == .secureInput ? .concealed : .normal)
             return .copied(reason)
         }
         let saved = pasteboard.save()
-        pasteboard.write(text, transient: true)
+        pasteboard.write(text, privacy: .transient)
         let ours = pasteboard.changeCount
         keys.sendPaste()
         try? await Task.sleep(for: restoreDelay)
@@ -87,12 +98,18 @@ struct TextInserter {
 }
 
 extension SystemPasteboard: PasteboardWriting {
-    func write(_ text: String, transient: Bool) {
+    func write(_ text: String, privacy: PasteboardPrivacy) {
         let board = NSPasteboard.general
-        board.clearContents()
+        // Hors du cas ordinaire, le texte reste sur ce Mac.
+        if privacy == .normal {
+            board.clearContents()
+        } else {
+            board.prepareForNewContents(with: .currentHostOnly)
+        }
         let item = NSPasteboardItem()
         item.setString(text, forType: .string)
-        if transient { item.setData(Data(), forType: NSPasteboard.PasteboardType(transientType)) }
+        if privacy != .normal { item.setData(Data(), forType: NSPasteboard.PasteboardType(transientType)) }
+        if privacy == .concealed { item.setData(Data(), forType: NSPasteboard.PasteboardType(concealedType)) }
         board.writeObjects([item])
     }
 }

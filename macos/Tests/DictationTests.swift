@@ -339,11 +339,16 @@ final class WritablePasteboard: PasteboardWriting, @unchecked Sendable {
     var isConcealed: Bool { Sillon.isConcealed(items) }
     func imageData() -> Data? { nil }
     var transient: Bool { items.first?.types.contains { $0.type == transientType } ?? false }
+    var concealed: Bool { items.first?.types.contains { $0.type == concealedType } ?? false }
+    /// Le niveau de la dernière écriture (`.currentHostOnly` compris).
+    private(set) var lastPrivacy: PasteboardPrivacy?
 
-    func write(_ s: String, transient: Bool) {
+    func write(_ s: String, privacy: PasteboardPrivacy) {
         var item = text(s)
-        if transient { item.types.append(SavedType(type: transientType, data: Data())) }
+        if privacy != .normal { item.types.append(SavedType(type: transientType, data: Data())) }
+        if privacy == .concealed { item.types.append(SavedType(type: concealedType, data: Data())) }
         items = [item]
+        lastPrivacy = privacy
         changeCount += 1
     }
 }
@@ -356,7 +361,7 @@ final class PasteRecorder: PasteKeystroke, @unchecked Sendable {
     init(_ pasteboard: WritablePasteboard) { self.pasteboard = pasteboard }
     func sendPaste() {
         pasted.append(pasteboard.string())
-        if userCopiesAfter { pasteboard.write("copie de l'utilisateur", transient: false) }
+        if userCopiesAfter { pasteboard.write("copie de l'utilisateur", privacy: .normal) }
     }
 }
 
@@ -403,6 +408,26 @@ final class TextInserterTests: XCTestCase {
         XCTAssertEqual(keys.pasted, [])
         XCTAssertEqual(board.string(), "Bonjour")
         XCTAssertFalse(board.transient, "gardé : c'est là que l'utilisateur le reprend")
+        XCTAssertEqual(board.lastPrivacy, .normal)
+    }
+
+    func testTheTextPastedStaysOnThisMac() async {
+        let board = WritablePasteboard()
+        let keys = PasteRecorder(board)
+        _ = await inserter(board, keys).insert("Bonjour")
+        // Écrit en éphémère, sur ce Mac seulement (pas de presse-papiers universel).
+        XCTAssertEqual(keys.pasted, ["Bonjour"])
+        XCTAssertEqual(board.lastPrivacy, .transient)
+    }
+
+    func testTextForAPasswordFieldIsConcealed() async {
+        let board = WritablePasteboard()
+        let keys = PasteRecorder(board)
+        let outcome = await inserter(board, keys, secure: true).insert("motdepasse")
+        XCTAssertEqual(outcome, .copied(.secureInput))
+        XCTAssertEqual(board.lastPrivacy, .concealed, "ni historique, ni autre appareil")
+        XCTAssertTrue(board.concealed)
+        XCTAssertTrue(board.transient)
     }
 
     func testSillonsOwnWindowAndSecureInputGetACopy() async {
