@@ -15,4 +15,6 @@ final class AppServices {
     @ObservationIgnored var readSelection: @MainActor () async -> Void = {}
     /// « Ouvrir un fichier… » : le panneau d'ouverture.
     @ObservationIgnored var chooseFile: @MainActor () -> Void = {}
+    /// La dictée (macOS 26) : nil sans elle.
+    var dictation: DictationController?
 }

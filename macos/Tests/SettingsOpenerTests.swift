@@ -7,7 +7,7 @@ import XCTest
 final class SettingsOpenerTests: XCTestCase {
     func testOpensThroughTheCapturedActionAfterActivating() {
         var log: [String] = []
-        let opener = SettingsOpener(activate: { log.append("active") })
+        let opener = SettingsOpener(activate: { log.append("active") }, bringToFront: {})
         opener.install { log.append("réglages") }
         opener.open()
         XCTAssertEqual(log, ["active", "réglages"])
@@ -16,7 +16,7 @@ final class SettingsOpenerTests: XCTestCase {
     /// L'action de l'icône de la barre des menus, donnée la première, reste.
     func testTheFirstInstalledActionIsKept() {
         var log: [String] = []
-        let opener = SettingsOpener(activate: {})
+        let opener = SettingsOpener(activate: {}, bringToFront: {})
         opener.install { log.append("icône") }
         opener.install { log.append("autre vue") }
         opener.open()
@@ -25,7 +25,7 @@ final class SettingsOpenerTests: XCTestCase {
 
     func testARequestBeforeTheActionWaitsForIt() {
         var log: [String] = []
-        let opener = SettingsOpener(activate: { log.append("active") })
+        let opener = SettingsOpener(activate: { log.append("active") }, bringToFront: {})
         opener.open()
         XCTAssertEqual(log, ["active"])
         opener.install { log.append("réglages") }

@@ -254,6 +254,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 panel.reloadReading()
             }
         }
+        installDictation()
         // Les raccourcis d'abord : l'alerte d'accessibilité bloque (runModal).
         installShortcuts()
         LoginItem.enableOnFirstLaunch()
@@ -392,6 +393,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task { @MainActor in await self.readSelection() }
         }
         installToggleShortcut()
+        if dictation != nil {
+            KeyboardShortcuts.onKeyUp(for: .dictate) { [unowned self] in self.dictation?.toggle() }
+            // Échap n'est pris que pendant la dictée (`DictationWindow`).
+            KeyboardShortcuts.onKeyDown(for: .cancelDictation) { [unowned self] in self.dictation?.cancel() }
+            KeyboardShortcuts.disable(.cancelDictation)
+            // Une touche seule (Option droite par défaut) : un appui bref ouvre
+            // la dictée, un second saisit.
+            modifierTap = ModifierTapMonitor { [unowned self] in self.dictation?.toggle() }
+        }
+    }
+
+    /// La dictée (macOS 26) : ⌃⌥D ouvre la fenêtre et le micro, ⌃⌥D saisit
+    /// le texte dans le champ qui a le focus. La lecture se met en pause : le
+    /// micro entendrait la voix.
+    private(set) var dictation: DictationController?
+    private var dictationWindow: DictationWindow?
+    private var dictationTargetObserver: NSObjectProtocol?
+    private var modifierTap: ModifierTapMonitor?
+
+    private func installDictation() {
+        guard let engine = Dictation.makeEngine() else { return }
+        let controller = DictationController(engine: engine,
+                                             insert: { await TextInserter.system().insert($0) })
+        // La pause part toujours : le moteur l'ignore voix au repos, et
+        // l'instantané peut être en retard (rien n'est relu en arrière-plan).
+        controller.willStart = { [weak model] in model?.send(.pause) }
+        // L'icône de la pilule suit l'application où le texte ira.
+        dictationTargetObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
+        ) { [weak controller] _ in
+            MainActor.assumeIsolated { controller?.targetMayHaveChanged() }
+        }
+        let window = DictationWindow(controller: controller)
+        controller.presenter = window
+        dictation = controller
+        dictationWindow = window
+        services.dictation = controller
     }
 
     /// ⌃⌥S : afficher le lecteur dans sa dernière taille, ou le masquer.

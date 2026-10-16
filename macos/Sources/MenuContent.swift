@@ -1,7 +1,7 @@
 import KeyboardShortcuts
 import SwiftUI
 
-/// Le menu de la barre des menus : cinq lignes, plus l'autorisation
+/// Le menu de la barre des menus : cinq lignes (sept avec la dictée), plus l'autorisation
 /// d'accessibilité tant qu'elle manque.
 struct MenuContent: View {
     /// Avant la fin du lancement et en mode mesure, ni modèle ni panneau :
@@ -13,6 +13,13 @@ struct MenuContent: View {
             Task { @MainActor in await app.readSelection() }
         }
         .globalKeyboardShortcut(.readSelection)
+        if let dictation = app.dictation {
+            Button("Dicter") { dictation.toggle() }
+                .globalKeyboardShortcut(.dictate)
+            // La saisie est partie au mauvais endroit : le texte se reprend ici.
+            Button("Copier la dernière dictée") { dictation.copyLast() }
+                .disabled(dictation.lastText == nil)
+        }
         Button("Ouvrir un fichier…") { app.chooseFile() }
             .keyboardShortcut("o")
         // Toujours là : de quoi revenir au lecteur.
@@ -26,7 +33,9 @@ struct MenuContent: View {
             }
         }
         Divider()
-        SettingsLink { Text("Réglages…") }
+        // Pas de `SettingsLink` : il ouvre la fenêtre sans mettre sillon au
+        // premier plan, et elle s'ouvre derrière l'application active.
+        Button("Réglages…") { SettingsOpener.shared.open() }
             .keyboardShortcut(",")
         Button("Quitter sillon") { NSApp.terminate(nil) }
             .keyboardShortcut("q")

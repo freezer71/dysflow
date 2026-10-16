@@ -1,7 +1,8 @@
 import SwiftUI
 
 /// La fenêtre des réglages : une seule page — Voix, Lecture, Raccourcis,
-/// Démarrage. Le nom `SettingsView` est pris par l'enregistrement du moteur.
+/// Dictée (macOS 26), Autorisations, Démarrage. Le nom `SettingsView` est
+/// pris par l'enregistrement du moteur.
 struct ReglagesView: View {
     let model: ReaderModel
     @State private var store: SettingsStore
@@ -28,6 +29,8 @@ struct ReglagesView: View {
                              onChange: { await reloadModels() })
                 ReadingSection(store: store)
                 ShortcutsSection()
+                if Dictation.isSupported { DictationSection() }
+                PermissionsSection()
                 StartupSection()
             }
             // En bas, discret : l'état de la voix si elle n'est pas prête.
@@ -40,7 +43,7 @@ struct ReglagesView: View {
         .ignoresSafeArea()
         .modifier(HiddenWindowToolbar())
         .navigationTitle("Réglages")
-        .frame(width: 620, height: 680)
+        .frame(width: 660, height: 700)
         .font(Typo.body)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("page-reglages")

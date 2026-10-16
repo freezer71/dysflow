@@ -53,7 +53,8 @@ struct VoiceSection: View {
                             .disabled(!(model.snapshot.preview.pending || model.snapshot.preview.playing))
                             .accessibilityLabel("Arrêter l'écoute")
                     }
-                    .padding(.vertical, 4)
+                    .padding(.vertical, 6)
+                    .padding(.horizontal, 16)
                 }
                 if store.capabilities.family == "system" {
                     Link("Ajouter des voix dans Réglages Système…",
@@ -207,17 +208,94 @@ struct ShortcutsSection: View {
     static let voiceOverNote = "⌃⌥ est aussi la touche de VoiceOver : avec VoiceOver actif, choisissez d'autres touches."
 
     var body: some View {
-        SettingsGroup(title: "Raccourcis") {
-            ForEach(Self.rows, id: \.identifier) { row in
-                SettingRow(title: row.title, detail: row.detail) {
-                    KeyboardShortcuts.Recorder(for: row.name)
-                        .frame(width: 150)
-                        .accessibilityLabel(row.title)
-                        .accessibilityIdentifier(row.identifier)
+        VStack(alignment: .leading, spacing: 0) {
+            SettingsGroup(title: "Raccourcis") {
+                ForEach(Self.rows, id: \.identifier) { row in
+                    SettingRow(title: row.title, detail: row.detail) {
+                        KeyboardShortcuts.Recorder(for: row.name)
+                            .frame(width: 150)
+                            .accessibilityLabel(row.title)
+                            .accessibilityIdentifier(row.identifier)
+                    }
                 }
             }
             Callout(symbol: "info.circle", text: Self.voiceOverNote, identifier: "raccourcis-note-voiceover")
         }
+    }
+}
+
+/// La dictée (macOS 26) : son raccourci et sa langue.
+struct DictationSection: View {
+    @AppStorage(DictationLanguage.defaultsKey) private var language = DictationLanguage.stored().rawValue
+    @AppStorage(DictationModifier.defaultsKey) private var modifier = DictationModifier.stored().rawValue
+
+    static let options = DictationLanguage.allCases.map { (title: $0.label, value: $0.rawValue) }
+    static let modifierOptions = DictationModifier.allCases.map { (title: $0.label, value: $0.rawValue) }
+
+    var body: some View {
+        SettingsGroup(title: "Dictée") {
+            SettingRow(title: "Dicter",
+                       detail: "Un appui ouvre la dictée, un second saisit le texte là où vous écrivez ; Échap annule") {
+                KeyboardShortcuts.Recorder(for: .dictate)
+                    .frame(width: 150)
+                    .accessibilityLabel("Dicter")
+                    .accessibilityIdentifier("raccourci-dictee")
+            }
+            SettingRow(title: "Touche seule",
+                       detail: "Un appui bref, sans autre touche : comme le raccourci (il faut l'Accessibilité)") {
+                PopUpPicker(label: "Touche seule pour dicter", identifier: "touche-dictee",
+                            options: Self.modifierOptions, selection: $modifier)
+                    .fixedSize()
+            }
+            SettingRow(title: "Langue", detail: "Reconnue sur votre Mac : rien n'en sort") {
+                PopUpPicker(label: "Langue de la dictée", identifier: "langue-dictee",
+                            options: Self.options, selection: $language)
+                    .fixedSize()
+            }
+        }
+    }
+}
+
+/// Les autorisations de macOS : leur état, et de quoi les demander. macOS
+/// ne prévient pas d'un changement : l'état se relit chaque seconde, tant
+/// que la fenêtre est ouverte.
+struct PermissionsSection: View {
+    @State private var states: [Permission: Permission.State] = [:]
+
+    var body: some View {
+        SettingsGroup(title: "Autorisations") {
+            ForEach(Permission.relevant, id: \.self) { permission in
+                SettingRow(title: permission.title, detail: permission.detail) {
+                    if states[permission] == .granted {
+                        Tag(text: "Autorisé", tint: .green)
+                            .accessibilityIdentifier(permission.identifier)
+                    } else {
+                        Button(states[permission] == .denied ? "Ouvrir les réglages…" : "Autoriser…") {
+                            Task {
+                                await permission.request()
+                                reload()
+                            }
+                        }
+                        .buttonStyle(.notionPrimary)
+                        .accessibilityLabel("Autoriser : \(permission.title)")
+                        .accessibilityIdentifier(permission.identifier)
+                    }
+                }
+            }
+        }
+        // S'arrête avec la fenêtre (la tâche est annulée à sa disparition).
+        .task {
+            while !Task.isCancelled {
+                reload()
+                try? await Task.sleep(for: .seconds(1))
+            }
+        }
+    }
+
+    private func reload() {
+        var next: [Permission: Permission.State] = [:]
+        for permission in Permission.relevant { next[permission] = permission.state }
+        if next != states { states = next }
     }
 }
 

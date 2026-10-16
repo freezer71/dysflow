@@ -7,6 +7,8 @@ extension KeyboardShortcuts.Name {
     static let readSelection = Self("readSelection", default: .init(.space, modifiers: [.control, .option]))
     /// Afficher le lecteur dans sa dernière taille, ou le masquer.
     static let showPanel = Self("showPanel", default: .init(.s, modifiers: [.control, .option]))
+    /// Ouvrir la dictée, puis saisir ce qui a été dit.
+    static let dictate = Self("dictate", default: .init(.d, modifiers: [.control, .option]))
 }
 
 /// « Ouvrir à la connexion », activé au premier lancement.
