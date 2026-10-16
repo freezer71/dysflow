@@ -29,6 +29,10 @@ pub struct AppConfig {
     pub keep_voice_minutes: i64,
     /// Migrations de voix déjà faites ou refusées (1 : le passage à Kokoro).
     pub voice_migration: u32,
+    /// Une voix pour toutes les langues : l'unification de Kokoro, faite une
+    /// fois au lancement de l'app (une voix anglaise choisie plus tard dans le
+    /// terminal n'est plus réécrite).
+    pub single_voice: bool,
     /// La sortie audio, par son nom ; vide : celle du système, qui suit
     /// macOS. Choisie, le son n'en sort jamais : retirée, la lecture se met
     /// en pause au lieu de passer aux haut-parleurs.
@@ -37,7 +41,7 @@ pub struct AppConfig {
 
 impl Default for AppConfig {
     fn default() -> Self {
-        Self { keep_voice_minutes: 10, voice_migration: 0, output_device: String::new() }
+        Self { keep_voice_minutes: 10, voice_migration: 0, single_voice: false, output_device: String::new() }
     }
 }
 
@@ -481,19 +485,21 @@ mod tests {
         assert_eq!(config.voice.per_language["fr"], "F1");
     }
 
-    /// Les voix Kokoro retirées du catalogue le 14 oct. 2026 (`ff_siwis`,
-    /// `bf_emma`…) parlent avec la voix recommandée de leur langue. Le
-    /// fichier n'est pas réécrit, et le passage à Kokoro ne les remplace pas.
+    /// Une voix Kokoro inconnue du catalogue parle avec la voix recommandée de
+    /// sa langue. Le fichier n'est pas réécrit, et le passage à Kokoro ne la
+    /// remplace pas. Les voix du paquet, elles, parlent toutes les langues.
     #[test]
-    fn a_retired_kokoro_voice_speaks_with_the_recommended_one() {
+    fn an_unknown_kokoro_voice_speaks_with_the_recommended_one() {
         let mut config = Config::default();
         config.engine.family = "kokoro".into();
-        config.voice.per_language.insert("fr".into(), "ff_siwis".into());
+        config.voice.per_language.insert("fr".into(), "voix-disparue".into());
         config.voice.per_language.insert("en".into(), "bf_emma".into());
         assert!(!config.align_voice_with_family(), "rien à réécrire");
         assert_eq!(config.tts_params_in("fr").voice, "p-fenrir60");
+        assert_eq!(config.tts_params_in("en").voice, "bf_emma", "une voix du paquet lit toute langue");
+        config.voice.per_language.insert("en".into(), "voix-disparue".into());
         assert_eq!(config.tts_params_in("en").voice, "af_bella");
-        assert_eq!(config.voice.per_language["en"], "bf_emma", "la valeur reste dans le fichier");
+        assert_eq!(config.voice.per_language["en"], "voix-disparue", "la valeur reste dans le fichier");
     }
 
     #[test]

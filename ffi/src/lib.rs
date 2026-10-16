@@ -413,6 +413,9 @@ pub struct SettingsPatch {
     pub output_device: Option<String>,
     /// La voix d'une langue (Kokoro : une voix par langue).
     pub voice_for_language: Option<LanguageVoice>,
+    /// Une voix pour toutes les langues du modèle (Kokoro). Défaut `nil`.
+    #[uniffi(default = None)]
+    pub family_voice: Option<String>,
     /// La police du texte. Défaut `nil` côté Swift : les appels existants
     /// de `SettingsPatch(…)` restent valides.
     #[uniffi(default = None)]
@@ -454,6 +457,11 @@ pub struct VoiceModel {
     pub pace: String,
     pub voices_label: String,
     pub licenses: String,
+    pub kind: String,
+    pub disk_bytes: u64,
+    pub system: bool,
+    /// Des fichiers du paquet sont sur le disque, même incomplets.
+    pub has_files: bool,
 }
 
 #[derive(uniffi::Object)]
@@ -573,6 +581,9 @@ impl SillonReader {
     }
 
     pub fn capabilities(&self) -> ModelCapabilities {
+        // Les voix de macOS se relisent ici, hors du fil du lecteur : une
+        // voix ajoutée dans Réglages Système apparaît sans relancer l'app.
+        sillon::tts::system_voices::refresh_system_voices();
         self.handle
             .ask(|reader| {
                 let c = reader.capabilities();
@@ -616,10 +627,19 @@ impl SillonReader {
                         pace: v.pace,
                         voices_label: v.voices_label,
                         licenses: v.licenses,
+                        kind: v.kind,
+                        disk_bytes: v.disk_bytes,
+                        system: v.system,
+                        has_files: v.has_files,
                     })
                     .collect()
             })
             .unwrap_or_default()
+    }
+
+    /// Octets occupés par les modèles que l'app sait charger.
+    pub fn models_disk_usage(&self) -> u64 {
+        sillon::models::available_with(true).into_iter().map(sillon::models::installed_bytes).sum()
     }
 
     pub fn install_voice(&self, id: String) -> Result<(), SillonError> {
@@ -826,6 +846,7 @@ fn patch_from(p: SettingsPatch) -> settings::SettingsPatch {
         keep_voice_minutes: p.keep_voice_minutes,
         output_device: p.output_device,
         voice_for_language: p.voice_for_language.map(|v| (v.language, v.voice)),
+        family_voice: p.family_voice,
         reading_font: p.reading_font,
         reading_size: p.reading_size,
     }

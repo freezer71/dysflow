@@ -107,6 +107,8 @@ pub struct SettingsPatch {
     pub output_device: Option<String>,
     /// La voix d'une langue : `("en", "am_fenrir")`.
     pub voice_for_language: Option<(String, String)>,
+    /// Une voix pour toutes les langues du modèle (Kokoro).
+    pub family_voice: Option<String>,
     pub reading_font: Option<String>,
     pub reading_size: Option<f32>,
 }
@@ -141,6 +143,11 @@ impl SettingsPatch {
         set(&mut c.reading.size, &self.reading_size);
         if let Some((language, voice)) = &self.voice_for_language {
             c.voice.per_language.insert(language.clone(), voice.clone());
+        }
+        if let Some(voice) = &self.family_voice {
+            for language in ["fr", "en"] {
+                c.voice.per_language.insert(language.to_string(), voice.clone());
+            }
         }
     }
 }
@@ -225,6 +232,15 @@ pub struct VoiceModel {
     pub voices_label: String,
     /// Les licences, pour la fiche.
     pub licenses: String,
+    /// `speech` (lecture) ou `dictation`.
+    pub kind: String,
+    /// Octets réellement sur le disque (0 si rien).
+    pub disk_bytes: u64,
+    /// Ligne du système (voix de macOS) : jamais téléchargée ni supprimée.
+    pub system: bool,
+    /// Des fichiers du paquet sont sur le disque, même incomplets (un
+    /// téléchargement annulé) : de quoi proposer « Supprimer ».
+    pub has_files: bool,
 }
 
 /// Une voix intégrée du modèle actif.
@@ -246,14 +262,41 @@ pub struct ModelCapabilities {
     pub honoured: Vec<String>,
 }
 
-/// Décrit un paquet ; `active_path` est le chemin du modèle en place.
-pub fn voice_model(p: &models::ModelPackage, active_path: &str) -> VoiceModel {
+/// La ligne de la voix de macOS : toujours là, jamais téléchargée.
+fn system_voice_row(active: bool) -> VoiceModel {
+    VoiceModel {
+        id: "system".into(),
+        name: "Voix de macOS".into(),
+        bytes: 0,
+        installed: true,
+        active,
+        recommended: false,
+        summary: "Les voix installées sur ce Mac (Réglages Système › Accessibilité › Contenu énoncé).".into(),
+        family: "system".into(),
+        precision: String::new(),
+        languages_label: "Selon les voix installées".into(),
+        languages: vec!["fr".into(), "en".into()],
+        pace: "Immédiate".into(),
+        voices_label: String::new(),
+        licenses: "Apple".into(),
+        kind: "speech".into(),
+        disk_bytes: 0,
+        system: true,
+        has_files: false,
+    }
+}
+
+/// Décrit un paquet ; `active_path` est le chemin du modèle en place, et
+/// `system_chosen` dit que la voix de macOS a la main (aucun paquet n'est
+/// alors actif).
+pub fn voice_model(p: &models::ModelPackage, active_path: &str, system_chosen: bool) -> VoiceModel {
     VoiceModel {
         id: p.id.to_string(),
         name: p.display_name.to_string(),
         bytes: p.total_bytes(),
         installed: models::is_installed(p),
-        active: !active_path.is_empty()
+        active: !system_chosen
+            && !active_path.is_empty()
             && models::install_path(p).is_some_and(|path| path.to_string_lossy() == active_path),
         recommended: p.recommended,
         summary: p.description.to_string(),
@@ -264,6 +307,14 @@ pub fn voice_model(p: &models::ModelPackage, active_path: &str) -> VoiceModel {
         pace: p.pace.to_string(),
         voices_label: p.voices_label.to_string(),
         licenses: p.licenses.to_string(),
+        kind: match p.kind {
+            models::Kind::Speech => "speech",
+            models::Kind::Dictation => "dictation",
+        }
+        .into(),
+        disk_bytes: models::installed_bytes(p),
+        system: false,
+        has_files: models::has_files(p),
     }
 }
 
@@ -391,12 +442,32 @@ impl Reader {
     }
 
     pub fn voices(&self) -> Vec<VoiceModel> {
-        let active = self.current_config().engine.model_path.clone();
-        models::available_with(self.mlx).into_iter().map(|p| voice_model(p, &active)).collect()
+        let config = self.current_config();
+        let system = config.engine_preference() == crate::tts::EnginePreference::System;
+        let active = config.engine.model_path.clone();
+        std::iter::once(system_voice_row(system))
+            .chain(models::available_with(self.mlx).into_iter().map(|p| voice_model(p, &active, system)))
+            .collect()
     }
 
     pub fn capabilities(&self) -> ModelCapabilities {
-        let family = self.current_config().engine.family.clone();
+        let config = self.current_config();
+        if config.engine_preference() == crate::tts::EnginePreference::System {
+            return ModelCapabilities {
+                family: "system".to_string(),
+                voices: crate::tts::system_voices::system_voices()
+                    .iter()
+                    .map(|v| VoiceChoice {
+                        id: v.name.clone(),
+                        label: format!("{} · {}", v.name, v.locale),
+                        language: v.language().to_string(),
+                    })
+                    .collect(),
+                languages: vec!["fr".into(), "en".into()],
+                honoured: vec!["voice".into()],
+            };
+        }
+        let family = config.engine.family.clone();
         ModelCapabilities {
             voices: models::voices_for_family(&family)
                 .iter()
@@ -424,13 +495,37 @@ impl Reader {
     /// Change de modèle : la voix se recharge en place, au même endroit du
     /// texte, et la lecture reprend si elle tournait.
     pub fn use_voice(&mut self, id: &str, now: Instant) -> Result<()> {
+        if id == "system" {
+            // Choisir macOS répond à la proposition de Kokoro : plus de
+            // proposition, plus de passage qui attendrait la fin d'un
+            // téléchargement, et la réponse est retenue (rien ne se
+            // retélécharge au lancement suivant).
+            let offered = self.offer.take().is_some();
+            let waiting = self.switch_when_downloaded.take().is_some();
+            if offered || waiting {
+                self.record_migration();
+            }
+            self.sync_config();
+            if self.config.engine_preference() == crate::tts::EnginePreference::System {
+                return Ok(());
+            }
+            self.config.engine.engine = "system".to_string();
+            if let Some(app) = self.session.as_mut() {
+                app.config = self.config.clone();
+            }
+            self.reload_voice(now);
+            return self.save_config();
+        }
         let package = self.package(id)?;
         let path = models::install_path(package)
             .filter(|_| models::is_installed(package))
             .ok_or_else(|| anyhow!("voix non installée : {id}"))?;
         self.sync_config();
         // Déjà la voix active : rien à recharger.
-        if models::is_active_path(&self.config.engine.model_path, &path) && self.config.engine.family == package.family {
+        if models::is_active_path(&self.config.engine.model_path, &path)
+            && self.config.engine.family == package.family
+            && self.config.engine_preference() != crate::tts::EnginePreference::System
+        {
             return Ok(());
         }
         self.switch_voice_config(&path.to_string_lossy(), package.family);
@@ -448,7 +543,12 @@ impl Reader {
     fn switch_voice_config(&mut self, model_path: &str, family: &str) {
         self.config.engine.model_path = model_path.to_string();
         self.config.engine.family = family.to_string();
+        self.config.engine.engine = "auto".to_string();
         self.config.align_voice_with_family();
+        // Choisir Kokoro dans l'app donne une seule voix aux deux langues.
+        if self.config.unify_voices() {
+            self.config.app.single_voice = true;
+        }
     }
 
     pub fn download(&self) -> Option<DownloadView> {
@@ -568,6 +668,23 @@ impl Place {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn switching_to_kokoro_gives_both_languages_one_voice() {
+        let mut r = reader_on("");
+        r.switch_voice_config("/m/kokoro", "kokoro");
+        let c = r.config();
+        assert_eq!(c.voice.per_language["fr"], "p-fenrir60");
+        assert_eq!(c.voice.per_language["fr"], c.voice.per_language["en"]);
+    }
+
+    #[test]
+    fn one_voice_for_every_language() {
+        let mut c = Config::default();
+        SettingsPatch { family_voice: Some("am_fenrir".into()), ..Default::default() }.write_into(&mut c);
+        assert_eq!(c.voice.per_language["fr"], "am_fenrir");
+        assert_eq!(c.voice.per_language["en"], "am_fenrir");
+    }
+
     use super::*;
     use crate::sync::LockExt;
 
@@ -581,6 +698,16 @@ mod tests {
             Box::new(|_: &str| Player::silent()),
             Instant::now(),
         )
+    }
+
+    #[test]
+    fn the_system_voice_comes_first_and_is_active_when_chosen() {
+        let mut r = reader_on("");
+        r.use_voice("system", Instant::now()).unwrap();
+        let rows = r.voices();
+        assert_eq!(rows[0].id, "system");
+        assert!(rows[0].installed && rows[0].active && rows[0].system);
+        assert!(rows.iter().skip(1).all(|row| !row.active));
     }
 
     #[test]
@@ -599,9 +726,27 @@ mod tests {
     }
 
     #[test]
+    fn the_system_voice_offers_the_voices_of_the_mac() {
+        let mut config = Config::default();
+        config.reading.autoplay = false;
+        config.engine.engine = "system".into();
+        let r = Reader::new(
+            config,
+            Box::new(|_| Arc::new(SilentEngine) as Arc<dyn TtsEngine>),
+            Box::new(|_: &str| Player::silent()),
+            Instant::now(),
+        );
+        let caps = r.capabilities();
+        assert_eq!(caps.family, "system");
+        assert_eq!(caps.honoured, ["voice"]);
+        assert_eq!(caps.languages, ["fr", "en"]);
+        assert!(caps.voices.iter().all(|v| matches!(v.language.as_str(), "fr" | "en")));
+    }
+
+    #[test]
     fn kokoro_lists_its_voices_with_their_language() {
         let caps = reader_on("kokoro").capabilities();
-        assert_eq!(caps.voices.len(), 4);
+        assert_eq!(caps.voices.len(), 30);
         assert_eq!(caps.voices[0], VoiceChoice {
             id: "p-fenrir60".into(),
             label: "p-fenrir60 · française, recommandée".into(),
@@ -628,7 +773,7 @@ mod tests {
     #[test]
     fn every_catalog_entry_describes_itself() {
         for package in crate::models::CATALOG {
-            let v = voice_model(package, "");
+            let v = voice_model(package, "", false);
             assert_eq!(v.id, package.id);
             assert_eq!(v.summary, package.description);
             assert_eq!(v.family, package.family);
@@ -640,7 +785,7 @@ mod tests {
         }
         let first = &crate::models::CATALOG[0];
         if let Some(path) = crate::models::install_path(first) {
-            assert!(voice_model(first, &path.to_string_lossy()).active);
+            assert!(voice_model(first, &path.to_string_lossy(), false).active);
         }
     }
     use crate::audio::Player;
@@ -712,6 +857,7 @@ mod tests {
             keep_voice_minutes: Some(30),
             output_device: Some("Casque".into()),
             voice_for_language: Some(("en".into(), "am_fenrir".into())),
+            family_voice: None,
             reading_font: Some("atkinson".into()),
             reading_size: Some(30.0),
         };
@@ -1077,7 +1223,7 @@ mod tests {
         let mut ids: Vec<_> = voices.iter().map(|v| v.id.clone()).collect();
         ids.dedup();
         assert_eq!(ids.len(), voices.len());
-        assert_eq!(voices.len(), crate::models::available().len());
+        assert_eq!(voices.len(), crate::models::available().len() + 1, "le catalogue et la ligne du système");
     }
 
     #[test]

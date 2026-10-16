@@ -1070,3 +1070,19 @@ final class ModelsUITests: XCTestCase {
 - [ ] **Step 3 :** pousser la branche et lire la CI (tests Swift unitaires et UI) — ou, si l'utilisateur ne veut pas pousser, lui demander de lancer les tests sur la CI ; ne jamais lancer `xcodebuild test` en local.
 - [ ] **Step 4 :** construire l'app (`./scripts/build-macos.sh`) et faire vérifier par l'utilisateur, à la main : choisir la voix de macOS, choisir une voix, Écouter ; revenir à Kokoro ; choisir `am_fenrir`, ouvrir un texte français (accent attendu) ; supprimer Kokoro en cours d'usage (confirmation, passage à macOS), relancer l'app : **Kokoro ne se retélécharge pas** ; le retélécharger depuis la table, l'annuler, le reprendre.
 - [ ] **Step 5 :** mettre à jour la mémoire `voix-retenues` (une voix pour tout, 30 voix Kokoro) et commit final si des corrections ont été faites.
+
+---
+
+## Bilan d'exécution (16 oct. 2026)
+
+Fait : tâches 1 à 6, relues une à une, puis relecture de toute la branche et une vague de corrections (offre Kokoro qui reprenait la main après un choix de macOS ; téléchargement annulé non supprimable ; « Utilisée » ; message d'échec entier ; tailles à la française ; pas de préchauffage Kokoro sous macOS ; voix du Mac relues).
+
+Décisions prises en cours de route :
+- Pas de table Dictée sur cette branche : la dictée n'est pas encore commitée dans `main`.
+- Lignes en `HStack` à colonnes fixes (une ligne = un élément VoiceOver), pas `Grid`.
+- L'unification des voix se fait une fois au lancement (marqueur `[app] single_voice`) et à chaque passage à Kokoro ; un choix fait ensuite au terminal est respecté.
+- Choisir la voix de macOS dans l'app la choisit aussi pour le terminal (`engine` partagé).
+
+Reporté au lot 2 : `[dictation] model` / `dictationModel` et la table Dictée ; annonce de la progression tous les 25 % ; contrôle de la place libre avant téléchargement ; voix du Mac Premium et Améliorées en tête.
+
+À vérifier à l'œil : la colonne d'action (deux boutons dans 190 pt) ; l'élargir à ~210 pt si ça déborde.

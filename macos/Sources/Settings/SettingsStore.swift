@@ -195,6 +195,16 @@ final class SettingsStore {
         set(\.voicesByLanguage, voices)
     }
 
+    /// Une voix pour toutes les langues (Kokoro) ; pour la voix de macOS, `voice`.
+    func setFamilyVoice(_ voice: String) {
+        if capabilities.family == "system" || capabilities.family.isEmpty {
+            set(\.voice, voice, reloadsVoice: true)
+        } else {
+            set(\.voicesByLanguage, ["fr", "en"].map { LanguageVoice(language: $0, voice: voice) },
+                reloadsVoice: true)
+        }
+    }
+
     /// La phrase d'exemple dans `language`, avec ce qui vient d'être choisi.
     func listen(language: String) async {
         previewError.clear()

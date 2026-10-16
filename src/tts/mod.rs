@@ -8,6 +8,7 @@ pub mod pool;
 pub mod preview;
 pub mod silent;
 pub mod system;
+pub mod system_voices;
 
 
 pub use pool::{SynthesisStats, Synthesizer};

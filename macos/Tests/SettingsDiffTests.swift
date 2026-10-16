@@ -68,6 +68,20 @@ final class SettingsDiffTests: XCTestCase {
         XCTAssertTrue(SettingsDiff.patches(from: new, to: new).isEmpty)
     }
 
+    /// Les deux langues qui prennent la même voix : un seul champ, un seul patch.
+    func testTheSameVoiceForAllLanguagesIsAFamilyVoice() {
+        var old = SettingsView.defaults
+        old.voicesByLanguage = [LanguageVoice(language: "fr", voice: "ff_siwis"),
+                                LanguageVoice(language: "en", voice: "am_fenrir")]
+        var new = old
+        new.voicesByLanguage = [LanguageVoice(language: "fr", voice: "p-fenrir60"),
+                                LanguageVoice(language: "en", voice: "p-fenrir60")]
+        let patches = SettingsDiff.patches(from: old, to: new)
+        XCTAssertEqual(patches.count, 1)
+        XCTAssertEqual(patches.first?.familyVoice, "p-fenrir60")
+        XCTAssertNil(patches.first?.voiceForLanguage)
+    }
+
     func testFontAndSizeAreSentAlone() {
         let old = SettingsView.defaults
         var new = old

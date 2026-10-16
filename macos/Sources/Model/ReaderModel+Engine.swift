@@ -32,6 +32,36 @@ extension ReaderModel {
         wake()
     }
 
+    // MARK: - Modèles
+
+    /// Les lignes de la table : la voix de macOS, puis le catalogue.
+    func loadModels() async -> [VoiceModel] { await call { $0.voices() } }
+
+    func installModel(_ id: String) async throws {
+        try await tryCall { try $0.installVoice(id: id) }
+        wake()
+    }
+
+    func useModel(_ id: String) async throws {
+        try await tryCall { try $0.useVoice(id: id) }
+        wake()
+        onVoiceMayHaveChanged?()
+    }
+
+    func removeModel(_ id: String) async throws {
+        try await tryCall { try $0.removeModel(id: id) }
+        wake()
+        onVoiceMayHaveChanged?()
+    }
+
+    func cancelDownload() async throws {
+        try await tryCall { try $0.cancelDownload() }
+        wake()
+    }
+
+    func modelsDiskUsage() async -> UInt64 { await call { $0.modelsDiskUsage() } }
+    func freeSpace() async -> UInt64? { await call { $0.freeSpace() } }
+
     // MARK: - Passage à Kokoro, configuration
 
     /// Le passage unique à Kokoro : appelé une fois au lancement. Rend

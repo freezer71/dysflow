@@ -59,9 +59,11 @@ enum KokoroWarmUp {
         return nil
     }
 
-    /// Le dossier du paquet MLX actif ; aucun pour un autre modèle.
+    /// Le dossier du paquet MLX actif ; aucun pour un autre modèle, ni quand
+    /// la voix de macOS a la main (le chemin de Kokoro reste alors écrit).
     static func modelDirectory(settings: SettingsView) -> String? {
-        guard settings.family == "kokoro", settings.modelPath.hasSuffix(".safetensors") else { return nil }
+        guard settings.engine != "system", settings.family == "kokoro",
+              settings.modelPath.hasSuffix(".safetensors") else { return nil }
         return URL(fileURLWithPath: settings.modelPath).deletingLastPathComponent().path
     }
 

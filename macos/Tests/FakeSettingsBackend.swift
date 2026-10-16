@@ -49,6 +49,9 @@ final class FakeSettingsBackend: SettingsBackend {
             stored.voicesByLanguage.removeAll { $0.language == v.language }
             stored.voicesByLanguage.append(v)
         }
+        if let v = patch.familyVoice {
+            stored.voicesByLanguage = ["fr", "en"].map { LanguageVoice(language: $0, voice: v) }
+        }
         return stored
     }
 

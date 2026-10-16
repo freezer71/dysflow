@@ -87,6 +87,17 @@ final class KokoroWarmUpTests: XCTestCase {
         XCTAssertNil(KokoroWarmUp.modelDirectory(settings: settings))
     }
 
+    /// La voix de macOS choisie (ou Kokoro supprimé, qui lui passe la
+    /// main) : le chemin de Kokoro reste dans la configuration, mais rien
+    /// ne se prépare sur Metal.
+    func testNothingIsPreparedOnceTheMacVoiceIsChosen() {
+        var settings = SettingsView.defaults
+        settings.family = "kokoro"
+        settings.modelPath = "/m/kokoro/kokoro-v1_0.safetensors"
+        settings.engine = "system"
+        XCTAssertNil(KokoroWarmUp.modelDirectory(settings: settings))
+    }
+
     func testEspeakIsLookedForInsideTheApp() {
         AppDelegate.exportEspeakLocation(bundle: .main)
         let helper = ProcessInfo.processInfo.environment["SILLON_ESPEAK"] ?? ""

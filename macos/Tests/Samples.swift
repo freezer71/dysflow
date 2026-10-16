@@ -8,7 +8,7 @@ extension VoiceModel {
                    recommended: false, summary: "Rapide et léger.", family: "kokoro",
                    precision: "int8", languagesLabel: "français, anglais",
                    languages: ["fr", "en"], pace: "Lecture fluide.", voicesLabel: "",
-                   licenses: "")
+                   licenses: "", kind: "speech", diskBytes: 0, system: false, hasFiles: installed)
     }
 }
 

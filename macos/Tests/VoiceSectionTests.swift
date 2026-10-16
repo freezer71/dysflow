@@ -3,43 +3,64 @@ import XCTest
 
 @MainActor
 final class VoiceSectionTests: XCTestCase {
-    func testKokoroOffersOneVoicePerLanguage() {
-        let caps = Capabilities.kokoro
-        XCTAssertTrue(VoiceSection.followsLanguage(caps))
-        XCTAssertFalse(VoiceSection.followsLanguage(Capabilities.system))
-        XCTAssertEqual(VoiceSection.voices(caps, language: "fr").map(\.id), ["p-fenrir60"])
-        XCTAssertEqual(VoiceSection.voices(caps, language: "en").map(\.id), ["af_bella", "am_fenrir", "af_heart"])
+    /// Une voix pour tout : celle écrite pour le français vaut pour toutes
+    /// les langues.
+    func testOneVoiceIsShownForEveryLanguage() {
         var values = SettingsView.defaults
-        values.voicesByLanguage = []
-        XCTAssertEqual(VoiceSection.voice(for: "en", in: values, caps), "af_bella", "rien de choisi : la première")
-        values.voicesByLanguage = [LanguageVoice(language: "en", voice: "am_fenrir")]
-        XCTAssertEqual(VoiceSection.voice(for: "en", in: values, caps), "am_fenrir")
+        values.voicesByLanguage = [LanguageVoice(language: "fr", voice: "am_fenrir"),
+                                   LanguageVoice(language: "en", voice: "am_fenrir")]
+        XCTAssertEqual(VoiceSection.voice(in: values, Capabilities.kokoro), "am_fenrir")
     }
 
-    /// Kokoro configuré mais en repli (voix du système) ou indisponible : ni
-    /// ses voix ni ses « Écouter ». Prêt, au repos, en chargement : oui.
-    func testKokoroVoicesShowOnlyWhenKokoroReallySpeaks() {
-        let kokoro = Capabilities.kokoro
-        for state in [VoiceState.ready, .resting, .loading] {
-            XCTAssertTrue(VoiceSection.showsKokoroVoices(kokoro, voice: state), "\(state)")
-        }
-        XCTAssertFalse(VoiceSection.showsKokoroVoices(kokoro, voice: .fallback(reason: "Metal indisponible")))
-        XCTAssertFalse(VoiceSection.showsKokoroVoices(kokoro, voice: .unavailable(reason: "aucune session")))
-        XCTAssertFalse(VoiceSection.showsKokoroVoices(Capabilities.system, voice: .ready), "pas Kokoro")
+    /// Une voix retirée du modèle (ou écrite à la main) se montre comme celle
+    /// que le moteur fait parler : la première du modèle.
+    func testAVoiceGoneFromTheModelFallsBackToItsFirst() {
+        var values = SettingsView.defaults
+        values.voicesByLanguage = [LanguageVoice(language: "fr", voice: "inconnue")]
+        XCTAssertEqual(VoiceSection.voice(in: values, Capabilities.kokoro), "p-fenrir60")
     }
 
-    /// Une voix retirée du catalogue (ou écrite à la main) se montre comme
-    /// celle que le moteur fait parler : la recommandée de sa langue. Le menu
-    /// ne liste que les voix proposées, sans « (hors liste) ».
-    func testARetiredVoiceShowsAsTheRecommendedOne() {
-        let caps = Capabilities.kokoro
+    /// La voix de macOS garde la sienne dans `voice`.
+    func testTheMacVoiceIsReadFromVoice() {
+        let caps = ModelCapabilities(
+            family: "system",
+            voices: [VoiceChoice(id: "Thomas", label: "Thomas · fr_FR", language: "fr"),
+                     VoiceChoice(id: "Samantha", label: "Samantha · en_US", language: "en")],
+            languages: ["fr", "en"], honoured: ["voice"])
         var values = SettingsView.defaults
-        values.voicesByLanguage = [LanguageVoice(language: "en", voice: "bf_emma"),
-                                   LanguageVoice(language: "fr", voice: "ff_siwis")]
-        XCTAssertEqual(VoiceSection.voice(for: "en", in: values, caps), "af_bella")
-        XCTAssertEqual(VoiceSection.voice(for: "fr", in: values, caps), "p-fenrir60")
-        XCTAssertEqual(VoiceSection.voiceOptions(caps, language: "en").map(\.value), ["af_bella", "am_fenrir", "af_heart"])
-        XCTAssertEqual(VoiceSection.voiceOptions(caps, language: "fr").map(\.title), ["p-fenrir60 · française, recommandée"])
+        values.voice = "Samantha"
+        XCTAssertEqual(VoiceSection.voice(in: values, caps), "Samantha")
+        XCTAssertEqual(VoiceSection.language(of: "Samantha", caps), "en", "l'aperçu dans la langue de la voix")
+        XCTAssertEqual(VoiceSection.language(of: "inconnue", caps), "fr")
+    }
+
+    private let macVoices = ModelCapabilities(
+        family: "system",
+        voices: [VoiceChoice(id: "Thomas", label: "Thomas · fr_FR", language: "fr"),
+                 VoiceChoice(id: "Samantha", label: "Samantha · en_US", language: "en")],
+        languages: ["fr", "en"], honoured: ["voice"])
+
+    /// Aucune voix de macOS choisie : le menu dit la voix par défaut (celle
+    /// que `say` prend), pas la première de la liste ; l'aperçu en français.
+    func testNoMacVoiceChosenShowsTheMacDefault() {
+        var values = SettingsView.defaults
+        values.voice = ""
+        XCTAssertEqual(VoiceSection.voice(in: values, macVoices), "")
+        XCTAssertEqual(VoiceSection.language(of: "", macVoices), "fr")
+        XCTAssertEqual(VoiceSection.voiceOptions(macVoices).first?.title, "Voix par défaut de macOS")
+        XCTAssertEqual(VoiceSection.voiceOptions(macVoices).map(\.value), ["", "Thomas", "Samantha"])
+    }
+
+    func testAMacVoiceNotListedShowsTheMacDefault() {
+        var values = SettingsView.defaults
+        values.voice = "Inconnue"
+        XCTAssertEqual(VoiceSection.voice(in: values, macVoices), "")
+    }
+
+    /// Kokoro n'a pas de voix par défaut à part : ses seules voix.
+    func testKokoroOptionsAreItsVoicesOnly() {
+        XCTAssertEqual(VoiceSection.voiceOptions(Capabilities.kokoro).map(\.value),
+                       Capabilities.kokoro.voices.map(\.id))
     }
 
     func testSizesAreWrittenTheFrenchWayInBase1000() {
