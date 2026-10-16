@@ -79,6 +79,26 @@ if [ -z "$(find "$APP_BUILT" -name '*.metallib' | head -1)" ]; then
     echo "Erreur : aucun metallib dans l'app (noyaux MLX)" >&2
     exit 1
 fi
+# Signature. En ad hoc, macOS reconnaît l'app à l'empreinte de son binaire :
+# chaque construction est une app nouvelle, et l'Accessibilité et le micro
+# accordés ne valent plus. Signée d'un certificat, l'app est reconnue par
+# son identifiant et ce certificat : ses autorisations restent. Le
+# certificat : $SILLON_SIGNATURE, sinon la première ligne de
+# .sillon-signature (hors du dépôt : propre à chaque Mac), sinon ad hoc.
+SIGNATURE=${SILLON_SIGNATURE:-}
+if [ -z "$SIGNATURE" ] && [ -f .sillon-signature ]; then
+    SIGNATURE=$(head -1 .sillon-signature)
+fi
+if [ -n "$SIGNATURE" ]; then
+    # Du plus profond au plus haut : l'aide, le framework, puis l'app.
+    codesign --force --sign "$SIGNATURE" "$APP_BUILT/Contents/Helpers/sillon-espeak"
+    codesign --force --sign "$SIGNATURE" "$APP_BUILT/Contents/Frameworks/KokoroMLX.framework"
+    codesign --force --sign "$SIGNATURE" "$APP_BUILT"
+    codesign --verify --deep --strict "$APP_BUILT"
+    echo "Signée : $(codesign -dvv "$APP_BUILT" 2>&1 | sed -n 's/^Authority=//p' | head -1)"
+else
+    echo "Avertissement : signature ad hoc — macOS oubliera l'Accessibilité et le micro à chaque construction (SILLON_SIGNATURE ou .sillon-signature)" >&2
+fi
 echo "--- taille de l'app ---"
 du -sh "$APP_BUILT"
 find "$APP_BUILT" -name '*.metallib' -exec du -h {} +
