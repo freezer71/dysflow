@@ -19,10 +19,46 @@ final class MicrophoneCapture: @unchecked Sendable {
     private var audio: AVAudioEngine?
     private let buffer = OSAllocatedUnfairLock(initialState: Buffer())
 
+    /// L'audio par morceaux d'une seconde au plus. Le fil audio n'ajoute
+    /// qu'au dernier morceau : jamais de copie de tout le tampon sous le
+    /// verrou, même quand une lecture vient d'en prendre une image (au pire,
+    /// le dernier morceau, une seconde, est recopié).
     private struct Buffer {
-        var samples: [Float] = []
+        static let chunk = 16_000
+        var chunks: [[Float]] = []
+        var count = 0
         /// Ce que `drain` a déjà rendu.
         var drained = 0
+
+        mutating func append(_ samples: UnsafeBufferPointer<Float>) {
+            var rest = samples[...]
+            while !rest.isEmpty {
+                if chunks.isEmpty || chunks[chunks.count - 1].count >= Self.chunk {
+                    var fresh: [Float] = []
+                    fresh.reserveCapacity(Self.chunk)
+                    chunks.append(fresh)
+                }
+                let room = Self.chunk - chunks[chunks.count - 1].count
+                let part = rest.prefix(room)
+                chunks[chunks.count - 1].append(contentsOf: part)
+                rest = rest.dropFirst(part.count)
+            }
+            count += samples.count
+        }
+
+        /// À partir de `start`, à plat. Hors du verrou : une image des
+        /// morceaux (des références) suffit.
+        static func flatten(_ chunks: [[Float]], from start: Int) -> [Float] {
+            var out: [Float] = []
+            out.reserveCapacity(max(0, chunks.reduce(0) { $0 + $1.count } - start))
+            var skip = start
+            for chunk in chunks {
+                if skip >= chunk.count { skip -= chunk.count; continue }
+                out.append(contentsOf: chunk[skip...])
+                skip = 0
+            }
+            return out
+        }
     }
 
     init(spectrum: @escaping @Sendable ([[Float]]) -> Void) {
@@ -42,7 +78,7 @@ final class MicrophoneCapture: @unchecked Sendable {
         let natural = node.outputFormat(forBus: 0)
         guard natural.sampleRate > 0, natural.channelCount > 0 else { throw DictationError.noMicrophone }
         guard let tap = MicrophoneTap(from: natural, spectrum: spectrum, append: { [buffer] converted in
-            buffer.withLock { $0.samples.append(contentsOf: converted) }
+            buffer.withLock { $0.append(converted) }
         }) else { throw DictationError.failed("format audio non pris en charge") }
         let sink = AVAudioSinkNode(receiverBlock: tap.receiver())
         audio.attach(sink)
@@ -64,17 +100,17 @@ final class MicrophoneCapture: @unchecked Sendable {
 
     /// Tout l'audio depuis `start` (une copie).
     func samples() -> [Float] {
-        buffer.withLock { $0.samples }
+        Buffer.flatten(buffer.withLock { $0.chunks }, from: 0)
     }
 
     /// Ce qui est arrivé depuis le dernier `drain` (depuis `start` la
     /// première fois).
     func drain() -> [Float] {
-        buffer.withLock { state in
-            let fresh = Array(state.samples[state.drained...])
-            state.drained = state.samples.count
-            return fresh
+        let (chunks, start) = buffer.withLock { state in
+            defer { state.drained = state.count }
+            return (state.chunks, state.drained)
         }
+        return Buffer.flatten(chunks, from: start)
     }
 }
 

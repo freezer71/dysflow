@@ -69,12 +69,23 @@ final class SpeechModelRunner: @unchecked Sendable {
     /// `samples` : 16 kHz mono. Échoue si aucun modèle n'est chargé
     /// (`prepare` d'abord, ou libéré entre-temps).
     func transcribe(_ samples: [Float], language: String) async throws -> String {
+        try await withModel { try $0.transcribe(samples, language: language) }
+    }
+
+    /// `body` sur le modèle chargé, sous `gate`, hors du fil principal : pour
+    /// ce que `transcribe` ne dit pas (un modèle qui transcrit au fil de
+    /// l'eau). Échoue si aucun modèle n'est chargé ; repousse la libération
+    /// comme `transcribe`. `body` ne garde pas le modèle au-delà de l'appel.
+    ///
+    /// Annuler la tâche appelante n'interrompt pas un travail déjà parti
+    /// (`Task.detached`) : il va au bout, et le verrou avec.
+    func withModel<T: Sendable>(_ body: @escaping @Sendable (LoadedSpeechModel) throws -> T) async throws -> T {
         touch()
         defer { touch() }
         return try await Task.detached(priority: .userInitiated) { [self] in
             try gate.run {
                 guard let model else { throw DictationError.failed("aucun modèle de dictée chargé") }
-                return try model.transcribe(samples, language: language)
+                return try body(model)
             }
         }.value
     }
