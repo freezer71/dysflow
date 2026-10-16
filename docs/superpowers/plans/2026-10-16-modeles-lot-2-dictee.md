@@ -511,3 +511,21 @@ func testPremiumMacVoicesComeFirst() {
 - [ ] **Step 2 :** construire l'app (`./scripts/build-macos.sh`) ; l'utilisateur, à la main : télécharger Whisper tiny (23 Mo), le choisir, dicter une phrase en français (texte provisoire qui se met à jour, puis saisi) ; Parakeet v3 (2,5 Go) idem ; dicter pendant que Kokoro vient de lire (pas de plantage) ; supprimer le modèle choisi → la dictée suivante passe à macOS avec le message ; Voxtral si la place le permet.
 - [ ] **Step 3 :** relever pour le lot 4 le temps de chargement et d'une relecture de 10 s de parole par modèle (journal `os.Logger` catégorie `dictee`).
 - [ ] **Step 4 :** pousser pour la CI seulement avec l'accord de l'utilisateur.
+
+---
+
+## Bilan d'exécution (17 oct. 2026)
+
+Fait : tâches 1 à 8, relues une à une (corrections : copie du tampon sur le fil audio, tri des voix Premium), puis relecture de toute la branche et une vague de corrections (course de l'aiguilleur qui pouvait laisser le micro ouvert ; licence mlx-swift-lm livrée ; modèle de dictée libéré dès qu'on le supprime ou qu'on en change ; délai de libération = `keep_voice_minutes`, 5 s au minimum).
+
+Vérifié : `cargo test` 817 passés, 0 échec ; clippy propre ; app et tests compilés. **Aucun modèle n'a encore tourné** : les tests de fumée s'ignorent sans `SILLON_STT_MODELS` ; l'essai à la main de l'utilisateur (Tâche 9, étape 2) reste à faire.
+
+Décisions prises en cours de route :
+- Les tests de fumée des modèles s'ignorent sans modèle ; la preuve réelle est l'essai de l'utilisateur.
+- Canary : balises `<|…|>` retirées par l'adaptateur ; langue toujours en code ISO à 2 lettres (Whisper, Canary).
+- Les plafonds mémoire MLX de Kokoro (1 Go / 64 Mo) sont remplacés par ceux de la dictée pendant qu'elle tourne, et remis à sa libération.
+- `dropping_the_pool_never_hangs` (préexistant, hors lot 2) : mesuré seul 4,5–6,7 s, sous charge ×4 jusqu'à 18 s, 12/12 réussis : lenteur sous charge, pas un blocage ; non modifié.
+
+À mesurer à l'essai : chargement de chaque modèle ; coût d'une relecture sur une longue dictée (Canary sans cache KV) ; durée de `finish` (au-delà de ~3 s, ajouter un délai maximal) ; noms des voix Premium sur un Mac qui en a.
+
+Reporté : parole perdue lors d'un repli sur macOS (rien ne le dit dans la fenêtre) ; ligne choisie mais absente sans indice ; annonce 100 % parfois manquée ; message « CancellationError » qui peut clignoter si l'on termine avant l'ouverture du micro.
