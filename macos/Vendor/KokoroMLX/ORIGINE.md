@@ -58,7 +58,7 @@ Tous identiques à l'amont, sauf :
   dossier local (`config.json` et tous ses `*.safetensors`).
 
 `STT/BaseConfiguration.swift` est un ajout de Sillon : le sous-ensemble de
-`MLXLMCommon.BaseConfiguration` (mlx-swift-lm 3.32.3, MIT, Apple) que lisent
+`MLXLMCommon.BaseConfiguration` (mlx-swift-lm 3.32.3, MIT, ml-explore — licence jointe : third_party/licences/mlx-swift-lm-LICENSE) que lisent
 les modèles copiés, c'est-à-dire la quantification. Même nom, mêmes membres :
 aucun site d'appel touché.
 

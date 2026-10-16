@@ -58,7 +58,7 @@ for f in COPYING SOURCE.txt sillon-espeak.c build-espeak.sh; do
         exit 1
     fi
 done
-licences=(NOTICE sonic-LICENSE mlx-audio-swift-LICENSE mlx-swift-LICENSE mlx-LICENSE mlx-c-LICENSE
+licences=(NOTICE sonic-LICENSE mlx-audio-swift-LICENSE mlx-swift-lm-LICENSE mlx-swift-LICENSE mlx-LICENSE mlx-c-LICENSE
     metal-cpp-LICENSE nlohmann-json-LICENSE fmt-LICENSE KeyboardShortcuts-LICENSE
     THIRD-PARTY-RUST.txt tesseract-LICENSE leptonica-LICENSE)
 for f in "${licences[@]}"; do
