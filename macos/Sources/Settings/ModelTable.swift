@@ -14,11 +14,15 @@ enum ModelTable {
     static func state(_ row: VoiceModel, download: DownloadView?) -> ModelRowState {
         if row.system { return .system }
         if let d = download, d.id == row.id {
-            if let failed = d.failed { return .failed(failed) }
+            // Annulé : un choix, pas un échec — la ligne redevient ce qu'elle était.
+            if let failed = d.failed, failed != cancelled { return .failed(failed) }
             if d.received < d.total { return .downloading(d.total == 0 ? 0 : Double(d.received) / Double(d.total)) }
         }
         return row.installed ? .installed : .notInstalled
     }
+
+    /// Ce que le moteur dit d'un téléchargement annulé (`DownloadView.failed`).
+    static let cancelled = "annulé"
 
     /// Un seul téléchargement à la fois.
     static func canDownload(_ row: VoiceModel, download: DownloadView?) -> Bool {
@@ -26,8 +30,24 @@ enum ModelTable {
         return !row.system && !row.installed && !running
     }
 
+    /// Supprimer : un modèle installé, ou les fichiers qu'un téléchargement
+    /// annulé ou échoué a laissés. Pas pendant un téléchargement (l'annuler
+    /// d'abord), jamais la voix de macOS.
+    static func canRemove(_ row: VoiceModel, _ state: ModelRowState) -> Bool {
+        switch state {
+        case .installed: return true
+        case .notInstalled, .failed: return row.hasFiles
+        case .system, .downloading: return false
+        }
+    }
+
+    /// « Voix de macOS » est féminin, un modèle masculin.
+    static func used(_ row: VoiceModel) -> String {
+        row.system ? "utilisée" : "utilisé"
+    }
+
     static func bytes(_ count: UInt64) -> String {
-        ByteCountFormatter.string(fromByteCount: Int64(count), countStyle: .file)
+        SizeFormat.bytes(count)
     }
 
     /// Sur le disque si installé, sinon ce qu'il faut télécharger.

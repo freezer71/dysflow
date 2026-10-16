@@ -53,7 +53,28 @@ struct ModelsTable: View {
 
     private func line(_ row: VoiceModel) -> some View {
         let state = ModelTable.state(row, download: model.snapshot.download)
-        return HStack(spacing: 12) {
+        return VStack(alignment: .leading, spacing: 4) {
+            columns(row, state)
+            // Le message d'échec en entier, sous la ligne, sur toute sa
+            // largeur : pas coupé ni caché dans une bulle d'aide.
+            if case .failed(let message) = state {
+                Text("Échec du téléchargement : \(message)")
+                    .font(Typo.detail)
+                    .foregroundStyle(ErrorStyle.color)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.leading, Self.choiceWidth + 12)
+                    .accessibilityHidden(true)   // déjà dans l'étiquette de la ligne
+            }
+        }
+        .padding(.vertical, 8)
+        .frame(minHeight: 44)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(Self.label(row, state))
+        .accessibilityIdentifier("modele-\(row.id)")
+    }
+
+    private func columns(_ row: VoiceModel, _ state: ModelRowState) -> some View {
+        HStack(spacing: 12) {
             Button { act { try await model.useModel(row.id) } } label: {
                 Image(systemName: row.active ? "largecircle.fill.circle" : "circle")
                     .foregroundStyle(row.active ? Palette.accent : Palette.muted)
@@ -61,7 +82,7 @@ struct ModelsTable: View {
             }
             .buttonStyle(.plain)
             .disabled(!(row.installed || row.system) || row.active)
-            .accessibilityLabel(row.active ? "\(row.name), utilisé" : "Utiliser \(row.name)")
+            .accessibilityLabel(row.active ? "\(row.name), \(ModelTable.used(row))" : "Utiliser \(row.name)")
             .accessibilityIdentifier("utiliser-\(row.id)")
             VStack(alignment: .leading, spacing: 2) {
                 Text(row.name)
@@ -82,20 +103,28 @@ struct ModelsTable: View {
                 .foregroundStyle(Palette.ink)
                 .frame(width: Self.sizeWidth, alignment: .trailing)
                 .accessibilityHidden(true)
-            action(row, state)
-                .frame(width: Self.actionWidth, alignment: .leading)
+            HStack(spacing: 8) {
+                action(row, state)
+                if state != .installed, ModelTable.canRemove(row, state) {
+                    removeButton(row)
+                }
+            }
+            .frame(width: Self.actionWidth, alignment: .leading)
         }
-        .padding(.vertical, 8)
-        .frame(minHeight: 44)
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel(Self.label(row, state))
-        .accessibilityIdentifier("modele-\(row.id)")
+    }
+
+    private func removeButton(_ row: VoiceModel) -> some View {
+        Button("Supprimer…") { confirming = row }
+            .buttonStyle(.notionPlain)
+            .fixedSize()
+            .accessibilityLabel("Supprimer \(row.name)")
+            .accessibilityIdentifier("supprimer-\(row.id)")
     }
 
     @ViewBuilder private func action(_ row: VoiceModel, _ state: ModelRowState) -> some View {
         switch state {
         case .system:
-            Text(row.active ? "Utilisé" : "Sur ce Mac")
+            Text(row.active ? "Utilisée" : "Sur ce Mac")   // la voix de macOS : féminin
                 .foregroundStyle(Palette.muted)
                 .accessibilityHidden(true)
         case .notInstalled:
@@ -117,36 +146,31 @@ struct ModelsTable: View {
                     .accessibilityLabel("Annuler le téléchargement de \(row.name)")
                     .accessibilityIdentifier("annuler-\(row.id)")
             }
-        case .failed(let message):
-            HStack(spacing: 8) {
-                Text(message)
-                    .foregroundStyle(ErrorStyle.color)
-                    .lineLimit(1)
-                    .help(message)
-                Button("Réessayer") { act { try await model.installModel(row.id) } }
-                    .buttonStyle(.notion)
-                    .fixedSize()
-                    .accessibilityLabel("Réessayer de télécharger \(row.name)")
-                    .accessibilityIdentifier("telecharger-\(row.id)")
-            }
+        case .failed:
+            // Le message s'affiche en entier sous la ligne.
+            Button("Réessayer") { act { try await model.installModel(row.id) } }
+                .buttonStyle(.notion)
+                .fixedSize()
+                .accessibilityLabel("Réessayer de télécharger \(row.name)")
+                .accessibilityIdentifier("telecharger-\(row.id)")
         case .installed:
-            Button("Supprimer…") { confirming = row }
-                .buttonStyle(.notionPlain)
-                .accessibilityLabel("Supprimer \(row.name)")
-                .accessibilityIdentifier("supprimer-\(row.id)")
+            removeButton(row)
         }
     }
 
     /// Ce que VoiceOver dit d'une ligne : son nom, s'il est utilisé, son état
     /// et sa taille.
     nonisolated static func label(_ row: VoiceModel, _ state: ModelRowState) -> String {
-        var parts = [row.name, row.active ? "utilisé" : "non utilisé"]
+        var parts = [row.name, row.active ? ModelTable.used(row) : "non \(ModelTable.used(row))"]
         switch state {
         case .system: parts.append("sur ce Mac")
         case .notInstalled: parts.append("non installé, \(ModelTable.size(row)) à télécharger")
         case .downloading(let fraction): parts.append("téléchargement \(Int(fraction * 100)) %")
         case .failed(let message): parts.append("échec du téléchargement : \(message)")
         case .installed: parts.append("installé, \(ModelTable.size(row))")
+        }
+        if state != .installed, ModelTable.canRemove(row, state) {
+            parts.append("téléchargement incomplet, \(ModelTable.bytes(row.diskBytes)) sur le disque")
         }
         return parts.joined(separator: ", ")
     }
