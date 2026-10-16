@@ -7,10 +7,12 @@ import MLX
 /// le nom et les membres sont gardés pour ne toucher aucun site d'appel.
 /// Sans `model_type` (configs NeMo de Parakeet), le décodage échoue, comme
 /// en amont, et l'appelant se replie sur sa lecture à plat.
-struct BaseConfiguration: Decodable, Sendable {
+/// Public, comme en amont, parce que `CanaryConfig` (public) a des champs de
+/// ces types ; seuls les trois types le sont, leurs membres restent internes.
+public struct BaseConfiguration: Decodable, Sendable {
     let modelType: String
 
-    struct Quantization: Codable, Sendable, Equatable {
+    public struct Quantization: Codable, Sendable, Equatable {
         init(groupSize: Int, bits: Int) {
             self.groupSize = groupSize
             self.bits = bits
@@ -37,7 +39,7 @@ struct BaseConfiguration: Decodable, Sendable {
         case quantize(Quantization)
     }
 
-    struct PerLayerQuantization: Sendable {
+    public struct PerLayerQuantization: Sendable {
         var quantization: Quantization? = nil
         var perLayerQuantization: [String: QuantizationOption]
 

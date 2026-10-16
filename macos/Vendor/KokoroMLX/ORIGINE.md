@@ -65,3 +65,30 @@ aucun site d'appel touché.
 Pour vérifier : `diff -r` entre `Sources/MLXAudioSTT/Models/{Nemo,Parakeet}`
 de l'archive `244458d` et `STT/{Nemo,Parakeet}` ne montre que les lignes
 ci-dessus.
+
+## STT : Canary 1b-v2
+
+Même dépôt, même commit `244458d` :
+- `STT/SentencePieceTokenizer.swift` ← `Sources/MLXAudioCore/SentencePieceTokenizer.swift`
+  (identique) ;
+- `STT/Canary/*.swift` ← `Sources/MLXAudioSTT/Models/Canary/` (2 fichiers).
+
+Changements :
+- `Canary/CanaryConfig.swift` : `import MLXLMCommon` retiré ;
+- `Canary/CanaryModel.swift` : `import HuggingFace` et `import MLXAudioCore`
+  retirés ; `fromPretrained` supprimé ; `fromModelDirectory(_:)` rendu
+  synchrone (`throws` au lieu de `async throws` : il n'attendait rien).
+- `STT/BaseConfiguration.swift` : `BaseConfiguration`, `Quantization` et
+  `PerLayerQuantization` passent `public` (comme dans MLXLMCommon), parce que
+  `CanaryConfig`, public, a des champs de ces types. Leurs membres restent
+  internes.
+
+Le vocabulaire est lu dans `config.json` (clé `tokenizer.model_base64`, un
+modèle SentencePiece), ce que fait déjà le chargeur amont : le dépôt
+`Mediform/canary-1b-v2-mlx-q8` se charge tel quel, sans fichier compagnon.
+
+`defaultGenerationParameters` limite la sortie à 200 jetons, trop peu pour une
+longue dictée : Sillon appellera `generate` avec `maxTokens: 1024` (la table
+de positions du décodeur fait 1 024 ; au-delà, la dernière position est
+répétée). `language` (`"fr"`, `"en"`…) sert de langue source et cible : pas de
+détection automatique.
