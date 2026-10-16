@@ -94,6 +94,15 @@ impl Reader {
         if !self.persist || self.config_unreadable {
             return None;
         }
+        // Une voix pour tout : la voix française devient celle de chaque
+        // langue (jamais ici sur une configuration illisible, déjà écartée).
+        self.sync_config();
+        if self.config.unify_voices() {
+            if let Some(app) = self.session.as_mut() {
+                app.config = self.config.clone();
+            }
+            let _ = self.save_config();
+        }
         let config = self.current_config().clone();
         let available = models::available_with(self.mlx);
         let former = former_voice(&config);
@@ -181,6 +190,10 @@ impl Reader {
         }
         if self.offer.is_some() {
             return self.accept_offer(now);
+        }
+        // La voix de macOS choisie : on ne la remplace pas par Kokoro.
+        if self.current_config().engine_preference() == crate::tts::EnginePreference::System {
+            return Ok(());
         }
         let available = models::available_with(self.mlx);
         match models::default_voice_to_install(&available, models::is_installed) {
@@ -706,6 +719,17 @@ mod tests {
         r.ensure_default_voice(Instant::now()).unwrap();
         assert!(r.download().is_none(), "installé : plus rien à faire");
         models::remove(mlx).unwrap();
+    }
+
+    #[test]
+    fn the_chosen_system_voice_is_not_replaced_by_an_automatic_install() {
+        let _guard = models_lock();
+        let _ = models::remove(by_id("kokoro_82m_mlx"));
+        let mut config = Config::default();
+        config.engine.engine = "system".into();
+        let mut r = counting_offline_reader(config);
+        r.ensure_default_voice(Instant::now()).unwrap();
+        assert!(r.download().is_none(), "rien ne se télécharge : l'utilisateur a choisi macOS");
     }
 
     #[test]

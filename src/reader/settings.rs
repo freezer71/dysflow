@@ -107,6 +107,8 @@ pub struct SettingsPatch {
     pub output_device: Option<String>,
     /// La voix d'une langue : `("en", "am_fenrir")`.
     pub voice_for_language: Option<(String, String)>,
+    /// Une voix pour toutes les langues du modèle (Kokoro).
+    pub family_voice: Option<String>,
     pub reading_font: Option<String>,
     pub reading_size: Option<f32>,
 }
@@ -141,6 +143,11 @@ impl SettingsPatch {
         set(&mut c.reading.size, &self.reading_size);
         if let Some((language, voice)) = &self.voice_for_language {
             c.voice.per_language.insert(language.clone(), voice.clone());
+        }
+        if let Some(voice) = &self.family_voice {
+            for language in ["fr", "en"] {
+                c.voice.per_language.insert(language.to_string(), voice.clone());
+            }
         }
     }
 }
@@ -568,6 +575,14 @@ impl Place {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn one_voice_for_every_language() {
+        let mut c = Config::default();
+        SettingsPatch { family_voice: Some("am_fenrir".into()), ..Default::default() }.write_into(&mut c);
+        assert_eq!(c.voice.per_language["fr"], "am_fenrir");
+        assert_eq!(c.voice.per_language["en"], "am_fenrir");
+    }
+
     use super::*;
     use crate::sync::LockExt;
 
@@ -712,6 +727,7 @@ mod tests {
             keep_voice_minutes: Some(30),
             output_device: Some("Casque".into()),
             voice_for_language: Some(("en".into(), "am_fenrir".into())),
+            family_voice: None,
             reading_font: Some("atkinson".into()),
             reading_size: Some(30.0),
         };

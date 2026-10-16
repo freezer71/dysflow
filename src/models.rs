@@ -923,6 +923,28 @@ pub fn languages_for_family(family: &str) -> Vec<&'static str> {
 /// Ce que le catalogue décide pour une configuration : la voix de chaque
 /// langue et le nombre de sessions.
 impl crate::config::Config {
+    /// Une voix pour tout (16 oct. 2026) : la voix française de Kokoro devient
+    /// celle de chaque langue. Vrai si quelque chose a changé.
+    pub fn unify_voices(&mut self) -> bool {
+        if !voices_follow_language(&self.engine.family) {
+            return false;
+        }
+        let voice = self
+            .voice
+            .per_language
+            .get("fr")
+            .cloned()
+            .unwrap_or_else(|| default_voice_for_language(&self.engine.family, "fr").to_string());
+        let mut changed = false;
+        for language in ["fr", "en"] {
+            if self.voice.per_language.get(language) != Some(&voice) {
+                self.voice.per_language.insert(language.to_string(), voice.clone());
+                changed = true;
+            }
+        }
+        changed
+    }
+
     /// Fait suivre la voix quand la famille change.
     ///
     /// Seul Kokoro nomme ses voix, une par langue : `voice.voice` reste celle
@@ -960,6 +982,17 @@ impl crate::config::Config {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn voices_are_unified_on_the_french_one() {
+        let mut c = crate::config::Config::default();
+        c.engine.family = "kokoro".into();
+        c.voice.per_language.insert("fr".into(), "p-fenrir60".into());
+        c.voice.per_language.insert("en".into(), "af_bella".into());
+        assert!(c.unify_voices());
+        assert_eq!(c.voice.per_language["en"], "p-fenrir60");
+        assert!(!c.unify_voices(), "déjà unifiées : rien à écrire");
+    }
+
 
     #[test]
     fn every_kokoro_voice_of_the_package_is_offered() {

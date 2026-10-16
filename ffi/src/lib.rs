@@ -413,6 +413,9 @@ pub struct SettingsPatch {
     pub output_device: Option<String>,
     /// La voix d'une langue (Kokoro : une voix par langue).
     pub voice_for_language: Option<LanguageVoice>,
+    /// Une voix pour toutes les langues du modèle (Kokoro). Défaut `nil`.
+    #[uniffi(default = None)]
+    pub family_voice: Option<String>,
     /// La police du texte. Défaut `nil` côté Swift : les appels existants
     /// de `SettingsPatch(…)` restent valides.
     #[uniffi(default = None)]
@@ -826,6 +829,7 @@ fn patch_from(p: SettingsPatch) -> settings::SettingsPatch {
         keep_voice_minutes: p.keep_voice_minutes,
         output_device: p.output_device,
         voice_for_language: p.voice_for_language.map(|v| (v.language, v.voice)),
+        family_voice: p.family_voice,
         reading_font: p.reading_font,
         reading_size: p.reading_size,
     }
