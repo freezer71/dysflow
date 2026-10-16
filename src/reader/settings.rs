@@ -601,7 +601,7 @@ mod tests {
     #[test]
     fn kokoro_lists_its_voices_with_their_language() {
         let caps = reader_on("kokoro").capabilities();
-        assert_eq!(caps.voices.len(), 4);
+        assert_eq!(caps.voices.len(), 30);
         assert_eq!(caps.voices[0], VoiceChoice {
             id: "p-fenrir60".into(),
             label: "p-fenrir60 · française, recommandée".into(),

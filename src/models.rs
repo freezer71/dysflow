@@ -40,6 +40,13 @@ pub enum Runtime {
     KokoroOnnx,
 }
 
+/// Ce que fait un modèle : lire à voix haute, ou écrire ce qu'on dicte.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Kind {
+    Speech,
+    Dictation,
+}
+
 /// Un paquet téléchargeable : une variante de précision d'une famille.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ModelPackage {
@@ -70,6 +77,7 @@ pub struct ModelPackage {
     /// Fichiers téléchargés à côté du fichier principal.
     pub companions: &'static [Companion],
     pub runtime: Runtime,
+    pub kind: Kind,
     /// Les voix, pour la fiche (« Française : … · Anglaise : … »).
     pub voices_label: &'static str,
     /// Les licences, pour la fiche.
@@ -124,11 +132,8 @@ macro_rules! kokoro_voice {
 /// le vocabulaire des phonèmes) et les voix. `p-fenrir60` n'y est pas : elle
 /// est livrée avec Sillon.
 ///
-/// Les 29 voix du paquet restent téléchargées alors que quatre seulement
-/// sont proposées (`KOKORO_VOICES`) : `ff_siwis` et `am_fenrir` refont
-/// `p-fenrir60` (`examples/kokoro_blend.rs`), et une installation déjà faite
-/// garde le même jeu de fichiers — rien à migrer, rien d'orphelin à la
-/// suppression.
+/// Les 29 voix du paquet sont toutes proposées (`KOKORO_VOICES`) ; `ff_siwis`
+/// et `am_fenrir` refont aussi `p-fenrir60` (`examples/kokoro_blend.rs`).
 const KOKORO_SHARED: &[Companion] = &[
     Companion {
         repo: KOKORO_MLX_REPO,
@@ -168,7 +173,7 @@ const KOKORO_SHARED: &[Companion] = &[
     kokoro_voice!("bm_lewis"),
 ];
 
-const KOKORO_VOICES_LABEL: &str = "Française : p-fenrir60 · Anglaise : af_bella, am_fenrir, af_heart";
+const KOKORO_VOICES_LABEL: &str = "30 voix : p-fenrir60 (française, recommandée), af_bella (américaine, recommandée)…";
 
 /// Modèles proposés à l'installation : Kokoro seul, en MLX (l'app) ou en
 /// int8 par ONNX Runtime (le terminal). Sans lui, la voix du système lit.
@@ -193,6 +198,7 @@ pub const CATALOG: &[ModelPackage] = &[
         pace: "Quinze fois plus vite que la parole sur M5 : lecture fluide.",
         companions: KOKORO_SHARED,
         runtime: Runtime::KokoroMlx,
+        kind: Kind::Speech,
         voices_label: KOKORO_VOICES_LABEL,
         licenses: "Poids et voix Apache-2.0 · code MLX MIT · espeak-ng GPL-3.0 (programme séparé)",
     },
@@ -212,6 +218,7 @@ pub const CATALOG: &[ModelPackage] = &[
         pace: "Huit à dix fois plus vite que la parole sur processeur : lecture fluide.",
         companions: KOKORO_SHARED,
         runtime: Runtime::KokoroOnnx,
+        kind: Kind::Speech,
         voices_label: KOKORO_VOICES_LABEL,
         licenses: "Poids et voix Apache-2.0 · ONNX Runtime MIT · espeak-ng GPL-3.0 (programme séparé)",
     },
@@ -784,19 +791,43 @@ pub fn voices_for_family(family: &str) -> &'static [VoiceOption] {
     }
 }
 
-/// Voix de Kokoro : une française, trois anglaises (14 oct. 2026 : seules
-/// les voix retenues à l'écoute ; les autres restent dans le paquet, sans
-/// être proposées).
+/// Voix de Kokoro : toutes celles du paquet, plus `p-fenrir60` livrée avec
+/// Sillon (16 oct. 2026 : une seule voix pour tout, choisie librement).
 ///
-/// `p-fenrir60` est livrée avec Sillon (timbre de `ff_siwis`, prosodie mêlée à
-/// celle d'`am_fenrir`, §11 du rapport) ; les autres viennent du paquet. La
-/// première de chaque langue est sa voix par défaut : une voix configurée qui
-/// n'est plus listée retombe sur elle.
+/// `language` dit l'accent de la voix, pas ce qu'elle a le droit de lire :
+/// la prononciation suit la langue du texte. La première d'une langue est
+/// sa voix par défaut.
 const KOKORO_VOICES: &[VoiceOption] = &[
     VoiceOption { id: "p-fenrir60", label: "p-fenrir60 · française, recommandée", language: "fr" },
+    VoiceOption { id: "ff_siwis", label: "ff_siwis · française, femme", language: "fr" },
     VoiceOption { id: "af_bella", label: "af_bella · américaine, femme, recommandée", language: "en" },
-    VoiceOption { id: "am_fenrir", label: "am_fenrir · américaine, homme", language: "en" },
     VoiceOption { id: "af_heart", label: "af_heart · américaine, femme", language: "en" },
+    VoiceOption { id: "af_alloy", label: "af_alloy · américaine, femme", language: "en" },
+    VoiceOption { id: "af_aoede", label: "af_aoede · américaine, femme", language: "en" },
+    VoiceOption { id: "af_jessica", label: "af_jessica · américaine, femme", language: "en" },
+    VoiceOption { id: "af_kore", label: "af_kore · américaine, femme", language: "en" },
+    VoiceOption { id: "af_nicole", label: "af_nicole · américaine, femme", language: "en" },
+    VoiceOption { id: "af_nova", label: "af_nova · américaine, femme", language: "en" },
+    VoiceOption { id: "af_river", label: "af_river · américaine, femme", language: "en" },
+    VoiceOption { id: "af_sarah", label: "af_sarah · américaine, femme", language: "en" },
+    VoiceOption { id: "af_sky", label: "af_sky · américaine, femme", language: "en" },
+    VoiceOption { id: "am_fenrir", label: "am_fenrir · américaine, homme", language: "en" },
+    VoiceOption { id: "am_adam", label: "am_adam · américaine, homme", language: "en" },
+    VoiceOption { id: "am_echo", label: "am_echo · américaine, homme", language: "en" },
+    VoiceOption { id: "am_eric", label: "am_eric · américaine, homme", language: "en" },
+    VoiceOption { id: "am_liam", label: "am_liam · américaine, homme", language: "en" },
+    VoiceOption { id: "am_michael", label: "am_michael · américaine, homme", language: "en" },
+    VoiceOption { id: "am_onyx", label: "am_onyx · américaine, homme", language: "en" },
+    VoiceOption { id: "am_puck", label: "am_puck · américaine, homme", language: "en" },
+    VoiceOption { id: "am_santa", label: "am_santa · américaine, homme", language: "en" },
+    VoiceOption { id: "bf_alice", label: "bf_alice · britannique, femme", language: "en" },
+    VoiceOption { id: "bf_emma", label: "bf_emma · britannique, femme", language: "en" },
+    VoiceOption { id: "bf_isabella", label: "bf_isabella · britannique, femme", language: "en" },
+    VoiceOption { id: "bf_lily", label: "bf_lily · britannique, femme", language: "en" },
+    VoiceOption { id: "bm_daniel", label: "bm_daniel · britannique, homme", language: "en" },
+    VoiceOption { id: "bm_fable", label: "bm_fable · britannique, homme", language: "en" },
+    VoiceOption { id: "bm_george", label: "bm_george · britannique, homme", language: "en" },
+    VoiceOption { id: "bm_lewis", label: "bm_lewis · britannique, homme", language: "en" },
 ];
 
 /// Sessions de synthèse qu'une famille demande pour lire d'un trait.
@@ -856,17 +887,13 @@ pub fn default_voice_for_language(family: &str, language: &str) -> &'static str 
 }
 
 /// La voix qui parle `language` : celle de la configuration si la famille la
-/// connaît dans cette langue, sinon sa voix par défaut — sans réécrire la
-/// configuration (règle des valeurs non listées).
+/// connaît (quelle que soit son accent : une voix pour tout), sinon la voix
+/// par défaut de la langue — sans réécrire la configuration.
 pub fn voice_for_language(family: &str, language: &str, configured: Option<&str>) -> &'static str {
     let code = language_code(language);
     configured
         .map(str::trim)
-        .and_then(|c| {
-            voices_for_family(family)
-                .iter()
-                .find(|v| v.id == c && (v.language.is_empty() || v.language == code))
-        })
+        .and_then(|c| voices_for_family(family).iter().find(|v| v.id == c))
         .map_or_else(|| default_voice_for_language(family, code), |v| v.id)
 }
 
@@ -933,6 +960,31 @@ impl crate::config::Config {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn every_kokoro_voice_of_the_package_is_offered() {
+        let offered: Vec<&str> = voices_for_family("kokoro").iter().map(|v| v.id).collect();
+        assert_eq!(offered[0], "p-fenrir60", "la recommandée en tête");
+        for companion in KOKORO_SHARED.iter().filter(|c| c.dest.starts_with("voices/")) {
+            let id = companion.dest.trim_start_matches("voices/").trim_end_matches(".safetensors");
+            assert!(offered.contains(&id), "{id} manque au choix");
+        }
+        assert_eq!(offered.len(), 30);
+    }
+
+    #[test]
+    fn a_voice_reads_any_language_of_its_model() {
+        // Une seule voix pour tout : af_bella lit aussi le français.
+        assert_eq!(voice_for_language("kokoro", "fr", Some("af_bella")), "af_bella");
+        assert_eq!(voice_for_language("kokoro", "en", Some("p-fenrir60")), "p-fenrir60");
+        // Une voix inconnue retombe sur la recommandée de la langue.
+        assert_eq!(voice_for_language("kokoro", "fr", Some("inconnue")), "p-fenrir60");
+    }
+
+    #[test]
+    fn kokoro_reads_aloud() {
+        assert!(CATALOG.iter().all(|p| p.kind == Kind::Speech));
+    }
     use super::*;
 
     #[test]
@@ -1485,13 +1537,14 @@ mod tests {
     fn kokoro_names_its_voices_by_language() {
         assert!(voices_follow_language("kokoro"));
         assert!(!voices_follow_language("supertonic"));
-        // Une française, trois anglaises : les voix retenues, rien d'autre.
+        // Deux françaises, vingt-huit anglaises : toutes les voix du paquet.
         let ids = |language: &str| -> Vec<&str> {
             voices_for_family("kokoro").iter().filter(|v| v.language == language).map(|v| v.id).collect()
         };
-        assert_eq!(ids("fr"), ["p-fenrir60"]);
-        assert_eq!(ids("en"), ["af_bella", "am_fenrir", "af_heart"]);
-        assert_eq!(voices_for_family("kokoro").len(), 4);
+        assert_eq!(ids("fr"), ["p-fenrir60", "ff_siwis"]);
+        assert_eq!(&ids("en")[..2], ["af_bella", "af_heart"]);
+        assert_eq!(ids("en").len(), 28);
+        assert_eq!(voices_for_family("kokoro").len(), 30);
         assert_eq!(default_voice_for_language("kokoro", "fr"), "p-fenrir60");
         assert_eq!(default_voice_for_language("kokoro", "en-US"), "af_bella");
         assert!(voices_for_family("kokoro").iter().all(|v| v.label.contains('·')));
@@ -1500,10 +1553,10 @@ mod tests {
     #[test]
     fn an_unknown_voice_gives_the_default_of_its_language() {
         assert_eq!(voice_for_language("kokoro", "en", Some("am_fenrir")), "am_fenrir");
-        // Une voix retirée du catalogue retombe sur la recommandée de sa langue.
-        assert_eq!(voice_for_language("kokoro", "fr", Some("ff_siwis")), "p-fenrir60");
-        assert_eq!(voice_for_language("kokoro", "en", Some("bf_emma")), "af_bella");
-        assert_eq!(voice_for_language("kokoro", "fr", Some("af_bella")), "p-fenrir60", "voix d'une autre langue");
+        // Une voix inconnue retombe sur la recommandée de la langue.
+        assert_eq!(voice_for_language("kokoro", "fr", Some("voix-disparue")), "p-fenrir60");
+        assert_eq!(voice_for_language("kokoro", "en", Some("bf_emma")), "bf_emma");
+        assert_eq!(voice_for_language("kokoro", "fr", Some("af_bella")), "af_bella", "voix d'un autre accent");
         assert_eq!(voice_for_language("kokoro", "en", Some("F1")), "af_bella");
         assert_eq!(voice_for_language("kokoro", "en", None), "af_bella");
     }

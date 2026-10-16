@@ -278,9 +278,9 @@ mod tests {
         let mut config = kokoro();
         assert_eq!(Field::VoiceEn.value(&config), "af_bella · américaine, femme, recommandée");
         assert_eq!(Field::VoiceEn.adjust(&mut config, 1), Effect::Resynthesize);
-        assert_eq!(config.voice.per_language["en"], "am_fenrir");
+        assert_eq!(config.voice.per_language["en"], "af_heart");
         Field::VoiceEn.adjust(&mut config, -2);
-        assert_eq!(config.voice.per_language["en"], "af_heart", "la liste boucle");
+        assert_eq!(config.voice.per_language["en"], "bm_lewis", "la liste boucle");
         assert!(!config.voice.per_language.contains_key("fr"), "l'autre langue ne bouge pas");
     }
 
@@ -288,16 +288,18 @@ mod tests {
     fn the_change_hint_is_for_languages_with_a_choice() {
         let config = kokoro();
         assert!(Field::VoiceEn.hint(&config).contains("← →"));
-        assert!(!Field::VoiceFr.hint(&config).contains("← →"), "une seule voix française");
+        assert!(Field::VoiceFr.hint(&config).contains("← →"), "deux voix françaises");
         assert!(Field::VoiceFr.hint(&config).contains("t pour l'écouter"));
     }
 
     #[test]
-    fn the_french_voice_alone_changes_nothing() {
+    fn the_french_voice_cycles_between_its_two_voices() {
         let mut config = kokoro();
         assert_eq!(Field::VoiceFr.value(&config), "p-fenrir60 · française, recommandée");
-        assert_eq!(Field::VoiceFr.adjust(&mut config, 1), Effect::None);
-        assert!(!config.voice.per_language.contains_key("fr"), "rien d'écrit");
+        assert_eq!(Field::VoiceFr.adjust(&mut config, 1), Effect::Resynthesize);
+        assert_eq!(config.voice.per_language["fr"], "ff_siwis");
+        Field::VoiceFr.adjust(&mut config, 1);
+        assert_eq!(config.voice.per_language["fr"], "p-fenrir60", "la liste boucle");
     }
 
     #[test]
@@ -391,7 +393,7 @@ mod tests {
         let mut to = Config::default();
         to.voice.per_language.insert("fr".into(), "p-fenrir60".into());
         Field::VoiceEn.copy_value(&from, &mut to);
-        assert_eq!(to.voice.per_language["en"], "am_fenrir");
+        assert_eq!(to.voice.per_language["en"], "af_heart");
         assert_eq!(to.voice.per_language["fr"], "p-fenrir60", "l'autre langue reste");
         assert_eq!(to.voice.voice, "", "voice.voice n'est pas écrit");
     }
