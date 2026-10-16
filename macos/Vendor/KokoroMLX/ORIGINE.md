@@ -37,3 +37,31 @@ ranger dans un dossier `a/` les fichiers de
 `Albert.swift`, `Blocks/`), copier les `.swift` de ce dossier dans `b/`, puis
 `diff -ruN a b`. `KokoroModules.swift`, `Albert.swift` et six des huit
 `Blocks/` sont identiques à l'amont.
+
+## STT : socle, Nemo et Parakeet
+
+Même dépôt, même commit `244458d`, copiés dans `STT/` (un dossier à plat par
+modèle) :
+- `STT/Generation.swift` ← `Sources/MLXAudioSTT/Generation.swift` ;
+- `STT/STTOutput.swift` ← `Sources/MLXAudioSTT/Models/GLMASR/STTOutput.swift` ;
+- `STT/DSP.swift` ← `Sources/MLXAudioCore/DSP.swift` ;
+- `STT/Nemo/*.swift` ← `Sources/MLXAudioSTT/Models/Nemo/` (5 fichiers) ;
+- `STT/Parakeet/*.swift` ← `Sources/MLXAudioSTT/Models/Parakeet/` (7
+  fichiers, sans le `README.md`).
+
+Tous identiques à l'amont, sauf :
+- `Parakeet/ParakeetAudio.swift` : `import MLXAudioCore` retiré (le code est
+  dans ce module) ;
+- `Parakeet/ParakeetModel.swift` : `import MLXAudioCore`, `import MLXLMCommon`
+  et `import HuggingFace` retirés ; `fromPretrained` (téléchargement depuis
+  Hugging Face) supprimé. Reste `fromDirectory(_:computeDType:)`, qui lit un
+  dossier local (`config.json` et tous ses `*.safetensors`).
+
+`STT/BaseConfiguration.swift` est un ajout de Sillon : le sous-ensemble de
+`MLXLMCommon.BaseConfiguration` (mlx-swift-lm 3.32.3, MIT, Apple) que lisent
+les modèles copiés, c'est-à-dire la quantification. Même nom, mêmes membres :
+aucun site d'appel touché.
+
+Pour vérifier : `diff -r` entre `Sources/MLXAudioSTT/Models/{Nemo,Parakeet}`
+de l'archive `244458d` et `STT/{Nemo,Parakeet}` ne montre que les lignes
+ci-dessus.
