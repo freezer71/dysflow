@@ -21,7 +21,8 @@ extension KokoroRunner: KokoroForward {}
 /// ancien moteur finit une synthèse pendant qu'un nouveau se charge et se
 /// prépare ; la préparation des noyaux au lancement aussi). Tout le travail
 /// MLX passe donc sous un seul verrou, un appel à la fois, et rien n'attend
-/// jamais le fil principal. Le verrou est un `os_unfair_lock`, qui transmet
+/// jamais le fil principal. Ce verrou est `MLXGate.shared`, celui de tout
+/// MLX dans l'app (la dictée aussi). C'est un `os_unfair_lock`, qui transmet
 /// sa priorité : le lecteur (`userInitiated`) qui attend derrière la
 /// préparation (`utility`) la fait monter. Le modèle est partagé
 /// (préparation, lecteur) : il n'est libéré, poids et cache, qu'au dernier
@@ -40,9 +41,10 @@ final class KokoroMLXCompute: KokoroCompute, @unchecked Sendable {
 
     private let loadForward: Loader
     private let clearCache: () -> Void
-    /// Chargement, passages avant et libération : un à la fois.
-    private let mlx = OSAllocatedUnfairLock()
-    /// Gardés par `mlx`.
+    /// Chargement, passages avant et libération : un à la fois, et jamais
+    /// pendant un autre calcul MLX de l'app.
+    private let gate: MLXGate
+    /// Gardés par `gate`.
     private var forward: KokoroForward?
     private var directory: String?
     private var users = 0
@@ -56,9 +58,11 @@ final class KokoroMLXCompute: KokoroCompute, @unchecked Sendable {
     private var forwardNanos: UInt64 = 0
 
     init(loadForward: @escaping Loader = KokoroMLXCompute.loadRunner,
-         clearCache: @escaping () -> Void = KokoroRunner.clearCache) {
+         clearCache: @escaping () -> Void = KokoroRunner.clearCache,
+         gate: MLXGate = .shared) {
         self.loadForward = loadForward
         self.clearCache = clearCache
+        self.gate = gate
     }
 
     /// Plafond mesuré au spike : 1 Go, cache réduit à 64 Mo.
@@ -78,7 +82,7 @@ final class KokoroMLXCompute: KokoroCompute, @unchecked Sendable {
     /// moteur rend sa part sur l'ancien avant, voir `SharedCompute`) ; les
     /// autres détenteurs, la préparation, se servent alors du nouveau.
     func load(modelDir: String) throws {
-        try mlx.withLockUnchecked {
+        try gate.run {
             if forward == nil || directory != modelDir {
                 if forward != nil {
                     forward = nil
@@ -120,7 +124,7 @@ final class KokoroMLXCompute: KokoroCompute, @unchecked Sendable {
     /// suivants) ; si un passage complet a déjà eu lieu dans ce processus
     /// (la lecture est partie avant), elle ne fait rien et réussit.
     func warmUp() throws {
-        try mlx.withLockUnchecked {
+        try gate.run {
             guard forward != nil else { throw SillonError.Failed(message: "modèle Kokoro non chargé") }
             if kernelsCompiled { return }
             _ = try runLocked(ids: Self.warmUpIds(), style: [Float](repeating: 0, count: 256), isCancelled: nil)
@@ -134,10 +138,10 @@ final class KokoroMLXCompute: KokoroCompute, @unchecked Sendable {
 
     /// `isCancelled` : le test d'abandon (le pool, ou un essai).
     func synthesize(ids: [Int64], style: [Float], isCancelled: @escaping () -> Bool) throws -> KokoroOutput {
-        try mlx.withLockUnchecked { try runLocked(ids: ids, style: style, isCancelled: isCancelled) }
+        try gate.run { try runLocked(ids: ids, style: style, isCancelled: isCancelled) }
     }
 
-    /// Sous `mlx`. `isCancelled` nil : jamais abandonnée, sans point d'arrêt.
+    /// Sous `gate`. `isCancelled` nil : jamais abandonnée, sans point d'arrêt.
     private func runLocked(ids: [Int64], style: [Float], isCancelled: (() -> Bool)?) throws -> KokoroOutput {
         // L'abandon d'abord : une synthèse inutile pendant une brève
         // libération des poids est un abandon, pas un échec.
@@ -156,7 +160,7 @@ final class KokoroMLXCompute: KokoroCompute, @unchecked Sendable {
     }
 
     func release() {
-        mlx.withLockUnchecked {
+        gate.run {
             guard users > 0 else { return }
             users -= 1
             guard users == 0 else { return }
