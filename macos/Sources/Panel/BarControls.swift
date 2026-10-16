@@ -93,15 +93,22 @@ struct HeaderButton: View {
     let help: String
     let identifier: String
     var selected = false
+    /// L'icône seule, quand le lecteur est trop étroit (l'intitulé reste
+    /// pour VoiceOver et dans l'aide au survol).
+    var compact = false
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            Label(title, systemImage: symbol)
-                .labelStyle(.titleAndIcon)
-                .padding(.horizontal, 8)
+            Group {
+                if compact {
+                    Label(title, systemImage: symbol).labelStyle(.iconOnly)
+                } else {
+                    Label(title, systemImage: symbol).labelStyle(.titleAndIcon).padding(.horizontal, 8)
+                }
+            }
         }
-        .buttonStyle(BarButtonStyle())
+        .buttonStyle(BarButtonStyle(selected: selected))
         .focusable(false)
         .help(help)
         .accessibilityIdentifier(identifier)

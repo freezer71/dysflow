@@ -107,8 +107,15 @@ final class MiniPlayerViewTests: XCTestCase {
         XCTAssertLessThanOrEqual(host.fittingSize.width, MiniPlacement.size.width)
     }
 
-    func testTheBarIs340By88() {
-        XCTAssertEqual(MiniPlacement.size, CGSize(width: 340, height: 88))
+    func testTheBarIs340By108() {
+        XCTAssertEqual(MiniPlacement.size, CGSize(width: 340, height: 108))
+    }
+
+    /// Le titre de ce qui est lu ; sans document, le nom de l'app.
+    func testTheMiniShowsWhatIsRead() {
+        XCTAssertEqual(MiniTitle.text(hasDocument: true, title: "Le sillon"), "Le sillon")
+        XCTAssertEqual(MiniTitle.text(hasDocument: true, title: "  "), "sillon")
+        XCTAssertEqual(MiniTitle.text(hasDocument: false, title: "Le sillon"), "sillon")
     }
 
     /// Le mini avance par phrase, comme le lecteur, et s'agrandit.
@@ -117,6 +124,8 @@ final class MiniPlayerViewTests: XCTestCase {
         XCTAssertEqual(MiniControlsRow.transport.map(\.action),
                        [.command(.sentences(delta: -1)), .command(.sentences(delta: 1))])
         XCTAssertEqual(MiniControlsRow.growAction, .toggleSize)
+        // « Coller » fait ce que fait ⌘V.
+        XCTAssertEqual(MiniControlsRow.pasteAction, .paste)
     }
 
     func testTheEmptyBarFitsItsHeight() {

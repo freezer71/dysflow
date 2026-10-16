@@ -17,40 +17,62 @@ extension NSColor {
     }
 }
 
-/// Les couleurs du lecteur, celles de Notion (14 oct. 2026) : une encre
-/// chaude sur blanc le jour, sur gris très sombre le soir, le bleu de Notion
-/// pour le mot lu ; le contraste élevé dès que macOS le demande.
+/// Les couleurs du lecteur, au style « Felt » (15 oct. 2026) : des gris
+/// neutres, des zones pleines sans bordure, un vert citron pour ce qui est
+/// lu. La ligne lue passe sous une bande légère ; le mot lu, sous une
+/// pastille citron qui glisse de mot en mot et se remplit avec la voix. Le
+/// contraste élevé dès que macOS le demande.
 struct Theme: Equatable {
     var background: NSColor
     var text: NSColor
     var past: NSColor
-    /// Teinte de la bande de lecture (posée à 25 %).
+    /// Teinte de la bande de lecture, posée à `bandAlpha`.
     var wordFill: NSColor
-    /// L'encre du mot lu : plus sombre que le texte (sur fond clair), sans
-    /// fond ni changement de graisse.
+    var bandAlpha: CGFloat
+    /// La pastille du mot lu, posée à `pillAlpha` ; la part que la voix a
+    /// dite s'y remplit, à `wipeAlpha` de plus.
+    var pill: NSColor
+    var pillAlpha: CGFloat
+    var wipeAlpha: CGFloat
+    /// L'encre du mot lu : plus marquée que le texte, sans fond ni changement
+    /// de graisse.
     var wordText: NSColor
-    /// Le trait sous la ligne lue.
+    /// Le trait sous la ligne lue, la part lue de la progression, le disque
+    /// de lecture.
     var line: NSColor
+    /// Ce qui s'écrit sur `line` (le symbole du disque de lecture).
+    var onLine: NSColor
     /// Texte des contrôles.
     var chrome: NSColor
     var border: NSColor
+    /// Le fond des zones posées sur la page : sommaire, barre de lecture.
+    var surface: NSColor
+
+    /// Le vert citron de l'app.
+    static let lime = NSColor(hex: 0xC6F36B)
 
     static let paper = Theme(
-        background: NSColor(hex: 0xFFFFFF), text: NSColor(hex: 0x37352F),
-        past: NSColor(hex: 0x9B9A97), wordFill: NSColor(hex: 0x6AA7EC),
-        wordText: NSColor(hex: 0x183347), line: NSColor(hex: 0x2383E2),
-        chrome: NSColor(hex: 0x55534E), border: NSColor(hex: 0xE9E9E7))
+        background: NSColor(hex: 0xFFFFFF), text: NSColor(hex: 0x1A1A1A),
+        past: NSColor(hex: 0x9A9A9A), wordFill: lime, bandAlpha: 0.22,
+        pill: lime, pillAlpha: 0.45, wipeAlpha: 0.55,
+        wordText: NSColor(hex: 0x0A0A0A), line: NSColor(hex: 0x141414),
+        onLine: .white, chrome: NSColor(hex: 0x4A4A4A),
+        border: NSColor(hex: 0xEBEBEB), surface: NSColor(hex: 0xF3F3F3))
 
     static let night = Theme(
-        background: NSColor(hex: 0x191919), text: NSColor(hex: 0xD4D4D4),
-        past: NSColor(hex: 0x7F7F7F), wordFill: NSColor(hex: 0x2383E2),
-        wordText: NSColor(hex: 0xE6F1FF), line: NSColor(hex: 0x529CCA),
-        chrome: NSColor(hex: 0xA6A6A6), border: NSColor(hex: 0x2F2F2F))
+        background: NSColor(hex: 0x161616), text: NSColor(hex: 0xE6E6E6),
+        past: NSColor(hex: 0x7A7A7A), wordFill: .white, bandAlpha: 0.06,
+        pill: lime, pillAlpha: 0.2, wipeAlpha: 0.3,
+        wordText: NSColor(hex: 0xFFFFFF), line: lime,
+        onLine: NSColor(hex: 0x141414), chrome: NSColor(hex: 0xB5B5B5),
+        border: NSColor(hex: 0x2A2A2A), surface: NSColor(hex: 0x222222))
 
     static let contrast = Theme(
         background: .black, text: .white, past: NSColor(hex: 0xB0B0B0),
-        wordFill: NSColor(hex: 0xFFE600), wordText: .white,
-        line: NSColor(hex: 0xFFE600), chrome: .white, border: .white)
+        wordFill: NSColor(hex: 0xFFE600), bandAlpha: 0.2,
+        pill: NSColor(hex: 0xFFE600), pillAlpha: 0.35, wipeAlpha: 0, wordText: .white,
+        line: NSColor(hex: 0xFFE600), onLine: .black, chrome: .white, border: .white,
+        surface: .black)
 
     /// Rapport de contraste WCAG entre deux couleurs (1 à 21).
     static func contrastRatio(_ a: NSColor, _ b: NSColor) -> Double {

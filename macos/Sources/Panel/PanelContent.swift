@@ -24,9 +24,9 @@ struct PanelContent: View {
         content(controller.model)
             .environment(\.panelTheme, theme)
             .background(
-                RoundedRectangle(cornerRadius: 12)
+                RoundedRectangle(cornerRadius: 20)
                     .fill(Color(nsColor: theme.background))
-                    .overlay(RoundedRectangle(cornerRadius: 12)
+                    .overlay(RoundedRectangle(cornerRadius: 20)
                         .strokeBorder(Color(nsColor: theme.border), lineWidth: 1))
             )
             .overlay { if controller.helpVisible { HelpOverlay(theme: theme) } }
@@ -63,7 +63,9 @@ struct PanelContent: View {
         case .reader:
             ReaderView(controller: controller, style: style)
                 .padding(.horizontal, PanelGeometry.horizontalPadding)
-                .padding(.vertical, 18)
+                .padding(.top, 18)
+                // La ligne d'état réserve déjà sa hauteur sous la barre.
+                .padding(.bottom, 10)
         case .hidden:
             // Fenêtre retirée : rien à tenir à jour (une vue de lecture gardée
             // là serait remise à jour à chaque instantané publié).
@@ -119,8 +121,8 @@ struct HelpOverlay: View {
                 .foregroundStyle(Color(nsColor: theme.chrome))
         }
         .padding(20)
-        .background(RoundedRectangle(cornerRadius: 10).fill(Color(nsColor: theme.background)))
-        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color(nsColor: theme.border)))
+        .background(RoundedRectangle(cornerRadius: 16).fill(Color(nsColor: theme.background)))
+        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Color(nsColor: theme.border)))
         .shadow(color: .black.opacity(0.12), radius: 18, y: 8)
         .foregroundStyle(Color(nsColor: theme.text))
         .padding(16)

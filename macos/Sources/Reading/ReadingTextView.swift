@@ -1,11 +1,16 @@
 import AppKit
 import QuartzCore
 
-/// Le texte lu, « encre calme » : le mot lu d'une encre plus sombre, le
-/// déjà-lu atténué mot par mot, et un trait fin sous la ligne qui avance avec
-/// la voix. TextKit 2 ne met en page que ce qui est visible.
+/// Le texte lu : le mot lu d'une encre plus marquée sous une pastille qui
+/// glisse de mot en mot et se remplit avec la voix, la ligne sous une bande
+/// légère qui glisse de ligne en ligne, le déjà-lu atténué mot par mot.
+/// TextKit 2 ne met en page que ce qui est visible.
 final class ReadingTextView: NSTextView {
-    var theme: Theme = .paper { didSet { if theme != oldValue { needsDisplay = true } } }
+    var theme: Theme = .paper {
+        didSet { if theme != oldValue { underlay.apply(theme); needsDisplay = true } }
+    }
+    /// La bande et la pastille, en calques sous le texte.
+    private let underlay = ReadingUnderlay()
     var ruler = true
     var onContentHeight: ((CGFloat) -> Void)?
     /// « Copier » du menu contextuel : l'app décide (sélection, sinon phrase).
@@ -29,8 +34,12 @@ final class ReadingTextView: NSTextView {
     private(set) var wordRect: CGRect?
     /// La bande sous la ligne lue (ou sous le bloc annoncé).
     private(set) var lineBand: CGRect?
-    /// Le trait sous la ligne tel qu'il est dessiné.
+    /// Le point où en est la voix : du début de la ligne à ce point, dans le
+    /// mot lu. La pastille se remplit jusque-là.
     private(set) var cursorLine: CGRect?
+    /// Ce que montrent les calques : la bande et la pastille.
+    private(set) var shownBand: CGRect?
+    private(set) var shownPill: CGRect?
     /// Le début de la ligne du mot lu.
     private var lineStartX: CGFloat = 0
     /// La part du mot dite, qui ne recule pas dans un même mot.
@@ -75,6 +84,11 @@ final class ReadingTextView: NSTextView {
         frames = DisplayLinkFrames { [weak self] target, selector in
             self?.displayLink(target: target, selector: selector)
         }
+        underlay.apply(theme)
+        // Posée dans l'initialiseur, `frames` ne déclenche pas son `didSet` :
+        // sans ce branchement, le lien battait sans que rien n'avance (le
+        // suivi ne bougeait qu'à chaque mot).
+        wireFrames()
         isEditable = false
         // Le texte se sélectionne (glisser, double clic : un mot, triple
         // clic : le paragraphe) ; il ne se modifie qu'en édition, ailleurs.
@@ -107,6 +121,7 @@ final class ReadingTextView: NSTextView {
             tlm.removeRenderingAttribute(.foregroundColor, for: tlm.documentRange)
         }
         wordRect = nil; lineBand = nil; dimmedUpTo = 0; spoken = nil; colored = nil; announced = nil
+        setTargets(band: nil, pill: nil, animated: false)
         lastLineY = nil; last = nil
         updateCursorLine()
         followPolicy.resume()
@@ -210,6 +225,12 @@ final class ReadingTextView: NSTextView {
 
     override func viewDidMoveToSuperview() {
         super.viewDidMoveToSuperview()
+        // Les calques, juste sous le texte, au même cadre.
+        underlay.removeFromSuperview()
+        if let superview {
+            superview.addSubview(underlay, positioned: .below, relativeTo: self)
+            underlay.frame = frame
+        }
         if let liveScrollObserver { NotificationCenter.default.removeObserver(liveScrollObserver) }
         liveScrollObserver = nil
         // Glisser l'ascenseur ou défiler au trackpad : un défilement « vivant ».
@@ -228,9 +249,15 @@ final class ReadingTextView: NSTextView {
     /// géométrie du mot lu, de la bande et du trait est refaite, et la hauteur du
     /// texte renvoyée. Seule la largeur compte : renvoyer la hauteur quand la
     /// hauteur change bouclerait avec le panneau qui se redimensionne.
+    override func setFrameOrigin(_ newOrigin: NSPoint) {
+        super.setFrameOrigin(newOrigin)
+        underlay.frame = frame
+    }
+
     override func setFrameSize(_ newSize: NSSize) {
         let oldWidth = frame.width
         super.setFrameSize(newSize)
+        underlay.frame = frame
         guard abs(newSize.width - oldWidth) > 0.5 else { return }
         if var last {
             last.width = bounds.width
@@ -246,17 +273,37 @@ final class ReadingTextView: NSTextView {
 
     // MARK: - Dessin
 
-    override func drawBackground(in dirtyRect: NSRect) {
-        super.drawBackground(in: dirtyRect)
-        if let band = lineBand {
-            theme.wordFill.withAlphaComponent(0.25).setFill()
-            band.fill()
-        }
-        if let line = cursorLine, line.width > 0 {
-            theme.line.withAlphaComponent(0.9).setFill()
-            let radius = line.height / 2
-            NSBezierPath(roundedRect: line, xRadius: radius, yRadius: radius).fill()
-        }
+    // La bande et la pastille ne se dessinent plus ici : ce sont des calques
+    // sous le texte (`ReadingUnderlay`).
+
+    // MARK: - Bande et pastille
+
+    /// L'air autour du mot, dans sa pastille.
+    static let pillPadding = CGSize(width: 5, height: 4)
+    /// La boîte des lettres d'un mot : de son haut (hampes) à son bas
+    /// (jambages), sans l'interligne que compte le cadre de la ligne.
+    private func glyphBox(_ rect: CGRect, at location: Int) -> CGRect {
+        let font = textStorage.flatMap { storage -> NSFont? in
+            guard location < storage.length else { return nil }
+            return storage.attribute(.font, at: location, effectiveRange: nil) as? NSFont
+        } ?? NSFont.systemFont(ofSize: 20)
+        let height = min(rect.height, font.ascender - font.descender)
+        return CGRect(x: rect.minX, y: rect.maxY - height, width: rect.width, height: height)
+    }
+
+    /// Bande et pastille : glissent pendant la lecture, se posent sinon.
+    private var glides: Bool { playing && !reduceMotion() && windowShows }
+
+    private func setTargets(band: CGRect?, pill: CGRect?, animated: Bool) {
+        // Loin (une autre page, un saut) : on pose, sans traverser l'écran.
+        let far: Bool = {
+            guard let from = shownBand ?? shownPill, let to = band ?? pill else { return true }
+            return abs(from.midY - to.midY) > max(from.height, to.height) * 3
+        }()
+        shownBand = band
+        shownPill = pill
+        underlay.place(band: band, pill: pill, animated: animated && glides && !far)
+        underlay.fill(upTo: cursorLine.map { $0.maxX + Self.pillPadding.width })
     }
 
     /// Pose le mot lu, la bande, le trait et, si demandé, la ligne tenue.
@@ -269,13 +316,21 @@ final class ReadingTextView: NSTextView {
         updateCursorLine()
         guard let lineRect = rect ?? sentence.flatMap({ self.rect(for: $0) }) else {
             lineBand = nil
-            needsDisplay = true
+            setTargets(band: nil, pill: nil, animated: false)
             return
         }
         lineBand = ruler
             ? CGRect(x: 0, y: lineRect.minY - 2, width: bounds.width, height: lineRect.height + 4)
             : nil
-        needsDisplay = true
+        // Ce qui est dessiné serre les lettres : la bande et la pastille
+        // ne débordent pas dans l'interligne.
+        let box = word.flatMap { w in rect.map { glyphBox($0, at: w.location) } }
+        let pad = Self.pillPadding
+        let band = ruler
+            ? box.map { CGRect(x: 0, y: $0.minY - pad.height - 3, width: bounds.width,
+                               height: $0.height + 2 * (pad.height + 3)) } ?? lineBand
+            : nil
+        setTargets(band: band, pill: box?.insetBy(dx: -pad.width, dy: -pad.height), animated: animated)
         guard follow else { return }
         // Un bloc haut se tient par sa première ligne, pour qu'on le voie
         // commencer.
@@ -317,11 +372,10 @@ final class ReadingTextView: NSTextView {
 
     private func setCursorLine(_ line: CGRect?) {
         guard line != cursorLine else { return }
-        // Seul le trait est redessiné, pas tout le texte.
-        for r in [cursorLine, line].compactMap({ $0 }) {
-            setNeedsDisplay(r.insetBy(dx: -2, dy: -2))
-        }
         cursorLine = line
+        // La pastille se remplit jusqu'au point de la voix : une largeur de
+        // calque, rien à redessiner.
+        underlay.fill(upTo: line.map { $0.maxX + Self.pillPadding.width })
     }
 
     private func wireFrames() {
@@ -489,7 +543,11 @@ final class ReadingTextView: NSTextView {
 
     private func rect(for range: NSRange) -> CGRect? {
         guard let tlm = textLayoutManager, let tr = textRange(range) else { return nil }
-        tlm.ensureLayout(for: tr)
+        // Depuis le début : la hauteur de ce qui précède serait sinon estimée,
+        // et la bande tomberait entre deux lignes (vu après un aller-retour
+        // par le mini, en pause).
+        let upTo = NSTextRange(location: tlm.documentRange.location, end: tr.endLocation) ?? tr
+        tlm.ensureLayout(for: upTo)
         var result: CGRect?
         tlm.enumerateTextSegments(in: tr, type: .standard, options: []) { _, frame, _, _ in
             result = result.map { $0.union(frame) } ?? frame

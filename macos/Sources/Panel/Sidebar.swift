@@ -11,11 +11,12 @@ struct Sidebar: View {
     var body: some View {
         let model = controller.model
         let items = model.tableOfContents
-        VStack(alignment: .leading, spacing: 6) {
-            Label("Sommaire", systemImage: "list.bullet")
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Sommaire")
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(Color(nsColor: theme.chrome))
-                .padding(.leading, 8)
+                .padding(.leading, 16)
+                .padding(.top, 12)
                 .accessibilityAddTraits(.isHeader)
             List(items, id: \.id, selection: $selection) { item in
                 Text(item.title)
@@ -44,6 +45,7 @@ struct Sidebar: View {
         }
         .foregroundStyle(Color(nsColor: theme.text))
         .frame(width: 220)
+        .background(PanelSurface(theme: theme))
         .onAppear { selection = model.snapshot.section }
         // La ligne choisie suit la section lue, sauf pendant qu'on parcourt
         // la liste au clavier ; en la quittant, elle se recale.

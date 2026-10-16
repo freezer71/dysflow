@@ -23,7 +23,7 @@ enum ScreenFit {
 
 /// Le mini : taille fixe, place retenue, toujours sur un écran visible.
 enum MiniPlacement {
-    static let size = CGSize(width: 340, height: 88)
+    static let size = CGSize(width: 340, height: 108)
 
     /// La place retenue si un écran en montre au moins un bout (ramenée
     /// entière sur l'écran qui en montre le plus) ; sinon la place par

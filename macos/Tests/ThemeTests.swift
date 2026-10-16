@@ -11,8 +11,8 @@ final class ThemeTests: XCTestCase {
 
     func testPaperColorsMatchTheSpec() {
         XCTAssertEqual(Theme.paper.background.hex, "#FFFFFF")
-        XCTAssertEqual(Theme.paper.wordFill.hex, "#6AA7EC")
-        XCTAssertEqual(Theme.night.background.hex, "#191919")
+        XCTAssertEqual(Theme.paper.wordFill.hex, "#C6F36B")
+        XCTAssertEqual(Theme.night.background.hex, "#161616")
         XCTAssertEqual(Theme.contrast.wordFill.hex, "#FFE600")
     }
 
@@ -20,8 +20,8 @@ final class ThemeTests: XCTestCase {
     /// en contraste élevé, le mot reste blanc (il n'a plus de fond jaune) et
     /// le trait est jaune.
     func testCursorInkAndLine() {
-        XCTAssertEqual(Theme.paper.wordText.hex, "#183347")
-        XCTAssertEqual(Theme.night.wordText.hex, "#E6F1FF")
+        XCTAssertEqual(Theme.paper.wordText.hex, "#0A0A0A")
+        XCTAssertEqual(Theme.night.wordText.hex, "#FFFFFF")
         XCTAssertEqual(Theme.contrast.wordText.hex, "#FFFFFF")
         XCTAssertEqual(Theme.contrast.line.hex, "#FFE600")
         for (name, theme) in [("papier", Theme.paper), ("nuit", .night), ("contraste", .contrast)] {

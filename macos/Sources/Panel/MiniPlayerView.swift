@@ -2,8 +2,8 @@ import KeyboardShortcuts
 import SwiftUI
 
 /// La barre du mode petit, à la façon d'un mini-lecteur de musique, sur
-/// deux rangées : la timeline entre le temps écoulé et le temps restant ;
-/// puis ⏮ ▶ ⏭ par phrase, et « Agrandir ». Contrôles à 13 pt au
+/// trois rangées : le titre de ce qui est lu ; la timeline entre le temps
+/// écoulé et le temps restant ; puis ⏮ ▶ ⏭ par phrase, et « Agrandir ». Contrôles à 13 pt au
 /// moins. Elle lit l'instantané du modèle, à son rythme : rien ne tourne
 /// en pause.
 struct MiniPlayerView: View {
@@ -40,6 +40,8 @@ struct MiniPlayerBar: View {
     var body: some View {
         let s = snapshot
         VStack(spacing: 6) {
+            MiniTitle(title: MiniTitle.text(hasDocument: s.hasDocument, title: model.document.title),
+                      color: Color(nsColor: s.hasDocument ? theme.text : theme.chrome))
             switch MiniTop.choose(message: message, hasDocument: s.hasDocument) {
             case .message(let message):
                 // Un message passager prend la place des temps, sans changer
@@ -71,6 +73,33 @@ struct MiniPlayerBar: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("barre-mini")
+    }
+}
+
+/// Rangée 0 : le titre de ce qui est lu (le premier titre du document,
+/// sinon ses premiers caractères), centré, sur une ligne, coupé au bout ;
+/// entier au survol.
+struct MiniTitle: View {
+    let title: String
+    let color: Color
+
+    /// Sans document, le nom de l'app.
+    static func text(hasDocument: Bool, title: String) -> String {
+        let t = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        return hasDocument && !t.isEmpty ? t : "sillon"
+    }
+
+    var body: some View {
+        Text(title)
+            .font(.system(size: 15, weight: .semibold))
+            .foregroundStyle(color)
+            .lineLimit(1)
+            .truncationMode(.tail)
+            .frame(maxWidth: .infinity, alignment: .center)
+            .frame(height: 20)
+            .help(title)
+            .accessibilityLabel("En lecture : \(title)")
+            .accessibilityIdentifier("titre-mini")
     }
 }
 
@@ -118,7 +147,8 @@ struct MiniTimeRow: View {
     }
 }
 
-/// Rangée 2 : ⏮ ▶ ⏭ par phrase au centre, « Agrandir » à droite.
+/// Rangée 2 : « Coller » à gauche, ⏮ ▶ ⏭ par phrase au centre,
+/// « Agrandir » à droite.
 struct MiniControlsRow: View {
     let model: ReaderModel
     var transportEnabled = true
@@ -126,11 +156,17 @@ struct MiniControlsRow: View {
 
     static let transport = [SentenceTransport.previous, SentenceTransport.next]
     static let growAction = ReaderAction.toggleSize
+    static let pasteAction = ReaderAction.paste
 
     var body: some View {
         HStack(spacing: 0) {
             // La même largeur des deux côtés : le transport reste centré.
-            Color.clear.frame(width: MiniBarMetrics.side, height: 1)
+            // Coller marche aussi sans document : c'est ainsi qu'on en ouvre un.
+            BarIconButton(symbol: "doc.on.clipboard", label: "Coller",
+                          help: "Lire le presse-papiers (⌘V)", identifier: "coller-mini") {
+                send(Self.pasteAction)
+            }
+            .frame(width: MiniBarMetrics.side, alignment: .leading)
             Spacer(minLength: 0)
             HStack(spacing: 4) {
                 TransportButton(item: SentenceTransport.previous, send: send)

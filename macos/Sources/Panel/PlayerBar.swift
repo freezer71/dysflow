@@ -23,12 +23,13 @@ struct Timeline: View {
     var body: some View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
-                Capsule().fill(Color(nsColor: theme.text).opacity(0.1)).frame(height: 4)
-                Capsule().fill(Color(nsColor: theme.text))
-                    .frame(width: geo.size.width * Self.clamped(progress), height: 4)
+                Capsule().fill(Color(nsColor: theme.text).opacity(0.12)).frame(height: 6)
+                // La part lue à la couleur du trait sous la ligne lue.
+                Capsule().fill(Color(nsColor: theme.line))
+                    .frame(width: geo.size.width * Self.clamped(progress), height: 6)
                 ForEach(markers, id: \.self) { m in
                     Capsule().fill(Color(nsColor: theme.background))
-                        .frame(width: 2, height: 4)
+                        .frame(width: 2, height: 6)
                         .offset(x: geo.size.width * m - 1)
                 }
             }
@@ -74,19 +75,23 @@ enum BarButtonMetrics {
 
 /// Le style de tous les boutons de barre : une cible confortable, un fond
 /// arrondi léger au survol, plus marqué à l'appui. Le disque de lecture,
-/// à l'encre du texte (monochrome, comme Notion), s'éclaircit au survol et
+/// à la couleur du trait de lecture (l'accent), s'éclaircit au survol et
 /// à l'appui.
 struct BarButtonStyle: ButtonStyle {
     var disc = false
+    /// Un bouton d'en-tête dont le volet est ouvert (sommaire, recherche) :
+    /// son fond reste marqué.
+    var selected = false
 
     func makeBody(configuration: Configuration) -> some View {
-        BarButtonBody(configuration: configuration, disc: disc)
+        BarButtonBody(configuration: configuration, disc: disc, selected: selected)
     }
 }
 
 private struct BarButtonBody: View {
     let configuration: ButtonStyleConfiguration
     let disc: Bool
+    let selected: Bool
     @State private var hovering = false
     @Environment(\.isEnabled) private var enabled
     @Environment(\.panelTheme) private var theme
@@ -96,15 +101,16 @@ private struct BarButtonBody: View {
         let size = disc ? BarButtonMetrics.disc : BarButtonMetrics.target
         let hover = BarButtonMetrics.showsHover(hovering: hovering, enabled: enabled)
         configuration.label
-            .foregroundStyle(disc ? AnyShapeStyle(Color(nsColor: theme.background)) : AnyShapeStyle(.foreground))
+            .foregroundStyle(disc ? AnyShapeStyle(Color(nsColor: theme.onLine))
+                : selected ? AnyShapeStyle(Color(nsColor: theme.text)) : AnyShapeStyle(.foreground))
             .frame(minWidth: size, minHeight: size)
             .background {
                 if disc {
-                    Circle().fill(Color(nsColor: theme.text))
+                    Circle().fill(Color(nsColor: theme.line))
                         .opacity(pressed ? 0.7 : (hover ? 0.85 : 1))
                 } else {
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(Color(nsColor: theme.text).opacity(pressed ? 0.14 : (hover ? 0.07 : 0)))
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(Color(nsColor: theme.text).opacity(pressed ? 0.14 : (hover || selected ? 0.08 : 0)))
                 }
             }
             .contentShape(Rectangle())

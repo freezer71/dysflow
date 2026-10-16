@@ -10,10 +10,12 @@ struct ReaderView: View {
         let model = controller.model
         VStack(alignment: .leading, spacing: 12) {
             ReaderHeader(controller: controller, theme: style.theme)
-            HStack(alignment: .top, spacing: 18) {
+            // Le filet sous l'en-tête : les commandes d'un côté, le texte de l'autre.
+            Rectangle().fill(Color(nsColor: style.theme.border)).frame(height: 1)
+                .accessibilityHidden(true)
+            HStack(alignment: .top, spacing: 20) {
                 if controller.sidebarVisible {
                     Sidebar(controller: controller, theme: style.theme)
-                    Divider()
                 }
                 if controller.editing {
                     TextEditingView(controller: controller, style: style)
@@ -26,12 +28,16 @@ struct ReaderView: View {
                         }
                 }
             }
-            if !controller.editing {
-                ReaderBar(controller: controller, theme: style.theme, markers: model.sectionPositions)
+            VStack(alignment: .leading, spacing: 6) {
+                if !controller.editing {
+                    ReaderBar(controller: controller, theme: style.theme, markers: model.sectionPositions)
+                }
+                ReaderStatusLine(line: PanelStatus.line(message: model.message, snapshot: model.snapshot),
+                                 color: Color(nsColor: style.theme.chrome))
+                    .padding(.horizontal, 4)
+                VoiceStatusLine(model: model, color: Color(nsColor: style.theme.chrome))
+                    .padding(.horizontal, 4)
             }
-            ReaderStatusLine(line: PanelStatus.line(message: model.message, snapshot: model.snapshot),
-                             color: Color(nsColor: style.theme.chrome))
-            VoiceStatusLine(model: model, color: Color(nsColor: style.theme.chrome))
         }
     }
 }
@@ -82,24 +88,41 @@ struct ReaderInvitation: View {
     }
 }
 
-/// Le titre courant, la recherche quand elle est ouverte, les trois
-/// boutons et la fermeture.
+/// Le titre courant, la recherche quand elle est ouverte, les quatre
+/// boutons (Coller, Sommaire, Rechercher, Modifier), les réglages et la
+/// fermeture.
 struct ReaderHeader: View {
     let controller: PanelController
     let theme: Theme
     @State private var query = ""
     @FocusState private var searchFocused: Bool
+    /// La largeur de l'en-tête, relue quand elle change.
+    @State private var width: CGFloat = 0
+
+    /// Sous cette largeur, les boutons perdent leurs intitulés (le champ de
+    /// recherche ouvert en demande davantage).
+    static func compact(width: CGFloat, searching: Bool) -> Bool {
+        width > 0 && width < 660 + (searching ? 210 : 0)
+    }
 
     var body: some View {
         let model = controller.model
         let title = model.breadcrumb.isEmpty ? "sillon" : model.breadcrumb
-        HStack(spacing: 6) {
+        HStack(spacing: 4) {
+            LogoMark(small: true)
+                .frame(width: 16, height: 16)
+                .foregroundStyle(Color(nsColor: theme.past))
+                .padding(.trailing, 4)
             Text(title)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Color(nsColor: theme.text))
                 .lineLimit(1)
                 .truncationMode(.middle)
                 .accessibilityLabel(title)
                 .accessibilityAddTraits(.isHeader)
                 .accessibilityIdentifier("fil-ariane")
+                // Le titre se coupe avant que les boutons ne perdent leurs intitulés.
+                .layoutPriority(-1)
             Spacer(minLength: 8)
             if controller.searchActive {
                 TextField("Rechercher", text: $query)
@@ -121,19 +144,14 @@ struct ReaderHeader: View {
                     .monospacedDigit()
                     .accessibilityIdentifier("resultats-recherche")
             }
-            HeaderButton(title: "Sommaire", symbol: "list.bullet", help: "Sommaire (t)",
-                         identifier: "bouton-sommaire", selected: controller.sidebarVisible) {
-                controller.perform(.toggleSidebar)
+            // Les intitulés quand ils tiennent, les icônes seules sinon. Pas de
+            // ViewThatFits : il mesure ses deux variantes à chaque mise à jour,
+            // soit à chaque image pendant la lecture (~40 % d'un cœur).
+            headerButtons(compact: Self.compact(width: width, searching: controller.searchActive))
+            BarIconButton(symbol: "gearshape", label: "Réglages", help: "Réglages (⌘,)",
+                          identifier: "bouton-reglages") {
+                controller.perform(.openSettings)
             }
-            HeaderButton(title: "Rechercher", symbol: "magnifyingglass", help: "Rechercher (/ ou ⌘F)",
-                         identifier: "bouton-rechercher", selected: controller.searchActive) {
-                controller.perform(.openSearch)
-            }
-            HeaderButton(title: "Modifier", symbol: "pencil", help: "Modifier le texte (e)",
-                         identifier: "bouton-modifier", selected: controller.editing) {
-                controller.perform(.edit)
-            }
-            .disabled(!model.snapshot.hasDocument || controller.editing)
             BarIconButton(symbol: "xmark", label: "Fermer", help: "Fermer, la lecture s'arrête (⌘W)",
                           identifier: "fermer") {
                 controller.perform(.close)
@@ -141,9 +159,36 @@ struct ReaderHeader: View {
         }
         .font(.system(size: 13))
         .foregroundStyle(Color(nsColor: theme.chrome))
+        .background(GeometryReader { geo in
+            Color.clear
+                .onAppear { width = geo.size.width }
+                .onChange(of: geo.size.width) { _, w in width = w }
+        })
         // Recherche fermée (Échap) : le champ rouvert repart vide.
         .onChange(of: controller.searchActive) { _, active in
             if !active { query = "" }
+        }
+    }
+
+    private func headerButtons(compact: Bool) -> some View {
+        HStack(spacing: 6) {
+            HeaderButton(title: "Coller", symbol: "doc.on.clipboard", help: "Lire le presse-papiers (⌘V)",
+                         identifier: "bouton-coller", compact: compact) {
+                controller.perform(.paste)
+            }
+            HeaderButton(title: "Sommaire", symbol: "list.bullet", help: "Sommaire (t)",
+                         identifier: "bouton-sommaire", selected: controller.sidebarVisible, compact: compact) {
+                controller.perform(.toggleSidebar)
+            }
+            HeaderButton(title: "Rechercher", symbol: "magnifyingglass", help: "Rechercher (/ ou ⌘F)",
+                         identifier: "bouton-rechercher", selected: controller.searchActive, compact: compact) {
+                controller.perform(.openSearch)
+            }
+            HeaderButton(title: "Modifier", symbol: "pencil", help: "Modifier le texte (e)",
+                         identifier: "bouton-modifier", selected: controller.editing, compact: compact) {
+                controller.perform(.edit)
+            }
+            .disabled(!controller.model.snapshot.hasDocument || controller.editing)
         }
     }
 }
@@ -159,7 +204,7 @@ struct ReaderBar: View {
         let model = controller.model
         let s = model.snapshot
         HStack(spacing: 10) {
-            HStack(spacing: 2) {
+            HStack(spacing: 0) {
                 TransportButton(item: SentenceTransport.previous, send: controller.perform)
                 PlayButton(model: model)
                 TransportButton(item: SentenceTransport.next, send: controller.perform)
@@ -186,5 +231,28 @@ struct ReaderBar: View {
         }
         .font(.system(size: 13))
         .foregroundStyle(Color(nsColor: theme.chrome))
+        // La barre posée sur la page, en pilule.
+        .padding(.vertical, 6)
+        .padding(.horizontal, 8)
+        .background(PanelSurface(theme: theme, radius: 22))
+    }
+}
+
+/// Le fond des zones posées sur la page (sommaire, barre) : la surface du
+/// thème, pleine, sans filet ; un filet en contraste élevé seulement.
+struct PanelSurface: View {
+    let theme: Theme
+    var radius: CGFloat = 16
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: radius)
+            .fill(Color(nsColor: theme.surface))
+            .overlay {
+                if theme == .contrast {
+                    RoundedRectangle(cornerRadius: radius)
+                        .strokeBorder(Color(nsColor: theme.border), lineWidth: 1)
+                }
+            }
+            .accessibilityHidden(true)
     }
 }

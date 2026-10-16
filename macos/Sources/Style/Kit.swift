@@ -1,10 +1,12 @@
 import AppKit
 import SwiftUI
 
-// Le style de l'app, à la manière de Notion (14 oct. 2026) : une encre
-// chaude sur blanc, des gris pour tout ce qui est secondaire, des filets fins,
-// des fonds de survol à peine marqués, le bleu réservé à l'action et au mot lu.
-// Les contrôles restent petits : ils ne grandissent jamais avec le texte lu.
+// Le style de l'app, à la manière du style « Felt » (15 oct. 2026) : des
+// gris neutres, des cartes blanches très arrondies posées sur une page grise,
+// sans bordure ; des champs et des boutons pleins ; l'action principale à
+// l'encre (noir le jour, blanc le soir) ; le vert citron pour ce qui est
+// choisi. Les contrôles restent petits : ils ne grandissent jamais avec le
+// texte lu.
 
 extension NSColor {
     /// Une couleur qui suit l'apparence : claire sous Aqua, sombre sous Dark Aqua.
@@ -19,27 +21,34 @@ extension NSColor {
 /// Les couleurs de l'interface (fenêtres, réglages). Le panneau de lecture a
 /// les siennes (`Theme`), accordées à celles-ci.
 enum Palette {
-    static let page = Color(nsColor: .adaptive(light: 0xFFFFFF, dark: 0x191919))
-    static let sidebar = Color(nsColor: .adaptive(light: 0xF7F7F5, dark: 0x202020))
-    /// Le texte courant : 11:1 sur le blanc, 10:1 sur le fond sombre.
-    static let ink = Color(nsColor: .adaptive(light: 0x37352F, dark: 0xD4D4D4))
-    /// Descriptions et légendes : 5:1 au moins sur les deux fonds (WCAG AA).
-    static let muted = Color(nsColor: .adaptive(light: 0x6B6A66, dark: 0x9B9B9B))
+    static let page = Color(nsColor: .adaptive(light: 0xF2F2F2, dark: 0x0E0E0E))
+    /// Le fond des cartes, posées sur la page.
+    static let sidebar = Color(nsColor: .adaptive(light: 0xFFFFFF, dark: 0x1C1C1C))
+    /// Le texte courant : 15:1 au moins sur les cartes.
+    static let ink = Color(nsColor: .adaptive(light: 0x141414, dark: 0xEDEDED))
+    /// Descriptions et légendes : 5:1 au moins sur les cartes et la page (WCAG AA).
+    static let muted = Color(nsColor: .adaptive(light: 0x666666, dark: 0xA0A0A0))
     /// Les icônes seulement, jamais du texte.
-    static let faint = Color(nsColor: .adaptive(light: 0x91908C, dark: 0x7D7D7D))
-    static let divider = Color(nsColor: .adaptive(light: 0xE9E9E7, dark: 0x2F2F2F))
-    static let hover = Color(nsColor: .adaptive(light: 0xEFEFED, dark: 0x2A2A2A))
-    static let selected = Color(nsColor: .adaptive(light: 0xE8E8E6, dark: 0x2F2F2F))
-    /// Le fond d'un encadré (« callout ») ou d'un champ.
-    static let callout = Color(nsColor: .adaptive(light: 0xF4F4F2, dark: 0x252525))
-    static let accent = Color(nsColor: .adaptive(light: 0x2383E2, dark: 0x2383E2))
-    static let accentPressed = Color(nsColor: .adaptive(light: 0x0F6DCA, dark: 0x0F6DCA))
+    static let faint = Color(nsColor: .adaptive(light: 0x8F8F8F, dark: 0x7A7A7A))
+    static let divider = Color(nsColor: .adaptive(light: 0xEDEDED, dark: 0x2A2A2A))
+    static let hover = Color(nsColor: .adaptive(light: 0xE9E9E9, dark: 0x2C2C2C))
+    static let selected = Color(nsColor: .adaptive(light: 0xE0E0E0, dark: 0x343434))
+    /// Le fond d'un encadré (« callout »).
+    static let callout = Color(nsColor: .adaptive(light: 0xFFFFFF, dark: 0x1C1C1C))
+    /// Le fond plein d'un champ ou d'un bouton secondaire, sur une carte.
+    static let control = Color(nsColor: .adaptive(light: 0xF2F2F2, dark: 0x2A2A2A))
+    /// Le vert citron : interrupteurs, curseurs, étiquette « recommandé ».
+    static let accent = Color(nsColor: .adaptive(light: 0xA6E35A, dark: 0xC6F36B))
+    /// L'action principale : à l'encre, son texte à la couleur des cartes.
+    static let primary = Color(nsColor: .adaptive(light: 0x141414, dark: 0xF2F2F2))
+    static let primaryPressed = Color(nsColor: .adaptive(light: 0x3A3A3A, dark: 0xC8C8C8))
+    static let onPrimary = Color(nsColor: .adaptive(light: 0xFFFFFF, dark: 0x141414))
 }
 
 /// Les tailles de texte de l'interface : 13 pt pour tout ce qu'on lit,
 /// jamais moins de 12 pt.
 enum Typo {
-    static let pageTitle = Font.system(size: 22, weight: .bold)
+    static let pageTitle = Font.system(size: 26, weight: .heavy)
     static let sectionTitle = Font.system(size: 14, weight: .semibold)
     static let rowTitle = Font.system(size: 13, weight: .medium)
     static let body = Font.system(size: 13)
@@ -69,7 +78,6 @@ struct SettingsPage<Content: View>: View {
                         .padding(.top, 4)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                Rule().padding(.top, 14)
                 VStack(alignment: .leading, spacing: 0) { content }
             }
             .padding(.horizontal, 36)
@@ -82,7 +90,8 @@ struct SettingsPage<Content: View>: View {
     }
 }
 
-/// Un groupe de réglages : un titre souligné, des lignes dessous.
+/// Un groupe de réglages : un titre, puis ses lignes sur une carte,
+/// séparées par un filet.
 struct SettingsGroup<Content: View>: View {
     let title: String
     @ViewBuilder let content: Content
@@ -93,11 +102,15 @@ struct SettingsGroup<Content: View>: View {
                 .font(Typo.sectionTitle)
                 .foregroundStyle(Palette.ink)
                 .accessibilityAddTraits(.isHeader)
-                .padding(.top, 30)
-                .padding(.bottom, 8)
-            Rule()
+                .padding(.leading, 2)
+                .padding(.top, 28)
+                .padding(.bottom, 10)
             VStack(alignment: .leading, spacing: 0) { content }
-                .padding(.top, 4)
+                // Chaque ligne porte un filet au-dessus : celui de la première
+                // passe sous le bord du cadre.
+                .padding(.top, -1)
+                .clipShape(RoundedRectangle(cornerRadius: 16))
+                .background(RoundedRectangle(cornerRadius: 16).fill(Palette.sidebar))
         }
     }
 }
@@ -128,7 +141,9 @@ struct SettingRow<Control: View>: View {
             control
         }
         .padding(.vertical, 10)
-        .frame(minHeight: 44)
+        .padding(.horizontal, 16)
+        .frame(minHeight: 48)
+        .overlay(alignment: .top) { Rule().padding(.horizontal, 16) }
     }
 }
 
@@ -165,8 +180,8 @@ struct Callout<Actions: View>: View {
             }
             Spacer(minLength: 0)
         }
-        .padding(14)
-        .background(RoundedRectangle(cornerRadius: 6).fill(Palette.callout))
+        .padding(16)
+        .background(RoundedRectangle(cornerRadius: 16).fill(Palette.callout))
         .padding(.top, 14)
         .accessibilityElement(children: .contain)
     }
@@ -188,17 +203,17 @@ struct Tag: View {
     var body: some View {
         Text(text)
             .font(Typo.caption)
-            .padding(.horizontal, 6)
+            .padding(.horizontal, 8)
             .frame(height: 20)
             .foregroundStyle(Color(nsColor: colors.text))
-            .background(RoundedRectangle(cornerRadius: 4).fill(Color(nsColor: colors.fill)))
+            .background(Capsule().fill(Color(nsColor: colors.fill)))
     }
 
     private var colors: (fill: NSColor, text: NSColor) {
         switch tint {
-        case .gray: (.adaptive(light: 0xE3E2E0, dark: 0x373737), .adaptive(light: 0x32302C, dark: 0xD4D4D4))
-        case .blue: (.adaptive(light: 0xD3E5EF, dark: 0x1F3A52), .adaptive(light: 0x183347, dark: 0xD3E5EF))
-        case .green: (.adaptive(light: 0xDBEDDB, dark: 0x1F3A2A), .adaptive(light: 0x1C3829, dark: 0xD0EBD6))
+        case .gray: (.adaptive(light: 0xEAE4DA, dark: 0x3A3632), .adaptive(light: 0x2E2A25, dark: 0xE9E4DC))
+        case .blue: (.adaptive(light: 0xE6E0FA, dark: 0x2E2650), .adaptive(light: 0x3A2C7A, dark: 0xDCD3FF))
+        case .green: (.adaptive(light: 0xC6F36B, dark: 0xC6F36B), .adaptive(light: 0x141414, dark: 0x141414))
         }
     }
 }
@@ -221,7 +236,7 @@ struct Keycap: View {
 
 // MARK: - Boutons
 
-/// Les boutons de l'interface : petits, à coins de 6 pt, fond au survol.
+/// Les boutons de l'interface : petits, pleins, à coins de 10 pt.
 struct NotionButtonStyle: ButtonStyle {
     enum Kind { case primary, secondary, danger, plain }
     var kind: Kind = .secondary
@@ -252,30 +267,28 @@ private struct NotionButtonBody: View {
             // Un bouton garde son intitulé entier : c'est le texte voisin qui passe à la ligne.
             .fixedSize(horizontal: true, vertical: false)
             .foregroundStyle(foreground)
-            .padding(.horizontal, 10)
-            .frame(minHeight: 28)
+            .padding(.horizontal, 12)
+            .frame(minHeight: 30)
             .background {
-                let shape = RoundedRectangle(cornerRadius: 6)
+                let shape = RoundedRectangle(cornerRadius: 10)
                 switch kind {
                 case .primary:
-                    shape.fill(pressed ? Palette.accentPressed : Palette.accent)
-                        .brightness(hover && !pressed ? -0.04 : 0)
+                    shape.fill(pressed ? Palette.primaryPressed : Palette.primary)
+                        .opacity(hover && !pressed ? 0.88 : 1)
                 case .secondary, .danger:
-                    shape.fill(pressed ? Palette.selected : (hover ? Palette.hover : Palette.page))
-                        .overlay(shape.strokeBorder(Palette.divider.opacity(1), lineWidth: 1))
-                        .overlay(shape.strokeBorder(Color.primary.opacity(0.06), lineWidth: 1))
+                    shape.fill(pressed ? Palette.selected : (hover ? Palette.hover : Palette.control))
                 case .plain:
                     shape.fill(pressed ? Palette.selected : (hover ? Palette.hover : .clear))
                 }
             }
-            .contentShape(RoundedRectangle(cornerRadius: 6))
+            .contentShape(RoundedRectangle(cornerRadius: 10))
             .opacity(enabled ? 1 : 0.45)
             .onHover { hovering = $0 }
     }
 
     private var foreground: Color {
         switch kind {
-        case .primary: .white
+        case .primary: Palette.onPrimary
         case .danger: ErrorStyle.color
         case .secondary, .plain: Palette.ink
         }
@@ -284,16 +297,15 @@ private struct NotionButtonBody: View {
 
 // MARK: - Champs
 
-/// Un champ de saisie : fond gris léger, filet fin, coins de 6 pt.
+/// Un champ de saisie : plein, gris, coins de 10 pt, sans filet.
 struct NotionFieldStyle: TextFieldStyle {
     func _body(configuration: TextField<Self._Label>) -> some View {
         configuration
             .textFieldStyle(.plain)
             .font(Typo.body)
-            .padding(.horizontal, 8)
-            .frame(height: 28)
-            .background(RoundedRectangle(cornerRadius: 6).fill(Palette.callout))
-            .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Palette.divider, lineWidth: 1))
+            .padding(.horizontal, 10)
+            .frame(height: 30)
+            .background(RoundedRectangle(cornerRadius: 10).fill(Palette.control))
     }
 }
 
