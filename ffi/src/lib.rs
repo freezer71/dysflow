@@ -873,6 +873,13 @@ fn crossbeam_channel_bounded() -> (
 
 /// Les défauts du moteur (`Config::default`), sans passer par le fil du
 /// lecteur : ce qu'un onglet montre avant son premier chargement.
+/// La phrase d'exemple des aperçus, dans `language` (`fr` par défaut) : le
+/// texte que la bibliothèque des voix propose d'abord.
+#[uniffi::export]
+pub fn preview_sample_text(language: String) -> String {
+    sillon::tts::preview::sample_text(&language).to_string()
+}
+
 #[uniffi::export]
 pub fn default_settings() -> SettingsView {
     settings_of(settings::SettingsView::of(&Config::default()))
@@ -1160,6 +1167,12 @@ mod tests {
         assert!(err.contains("sortie audio"), "{err}");
         reader.stop_preview();
         assert!(!reader.snapshot().preview.pending);
+    }
+
+    #[test]
+    fn the_sample_text_is_the_one_of_the_previews() {
+        assert_eq!(preview_sample_text("fr".into()), sillon::tts::preview::sample_text("fr"));
+        assert!(preview_sample_text("en".into()).starts_with("Hello"));
     }
 
     #[test]

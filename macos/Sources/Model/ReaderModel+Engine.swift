@@ -38,6 +38,24 @@ extension ReaderModel {
         wake()
     }
 
+    // MARK: - Bibliothèque des voix
+
+    /// Toutes les voix des modèles de lecture installés, et celles de macOS.
+    func loadVoiceLibrary() async -> [LibraryVoice] { await call { $0.voiceLibrary() } }
+
+    /// Fait entendre `text` avec une voix de la bibliothèque, à `speed` pour
+    /// l'aperçu seulement (un autre modèle se charge pour lui).
+    func previewLibraryVoice(model: String, voice: String, text: String, speed: Float) async throws {
+        try await tryCall { try $0.previewVoiceWith(modelId: model, voice: voice, text: text, speed: speed) }
+        wake()
+    }
+
+    /// La bibliothèque se ferme : le modèle chargé pour l'aperçu est relâché.
+    func releaseVoicePreview() async {
+        await call { $0.releaseVoicePreview() }
+        wake()
+    }
+
     // MARK: - Modèles
 
     /// Les lignes de la table : la voix de macOS, puis le catalogue.

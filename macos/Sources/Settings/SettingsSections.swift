@@ -19,6 +19,8 @@ struct VoiceSection: View {
     /// La qualité des voix de macOS de la liste, lue par la fenêtre quand la
     /// liste change (pas à chaque retour sur la section).
     let macQuality: [String: Int]
+    /// La bibliothèque des voix est ouverte, en feuille sur la fenêtre.
+    @State private var libraryShown = false
 
     var body: some View {
         SettingsGroup(title: "Voix") {
@@ -69,6 +71,12 @@ struct VoiceSection: View {
                         .padding(.bottom, 4)
                 }
             }
+            SettingRow(title: "Bibliothèque des voix",
+                       detail: "Toutes les voix installées, à écouter sur votre texte avant de choisir") {
+                Button("Parcourir les voix…") { libraryShown = true }
+                    .buttonStyle(.notion)
+                    .accessibilityIdentifier("parcourir-voix")
+            }
             Text(ModelTable.footer(used: used, free: free))
                 .font(Typo.detail)
                 .foregroundStyle(Palette.muted)
@@ -97,6 +105,25 @@ struct VoiceSection: View {
         }
         // L'échec d'un aperçu se dit à VoiceOver depuis la fenêtre
         // (`ReglagesView`), quelle que soit la section affichée.
+        .sheet(isPresented: $libraryShown) {
+            let voice = Self.voice(in: store.values, store.capabilities)
+            VoiceLibrarySheet(model: model,
+                              sampleText: previewSampleText(language: Self.language(of: voice, store.capabilities)),
+                              speed: store.values.speed) { entry in
+                try await useLibraryVoice(entry)
+            }
+        }
+    }
+
+    /// « Utiliser » dans la bibliothèque : le modèle de la voix d'abord (s'il
+    /// ne lit pas déjà), puis la voix, écrite tout de suite.
+    private func useLibraryVoice(_ entry: VoiceLibraryEntry) async throws {
+        if !entry.modelActive {
+            try await model.useModel(entry.modelID)
+            await onChange()
+        }
+        store.setFamilyVoice(entry.voiceID)
+        await store.flush()
     }
 
     /// Voix de repli ou voix muette.
@@ -134,11 +161,13 @@ struct VoiceSection: View {
             .map(\.element)
     }
 
-    /// Une voix de macOS vue par AVFoundation : son nom et sa qualité
-    /// (3 Premium, 2 Améliorée, 1 sinon).
+    /// Une voix de macOS vue par AVFoundation : son nom, sa qualité
+    /// (3 Premium, 2 Améliorée, 1 sinon) et son genre (« femme », « homme »,
+    /// vide s'il n'est pas dit).
     struct MacVoice: Equatable {
         let name: String
         let quality: Int
+        var gender = ""
     }
 
     /// Les voix installées, lues une fois par liste de voix.
@@ -149,8 +178,27 @@ struct VoiceSection: View {
             case .enhanced: 2
             default: 1
             }
-            return MacVoice(name: voice.name, quality: level)
+            let gender = switch voice.gender {
+            case .female: "femme"
+            case .male: "homme"
+            default: ""
+            }
+            return MacVoice(name: voice.name, quality: level, gender: gender)
         }
+    }
+
+    /// Le genre de chaque voix listée par `say` (`ids`), d'après la voix
+    /// d'AVFoundation du même nom de base (« Zoe (Premium) » : celui de
+    /// Zoe). Inconnu : absent.
+    nonisolated static func genders(of ids: [String], voices: [MacVoice]) -> [String: String] {
+        var result: [String: String] = [:]
+        for id in ids {
+            let base = split(id).base
+            if let gender = voices.first(where: { split($0.name).base == base && !$0.gender.isEmpty })?.gender {
+                result[id] = gender
+            }
+        }
+        return result
     }
 
     /// La qualité de chaque voix listée par `say` (`ids`), d'après les voix
