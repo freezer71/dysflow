@@ -19,6 +19,10 @@ struct SillonApp: App {
             SettingsRoot()
                 .environment(delegate.services)
         }
+        // La liste à gauche, la section à droite : 820 × 640 à l'ouverture,
+        // jamais moins que la taille minimale du contenu (720 × 520).
+        .defaultSize(width: 820, height: 640)
+        .windowResizability(.contentMinSize)
     }
 }
 

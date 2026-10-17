@@ -1,10 +1,17 @@
 import SwiftUI
 
-/// La fenêtre des réglages : une seule page — Voix, Lecture, Raccourcis,
-/// Dictée (macOS 26), Autorisations, Démarrage. Le nom `SettingsView` est
-/// pris par l'enregistrement du moteur.
+/// La fenêtre des réglages, à la manière des Réglages Système : la liste
+/// des sections à gauche (Voix, Affichage, Dictée sous macOS 26,
+/// Raccourcis, Autorisations, Démarrage), la section choisie à droite.
+/// Seul le volet de droite défile, si la section dépasse la fenêtre. Le
+/// bandeau « config.toml illisible » et la ligne d'état de la voix restent
+/// visibles quelle que soit la section. Le nom `SettingsView` est pris par
+/// l'enregistrement du moteur.
 struct ReglagesView: View {
     let model: ReaderModel
+    /// La section affichée, gardée d'une ouverture à l'autre ;
+    /// `SettingsOpener.open(_:)` peut en demander une.
+    let navigation: SettingsNavigation
     @State private var store: SettingsStore
     /// Panneau masqué, l'état de la voix (aperçu, téléchargement) n'est plus
     /// relu : la fenêtre le relit à 4 Hz, tant qu'elle est visible seulement.
@@ -13,42 +20,57 @@ struct ReglagesView: View {
     @State private var rows: [VoiceModel] = []
     @State private var used: UInt64 = 0
     @State private var free: UInt64?
+    /// La liste prend le clavier à l'ouverture : ↑ et ↓ changent de section.
+    @FocusState private var listFocused: Bool
 
-    init(model: ReaderModel) {
+    /// La largeur de la liste, et la place laissée en haut aux boutons de la fenêtre.
+    static let sidebarWidth: CGFloat = 190
+    static let titlebarInset: CGFloat = 44
+
+    init(model: ReaderModel, navigation: SettingsNavigation = .shared) {
         self.model = model
+        self.navigation = navigation
         _store = State(initialValue: SettingsStore(backend: model))
         _refresh = State(initialValue: RefreshLoop { model.refresh() })
     }
 
     var body: some View {
+        let bannerShown = ConfigUnreadableBanner.line(unreadable: model.snapshot.configUnreadable) != nil
         VStack(spacing: 0) {
             ConfigUnreadableBanner(model: model, store: store)
-            SettingsPage(title: "Réglages") {
-                ErrorText(store.error, identifier: "erreur-reglages")
-                VoiceSection(model: model, store: store, rows: rows, used: used, free: free,
-                             onChange: { await reloadModels() })
-                ReadingSection(store: store)
-                ShortcutsSection()
-                if Dictation.isSupported {
-                    DictationSection(model: model, rows: rows, onChange: { await reloadModels() })
+            HStack(spacing: 0) {
+                sidebar(topInset: bannerShown ? 12 : Self.titlebarInset)
+                Rectangle().fill(Palette.divider).frame(width: 1).accessibilityHidden(true)
+                VStack(spacing: 0) {
+                    pane(navigation.selection)
+                    // En bas, toujours là : l'erreur d'enregistrement, puis
+                    // l'état de la voix si elle n'est pas prête.
+                    if store.error != nil {
+                        ErrorText(store.error, identifier: "erreur-reglages")
+                            .padding(.horizontal, 36)
+                            .padding(.top, 8)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    VoiceStatusLine(model: model)
+                        .padding(.horizontal, 36)
+                        .padding(.vertical, 10)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                PermissionsSection()
-                StartupSection()
+                .background(Palette.page)
             }
-            // En bas, discret : l'état de la voix si elle n'est pas prête.
-            VoiceStatusLine(model: model)
-                .padding(.horizontal, 36)
-                .padding(.vertical, 10)
         }
         .background(Palette.page)
-        // La barre de titre est transparente : la page monte jusqu'en haut.
+        // La barre de titre est transparente : la liste monte jusqu'en haut.
         .ignoresSafeArea()
         .modifier(HiddenWindowToolbar())
         .navigationTitle("Réglages")
-        .frame(width: 660, height: 700)
+        .frame(minWidth: 720, idealWidth: 820, maxWidth: .infinity,
+               minHeight: 520, idealHeight: 640, maxHeight: .infinity)
         .font(Typo.body)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("page-reglages")
+        .defaultFocus($listFocused, true)
+        .onAppear { listFocused = true }
         .task {
             AppDelegate.shared?.settingsStore = store
             await store.load()
@@ -64,6 +86,67 @@ struct ReglagesView: View {
         .onChange(of: ReaderModel.isDownloading(model.snapshot.download)) { was, running in
             if was, !running { Task { await reloadModels() } }
         }
+    }
+
+    /// La liste des sections : une icône et un mot par ligne. La sélection
+    /// native de `List` : ↑ et ↓ y changent de section, VoiceOver dit la
+    /// ligne choisie.
+    private func sidebar(topInset: CGFloat) -> some View {
+        List(selection: Binding<SettingsSection?>(get: { navigation.selection },
+                                                  set: { navigation.select($0) })) {
+            ForEach(navigation.available) { section in
+                Label {
+                    Text(section.title)
+                        .fixedSize(horizontal: false, vertical: true)
+                } icon: {
+                    Image(systemName: section.symbol)
+                        .frame(width: 20)
+                        .accessibilityHidden(true)
+                }
+                .font(.system(size: 14))
+                .padding(.vertical, 5)
+                .tag(section)
+                .accessibilityIdentifier(section.identifier)
+            }
+        }
+        .listStyle(.sidebar)
+        .scrollContentBackground(.hidden)
+        .focused($listFocused)
+        .accessibilityLabel("Sections des réglages")
+        .accessibilityIdentifier("sections-reglages")
+        .padding(.top, topInset)
+        .frame(width: Self.sidebarWidth)
+        .background(Palette.sidebar)
+    }
+
+    /// Le volet d'une section : son nom en titre, ses réglages dessous, à
+    /// l'identique de l'ancienne page. Il défile seul ; changer de section
+    /// le remet en haut.
+    private func pane(_ section: SettingsSection) -> some View {
+        SettingsPage(title: section.title) {
+            switch section {
+            case .voix:
+                VoiceSection(model: model, store: store, rows: rows, used: used, free: free,
+                             onChange: { await reloadModels() })
+            case .affichage:
+                ReadingSection(store: store)
+            case .dictee:
+                if Dictation.isSupported {
+                    DictationSection(model: model, rows: rows, onChange: { await reloadModels() })
+                }
+            case .raccourcis:
+                ShortcutsSection()
+            case .autorisations:
+                PermissionsSection()
+            case .demarrage:
+                StartupSection()
+            }
+        }
+        .environment(\.settingsGroupTitleHidden, true)
+        .id(section)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(section.title)
+        .accessibilityIdentifier("volet-\(section.rawValue)")
     }
 
     /// Les lignes de la table et la place, lues hors du fil principal.

@@ -27,6 +27,9 @@ final class VoiceStatusUITests: XCTestCase {
         let window = app.windows["Réglages"]
         XCTAssertTrue(window.waitForExistence(timeout: 5))
         XCTAssertTrue(window.buttons["reessayer-voix"].waitForExistence(timeout: 2), "pas de Réessayer dans les réglages")
+        // Visible quelle que soit la section.
+        window.selectSettingsSection("demarrage")
+        XCTAssertTrue(window.buttons["reessayer-voix"].exists, "Réessayer disparaît hors de la section Voix")
         try app.performAccessibilityAuditOutsideTouchBar(visibleIn: window)
     }
 

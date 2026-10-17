@@ -1,6 +1,6 @@
 import XCTest
 
-/// La table des modèles de la page des réglages. Lancé à la main, avec
+/// La table des modèles des sections Voix et Dictée des réglages. Lancé à la main, avec
 /// l'accord de l'utilisateur : `-only-testing:SillonUITests/ModelsUITests`.
 /// La ligne « Voix de macOS » vient du moteur lui-même (`voices()`), même
 /// sous le lecteur muet.
@@ -13,6 +13,7 @@ final class ModelsUITests: XCTestCase {
         app.launch()
         let window = app.windows["Réglages"]
         XCTAssertTrue(window.waitForExistence(timeout: 5))
+        window.selectSettingsSection("voix")
         let any = window.descendants(matching: .any)
         XCTAssertTrue(any["modele-system"].waitForExistence(timeout: 5), "ligne de la voix de macOS absente")
         XCTAssertFalse(any["supprimer-system"].exists, "la voix de macOS ne se supprime pas")
@@ -32,6 +33,7 @@ final class ModelsUITests: XCTestCase {
         app.launch()
         let window = app.windows["Réglages"]
         XCTAssertTrue(window.waitForExistence(timeout: 5))
+        window.selectSettingsSection("dictee")
         let any = window.descendants(matching: .any)
         XCTAssertTrue(any["modele-system-dictation"].waitForExistence(timeout: 5), "ligne de la dictée de macOS absente")
         XCTAssertFalse(any["supprimer-system-dictation"].exists, "la dictée de macOS ne se supprime pas")
