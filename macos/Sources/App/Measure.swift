@@ -1,5 +1,6 @@
 #if DEBUG || SILLON_MESURE
 import Foundation
+import KokoroMLX
 
 /// Mesures des seuils de la spec, sur le vrai moteur. Lancé par
 /// `scripts/measure-macos.sh` (`Sillon --measure`) ; écrit `MESURE nom valeur
@@ -415,6 +416,7 @@ enum Measure {
         guard let dir = reader.modelDirectory(id: id) else {
             print("MESURE erreur \(id) non installé"); return
         }
+        await empreinteSansVoix()
         let result = await Task.detached { try serieRTF(compute: compute, dir: dir, id: id) }.result
         switch result {
         case .failure(let error):
@@ -431,6 +433,124 @@ enum Measure {
             print("MESURE fiche \(id) \(paceSentence(rtf: fr))")
             print("MESURE empreinte \(id) \(serie.empreinte) Mo")
         }
+        await empreinteRepos(id)
+    }
+
+    /// L'app sans voix chargée : la ligne de base des mesures au repos.
+    static func empreinteSansVoix() async {
+        try? await Task.sleep(for: .seconds(2))
+        print("MESURE pid \(getpid())")
+        print("MESURE empreinte_sans_voix \(residentMB()) Mo \(compteursMLX())")
+        fflush(stdout)
+    }
+
+    /// Le modèle libéré (`release` rendu) : l'empreinte au repos, puis toutes
+    /// les 0,5 s pendant 20 s (le pilote Metal rend la mémoire en ~2 s ; de
+    /// quoi lancer `vmmap --summary <pid>`).
+    static func empreinteRepos(_ id: String) async {
+        print("MESURE empreinte_repos \(id) \(residentMB()) Mo \(compteursMLX())")
+        fflush(stdout)
+        let debut = ContinuousClock.now
+        for _ in 0..<40 {
+            try? await Task.sleep(for: .milliseconds(500))
+            let t = debut.duration(to: .now)
+            print(String(format: "MESURE repos_t %.1f s %d Mo",
+                         Double(t.components.seconds) + Double(t.components.attoseconds) / 1e18, residentMB()))
+            fflush(stdout)
+        }
+        print("MESURE empreinte_repos_20s \(id) \(residentMB()) Mo \(compteursMLX())")
+        fflush(stdout)
+    }
+
+    /// Ce que MLX tient : tableaux vivants et cache, en Mo.
+    nonisolated static func compteursMLX() -> String {
+        let c = DictationMLX.counters()
+        return "mlx_actif=\(c.active / 1_048_576) mlx_cache=\(c.cache / 1_048_576)"
+    }
+
+    /// Le chemin du moteur Rust, sans son : la voix de la configuration
+    /// préparée (chargement et préparation sur les fils du moteur), puis
+    /// mise au repos ; l'empreinte prête, puis au repos. La configuration
+    /// est celle de `HOME` : lancer avec un `HOME` de mesure (copie de
+    /// `config.toml`, `volume = 0.0`, lien vers `models/`) pour ne rien
+    /// entendre ni toucher aux réglages de l'utilisateur.
+    static func reposLecteur(reader: SillonReader) async {
+        defer { fflush(stdout) }
+        reader.restVoice()
+        await empreinteSansVoix()
+        reader.prepareVoice()
+        let echeance = ContinuousClock.now + .seconds(120)
+        while reader.snapshot().voice != .ready {
+            if ContinuousClock.now >= echeance {
+                print("MESURE erreur voix \(reader.snapshot().voice) moteur=\(reader.snapshot().engine)"); return
+            }
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        let moteur = reader.snapshot().engine
+        print("MESURE empreinte lecteur_pret \(residentMB()) Mo \(compteursMLX()) moteur=\(moteur)")
+        // Une vraie lecture (le volume vient de la configuration : 0 pour
+        // une mesure muette), 20 s, puis la pause.
+        let avant = reader.snapshot().revision
+        reader.openText(markdown: longText, source: "repos")
+        while reader.snapshot().revision == avant { try? await Task.sleep(for: .milliseconds(20)) }
+        if !reader.snapshot().playing { reader.command(command: .togglePlay) }
+        try? await Task.sleep(for: .seconds(20))
+        print("MESURE empreinte lecteur \(residentMB()) Mo \(compteursMLX()) phrase=\(reader.snapshot().sentence)")
+        reader.command(command: .pause)
+        try? await Task.sleep(for: .seconds(2))
+        reader.restVoice()
+        while reader.snapshot().voice != .resting { try? await Task.sleep(for: .milliseconds(50)) }
+        await empreinteRepos("lecteur")
+    }
+
+    /// L'aperçu de la bibliothèque seul (aucune voix de lecture chargée) :
+    /// le modèle `id` chargé pour l'aperçu, puis la bibliothèque laissée
+    /// ouverte ; l'empreinte toutes les 5 s pendant `secondes`. Le délai de
+    /// garde (`keep_voice_minutes`) doit le mettre au repos. Même `HOME` de
+    /// mesure que `reposLecteur` (l'aperçu sonne au volume configuré).
+    static func reposApercu(reader: SillonReader, id: String, secondes: Int) async {
+        defer { fflush(stdout) }
+        reader.restVoice()
+        await empreinteSansVoix()
+        if ProcessInfo.processInfo.environment["SILLON_MESURE_PREPARER"] == "1" {
+            reader.prepareVoice()
+            while reader.snapshot().voice != .ready { try? await Task.sleep(for: .milliseconds(100)) }
+            print("MESURE voix_lecture \(reader.snapshot().engine) \(residentMB()) Mo \(compteursMLX())")
+        }
+        do {
+            try reader.previewVoiceWith(modelId: id, voice: "", text: "Bonjour.", speed: 1)
+        } catch {
+            print("MESURE erreur apercu \(error)"); return
+        }
+        let debut = ContinuousClock.now
+        while debut.duration(to: .now) < .seconds(secondes) {
+            try? await Task.sleep(for: .seconds(5))
+            let t = debut.duration(to: .now).components.seconds
+            print("MESURE apercu_t \(t) s \(residentMB()) Mo \(compteursMLX())")
+            fflush(stdout)
+        }
+        print("MESURE empreinte_repos apercu \(residentMB()) Mo \(compteursMLX())")
+    }
+
+    /// Kokoro : chargé, préparé (une synthèse), puis libéré ; empreinte
+    /// chargé et au repos.
+    static func reposKokoro(compute: KokoroMLXCompute?) async {
+        defer { fflush(stdout) }
+        guard let compute else { print("MESURE erreur kokoro pas de calcul MLX"); return }
+        let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("sillon/models/kokoro").path
+        await empreinteSansVoix()
+        let result = await Task.detached { () throws -> Int in
+            try compute.load(modelDir: dir)
+            defer { compute.release() }
+            try compute.warmUp()
+            return residentMB()
+        }.result
+        switch result {
+        case .failure(let error): print("MESURE erreur kokoro \(error)")
+        case .success(let mo): print("MESURE empreinte kokoro \(mo) Mo")
+        }
+        await empreinteRepos("kokoro")
     }
 
     /// Une série mesurée : secondes de calcul et secondes de son par langue,

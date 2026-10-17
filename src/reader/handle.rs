@@ -36,6 +36,9 @@ struct Activity {
     download_settled: bool,
     /// Une voix est chargée : son délai de garde court.
     engine: bool,
+    /// L'aperçu de la bibliothèque tient un modèle (sans moteur de lecture,
+    /// parfois) : son délai de garde court aussi.
+    library_model: bool,
     /// Un aperçu se prépare ou sonne : il faut le sonder.
     previewing: bool,
 }
@@ -58,6 +61,7 @@ impl Activity {
             downloading,
             download_settled,
             engine: reader.engine().is_some(),
+            library_model: reader.library_preview.is_some(),
             previewing: reader.previewing(),
         }
     }
@@ -70,7 +74,7 @@ impl Activity {
 fn cadence(a: Activity) -> Option<Duration> {
     if a.reading || a.loading || a.downloading || a.previewing {
         Some(TICK)
-    } else if a.engine || a.download_settled {
+    } else if a.engine || a.library_model || a.download_settled {
         Some(TICK_IDLE)
     } else {
         None
@@ -332,6 +336,30 @@ mod tests {
         assert_eq!(tick_interval(&reader), SLOW);
         reader.rest();
         assert_eq!(tick_interval(&reader), None);
+    }
+
+    #[test]
+    fn a_model_held_by_the_library_preview_keeps_the_slow_tick() {
+        // Sans moteur de lecture, seul l'aperçu de la bibliothèque tient un
+        // modèle : le fil doit veiller, sinon son délai de garde ne court
+        // jamais et le modèle reste chargé indéfiniment.
+        let none = Activity::default();
+        assert_eq!(cadence(Activity { library_model: true, ..none }), SLOW);
+        let mut reader = quiet_reader();
+        super::super::library::settled_library_preview(&mut reader);
+        assert!(!reader.previewing(), "aperçu fini : plus rien à sonder");
+        assert_eq!(tick_interval(&reader), SLOW, "le modèle de l'aperçu a un délai de garde");
+        reader.rest();
+        assert_eq!(tick_interval(&reader), None, "relâché : le fil peut dormir");
+    }
+
+    #[test]
+    fn the_idle_delay_rests_a_model_held_by_the_library_preview() {
+        let mut reader = quiet_reader();
+        reader.config.app.keep_voice_minutes = 0;
+        super::super::library::settled_library_preview(&mut reader);
+        reader.tick(Instant::now() + Duration::from_secs(1));
+        assert!(reader.preview_model_loaded().is_none(), "le délai écoulé, le modèle de l'aperçu part");
     }
 
     #[test]
