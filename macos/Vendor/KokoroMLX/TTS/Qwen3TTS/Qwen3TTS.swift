@@ -531,32 +531,39 @@ public final class Qwen3TTSModel: Module, @unchecked Sendable {
 
         let model = Qwen3TTSModel(config: config)
 
-        // Load talker weights
-        let allWeights = try MLX.loadArrays(url: modelDir.appendingPathComponent("model.safetensors"))
+        // Sillon : les dictionnaires de poids intermédiaires (le fichier
+        // entier, `speaker_encoder.*` compris, et sa version nettoyée) vivent
+        // dans ce bloc seulement : relâchés avant la quantification de
+        // l'embedding texte, ils ne gardent pas la copie BF16 en vie à côté
+        // de la copie 8 bits.
+        do {
+            // Load talker weights
+            let allWeights = try MLX.loadArrays(url: modelDir.appendingPathComponent("model.safetensors"))
 
-        // Sanitize and load talker weights
-        let talkerWeights = Qwen3TTSTalkerForConditionalGeneration.sanitize(weights: allWeights)
-        let talkerPairs = talkerWeights.map { ($0.key, $0.value) }
+            // Sanitize and load talker weights
+            let talkerWeights = Qwen3TTSTalkerForConditionalGeneration.sanitize(weights: allWeights)
+            let talkerPairs = talkerWeights.map { ($0.key, $0.value) }
 
-        // Quantized checkpoints store packed weights and companion .scales tensors.
-        // Convert talker Linear layers before loading those tensors.
-        if config.quantization != nil || config.perLayerQuantization != nil {
-            quantize(model: model.talker) { path, _ in
-                guard talkerWeights["\(path).scales"] != nil else {
-                    return nil
+            // Quantized checkpoints store packed weights and companion .scales tensors.
+            // Convert talker Linear layers before loading those tensors.
+            if config.quantization != nil || config.perLayerQuantization != nil {
+                quantize(model: model.talker) { path, _ in
+                    guard talkerWeights["\(path).scales"] != nil else {
+                        return nil
+                    }
+
+                    if let perLayerQuant = config.perLayerQuantization,
+                       let layerQuant = perLayerQuant.quantization(layer: path) {
+                        return layerQuant.asTuple
+                    }
+
+                    return config.quantization?.asTuple
                 }
-
-                if let perLayerQuant = config.perLayerQuantization,
-                   let layerQuant = perLayerQuant.quantization(layer: path) {
-                    return layerQuant.asTuple
-                }
-
-                return config.quantization?.asTuple
             }
-        }
 
-        try model.talker.update(parameters: ModuleParameters.unflattened(talkerPairs), verify: .all)
-        eval(model.talker.parameters())
+            try model.talker.update(parameters: ModuleParameters.unflattened(talkerPairs), verify: .all)
+            eval(model.talker.parameters())
+        }
 
         // Sillon : l'embedding texte, non quantifié dans les dépôts (622 Mo
         // en BF16), passe en 8 bits au chargement, comme au banc d'écoute.
@@ -570,6 +577,10 @@ public final class Qwen3TTSModel: Module, @unchecked Sendable {
         model.tokenizer = try Qwen2BPETokenizer(directory: modelDir)
 
         try loadSpeechTokenizer(model: model, path: speechTokenizerPath)
+        // Sillon : le cache de MLX vidé en fin de chargement (tampons de la
+        // copie BF16, des tenseurs `speaker_encoder.*` et de l'encodeur du
+        // codec écartés) : le pic du chargement ne reste pas tenu.
+        Memory.clearCache()
         return model
     }
 

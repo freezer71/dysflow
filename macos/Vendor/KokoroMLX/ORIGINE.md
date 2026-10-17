@@ -240,6 +240,13 @@ Changements, fichier par fichier :
     `text_embedding`), comme « allégé » au banc d'écoute ;
     `QuantizedEmbedding` hérite d'`Embedding` en MLXNN 0.32.3, donc
     `getTextEmbeddings()` reste valable ;
+  - pic du chargement : les dictionnaires de poids du talker (`allWeights`,
+    `talkerWeights`, `talkerPairs`, dont les tenseurs `speaker_encoder.*`)
+    vivent dans un bloc `do { … }` refermé **avant** la quantification de
+    l'embedding texte (la copie BF16 n'est plus tenue à côté de la copie
+    8 bits), et `Memory.clearCache()` est appelé à la fin de
+    `fromModelDirectory` (tampons BF16, `speaker_encoder.*` et encodeur du
+    codec rendus) ;
   - `loadSpeechTokenizer` : lit `speech_tokenizer/config.json` (exigé : plus
     de repli sur des valeurs par défaut) et `speech_tokenizer/model.safetensors`
     seul ; les poids de l'encodeur (`encoder.*` bruts, `encoder_model.*`

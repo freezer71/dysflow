@@ -1096,7 +1096,7 @@ diff -ruN a/Qwen3TTS.swift b/Qwen3TTS.swift
          } else {
              codecEmbed = concatenated([codecEmbed, codecEmbedSuffix], axis: 1)
          }
-@@ -1119,37 +508,31 @@
+@@ -1119,255 +508,100 @@
          return token.reshaped(1, 1)
      }
  
@@ -1127,6 +1127,15 @@ diff -ruN a/Qwen3TTS.swift b/Qwen3TTS.swift
          let configData = try Data(contentsOf: modelDir.appendingPathComponent("config.json"))
          let config = try JSONDecoder().decode(Qwen3TTSModelConfig.self, from: configData)
  
+-        let model = Qwen3TTSModel(config: config)
+-
+-        // Load talker weights
+-        var allWeights = [String: MLXArray]()
+-        let fm = FileManager.default
+-        let modelFiles = try fm.contentsOfDirectory(at: modelDir, includingPropertiesForKeys: nil)
+-        for file in modelFiles where file.pathExtension == "safetensors" {
+-            let weights = try MLX.loadArrays(url: file)
+-            allWeights.merge(weights) { _, new in new }
 +        // Sillon : le codec doit être un dossier, vérifié avant de lire les
 +        // poids. L'amont effaçait le dossier du modèle s'il ne l'était pas.
 +        let speechTokenizerPath = modelDir.appendingPathComponent("speech_tokenizer")
@@ -1134,25 +1143,54 @@ diff -ruN a/Qwen3TTS.swift b/Qwen3TTS.swift
 +        guard FileManager.default.fileExists(atPath: speechTokenizerPath.path, isDirectory: &isDir),
 +              isDir.boolValue else {
 +            throw Qwen3TTSError.missingFile("speech_tokenizer/")
-+        }
-+
-         let model = Qwen3TTSModel(config: config)
+         }
  
-         // Load talker weights
--        var allWeights = [String: MLXArray]()
--        let fm = FileManager.default
--        let modelFiles = try fm.contentsOfDirectory(at: modelDir, includingPropertiesForKeys: nil)
--        for file in modelFiles where file.pathExtension == "safetensors" {
--            let weights = try MLX.loadArrays(url: file)
--            allWeights.merge(weights) { _, new in new }
+-        // Sanitize and load talker weights
+-        let talkerWeights = Qwen3TTSTalkerForConditionalGeneration.sanitize(weights: allWeights)
+-        let talkerPairs = talkerWeights.map { ($0.key, $0.value) }
++        let model = Qwen3TTSModel(config: config)
+ 
+-        // Quantized checkpoints store packed weights and companion .scales tensors.
+-        // Convert talker Linear layers before loading those tensors.
+-        if config.quantization != nil || config.perLayerQuantization != nil {
+-            quantize(model: model.talker) { path, _ in
+-                guard talkerWeights["\(path).scales"] != nil else {
+-                    return nil
+-                }
++        // Sillon : les dictionnaires de poids intermédiaires (le fichier
++        // entier, `speaker_encoder.*` compris, et sa version nettoyée) vivent
++        // dans ce bloc seulement : relâchés avant la quantification de
++        // l'embedding texte, ils ne gardent pas la copie BF16 en vie à côté
++        // de la copie 8 bits.
++        do {
++            // Load talker weights
++            let allWeights = try MLX.loadArrays(url: modelDir.appendingPathComponent("model.safetensors"))
+ 
+-                if let perLayerQuant = config.perLayerQuantization,
+-                   let layerQuant = perLayerQuant.quantization(layer: path) {
+-                    return layerQuant.asTuple
+-                }
++            // Sanitize and load talker weights
++            let talkerWeights = Qwen3TTSTalkerForConditionalGeneration.sanitize(weights: allWeights)
++            let talkerPairs = talkerWeights.map { ($0.key, $0.value) }
+ 
+-                return config.quantization?.asTuple
+-            }
 -        }
-+        let allWeights = try MLX.loadArrays(url: modelDir.appendingPathComponent("model.safetensors"))
++            // Quantized checkpoints store packed weights and companion .scales tensors.
++            // Convert talker Linear layers before loading those tensors.
++            if config.quantization != nil || config.perLayerQuantization != nil {
++                quantize(model: model.talker) { path, _ in
++                    guard talkerWeights["\(path).scales"] != nil else {
++                        return nil
++                    }
  
-         // Sanitize and load talker weights
-         let talkerWeights = Qwen3TTSTalkerForConditionalGeneration.sanitize(weights: allWeights)
-@@ -1175,199 +558,39 @@
-         try model.talker.update(parameters: ModuleParameters.unflattened(talkerPairs), verify: .all)
-         eval(model.talker.parameters())
+-        try model.talker.update(parameters: ModuleParameters.unflattened(talkerPairs), verify: .all)
+-        eval(model.talker.parameters())
++                    if let perLayerQuant = config.perLayerQuantization,
++                       let layerQuant = perLayerQuant.quantization(layer: path) {
++                        return layerQuant.asTuple
++                    }
  
 -        // Generate tokenizer.json if missing (Qwen3-TTS ships without it)
 -        let tokenizerJsonPath = modelDir.appendingPathComponent("tokenizer.json")
@@ -1172,27 +1210,21 @@ diff -ruN a/Qwen3TTS.swift b/Qwen3TTS.swift
 -                    print("Generated tokenizer.json from vocab.json + merges.txt")
 -                } catch {
 -                    print("Warning: Failed to generate tokenizer.json: \(error)")
--                }
++                    return config.quantization?.asTuple
+                 }
 -            } else {
 -                print("Warning: Cannot generate tokenizer.json — vocab.json: \(hasVocab), merges.txt: \(hasMerges)")
--            }
+             }
 -        }
-+        // Sillon : l'embedding texte, non quantifié dans les dépôts (622 Mo
-+        // en BF16), passe en 8 bits au chargement, comme au banc d'écoute.
-+        quantize(model: model.talker, groupSize: 64, bits: 8, mode: .affine, filter: { path, module in
-+            path.hasSuffix("text_embedding") && !(module is QuantizedEmbedding)
-+        })
-+        eval(model.talker.parameters())
  
 -        // Load tokenizer
 -        do {
 -            model.tokenizer = try await AutoTokenizer.from(modelFolder: modelDir)
 -        } catch {
 -            print("Warning: Could not load tokenizer: \(error)")
--        }
-+        // Sillon : notre encodeur BPE (pas de swift-transformers, pas de
-+        // `tokenizer.json` écrit dans le dossier).
-+        model.tokenizer = try Qwen2BPETokenizer(directory: modelDir)
++            try model.talker.update(parameters: ModuleParameters.unflattened(talkerPairs), verify: .all)
++            eval(model.talker.parameters())
+         }
  
 -        // Load speech tokenizer — check that it's a directory, not a stale file
 -        let speechTokenizerPath = modelDir.appendingPathComponent("speech_tokenizer")
@@ -1210,7 +1242,13 @@ diff -ruN a/Qwen3TTS.swift b/Qwen3TTS.swift
 -        } else {
 -            print("Warning: speech_tokenizer directory not found, speech decoding unavailable")
 -        }
--
++        // Sillon : l'embedding texte, non quantifié dans les dépôts (622 Mo
++        // en BF16), passe en 8 bits au chargement, comme au banc d'écoute.
++        quantize(model: model.talker, groupSize: 64, bits: 8, mode: .affine, filter: { path, module in
++            path.hasSuffix("text_embedding") && !(module is QuantizedEmbedding)
++        })
++        eval(model.talker.parameters())
+ 
 -        // Load speaker encoder for base models when available
 -        if config.ttsModelType == "base" {
 -            let speakerWeights = Qwen3TTSSpeakerEncoder.sanitize(weights: allWeights)
@@ -1227,9 +1265,16 @@ diff -ruN a/Qwen3TTS.swift b/Qwen3TTS.swift
 -                print("Warning: speaker encoder config missing, skipping speaker encoder load")
 -            }
 -        }
--
++        // Sillon : notre encodeur BPE (pas de swift-transformers, pas de
++        // `tokenizer.json` écrit dans le dossier).
++        model.tokenizer = try Qwen2BPETokenizer(directory: modelDir)
+ 
 -        print("Loaded Qwen3-TTS model (\(config.ttsModelType))")
 +        try loadSpeechTokenizer(model: model, path: speechTokenizerPath)
++        // Sillon : le cache de MLX vidé en fin de chargement (tampons de la
++        // copie BF16, des tenseurs `speaker_encoder.*` et de l'encodeur du
++        // codec écartés) : le pic du chargement ne reste pas tenu.
++        Memory.clearCache()
          return model
      }
  
