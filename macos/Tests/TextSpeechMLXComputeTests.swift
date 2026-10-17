@@ -153,6 +153,35 @@ final class TextSpeechMLXComputeTests: XCTestCase {
         XCTAssertEqual(loads.models["/m/q"]?.spoken.first?.2, "")
     }
 
+    /// Le même dossier déjà chargé et préparé : pas de deuxième synthèse ;
+    /// libéré puis rechargé, il se prépare de nouveau.
+    func testTheWarmUpRunsOncePerLoadedDirectory() throws {
+        let loads = Loads()
+        let c = compute(loads)
+        try c.load(modelDir: "/m/q", runtime: "qwen3_tts_mlx")
+        try c.warmUp(modelDir: "/m/q")
+        try c.load(modelDir: "/m/q", runtime: "qwen3_tts_mlx")
+        try c.warmUp(modelDir: "/m/q")
+        XCTAssertEqual(loads.models["/m/q"]?.spoken.count, 1, "déjà préparé")
+        c.release(modelDir: "/m/q")
+        c.release(modelDir: "/m/q")
+        try c.load(modelDir: "/m/q", runtime: "qwen3_tts_mlx")
+        try c.warmUp(modelDir: "/m/q")
+        XCTAssertEqual(loads.count["/m/q"], 2)
+        XCTAssertEqual(loads.models["/m/q"]?.spoken.count, 1, "le nouveau modèle se prépare")
+    }
+
+    /// Une synthèse abandonnée ne compte pas comme préparation.
+    func testACancelledSynthesisIsNotAWarmUp() throws {
+        let loads = Loads()
+        let c = compute(loads)
+        try c.load(modelDir: "/m/q", runtime: "qwen3_tts_mlx")
+        XCTAssertThrowsError(try c.synthesize(modelDir: "/m/q", text: "x", language: "fr", voice: "",
+                                              cancel: SynthesisCancel.fixed(cancelled: true)))
+        try c.warmUp(modelDir: "/m/q")
+        XCTAssertEqual(loads.models["/m/q"]?.spoken.map(\.0), [TextSpeechMLXCompute.warmUpText])
+    }
+
     func testTheNeedOfEachModelIsInTheBudgetWhileLoaded() throws {
         let budget = MLXBudget(apply: { _, _ in })
         let c = compute(Loads(), budget: budget)

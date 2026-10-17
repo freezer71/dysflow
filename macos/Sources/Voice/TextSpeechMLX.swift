@@ -46,6 +46,10 @@ final class TextSpeechMLXCompute: TextSpeechCompute, @unchecked Sendable {
     private struct Entry {
         let model: TextSpeechModel
         var users: Int
+        /// Vrai après la première synthèse réussie de ce dossier : les
+        /// noyaux sont compilés, une nouvelle préparation n'apprend rien.
+        /// Repart à faux avec l'entrée, à la dernière libération.
+        var warmed = false
     }
 
     private let loader: Loader
@@ -119,7 +123,10 @@ final class TextSpeechMLXCompute: TextSpeechCompute, @unchecked Sendable {
         }
     }
 
+    /// Une fois par dossier chargé : un deuxième détenteur du même modèle
+    /// (lecture et aperçu) ne relance pas une synthèse complète.
     func warmUp(modelDir: String) throws {
+        if gate.run({ loaded[modelDir]?.warmed == true }) { return }
         _ = try synthesize(modelDir: modelDir, text: Self.warmUpText, language: "fr", voice: "",
                            isCancelled: { false })
     }
@@ -148,6 +155,7 @@ final class TextSpeechMLXCompute: TextSpeechCompute, @unchecked Sendable {
                 throw Self.synthesisError(error, cancelled: isCancelled())
             }
             guard let samples else { throw SillonError.Cancelled }
+            loaded[modelDir]?.warmed = true
             return SpeechOutput(samples: samples, sampleRate: UInt32(model.sampleRate))
         }
     }
