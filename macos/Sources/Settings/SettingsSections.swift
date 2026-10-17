@@ -1,3 +1,4 @@
+import AVFoundation
 import KeyboardShortcuts
 import SwiftUI
 
@@ -13,6 +14,9 @@ struct VoiceSection: View {
     let free: UInt64?
     /// Relit les modèles et les réglages après une action de la table.
     let onChange: () async -> Void
+    /// La qualité des voix de macOS de la liste, relue quand la liste change
+    /// (pas à chaque affichage).
+    @State private var macQuality: [String: Int] = [:]
 
     var body: some View {
         SettingsGroup(title: "Voix") {
@@ -22,7 +26,7 @@ struct VoiceSection: View {
                 SettingRow(title: "Voix", detail: "Lit tout le texte, quelle que soit sa langue") {
                     HStack(spacing: 8) {
                         PopUpPicker(label: "Voix", identifier: "voix-unique",
-                                    options: Self.voiceOptions(store.capabilities),
+                                    options: Self.voiceOptions(store.capabilities, quality: macQuality),
                                     selection: Binding(get: { Self.voice(in: store.values, store.capabilities) },
                                                        set: { store.setFamilyVoice($0) }))
                             .frame(width: 260)
@@ -90,6 +94,11 @@ struct VoiceSection: View {
             }
         }
         // Un aperçu qui échoue après coup (synthèse refusée) se dit aussi.
+        .task(id: store.capabilities.voices.map(\.id)) {
+            let c = store.capabilities
+            macQuality = c.family == "system"
+                ? Self.quality(of: c.voices.map(\.id), voices: Self.installedMacVoices()) : [:]
+        }
         .onChange(of: model.snapshot.preview.error) { _, error in
             if let error { Announcement.post(error) }
         }
@@ -108,10 +117,85 @@ struct VoiceSection: View {
     static let macDefaultVoice = "Voix par défaut de macOS"
 
     /// Les voix du menu : celles du modèle ; la voix de macOS ajoute en tête
-    /// sa voix par défaut.
-    static func voiceOptions(_ c: ModelCapabilities) -> [(title: String, value: String)] {
-        let listed = c.voices.map { (title: $0.label, value: $0.id) }
-        return c.family == "system" ? [(title: macDefaultVoice, value: "")] + listed : listed
+    /// sa voix par défaut, puis ses voix Premium et Améliorées.
+    static func voiceOptions(_ c: ModelCapabilities, quality: [String: Int] = [:])
+        -> [(title: String, value: String)] {
+        guard c.family == "system" else { return c.voices.map { (title: $0.label, value: $0.id) } }
+        let byID = Dictionary(c.voices.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let listed = ordered(c.voices.map(\.id), quality: quality).compactMap { id in
+            byID[id].map { (title: $0.label, value: $0.id) }
+        }
+        return [(title: macDefaultVoice, value: "")] + listed
+    }
+
+    /// Les voix Premium (3), puis Améliorées (2), puis les autres ; dans
+    /// l'ordre reçu à qualité égale.
+    nonisolated static func ordered(_ names: [String], quality: [String: Int]) -> [String] {
+        names.enumerated()
+            .sorted { a, b in
+                let qa = quality[a.element] ?? 1, qb = quality[b.element] ?? 1
+                return qa != qb ? qa > qb : a.offset < b.offset
+            }
+            .map(\.element)
+    }
+
+    /// Une voix de macOS vue par AVFoundation : son nom et sa qualité
+    /// (3 Premium, 2 Améliorée, 1 sinon).
+    struct MacVoice: Equatable {
+        let name: String
+        let quality: Int
+    }
+
+    /// Les voix installées, lues une fois par liste de voix.
+    static func installedMacVoices() -> [MacVoice] {
+        AVSpeechSynthesisVoice.speechVoices().map { voice in
+            let level = switch voice.quality {
+            case .premium: 3
+            case .enhanced: 2
+            default: 1
+            }
+            return MacVoice(name: voice.name, quality: level)
+        }
+    }
+
+    /// La qualité de chaque voix listée par `say` (`ids`), d'après les voix
+    /// d'AVFoundation. `say` écrit la qualité après le nom : « Zoe (Premium) »,
+    /// « Audrey (Améliorée) », « Thomas (Amélioré) », « Ava (Enhanced) ». Une
+    /// voix ainsi marquée vaut sa qualité si AVFoundation a une voix de ce nom
+    /// et de cette qualité. Un nom seul qui a un jumeau marqué dans la liste
+    /// est la voix compacte : 1. Sans voix AVFoundation de ce nom : 1.
+    nonisolated static func quality(of ids: [String], voices: [MacVoice]) -> [String: Int] {
+        let parsed = ids.map { (id: $0, name: split($0)) }
+        let twinned = Set(parsed.filter { $0.name.level != nil }.map(\.name.base))
+        var result: [String: Int] = [:]
+        for (id, name) in parsed {
+            let matches = voices.filter { split($0.name).base == name.base }
+            let level: Int
+            if let marked = name.level {
+                level = matches.contains { $0.quality == marked } ? marked : 1
+            } else if twinned.contains(name.base) {
+                level = 1
+            } else {
+                level = matches.map(\.quality).max() ?? 1
+            }
+            result[id] = level
+        }
+        return result
+    }
+
+    /// « Zoe (Premium) » : le nom de base (en minuscules) et la qualité que
+    /// dit la parenthèse, `nil` si elle n'en dit pas.
+    nonisolated private static func split(_ name: String) -> (base: String, level: Int?) {
+        guard name.hasSuffix(")"), let open = name.range(of: " (", options: .backwards) else {
+            return (name.trimmingCharacters(in: .whitespaces).lowercased(), nil)
+        }
+        let base = String(name[..<open.lowerBound]).trimmingCharacters(in: .whitespaces).lowercased()
+        let tag = name[open.upperBound...].dropLast().lowercased()
+        switch tag {
+        case "premium": return (base, 3)
+        case "enhanced", "améliorée", "amélioré": return (base, 2)
+        default: return (name.lowercased(), nil)
+        }
     }
 
     /// La voix en place. Kokoro : la française (une voix pour tout), absente
@@ -224,16 +308,74 @@ struct ShortcutsSection: View {
     }
 }
 
-/// La dictée (macOS 26) : son raccourci et sa langue.
+/// La dictée (macOS 26) : ses modèles, son raccourci et sa langue.
 struct DictationSection: View {
+    let model: ReaderModel
+    /// Les modèles (lecture et dictée), tels que le moteur les donne.
+    let rows: [VoiceModel]
+    /// Relit les modèles et les réglages après une action de la table.
+    let onChange: () async -> Void
     @AppStorage(DictationLanguage.defaultsKey) private var language = DictationLanguage.stored().rawValue
     @AppStorage(DictationModifier.defaultsKey) private var modifier = DictationModifier.stored().rawValue
+    @AppStorage(DictationModel.defaultsKey) private var chosen = DictationModel.stored()
+
+    /// La ligne de la dictée de macOS : jamais téléchargée ni supprimée.
+    static let systemID = "system-dictation"
+    static let fallback = "La dictée passera à celle de macOS."
+
+    /// La dictée de macOS en tête, puis les modèles de dictée. La ligne
+    /// utilisée vient du choix des réglages (`dictationModel`), jamais du
+    /// moteur Rust.
+    nonisolated static func rows(_ all: [VoiceModel], chosen: String) -> [VoiceModel] {
+        let system = VoiceModel(id: systemID, name: DictationModel.label(DictationModel.system), bytes: 0,
+                                installed: true, active: false, recommended: false,
+                                summary: "Sur ce Mac, sans téléchargement.", family: "system",
+                                precision: "", languagesLabel: "Français, anglais", languages: ["fr", "en"],
+                                pace: "", voicesLabel: "", licenses: "", kind: "dictation", diskBytes: 0,
+                                system: true, hasFiles: false)
+        return ([system] + all.filter { $0.kind == "dictation" }).map { row in
+            var row = row
+            row.active = isUsed(row, chosen: chosen)
+            return row
+        }
+    }
+
+    nonisolated static func isUsed(_ row: VoiceModel, chosen: String) -> Bool {
+        row.id == systemID ? chosen == DictationModel.system : row.id == chosen
+    }
+
+    /// Le repli sur la dictée de macOS, s'il concerne le modèle choisi.
+    nonisolated static func notice(_ notice: String?, chosen: String) -> String? {
+        guard let notice, chosen != DictationModel.system,
+              notice.hasPrefix(DictationModel.label(chosen)) else { return nil }
+        return notice
+    }
 
     static let options = DictationLanguage.allCases.map { (title: $0.label, value: $0.rawValue) }
     static let modifierOptions = DictationModifier.allCases.map { (title: $0.label, value: $0.rawValue) }
 
     var body: some View {
         SettingsGroup(title: "Dictée") {
+            ModelsTable(rows: Self.rows(rows, chosen: chosen), model: model, fallback: Self.fallback,
+                        isUsed: { Self.isUsed($0, chosen: chosen) },
+                        use: { row in chosen = row.id == Self.systemID ? DictationModel.system : row.id },
+                        removed: { row in if row.id == chosen { chosen = DictationModel.system } },
+                        onChange: onChange)
+                // Le modèle choisi change (un autre, la dictée de macOS, ou le
+                // sien supprimé) : l'ancien quitte la mémoire, son repli s'efface.
+                .onChange(of: chosen) { old, new in
+                    if old != new { AppDelegate.shared?.dictationRouter?.releaseModel() }
+                }
+            // Le modèle choisi n'a pas pu servir : la dictée de macOS l'a
+            // remplacé. Le message en entier, sous la table.
+            if let notice = Self.notice(AppDelegate.shared?.dictationRouter?.fallbackNotice, chosen: chosen) {
+                Text(notice)
+                    .font(Typo.detail)
+                    .foregroundStyle(ErrorStyle.color)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.vertical, 4)
+                    .accessibilityIdentifier("dictee-repli")
+            }
             SettingRow(title: "Dicter",
                        detail: "Un appui ouvre la dictée, un second saisit le texte là où vous écrivez ; Échap annule") {
                 KeyboardShortcuts.Recorder(for: .dictate)
@@ -247,7 +389,8 @@ struct DictationSection: View {
                             options: Self.modifierOptions, selection: $modifier)
                     .fixedSize()
             }
-            SettingRow(title: "Langue", detail: "Reconnue sur votre Mac : rien n'en sort") {
+            SettingRow(title: "Langue",
+                       detail: "Reconnue sur votre Mac : rien n'en sort. Parakeet et Voxtral la reconnaissent seuls") {
                 PopUpPicker(label: "Langue de la dictée", identifier: "langue-dictee",
                             options: Self.options, selection: $language)
                     .fixedSize()

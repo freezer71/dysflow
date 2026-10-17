@@ -3,12 +3,20 @@ import SwiftUI
 /// Une table de modèles : choix, nom, taille, état et action. Des lignes à
 /// colonnes fixes plutôt qu'une `Table` : la page des réglages défile déjà,
 /// une `Table` s'y coincerait ; et chaque ligne reste un seul élément pour
-/// VoiceOver.
+/// VoiceOver. Lecture et dictée partagent la table : chacune dit quelle
+/// ligne est utilisée et comment en choisir une autre.
 struct ModelsTable: View {
     let rows: [VoiceModel]
     let model: ReaderModel
     /// Ce qui prend la main si le modèle utilisé est supprimé.
     let fallback: String
+    /// La ligne utilisée. Lecture : `row.active` (le moteur) ; dictée : le
+    /// choix des réglages.
+    var isUsed: (VoiceModel) -> Bool = { $0.active }
+    /// Utiliser une ligne. Lecture : le moteur.
+    var use: ((VoiceModel) async throws -> Void)?
+    /// Après la suppression d'une ligne (la dictée repasse à macOS si c'était la sienne).
+    var removed: (VoiceModel) -> Void = { _ in }
     let onChange: () async -> Void
     @State private var confirming: VoiceModel?
     @State private var error = ErrorNote()
@@ -30,7 +38,7 @@ struct ModelsTable: View {
             .padding(.vertical, 6)
             .accessibilityHidden(true)
             Rule()
-            ForEach(rows, id: \.id) { row in
+            ForEach(shown, id: \.id) { row in
                 line(row)
                 Rule()
             }
@@ -45,9 +53,33 @@ struct ModelsTable: View {
             // Annuler par défaut : Retour et Échap ne suppriment rien.
             Button("Annuler", role: .cancel) {}
                 .keyboardShortcut(.defaultAction)
-            Button("Supprimer", role: .destructive) { act { try await model.removeModel(row.id) } }
+            Button("Supprimer", role: .destructive) {
+                act {
+                    try await model.removeModel(row.id)
+                    removed(row)
+                }
+            }
         } message: { row in
             Text(ModelTable.confirmation(row, fallback: fallback).message)
+        }
+        // VoiceOver entend la progression tous les 25 %, pour les lignes de
+        // cette table seulement (l'autre table la dit pour les siennes).
+        .onChange(of: model.snapshot.download) { old, new in
+            guard let new, let row = rows.first(where: { $0.id == new.id }),
+                  let current = ModelTable.fraction(new) else { return }
+            let previous = old?.id == new.id ? ModelTable.fraction(old) : nil
+            if let text = ModelTable.progressAnnouncement(name: row.name, previous: previous, current: current) {
+                Announcement.post(text)
+            }
+        }
+    }
+
+    /// Les lignes, l'utilisée marquée d'après `isUsed`.
+    private var shown: [VoiceModel] {
+        rows.map { row in
+            var row = row
+            row.active = isUsed(row)
+            return row
         }
     }
 
@@ -75,7 +107,11 @@ struct ModelsTable: View {
 
     private func columns(_ row: VoiceModel, _ state: ModelRowState) -> some View {
         HStack(spacing: 12) {
-            Button { act { try await model.useModel(row.id) } } label: {
+            Button {
+                act {
+                    if let use { try await use(row) } else { try await model.useModel(row.id) }
+                }
+            } label: {
                 Image(systemName: row.active ? "largecircle.fill.circle" : "circle")
                     .foregroundStyle(row.active ? Palette.accent : Palette.muted)
                     .frame(width: Self.choiceWidth)

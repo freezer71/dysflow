@@ -188,7 +188,9 @@ final class DictationController {
             async let closed: Void? = try? Task.sleep(for: closing)
             await engine.finish()
             _ = await closed
-            guard session == id else { return }
+            // Le démarrage a échoué pendant ce temps (modèle qui ne se charge
+            // pas) : son message reste, rien n'est saisi.
+            guard session == id, phase == .finishing else { return }
             let text = transcript.text
             remember(text)
             switch await insert(text) {

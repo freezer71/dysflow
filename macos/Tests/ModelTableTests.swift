@@ -95,4 +95,34 @@ final class ModelTableTests: XCTestCase {
         let idle = ModelTable.confirmation(row(installed: true, disk: 342_000_000), fallback: "x")
         XCTAssertFalse(idle.message.contains("x."))
     }
+
+    /// VoiceOver entend la progression tous les 25 %, pas à chaque relecture.
+    func testProgressIsAnnouncedEveryQuarter() {
+        XCTAssertNil(ModelTable.progressAnnouncement(name: "Parakeet v3", previous: 0.10, current: 0.20))
+        XCTAssertEqual(ModelTable.progressAnnouncement(name: "Parakeet v3", previous: 0.20, current: 0.26),
+                       "Téléchargement de Parakeet v3 : 25 %")
+        XCTAssertEqual(ModelTable.progressAnnouncement(name: "Parakeet v3", previous: 0.74, current: 1.0),
+                       "Téléchargement de Parakeet v3 : 100 %")
+    }
+
+    func testDictationRowsAreUsedFromTheirOwnChoice() {
+        // La ligne active de dictée vient de `dictationModel`, pas du moteur Rust.
+        let rows = [VoiceModel.sample(id: "parakeet_tdt_v3", kind: "dictation", installed: true)]
+        let shown = DictationSection.rows(rows, chosen: "parakeet_tdt_v3")
+        XCTAssertEqual(shown.first?.id, "system-dictation")
+        XCTAssertTrue(shown[1].active)
+        XCTAssertFalse(shown[0].active)
+    }
+
+    /// La table Dictée ne montre pas les voix de lecture, et la dictée de
+    /// macOS est utilisée tant qu'aucun modèle n'est choisi.
+    func testTheDictationTableShowsOnlyDictationModels() {
+        let rows = [VoiceModel.sample(id: "kokoro_82m_mlx", kind: "speech", active: true),
+                    VoiceModel.sample(id: "whisper_tiny_4bit", kind: "dictation", installed: false, active: true)]
+        let shown = DictationSection.rows(rows, chosen: DictationModel.system)
+        XCTAssertEqual(shown.map(\.id), ["system-dictation", "whisper_tiny_4bit"])
+        XCTAssertEqual(shown.map(\.active), [true, false], "jamais l'actif du moteur Rust")
+        XCTAssertTrue(shown[0].system, "la dictée de macOS ne se supprime ni ne se télécharge")
+        XCTAssertEqual(ModelTable.used(shown[0]), "utilisée")
+    }
 }

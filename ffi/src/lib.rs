@@ -758,6 +758,16 @@ impl SillonReader {
         sillon::models::free_space()
     }
 
+    /// Le dossier d'un paquet installé (dictée : l'app y charge le modèle).
+    /// Ne passe pas par le fil du lecteur.
+    pub fn model_directory(&self, id: String) -> Option<String> {
+        let package = sillon::models::available_with(true).into_iter().find(|p| p.id == id)?;
+        sillon::models::is_installed(package)
+            .then(|| sillon::models::install_path(package))
+            .flatten()
+            .and_then(|p| p.parent().map(|d| d.to_string_lossy().into_owned()))
+    }
+
     /// Les sorties audio branchées, et celle que le système choisit. Ne passe
     /// pas par le fil du lecteur (environ 2 ms).
     pub fn audio_outputs(&self) -> AudioOutputsView {

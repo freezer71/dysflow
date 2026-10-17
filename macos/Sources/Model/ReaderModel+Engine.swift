@@ -16,6 +16,12 @@ extension ReaderModel {
         return try await Task.detached { try body(reader) }.value
     }
 
+    /// Le dossier d'un paquet installé (un modèle de dictée), `nil` s'il
+    /// manque. Appel court : il ne passe pas par le fil du lecteur.
+    func modelDirectory(_ id: String) -> URL? {
+        reader.modelDirectory(id: id).map { URL(fileURLWithPath: $0, isDirectory: true) }
+    }
+
     // MARK: - Voix
 
     /// Voix, langues et réglages honorés par le modèle actif.
