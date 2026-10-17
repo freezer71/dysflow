@@ -6,7 +6,8 @@ import Foundation
 /// tableau, les plafonds et le cache. Ajouté par Sillon, hors des fichiers
 /// repris. Tout s'appelle sous `MLXGate` (dans l'app).
 public enum DictationMLX {
-    /// Les plafonds de MLX : globaux au processus, partagés avec Kokoro.
+    /// Les plafonds de MLX : globaux au processus. Posés par `MLXBudget`
+    /// (l'app) : la somme des besoins des modèles chargés.
     public static func setLimits(memory: Int, cache: Int) {
         Memory.memoryLimit = memory
         Memory.cacheLimit = cache

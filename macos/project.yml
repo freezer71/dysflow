@@ -39,6 +39,9 @@ targets:
       - path: Vendor/KokoroMLX
         # La licence part dans Contents/Resources/licences (script de Sillon).
         excludes: [ORIGINE.md, LICENSE]
+      # La voix française fixe de Qwen3 0.6B (Tâche 3 du lot 3).
+      - path: ../assets/voices/qwen3-06b-siwis.safetensors
+        buildPhase: resources
     dependencies:
       - package: MLXSwift
         product: MLX
@@ -151,8 +154,12 @@ targets:
           joindre "$SRCROOT/../NOTICE" NOTICE
           joindre "$SRCROOT/../third_party/sonic/LICENSE" sonic-LICENSE
           joindre "$SRCROOT/Vendor/KokoroMLX/LICENSE" mlx-audio-swift-LICENSE
-          # BaseConfiguration.swift (Vendor/KokoroMLX/STT) vient de mlx-swift-lm.
+          # STT/BaseConfiguration.swift et TTS/KVCache.swift (Vendor/KokoroMLX)
+          # viennent de mlx-swift-lm.
           joindre "$SRCROOT/../third_party/licences/mlx-swift-lm-LICENSE" mlx-swift-lm-LICENSE
+          # MagpieTTS (Vendor/KokoroMLX/TTS/Magpie) vient de speech-swift.
+          joindre "$SRCROOT/../third_party/licences/speech-swift-LICENSE" speech-swift-LICENSE
+          joindre "$SRCROOT/../third_party/licences/cmudict-LICENSE" cmudict-LICENSE
           joindre "$CHECKOUTS/mlx-swift/LICENSE" mlx-swift-LICENSE
           joindre "$CMLX/mlx/LICENSE" mlx-LICENSE
           joindre "$CMLX/mlx-c/LICENSE" mlx-c-LICENSE

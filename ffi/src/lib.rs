@@ -121,15 +121,113 @@ impl KokoroBackend for ForeignKokoro {
     }
     fn infer(&self, ids: &[i64], style: &[f32], cancel: &tts::Cancel) -> anyhow::Result<KokoroRaw> {
         let cancel = Arc::new(SynthesisCancel(cancel.clone()));
-        let out = self.0.synthesize(ids.to_vec(), style.to_vec(), cancel).map_err(|e| match e {
-            SillonError::Cancelled => anyhow::Error::new(tts::Cancelled),
-            e => anyhow::anyhow!(e.to_string()),
-        })?;
+        let out = self.0.synthesize(ids.to_vec(), style.to_vec(), cancel).map_err(from_foreign)?;
         Ok(KokoroRaw { samples: out.samples, durations: out.durations })
     }
     fn release(&self) {
         self.0.release();
     }
+}
+
+/// Un modèle de lecture à texte (Qwen3-TTS, MagpieTTS), fourni par l'app
+/// (MLX). Le moteur Rust garde voix, langue, repli et coupe des silences.
+///
+/// Contrat pour l'implémentation étrangère : celui de `KokoroCompute`
+/// (fils d'arrière-plan, appels synchrones parfois simultanés, sérialisés
+/// par l'app, jamais d'attente du fil principal), avec en plus :
+/// - un modèle **par dossier** : `load`/`release` vont par paires pour un
+///   même `model_dir`, et deux dossiers peuvent être tenus à la fois (la
+///   lecture et l'aperçu de la bibliothèque) ;
+/// - le **même** dossier peut aussi être chargé deux fois à la fois
+///   (l'aperçu et le moteur de lecture sur la même voix) : l'app compte les
+///   `load` par dossier, ne charge qu'au premier et ne libère qu'au dernier
+///   `release` ;
+/// - `runtime` : `qwen3_tts_mlx` ou `magpie_mlx` ;
+/// - `language` : `fr` ou `en` ; `voice` : une voix du catalogue (vide à la
+///   préparation : la voix par défaut du modèle) ;
+/// - `synthesize` consulte `cancel` avant et pendant la génération (toutes
+///   les ~12 trames Qwen, ~20 trames Magpie) ; s'il dit vrai, elle rend
+///   `SillonError::Cancelled` (jamais `Failed`) et ne garde pas `cancel`.
+#[uniffi::export(with_foreign)]
+pub trait TextSpeechCompute: Send + Sync {
+    fn load(&self, model_dir: String, runtime: String) -> Result<(), SillonError>;
+    fn warm_up(&self, model_dir: String) -> Result<(), SillonError>;
+    fn synthesize(
+        &self,
+        model_dir: String,
+        text: String,
+        language: String,
+        voice: String,
+        cancel: Arc<SynthesisCancel>,
+    ) -> Result<SpeechOutput, SillonError>;
+    fn release(&self, model_dir: String);
+}
+
+#[derive(uniffi::Record)]
+pub struct SpeechOutput {
+    pub samples: Vec<f32>,
+    /// 24 000 (Qwen3) ou 22 050 (Magpie).
+    pub sample_rate: u32,
+}
+
+/// `TextSpeechCompute` vu par le moteur.
+struct ForeignText(Arc<dyn TextSpeechCompute>);
+
+/// Une erreur du calcul étranger vue par le moteur : l'abandon reste un
+/// abandon (il ne compte pas vers le repli).
+fn from_foreign(e: SillonError) -> anyhow::Error {
+    match e {
+        SillonError::Cancelled => anyhow::Error::new(tts::Cancelled),
+        e => anyhow::anyhow!(e.to_string()),
+    }
+}
+
+impl tts::text_compute::TextCompute for ForeignText {
+    fn load(&self, model_dir: &std::path::Path, runtime: &str) -> anyhow::Result<()> {
+        self.0.load(model_dir.to_string_lossy().into_owned(), runtime.to_string()).map_err(from_foreign)
+    }
+    fn warm_up(&self, model_dir: &std::path::Path) -> anyhow::Result<()> {
+        self.0.warm_up(model_dir.to_string_lossy().into_owned()).map_err(from_foreign)
+    }
+    fn synthesize(
+        &self,
+        model_dir: &std::path::Path,
+        text: &str,
+        language: &str,
+        voice: &str,
+        cancel: &tts::Cancel,
+    ) -> anyhow::Result<tts::text_compute::SpeechRaw> {
+        let cancel = Arc::new(SynthesisCancel(cancel.clone()));
+        let out = self
+            .0
+            .synthesize(model_dir.to_string_lossy().into_owned(), text.into(), language.into(), voice.into(), cancel)
+            .map_err(from_foreign)?;
+        Ok(tts::text_compute::SpeechRaw { samples: out.samples, sample_rate: out.sample_rate })
+    }
+    fn release(&self, model_dir: &std::path::Path) {
+        self.0.release(model_dir.to_string_lossy().into_owned());
+    }
+}
+
+/// Vérifie le pont vers un calcul à texte étranger : chargement, « Bonjour. »,
+/// libération, sortie contrôlée. Rend le nombre d'échantillons.
+#[uniffi::export]
+pub fn text_speech_bridge_check(
+    compute: Arc<dyn TextSpeechCompute>,
+    model_dir: String,
+    runtime: String,
+) -> Result<u64, SillonError> {
+    use tts::text_compute::TextCompute;
+    let backend = ForeignText(compute);
+    let dir = std::path::Path::new(&model_dir);
+    backend.load(dir, &runtime).map_err(failed)?;
+    let raw = backend.synthesize(dir, "Bonjour.", "fr", "", &tts::Cancel::never()).map_err(failed);
+    backend.release(dir);
+    let raw = raw?;
+    if raw.samples.is_empty() || raw.samples.iter().any(|s| !s.is_finite()) {
+        return Err(failed("sortie invalide"));
+    }
+    Ok(raw.samples.len() as u64)
 }
 
 /// Vérifie le pont vers un calcul Kokoro étranger : chargement, trois
@@ -147,15 +245,15 @@ pub fn kokoro_bridge_check(compute: Arc<dyn KokoroCompute>, model_dir: String) -
 
 /// Le lecteur de l'app sur la configuration lue (`Config::load`). Un
 /// `config.toml` illisible est retenu : la migration ne l'écrasera pas.
-/// `mlx` : le calcul Kokoro de l'app, enveloppé **une fois** — chaque moteur
-/// reçoit ce même `Arc` (voir `SharedCompute`).
-fn app_reader(loaded: (Config, Option<String>), mlx: Option<Arc<kokoro::SharedCompute>>) -> Reader {
+/// `compute` : les calculs MLX de l'app ; Kokoro y est enveloppé **une
+/// fois** — chaque moteur reçoit ce même `Arc` (voir `SharedCompute`).
+fn app_reader(loaded: (Config, Option<String>), compute: tts::AppCompute) -> Reader {
     let (config, unreadable) = loaded;
-    let available = mlx.is_some();
+    let available = compute.kokoro.is_some() || compute.text.is_some();
     let mut reader = Reader::new(
         config,
         Box::new(move |config: &Config| {
-            tts::build_engine_with(config.engine_preference(), &config.engine_settings(), mlx.clone()).0
+            tts::build_engine_with(config.engine_preference(), &config.engine_settings(), &compute).0
         }),
         Box::new(Player::with_output),
         Instant::now(),
@@ -503,15 +601,18 @@ impl SillonReader {
     /// Le lecteur réel : configuration de l'utilisateur, voix Kokoro.
     #[uniffi::constructor]
     pub fn new() -> Arc<Self> {
-        Arc::new(Self { handle: ReaderHandle::spawn(|| app_reader(Config::load(), None)) })
+        Arc::new(Self { handle: ReaderHandle::spawn(|| app_reader(Config::load(), tts::AppCompute::default())) })
     }
 
-    /// Le lecteur réel avec Kokoro en MLX : le calcul vient de l'app. Il est
-    /// enveloppé une seule fois, et chaque moteur reconstruit le partage.
+    /// Le lecteur réel avec les calculs MLX de l'app : Kokoro (enveloppé une
+    /// seule fois, voir `SharedCompute`) et les modèles à texte.
     #[uniffi::constructor]
-    pub fn with_kokoro(compute: Arc<dyn KokoroCompute>) -> Arc<Self> {
-        let shared = Arc::new(kokoro::SharedCompute::new(Arc::new(ForeignKokoro(compute))));
-        Arc::new(Self { handle: ReaderHandle::spawn(move || app_reader(Config::load(), Some(shared))) })
+    pub fn with_mlx(kokoro: Arc<dyn KokoroCompute>, text: Arc<dyn TextSpeechCompute>) -> Arc<Self> {
+        let compute = tts::AppCompute {
+            kokoro: Some(Arc::new(kokoro::SharedCompute::new(Arc::new(ForeignKokoro(kokoro))))),
+            text: Some(Arc::new(ForeignText(text))),
+        };
+        Arc::new(Self { handle: ReaderHandle::spawn(move || app_reader(Config::load(), compute)) })
     }
 
     /// Lecteur muet, sans modèle ni carte son : tests et mode de test.
@@ -1084,7 +1185,7 @@ mod tests {
 
     /// Le nom que l'outil de mesure exige (`Measure.moteurKokoroMLX`) :
     /// celui du moteur Kokoro sur le calcul de l'app, enveloppé comme dans
-    /// `SillonReader::with_kokoro`. Qu'il change, et la mesure refuserait
+    /// `SillonReader::with_mlx`. Qu'il change, et la mesure refuserait
     /// toute voix : ce test le dit d'abord.
     #[test]
     fn the_kokoro_engine_on_the_app_compute_is_named_kokoro_mlx() {
@@ -1248,6 +1349,59 @@ mod tests {
         assert!(err.contains("Calcul Metal indisponible"), "{err}");
     }
 
+    /// Un calcul à texte « étranger » écrit en Rust : une seconde à 22 050 Hz.
+    struct FakeText {
+        fail: bool,
+    }
+
+    impl TextSpeechCompute for FakeText {
+        fn load(&self, _: String, runtime: String) -> Result<(), SillonError> {
+            if self.fail {
+                return Err(SillonError::Failed { message: format!("{runtime} ne se charge pas") });
+            }
+            Ok(())
+        }
+        fn warm_up(&self, _: String) -> Result<(), SillonError> {
+            Ok(())
+        }
+        fn synthesize(
+            &self,
+            _: String,
+            _: String,
+            _: String,
+            _: String,
+            cancel: Arc<SynthesisCancel>,
+        ) -> Result<SpeechOutput, SillonError> {
+            if cancel.is_cancelled() {
+                return Err(SillonError::Cancelled);
+            }
+            Ok(SpeechOutput { samples: vec![0.25; 22_050], sample_rate: 22_050 })
+        }
+        fn release(&self, _: String) {}
+    }
+
+    #[test]
+    fn a_foreign_text_compute_crosses_the_bridge() {
+        assert_eq!(
+            text_speech_bridge_check(Arc::new(FakeText { fail: false }), "/x".into(), "magpie_mlx".into()).unwrap(),
+            22_050
+        );
+        let err = text_speech_bridge_check(Arc::new(FakeText { fail: true }), "/x".into(), "magpie_mlx".into())
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("magpie_mlx ne se charge pas"), "{err}");
+    }
+
+    #[test]
+    fn a_text_abandon_crosses_the_bridge_as_an_abandon() {
+        use sillon::tts::text_compute::TextCompute;
+        let compute = ForeignText(Arc::new(FakeText { fail: false }));
+        let err = compute
+            .synthesize(std::path::Path::new("/x"), "x", "fr", "sofia", &tts::Cancel::when(|| true))
+            .unwrap_err();
+        assert!(tts::is_cancelled(&err), "{err}");
+    }
+
     #[test]
     fn the_language_of_the_document_reaches_the_snapshot() {
         let reader = SillonReader::silent();
@@ -1322,9 +1476,9 @@ mod tests {
     /// disque touché : le lecteur est seulement construit.
     #[test]
     fn an_unreadable_config_reaches_the_reader() {
-        let damaged = app_reader((Config::default(), Some("configuration ignorée".into())), None);
+        let damaged = app_reader((Config::default(), Some("configuration ignorée".into())), tts::AppCompute::default());
         assert!(damaged.config_unreadable());
-        let fine = app_reader((Config::default(), None), None);
+        let fine = app_reader((Config::default(), None), tts::AppCompute::default());
         assert!(!fine.config_unreadable());
     }
 

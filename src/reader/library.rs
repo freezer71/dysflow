@@ -119,9 +119,25 @@ pub fn accent_of_locale(locale: &str) -> String {
 }
 
 /// Le nom court d'un modèle, pour le filtre.
+/// L'accent et le genre d'une voix nommée par le catalogue.
+pub fn voice_traits(family: &str, id: &str) -> (&'static str, &'static str) {
+    match family {
+        "kokoro" => kokoro_traits(id),
+        "qwen3_tts_06b_base_8bit" => ("française", "femme"),
+        "magpie_tts_357m_8bit" => match id {
+            "sofia" | "aria" => ("américaine", "femme"),
+            "jason" | "leo" | "john_van_stan" => ("américaine", "homme"),
+            _ => ("", ""),
+        },
+        _ => ("", ""),
+    }
+}
+
 fn model_label(family: &str) -> String {
     match family {
         "kokoro" => "Kokoro".to_string(),
+        "qwen3_tts_06b_base_8bit" => "Qwen3 0.6B".to_string(),
+        "magpie_tts_357m_8bit" => "Magpie".to_string(),
         other => other.to_string(),
     }
 }
@@ -162,7 +178,7 @@ pub fn library_entries(
     for package in installed.iter().filter(|p| p.kind == models::Kind::Speech) {
         let model_active = package.id == active_model_id;
         for voice in models::voices_for_family(package.family) {
-            let (accent, gender) = kokoro_traits(voice.id);
+            let (accent, gender) = voice_traits(package.family, voice.id);
             out.push(LibraryVoice {
                 model_id: package.id.to_string(),
                 model_label: model_label(package.family),
@@ -732,5 +748,24 @@ mod tests {
         assert!(!r.preview_view().pending, "Arrêter coupe aussi la bibliothèque");
         release.send(()).unwrap();
         r.release_voice_preview();
+    }
+
+    #[test]
+    fn the_new_voices_say_their_accent_and_gender() {
+        assert_eq!(voice_traits("qwen3_tts_06b_base_8bit", "siwis"), ("française", "femme"));
+        assert_eq!(voice_traits("magpie_tts_357m_8bit", "sofia"), ("américaine", "femme"));
+        assert_eq!(voice_traits("magpie_tts_357m_8bit", "john_van_stan"), ("américaine", "homme"));
+        assert_eq!(voice_traits("kokoro", "bf_emma"), ("britannique", "femme"));
+    }
+
+    #[test]
+    fn an_installed_text_model_lists_its_voices_under_its_short_name() {
+        let c = Config::default();
+        let installed = [models::CATALOG.iter().find(|p| p.id == "magpie_tts_357m_8bit").unwrap()];
+        let entries = library_entries(&c, &installed, SYSTEM, &[], "fr_FR");
+        let magpie: Vec<_> = entries.iter().filter(|v| v.model_id == "magpie_tts_357m_8bit").collect();
+        assert_eq!(magpie.len(), 5);
+        assert!(magpie.iter().all(|v| v.model_label == "Magpie"));
+        assert!(magpie.iter().any(|v| v.voice_id == "sofia" && v.recommended && v.gender == "femme"));
     }
 }

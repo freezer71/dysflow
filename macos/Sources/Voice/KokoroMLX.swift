@@ -44,6 +44,9 @@ final class KokoroMLXCompute: KokoroCompute, @unchecked Sendable {
     /// Chargement, passages avant et libération : un à la fois, et jamais
     /// pendant un autre calcul MLX de l'app.
     private let gate: MLXGate
+    /// Les plafonds de MLX : Kokoro y inscrit son besoin au chargement et le
+    /// retire à la libération.
+    private let budget: MLXBudget
     /// Gardés par `gate`.
     private var forward: KokoroForward?
     private var directory: String?
@@ -59,21 +62,28 @@ final class KokoroMLXCompute: KokoroCompute, @unchecked Sendable {
 
     init(loadForward: @escaping Loader = KokoroMLXCompute.loadRunner,
          clearCache: @escaping () -> Void = KokoroRunner.clearCache,
-         gate: MLXGate = .shared) {
+         gate: MLXGate = .shared,
+         budget: MLXBudget = .shared) {
         self.loadForward = loadForward
         self.clearCache = clearCache
         self.gate = gate
+        self.budget = budget
     }
 
-    /// Plafond mesuré au spike : 1 Go, cache réduit à 64 Mo. Posés au
-    /// chargement seulement (globaux au processus) : un modèle de dictée qui
-    /// se charge pose les siens, puis remet ceux-ci quand il est libéré
-    /// (`SpeechModels`).
+    /// Le besoin de Kokoro, mesuré au spike : 1 Go, cache réduit à 64 Mo.
+    /// C'est son besoin dans `MLXBudget` (clé `"kokoro"`) : les plafonds de
+    /// MLX, globaux au processus, valent la somme des modèles chargés.
     static let memoryLimit = 1 << 30
     static let cacheLimit = 64 << 20
 
+    /// `KokoroRunner.load` pose lui-même les plafonds : il reçoit la somme
+    /// des besoins inscrits (dont celui de Kokoro, inscrit juste avant), pour
+    /// ne pas étouffer un autre modèle chargé.
     static func loadRunner(_ directory: URL) throws -> KokoroForward {
-        try KokoroRunner.load(directory: directory, memoryLimit: memoryLimit, cacheLimit: cacheLimit)
+        let t = MLXBudget.shared.total
+        return try KokoroRunner.load(directory: directory,
+                                     memoryLimit: max(t.memory, memoryLimit),
+                                     cacheLimit: max(t.cache, cacheLimit))
     }
 
     /// Synthèses faites depuis le lancement (la mesure vérifie qu'il n'y en
@@ -95,10 +105,12 @@ final class KokoroMLXCompute: KokoroCompute, @unchecked Sendable {
                     directory = nil
                     clearCache()
                 }
+                budget.set("kokoro", .init(memory: Self.memoryLimit, cache: Self.cacheLimit))
                 do {
                     forward = try loadForward(URL(fileURLWithPath: modelDir))
                     directory = modelDir
                 } catch {
+                    budget.remove("kokoro")
                     throw SillonError.Failed(message: "Calcul Metal indisponible : \(error.localizedDescription)")
                 }
             }
@@ -173,6 +185,7 @@ final class KokoroMLXCompute: KokoroCompute, @unchecked Sendable {
             forward = nil
             directory = nil
             clearCache()
+            budget.remove("kokoro")
         }
     }
 }

@@ -14,13 +14,42 @@ onnx-community/Kokoro-82M-v1.0-ONNX-timestamped (révision
 dd4401a9add81ac692d20e240d22ec9dda82cc29). La voix p-fenrir60, livrée avec
 Sillon (assets/voices), en est dérivée (Apache 2.0).
 
+Les poids de MagpieTTS Multilingual 357M (NVIDIA) sont téléchargés à la
+demande depuis aufklarer/Magpie-TTS-Multilingual-357M-MLX-8bit (révision
+260839c0a2c46993735d72082c3fba177710d477), sous NVIDIA Open Model License :
+Licensed by NVIDIA Corporation under the NVIDIA Open Model License. Sillon
+ne les livre pas. Ceux de Qwen3-TTS (Alibaba, Apache 2.0) le sont depuis
+mlx-community (révisions dans src/models.rs).
+
+La voix « siwis » de Qwen3-TTS 0.6B Base, livrée avec Sillon
+(assets/voices/qwen3-06b-siwis.safetensors), est un vecteur de locuteur
+dérivé (adaptation) d'un extrait de la SIWIS French Speech Synthesis Database
+(J. Yamagishi, P.-E. Honnet, P. N. Garner, A. Lazaridis, 2017, University
+of Edinburgh, Centre for Speech Technology Research, et Idiap Research
+Institute, https://doi.org/10.7488/ds/1705 ; fichier
+wavs/part5/expr_chap_s01_0011.wav), sous licence Creative Commons
+Attribution 4.0 (https://creativecommons.org/licenses/by/4.0/), fourni
+sans garantie (voir la licence). L'extrait a été modifié : rééchantillonné,
+normalisé, puis réduit à ce vecteur ; seul ce vecteur est livré, pas
+l'enregistrement. Recette :
+scripts/qwen3-voix-siwis.py et assets/voices/qwen3-06b-siwis.json.
+
 L'app macOS contient, avec le texte de chaque licence dans
 Contents/Resources/licences (ce fichier compris) :
 - des fichiers de mlx-audio-swift (macos/Vendor/KokoroMLX), licence MIT,
   Copyright (c) 2025 Prince Canuma — mlx-audio-swift-LICENSE ;
-- un fichier dérivé de mlx-swift-lm 3.32.3
-  (macos/Vendor/KokoroMLX/STT/BaseConfiguration.swift), licence MIT,
+- deux fichiers dérivés de mlx-swift-lm 3.32.3
+  (macos/Vendor/KokoroMLX/STT/BaseConfiguration.swift,
+  macos/Vendor/KokoroMLX/TTS/KVCache.swift), licence MIT,
   Copyright (c) 2024 ml-explore — mlx-swift-lm-LICENSE ;
+- des fichiers de speech-swift (macos/Vendor/KokoroMLX/TTS/Magpie, commit
+  28aef99510e438bcc5014df2582820d9fdba80e0), licence Apache 2.0, soniqo —
+  speech-swift-LICENSE ; les changements sont décrits dans ORIGINE.md et
+  patches/magpie-mlx.patch ;
+- le dictionnaire IPA anglais de NVIDIA NeMo (cmudict_ipa_en.txt), dérivé
+  de CMUdict 0.07, Copyright (C) 1993-2015 Carnegie Mellon University,
+  licence de type BSD, avec des entrées de NeMo et de
+  WikipediaHomographData (licence Apache 2.0) — cmudict-LICENSE ;
 - mlx-swift 0.32.3, licence MIT, ml-explore — mlx-swift-LICENSE ; il
   embarque MLX (licence MIT, Apple Inc. — mlx-LICENSE), mlx-c (licence MIT,
   ml-explore — mlx-c-LICENSE), metal-cpp (licence Apache 2.0, Apple Inc. —

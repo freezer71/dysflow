@@ -9,6 +9,7 @@ pub mod preview;
 pub mod silent;
 pub mod system;
 pub mod system_voices;
+pub mod text_compute;
 
 
 pub use pool::{SynthesisStats, Synthesizer};
@@ -182,27 +183,46 @@ pub fn build_engine(
     preference: EnginePreference,
     settings: &EngineSettings,
 ) -> (Arc<dyn TtsEngine>, Option<String>) {
-    build_engine_with(preference, settings, None)
+    build_engine_with(preference, settings, &AppCompute::default())
 }
 
-/// `build_engine`, avec le calcul MLX de Kokoro quand l'app le fournit.
+/// Les calculs que l'app fournit : Kokoro MLX (phonèmes) et les modèles à
+/// texte (Qwen3, Magpie). Le terminal n'en a aucun.
+#[derive(Clone, Default)]
+pub struct AppCompute {
+    /// Enveloppé **une fois** : chaque moteur reçoit le même `Arc`.
+    pub kokoro: Option<Arc<kokoro::SharedCompute>>,
+    pub text: Option<Arc<dyn text_compute::TextCompute>>,
+}
+
+/// `build_engine`, avec les calculs MLX quand l'app les fournit.
 ///
-/// `mlx` est un calcul partagé (`SharedCompute`) : l'app l'enveloppe une
-/// fois et passe le même `Arc` à chaque construction, pour qu'un moteur
-/// relâché après le chargement du suivant ne vide pas ses poids.
+/// `compute.kokoro` est un calcul partagé (`SharedCompute`) : l'app
+/// l'enveloppe une fois et passe le même `Arc` à chaque construction, pour
+/// qu'un moteur relâché après le chargement du suivant ne vide pas ses
+/// poids. `compute.text` tient un modèle par dossier : la lecture et
+/// l'aperçu de la bibliothèque ne se marchent pas dessus.
 pub fn build_engine_with(
     preference: EnginePreference,
     settings: &EngineSettings,
-    mlx: Option<Arc<kokoro::SharedCompute>>,
+    compute: &AppCompute,
 ) -> (Arc<dyn TtsEngine>, Option<String>) {
     if preference == EnginePreference::System {
         return (Arc::new(system::SystemEngine::new()), None);
     }
     if settings.family == "kokoro" {
-        return build_kokoro(settings, mlx);
+        return build_kokoro(settings, compute.kokoro.clone());
     }
-    // Kokoro est le seul modèle : une autre famille (Supertonic, MagpieTTS,
-    // laissés par une ancienne configuration) ne se charge plus.
+    let text_package = crate::models::CATALOG.iter().find(|p| {
+        p.family == settings.family
+            && matches!(p.runtime, crate::models::Runtime::Qwen3TtsMlx | crate::models::Runtime::MagpieMlx)
+    });
+    if let Some(package) = text_package {
+        return build_text_engine(package, settings, compute.text.clone());
+    }
+    // Kokoro, Qwen3 et Magpie sont les seuls modèles : une autre famille
+    // (Supertonic, l'ancien MagpieTTS d'audio.cpp, laissés par une ancienne
+    // configuration) ne se charge plus.
     let note = if settings.model_path.trim().is_empty() {
         None
     } else {
@@ -212,6 +232,36 @@ pub fn build_engine_with(
         ))
     };
     (Arc::new(system::SystemEngine::new()), note)
+}
+
+/// Un modèle à texte (Qwen3, Magpie) : le calcul de l'app, le dossier du
+/// fichier principal ; le chargement part en arrière-plan.
+fn build_text_engine(
+    package: &'static crate::models::ModelPackage,
+    settings: &EngineSettings,
+    text: Option<Arc<dyn text_compute::TextCompute>>,
+) -> (Arc<dyn TtsEngine>, Option<String>) {
+    let fallback = fallback::fallback_engine(settings);
+    let Some(compute) = text else {
+        return (
+            fallback,
+            Some(format!("Calcul Metal indisponible — {} ne tourne que dans l'app", package.display_name)),
+        );
+    };
+    let main = std::path::Path::new(&settings.model_path);
+    let dir = main.parent().filter(|_| main.is_file()).map(std::path::Path::to_path_buf);
+    let Some(dir) = dir else {
+        // L'app ne garde que le moteur : la raison doit y rester lisible.
+        let note = format!("{} n'est pas installé — voir les réglages", package.display_name);
+        return (fallback::explained(fallback, note.clone()), Some(note));
+    };
+    let repli = Arc::clone(&fallback);
+    let engine = lazy::LazyEngine::spawn(package.display_name.to_string(), 1, fallback, move || {
+        let engine = text_compute::TextComputeEngine::load(compute, package, &dir, repli)?;
+        Ok(Arc::new(engine) as Arc<dyn TtsEngine>)
+    })
+    .splitting_first_clause();
+    (Arc::new(engine), None)
 }
 
 /// Kokoro : le calcul selon le fichier du paquet (`.onnx` : ORT ; sinon
@@ -309,14 +359,14 @@ mod tests {
     #[test]
     fn kokoro_without_its_files_falls_back_and_says_why() {
         let settings = kokoro_settings("/nulle/part/kokoro-v1_0.safetensors");
-        let (_, note) = build_engine_with(EnginePreference::Auto, &settings, None);
+        let (_, note) = build_engine_with(EnginePreference::Auto, &settings, &AppCompute::default());
         assert!(note.unwrap().contains("Kokoro n'est pas installé"));
     }
 
     #[test]
     fn kokoro_mlx_needs_the_compute_of_the_app() {
         let path = kokoro_files("mlx", "kokoro-v1_0.safetensors");
-        let (_, note) = build_engine_with(EnginePreference::Auto, &kokoro_settings(&path.to_string_lossy()), None);
+        let (_, note) = build_engine_with(EnginePreference::Auto, &kokoro_settings(&path.to_string_lossy()), &AppCompute::default());
         assert!(note.unwrap().contains("Calcul Metal indisponible"));
     }
 
@@ -324,7 +374,7 @@ mod tests {
     #[cfg(not(feature = "kokoro-onnx"))]
     fn kokoro_int8_needs_the_onnx_feature() {
         let path = kokoro_files("onnx", "model_quantized.onnx");
-        let (_, note) = build_engine_with(EnginePreference::Auto, &kokoro_settings(&path.to_string_lossy()), None);
+        let (_, note) = build_engine_with(EnginePreference::Auto, &kokoro_settings(&path.to_string_lossy()), &AppCompute::default());
         assert!(note.unwrap().contains("kokoro-onnx"));
     }
 
@@ -335,7 +385,7 @@ mod tests {
         // échouera en arrière-plan, mais rien n'est tranché d'avance.
         let path = kokoro_files("onnx-ort", "model_quantized.onnx");
         let (engine, note) =
-            build_engine_with(EnginePreference::Auto, &kokoro_settings(&path.to_string_lossy()), None);
+            build_engine_with(EnginePreference::Auto, &kokoro_settings(&path.to_string_lossy()), &AppCompute::default());
         assert_eq!(note, None, "le calcul ORT part en arrière-plan");
         assert!(engine.splits_first_clause());
     }
@@ -364,11 +414,115 @@ mod tests {
             build_engine_with(
             EnginePreference::Auto,
             &kokoro_settings(&path.to_string_lossy()),
-            Some(Arc::new(kokoro::SharedCompute::new(Arc::new(Idle)))),
+            &AppCompute { kokoro: Some(Arc::new(kokoro::SharedCompute::new(Arc::new(Idle)))), text: None },
         );
         assert_eq!(note, None, "rien à dire d'avance : le chargement part en arrière-plan");
         // Le nom dépend de l'issue du chargement (espeak-ng présent ou non
         // sur la machine de test) : seule la coupe, annoncée d'avance, est sûre.
         assert!(engine.splits_first_clause(), "annoncé avant la fin du chargement");
+    }
+
+    fn text_settings(model_path: &str, family: &str) -> EngineSettings {
+        EngineSettings { model_path: model_path.into(), family: family.into(), threads: 4, sessions: 1 }
+    }
+
+    fn text_files(name: &str, file: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("sillon-texte-{}-{name}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(file), b"x").unwrap();
+        dir.join(file)
+    }
+
+    #[test]
+    fn a_text_model_without_the_app_compute_falls_back_and_says_why() {
+        let path = text_files("sans-calcul", "config.json");
+        let (_, note) = build_engine_with(
+            EnginePreference::Auto,
+            &text_settings(&path.to_string_lossy(), "magpie_tts_357m_8bit"),
+            &AppCompute::default(),
+        );
+        assert!(note.unwrap().contains("Calcul Metal indisponible"));
+    }
+
+    #[test]
+    fn a_text_model_without_its_files_falls_back_and_says_why() {
+        struct Never;
+        impl text_compute::TextCompute for Never {
+            fn load(&self, _: &std::path::Path, _: &str) -> Result<()> {
+                anyhow::bail!("non utilisé")
+            }
+            fn warm_up(&self, _: &std::path::Path) -> Result<()> {
+                Ok(())
+            }
+            fn synthesize(
+                &self,
+                _: &std::path::Path,
+                _: &str,
+                _: &str,
+                _: &str,
+                _: &Cancel,
+            ) -> Result<text_compute::SpeechRaw> {
+                anyhow::bail!("non utilisé")
+            }
+            fn release(&self, _: &std::path::Path) {}
+        }
+        let compute = AppCompute { kokoro: None, text: Some(Arc::new(Never)) };
+        let (engine, note) = build_engine_with(
+            EnginePreference::Auto,
+            &text_settings("/nulle/part/model.safetensors", "qwen3_tts_06b_base_8bit"),
+            &compute,
+        );
+        let note = note.unwrap();
+        assert!(note.contains("n'est pas installé"));
+        // L'app jette la note : le moteur la porte lui-même.
+        assert_eq!(engine.readiness(), Readiness::Fallback(note));
+        assert!(engine.name().ends_with("(repli)"), "{}", engine.name());
+        assert_eq!(engine.max_sessions(), system::SystemEngine::new().max_sessions(), "la voix du système parle");
+    }
+
+    /// L'ancien Magpie d'audio.cpp (famille `magpie_tts`, un `.gguf`) n'est
+    /// pas le nouveau : il n'est toujours pas pris en charge.
+    #[test]
+    fn an_old_magpie_tts_config_is_not_the_new_magpie() {
+        let (_, note) = build_engine_with(
+            EnginePreference::Auto,
+            &text_settings("/ailleurs/magpie.gguf", "magpie_tts"),
+            &AppCompute::default(),
+        );
+        assert!(note.unwrap().contains("non pris en charge"));
+    }
+
+    #[test]
+    fn a_text_model_loads_in_the_background_and_splits_its_first_clause() {
+        struct Slow;
+        impl text_compute::TextCompute for Slow {
+            fn load(&self, _: &std::path::Path, _: &str) -> Result<()> {
+                std::thread::sleep(Duration::from_millis(200));
+                Ok(())
+            }
+            fn warm_up(&self, _: &std::path::Path) -> Result<()> {
+                Ok(())
+            }
+            fn synthesize(
+                &self,
+                _: &std::path::Path,
+                _: &str,
+                _: &str,
+                _: &str,
+                _: &Cancel,
+            ) -> Result<text_compute::SpeechRaw> {
+                anyhow::bail!("non utilisé")
+            }
+            fn release(&self, _: &std::path::Path) {}
+        }
+        let path = text_files("charge", "model.safetensors");
+        let compute = AppCompute { kokoro: None, text: Some(Arc::new(Slow)) };
+        let (engine, note) = build_engine_with(
+            EnginePreference::Auto,
+            &text_settings(&path.to_string_lossy(), "qwen3_tts_06b_base_8bit"),
+            &compute,
+        );
+        assert_eq!(note, None, "le chargement part en arrière-plan");
+        assert!(engine.splits_first_clause());
     }
 }

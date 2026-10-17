@@ -73,13 +73,18 @@ final class ForwardFactory: @unchecked Sendable {
     var directories: [String] { lock.withLock { loaded } }
     var clears: Int { lock.withLock { counts.clears } }
 
+    /// Un registre à part, qui ne touche pas aux plafonds de MLX du
+    /// processus de test (les essais de fumée chargent de vrais modèles).
+    let budget = MLXBudget(apply: { _, _ in })
+
     func compute() -> KokoroMLXCompute {
         KokoroMLXCompute(
             loadForward: { [self] url in
                 lock.withLock { counts.loads += 1; loaded.append(url.path) }
                 return forward
             },
-            clearCache: { [self] in lock.withLock { counts.clears += 1 } })
+            clearCache: { [self] in lock.withLock { counts.clears += 1 } },
+            budget: budget)
     }
 }
 
@@ -106,14 +111,31 @@ final class KokoroMLXComputeTests: XCTestCase {
     }
 
     func testAFailedLoadHoldsNothing() {
+        let budget = MLXBudget(apply: { _, _ in })
         let compute = KokoroMLXCompute(loadForward: { _ in throw CocoaError(.fileNoSuchFile) },
-                                       clearCache: {})
+                                       clearCache: {}, budget: budget)
         XCTAssertThrowsError(try compute.load(modelDir: "/absent")) { error in
             guard case SillonError.Failed(let message) = error else { return XCTFail("\(error)") }
             XCTAssertTrue(message.hasPrefix("Calcul Metal indisponible"), message)
         }
         XCTAssertThrowsError(try compute.warmUp(), "rien de chargé")
         XCTAssertEqual(compute.calls, 0)
+        XCTAssertEqual(budget.total, .init(memory: 0, cache: 0), "un chargement raté ne garde aucun besoin")
+    }
+
+    /// Kokoro inscrit son besoin dans `MLXBudget` au chargement et le retire
+    /// au dernier `release()` seulement.
+    func testKokoroHoldsItsNeedInTheBudgetWhileLoaded() throws {
+        let factory = ForwardFactory()
+        let compute = factory.compute()
+        let kokoro = MLXBudget.Need(memory: KokoroMLXCompute.memoryLimit, cache: KokoroMLXCompute.cacheLimit)
+        try compute.load(modelDir: "/m/kokoro")
+        try compute.load(modelDir: "/m/kokoro")
+        XCTAssertEqual(factory.budget.total, kokoro, "inscrit une fois")
+        compute.release()
+        XCTAssertEqual(factory.budget.total, kokoro, "encore un détenteur")
+        compute.release()
+        XCTAssertEqual(factory.budget.total, .init(memory: 0, cache: 0))
     }
 
     /// Rust appelle depuis ses fils de synthèse, parfois en même temps (un

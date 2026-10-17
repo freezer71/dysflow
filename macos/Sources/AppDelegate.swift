@@ -24,6 +24,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private(set) var reader: SillonReader!
     /// Le calcul MLX de Kokoro ; jamais avec le lecteur muet des tests.
     private(set) var kokoroCompute: KokoroMLXCompute?
+    /// Le calcul MLX des modèles de lecture à texte (Qwen3-TTS, MagpieTTS) ;
+    /// jamais avec le lecteur muet des tests.
+    private(set) var textCompute: TextSpeechMLXCompute?
     /// Le lecteur est muet et hors disque (tests d'interface, tests unitaires).
     private(set) var readerIsSilent = false
 
@@ -183,7 +186,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Self.exportEspeakLocation()
             let compute = KokoroMLXCompute()
             kokoroCompute = compute
-            reader = SillonReader.withKokoro(compute: compute)
+            let text = TextSpeechMLXCompute()
+            textCompute = text
+            reader = SillonReader.withMlx(kokoro: compute, text: text)
         }
         #if DEBUG || SILLON_MESURE
         // Mode mesure : seul le lecteur et les mesures tournent. Retour avant le
@@ -193,6 +198,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if ProcessInfo.processInfo.arguments.contains("--measure-charge"), !isUnitTesting {
             Task { @MainActor [reader = reader!, compute = kokoroCompute] in
                 await Measure.charge(reader: reader, compute: compute)
+                NSApp.terminate(nil)
+            }
+            return
+        }
+        // `--measure-rtf <id>` : la cadence d'un modèle de lecture à texte.
+        let arguments = ProcessInfo.processInfo.arguments
+        if let i = arguments.firstIndex(of: "--measure-rtf"), !isUnitTesting {
+            let id = i + 1 < arguments.count ? arguments[i + 1] : ""
+            Task { @MainActor [reader = reader!, text = textCompute] in
+                await Measure.rtf(reader: reader, compute: text, id: id)
                 NSApp.terminate(nil)
             }
             return
