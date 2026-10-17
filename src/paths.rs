@@ -67,7 +67,14 @@ pub fn write_atomic(path: &Path, contents: &[u8]) -> std::io::Result<()> {
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| "fichier".to_string());
-    let temp = path.with_file_name(format!(".{name}.{}.tmp", std::process::id()));
+    // Un temporaire par écriture, pas seulement par processus : deux fils qui
+    // écrivent le même fichier en même temps partageaient le même temporaire —
+    // l'un le tronquait pendant que l'autre le renommait (le fichier publié
+    // pouvait être en cours d'écriture), et le second renommage ne le trouvait
+    // plus (« No such file or directory »).
+    static WRITES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let write = WRITES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let temp = path.with_file_name(format!(".{name}.{}-{write}.tmp", std::process::id()));
     let outcome = std::fs::write(&temp, contents).and_then(|()| std::fs::rename(&temp, path));
     if outcome.is_err() {
         let _ = std::fs::remove_file(&temp);
@@ -226,6 +233,27 @@ mod tests {
         let file = base.join("profond").join("etat.json");
         write_atomic(&file, b"x").expect("écriture");
         assert!(file.is_file());
+        std::fs::remove_dir_all(&base).ok();
+    }
+
+    /// Plusieurs fils du même processus écrivent le même fichier : chacun
+    /// réussit, et le fichier final est l'une des écritures entière, jamais
+    /// un mélange ni une écriture tronquée.
+    #[test]
+    fn concurrent_atomic_writes_in_one_process_all_succeed_whole() {
+        let base = scratch();
+        let file = base.join("config.toml");
+        let contents: Vec<Vec<u8>> = (0..8u8).map(|i| vec![b'a' + i; 64 * 1024]).collect();
+        for _ in 0..50 {
+            std::thread::scope(|s| {
+                let handles: Vec<_> = contents.iter().map(|c| s.spawn(|| write_atomic(&file, c))).collect();
+                for h in handles {
+                    h.join().unwrap().expect("chaque écriture réussit");
+                }
+            });
+            let written = std::fs::read(&file).unwrap();
+            assert!(contents.contains(&written), "fichier mélangé ou tronqué ({} octets)", written.len());
+        }
         std::fs::remove_dir_all(&base).ok();
     }
 }

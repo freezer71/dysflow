@@ -167,6 +167,17 @@ mod tests {
         ..models::CATALOG[0]
     };
 
+    /// Le même, pour le test du modèle utilisé avec un texte ouvert. Partager
+    /// `DISPOSABLE_ACTIVE` faisait apparaître ou disparaître le fichier entre
+    /// les deux `canonicalize` de `is_active_path` de l'autre test : le modèle
+    /// n'y était plus reconnu comme utilisé, la voix restait « auto ».
+    static DISPOSABLE_ACTIVE_OPEN: ModelPackage = ModelPackage {
+        id: "essai_suppression_actif_ouvert",
+        family: "essai_suppression_actif_ouvert",
+        companions: &[],
+        ..models::CATALOG[0]
+    };
+
     #[test]
     fn an_installed_model_is_really_deleted() {
         let package = &DISPOSABLE;
@@ -191,7 +202,7 @@ mod tests {
 
     #[test]
     fn removing_the_active_model_with_an_open_text_keeps_the_reader_alive() {
-        let package = &DISPOSABLE_ACTIVE;
+        let package = &DISPOSABLE_ACTIVE_OPEN;
         let path = install_fake(package);
         let mut config = quiet();
         config.engine.model_path = path.to_string_lossy().into_owned();
