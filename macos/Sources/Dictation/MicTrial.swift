@@ -274,7 +274,9 @@ enum TrialFormat {
             parts.append("Aucun texte provisoire.")
         }
         if let final = r.finalDelay { parts.append("Texte final \(seconds(final)) après l'arrêt.") }
-        if let s = r.speed { parts.append("Débit : \(decimal(s)) fois le temps réel.") }
+        if let s = r.speed {
+            parts.append("Débit pendant la dictée, relectures comprises : \(decimal(s)) fois le temps réel.")
+        }
         if let bytes = r.memoryBytes {
             parts.append("Mémoire : \(size(UInt64(max(0, bytes))))\(r.memoryMeasured ? "" : " environ").")
         }

@@ -399,22 +399,43 @@ struct DictationSection: View {
     static let options = DictationLanguage.allCases.map { (title: $0.label, value: $0.rawValue) }
     static let modifierOptions = DictationModifier.allCases.map { (title: $0.label, value: $0.rawValue) }
 
+    /// Pendant un essai du micro, la table ne change rien : le modèle essayé
+    /// ne doit pas être libéré ni supprimé sous ses pieds.
+    static let lockedByTrial = "Un essai du micro est en cours : la table des modèles attend qu'il soit fini."
+
     var body: some View {
+        let trialRunning = AppDelegate.shared?.micTrial?.isRunning ?? false
         SettingsGroup(title: "Dictée") {
             ModelsTable(rows: Self.rows(rows, chosen: chosen), model: model, fallback: Self.fallback,
                         isUsed: { Self.isUsed($0, chosen: chosen) },
                         use: { row in chosen = row.id == Self.systemID ? DictationModel.system : row.id },
                         removed: { row in
+                            // Un essai en route s'arrête d'abord : il ne
+                            // réenregistrerait rien après l'oubli.
+                            AppDelegate.shared?.micTrial?.cancel()
                             if row.id == chosen { chosen = DictationModel.system }
                             // Ses derniers essais partent avec lui.
                             AppDelegate.shared?.micTrial?.forget(row.id)
                         },
                         onChange: onChange, state: table)
+                .disabled(trialRunning)
                 // Le modèle choisi change (un autre, la dictée de macOS, ou le
                 // sien supprimé) : l'ancien quitte la mémoire, son repli s'efface.
                 .onChange(of: chosen) { old, new in
-                    if old != new { AppDelegate.shared?.dictationRouter?.releaseModel() }
+                    guard old != new else { return }
+                    // L'essai lit par le même coureur : il s'arrête avant la libération.
+                    AppDelegate.shared?.micTrial?.cancel()
+                    AppDelegate.shared?.dictationRouter?.releaseModel()
                 }
+            if trialRunning {
+                Text(Self.lockedByTrial)
+                    .font(Typo.body)
+                    .foregroundStyle(Palette.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 4)
+                    .accessibilityIdentifier("dictee-table-verrouillee")
+            }
             // Le modèle choisi n'a pas pu servir : la dictée de macOS l'a
             // remplacé. Le message en entier, sous la table.
             if let notice = Self.notice(AppDelegate.shared?.dictationRouter?.fallbackNotice, chosen: chosen) {
@@ -428,7 +449,7 @@ struct DictationSection: View {
             // L'essai du micro : un modèle essayé sans changer celui de la dictée.
             if let trial = AppDelegate.shared?.micTrial {
                 MicTrialBlock(trial: trial, rows: rows, chosen: chosen,
-                              dictating: AppDelegate.shared?.dictation?.isActive ?? false)
+                              dictating: AppDelegate.shared?.dictation?.holdsMicrophone ?? false)
             }
             SettingRow(title: "Dicter",
                        detail: "Un appui ouvre la dictée, un second saisit le texte là où vous écrivez ; Échap annule") {

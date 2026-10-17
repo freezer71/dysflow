@@ -134,6 +134,15 @@ final class SpeechModelRunner: @unchecked Sendable {
         gate.run { unloadLocked() }
     }
 
+    /// Libère le modèle s'il vient de `directory` (la fin d'un essai du
+    /// micro) ; un autre, chargé entre-temps par une dictée, reste.
+    func release(ifLoaded directory: URL) {
+        gate.run {
+            guard model != nil, self.directory == directory else { return }
+            unloadLocked()
+        }
+    }
+
     /// Sous `gate`.
     private func unloadLocked() {
         guard model != nil else { return }

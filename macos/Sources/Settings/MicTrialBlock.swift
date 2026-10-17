@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// L'essai du micro, sous la table des modèles de dictée : une phrase à
@@ -44,7 +45,7 @@ struct MicTrialBlock: View {
                     .accessibilityAddTraits(.isHeader)
                 Text("Lisez la phrase à voix haute. Le texte reconnu s'affiche ici : il n'est saisi nulle part. "
                      + "Le modèle essayé ne change pas celui de la dictée.")
-                    .font(Typo.detail)
+                    .font(Typo.body)
                     .foregroundStyle(Palette.muted)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -84,6 +85,16 @@ struct MicTrialBlock: View {
         .onChange(of: language) { _, _ in trial.refreshLanguage() }
         // La section change ou la fenêtre se ferme : le micro se ferme.
         .onDisappear { trial.cancel() }
+        // Une fenêtre de sillon réduite dans le Dock (les réglages, le plus
+        // souvent) : le micro se ferme.
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.willMiniaturizeNotification)) { _ in
+            if trial.isRunning { trial.cancel() }
+        }
+        // VoiceOver suit l'essai : le micro qui écoute, le texte final qui
+        // arrive, un échec ; puis les résultats (`announcement`).
+        .onChange(of: trial.phase) { _, phase in
+            if let text = Self.spoken(phase) { Announcement.post(text) }
+        }
         .onChange(of: trial.announcement) { _, text in
             if let text { Announcement.post(text) }
         }
@@ -146,7 +157,7 @@ struct MicTrialBlock: View {
             }
             if dictating && !trial.isRunning {
                 Text(MicTrialController.dictationBusy)
-                    .font(Typo.detail)
+                    .font(Typo.body)
                     .foregroundStyle(Palette.muted)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -168,6 +179,17 @@ struct MicTrialBlock: View {
                 .textSelection(.enabled)
                 .accessibilityLabel("Texte reconnu : \(trial.transcript.isEmpty ? "rien pour l'instant" : trial.transcript.text)")
                 .accessibilityIdentifier("essai-texte")
+        }
+    }
+
+    /// Ce que VoiceOver entend quand l'essai change d'état ; la fin d'un
+    /// essai (réussi ou non) passe par `announcement`.
+    nonisolated static func spoken(_ phase: MicTrialController.Phase) -> String? {
+        switch phase {
+        case .listening: "Parlez maintenant."
+        case .finishing: "Le texte final arrive."
+        case .failed(let message) where message != MicTrialController.noFinal: message
+        default: nil
         }
     }
 
@@ -246,7 +268,9 @@ struct MicTrialResultCard: View {
                            ? "premier texte après le début de la parole, puis texte final après « Arrêter »"
                            : "premier texte après l'ouverture du micro, puis texte final après « Arrêter »")
                 metric("Débit", v.speed,
-                       result.speed == nil ? "non mesuré pour la dictée de macOS" : "secondes de parole par seconde de calcul")
+                       result.speed == nil ? "non mesuré pour la dictée de macOS"
+                           : "pendant la dictée, relectures comprises : secondes de parole par seconde de calcul "
+                             + "(pas comparable à une vitesse mesurée en une seule passe)")
                 metric("Mémoire", v.memory,
                        result.memoryBytes == nil ? "non mesurée pour la dictée de macOS"
                            : result.memoryMeasured ? "occupée par le modèle chargé" : "estimée : le poids du modèle")
@@ -269,7 +293,7 @@ struct MicTrialResultCard: View {
                 .monospacedDigit()
                 .foregroundStyle(Palette.ink)
             Text(detail)
-                .font(Typo.detail)
+                .font(Typo.body)
                 .foregroundStyle(Palette.muted)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -277,14 +301,26 @@ struct MicTrialResultCard: View {
     }
 }
 
-/// Le dernier essai de chaque modèle, pour comparer.
+/// Le dernier essai de chaque modèle, pour comparer : une ligne titrée par
+/// modèle, chaque valeur avec son nom, qui passe à la ligne plutôt que de
+/// se couper.
 struct MicTrialHistory: View {
     let results: [String: TrialResult]
     let options: [(title: String, value: String)]
 
-    private static let columns: [(String, CGFloat?)] = [
-        ("Modèle", nil), ("Précision", 80), ("Délai", 130), ("Débit", 64), ("Mémoire", 80), ("Date", 90),
-    ]
+    /// Les valeurs d'un essai, nommées et en entier.
+    nonisolated static func parts(_ r: TrialResult, size: (UInt64) -> String) -> [String] {
+        let v = TrialFormat.values(r, size: size)
+        var delay = "Délai : \(v.delay)"
+        if r.firstDelay != nil && !r.firstDelayFromSpeech { delay += " (depuis l'ouverture du micro)" }
+        let memory = r.memoryBytes != nil && !r.memoryMeasured ? "environ \(v.memory)" : v.memory
+        return [
+            r.freeText ? "Texte libre" : "Précision : \(v.precision)",
+            delay,
+            "Débit : \(v.speed)",
+            "Mémoire : \(memory)",
+        ]
+    }
 
     var body: some View {
         let shown = options.filter { results[$0.value] != nil }
@@ -293,22 +329,16 @@ struct MicTrialHistory: View {
                 Text("Derniers essais")
                     .font(Typo.rowTitle)
                     .foregroundStyle(Palette.ink)
+                    .accessibilityAddTraits(.isHeader)
                     .padding(.bottom, 6)
-                HStack(spacing: 12) {
-                    ForEach(Self.columns, id: \.0) { title, width in cell(title, width) }
-                }
-                .font(Typo.caption)
-                .foregroundStyle(Palette.muted)
-                .padding(.vertical, 6)
-                .accessibilityHidden(true)
                 Rule()
                 ForEach(shown, id: \.value) { option in
                     if let result = results[option.value] { line(option.title, result) }
                     Rule()
                 }
-                Text("Délai : le premier texte, puis le texte final. Une étoile : compté depuis l'ouverture du micro, "
-                     + "le début de la parole n'ayant pas été repéré.")
-                    .font(Typo.detail)
+                Text("Délai : le premier texte, puis le texte final après « Arrêter ». "
+                     + "Débit : mesuré pendant la dictée, relectures comprises.")
+                    .font(Typo.body)
                     .foregroundStyle(Palette.muted)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.top, 8)
@@ -319,33 +349,23 @@ struct MicTrialHistory: View {
     }
 
     private func line(_ name: String, _ r: TrialResult) -> some View {
-        let v = TrialFormat.values(r, size: { SizeFormat.bytes($0) })
-        let delay = r.firstDelay != nil && !r.firstDelayFromSpeech ? v.delay + " *" : v.delay
-        let date = r.date.formatted(.dateTime.day().month(.abbreviated).locale(Locale(identifier: "fr_FR")))
-        let memory = r.memoryBytes != nil && !r.memoryMeasured ? "≈ " + v.memory : v.memory
-        let values = [name, r.freeText ? "libre" : v.precision, delay, v.speed, memory, date]
-        return HStack(spacing: 12) {
-            ForEach(Array(zip(Self.columns, values).enumerated()), id: \.offset) { _, pair in
-                cell(pair.1, pair.0.1)
-            }
+        let date = r.date.formatted(.dateTime.day().month(.wide).locale(Locale(identifier: "fr_FR")))
+        let parts = Self.parts(r, size: { SizeFormat.bytes($0) })
+        return VStack(alignment: .leading, spacing: 4) {
+            Text("\(name), le \(date)")
+                .font(Typo.rowTitle)
+                .foregroundStyle(Palette.ink)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(parts.joined(separator: "   ·   "))
+                .font(Typo.body)
+                .monospacedDigit()
+                .foregroundStyle(Palette.ink)
+                .lineSpacing(4)
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .font(Typo.body)
-        .monospacedDigit()
-        .foregroundStyle(Palette.ink)
-        .padding(.vertical, 8)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(TrialFormat.announcement(r, model: name, size: { SizeFormat.bytes($0) })
-            .replacingOccurrences(of: "Essai de \(name) terminé.", with: "\(name), le \(date) :"))
-    }
-
-    private func cell(_ text: String, _ width: CGFloat?) -> some View {
-        Group {
-            if let width {
-                Text(text).frame(width: width, alignment: .leading)
-            } else {
-                Text(text).frame(maxWidth: .infinity, alignment: .leading)
-            }
-        }
-        .lineLimit(1)
+        .accessibilityLabel("\(name), le \(date) : " + parts.joined(separator: ", "))
     }
 }

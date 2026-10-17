@@ -11,6 +11,9 @@ struct TrialEngine {
     /// Le temps de calcul cumulé du modèle, en secondes (`SpeechModelRunner`) ;
     /// `nil` : le moteur ne le dit pas (la dictée de macOS).
     var computeSeconds: (() -> Double)?
+    /// À la fin de l'essai (fini, annulé, échoué) : libère le modèle essayé
+    /// s'il n'est pas celui de la dictée.
+    var release: (() -> Void)?
 }
 
 /// L'essai du micro (section Dictée des réglages) : une phrase à lire, le
@@ -36,8 +39,10 @@ final class MicTrialController {
         case failed(String)
     }
 
-    static let dictationBusy = "Une dictée est en cours : l'essai pourra commencer quand elle sera finie."
-    static let trialBusy = "Un essai du micro est en cours dans les réglages : arrêtez-le pour dicter."
+    nonisolated static let dictationBusy = "Une dictée est en cours : l'essai pourra commencer quand elle sera finie."
+    nonisolated static let trialBusy = "Un essai du micro est en cours dans les réglages : arrêtez-le pour dicter."
+    nonisolated static let noFinal = "L'essai n'a pas abouti : aucun texte final n'est arrivé (rien n'a été entendu, ou le modèle "
+        + "n'a pas répondu). Le résultat précédent est gardé."
 
     private(set) var phase: Phase = .idle
     private(set) var transcript = Transcript()
@@ -69,6 +74,8 @@ final class MicTrialController {
     @ObservationIgnored private var onset = SpeechOnsetDetector()
     @ObservationIgnored private var memory: TrialMemory?
     @ObservationIgnored private var computeBefore: Double?
+    /// Un texte final est arrivé : sans lui, pas de score.
+    @ObservationIgnored private var gotFinal = false
     /// Les phrases lues jusqu'ici ; la phrase montrée a-t-elle déjà servi ?
     @ObservationIgnored private var trials = 0
     @ObservationIgnored private var sentenceUsed = false
@@ -143,6 +150,7 @@ final class MicTrialController {
         speechHeard = false
         memory = nil
         computeBefore = nil
+        gotFinal = false
         announcement = nil
         spectrum.reset()
         phase = .preparing(trial.load == nil ? "Ouverture du micro…" : "Chargement du modèle…")
@@ -165,6 +173,7 @@ final class MicTrialController {
                 session &+= 1
                 active = nil
                 await trial.engine.cancel()
+                trial.release?()
                 let message = (error as? DictationError)?.message
                     ?? DictationError.failed(error.localizedDescription).message
                 phase = .failed(message)
@@ -200,7 +209,10 @@ final class MicTrialController {
         session &+= 1
         active = nil
         phase = .idle
-        Task { await trial.engine.cancel() }
+        Task {
+            await trial.engine.cancel()
+            trial.release?()
+        }
     }
 
     /// Le modèle est supprimé : ses résultats aussi.
@@ -222,6 +234,7 @@ final class MicTrialController {
             }
         case .text(let text, let isFinal):
             transcript.receive(text, isFinal: isFinal)
+            if isFinal { gotFinal = true }
             if timeline.firstText == nil, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 timeline.firstText = clock()
             }
@@ -236,7 +249,13 @@ final class MicTrialController {
 
     private func finish(_ trial: TrialEngine) {
         active = nil
+        defer { trial.release?() }
         guard let id = modelID else { phase = .idle; return }
+        guard gotFinal else {
+            phase = .failed(Self.noFinal)
+            announcement = Self.noFinal
+            return
+        }
         let heard = transcript.text
         let speed: Double? = {
             guard let now = trial.computeSeconds?(), let before = computeBefore,
@@ -292,12 +311,20 @@ extension Dictation {
         }
         guard let directory, let runner,
               let engine = makeModelEngine(id: id, directory: directory, runner: runner) else { return nil }
+        // Le modèle de la dictée reste chargé pour elle ; un autre part dès
+        // la fin de l'essai (hors du fil principal : la libération attend
+        // le verrou), sans toucher à celui qu'une dictée aurait chargé depuis.
+        let release: () -> Void = {
+            guard id != DictationModel.stored() else { return }
+            Task.detached(priority: .utility) { runner.release(ifLoaded: directory) }
+        }
         return TrialEngine(engine: engine,
                            load: { try await TrialMeasure.load(runner: runner, directory: directory) },
                            computeSeconds: {
                                let d = runner.computeTime
                                return Double(d.components.seconds) + Double(d.components.attoseconds) / 1e18
-                           })
+                           },
+                           release: release)
     }
 }
 

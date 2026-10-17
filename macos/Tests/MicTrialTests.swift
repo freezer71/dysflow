@@ -267,7 +267,7 @@ final class TrialFormatTests: XCTestCase {
         let text = TrialFormat.announcement(result(), model: "Parakeet v3", size: size)
         XCTAssertEqual(text, "Essai de Parakeet v3 terminé. Précision : 92 %. "
             + "Premier texte 0,8 s après le début de la parole. Texte final 0,3 s après l'arrêt. "
-            + "Débit : 4,1 fois le temps réel. Mémoire : 800 Mo.")
+            + "Débit pendant la dictée, relectures comprises : 4,1 fois le temps réel. Mémoire : 800 Mo.")
     }
 
     func testTheAnnouncementOfAFreeTrialFromMicOpen() {

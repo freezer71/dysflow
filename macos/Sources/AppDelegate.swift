@@ -455,6 +455,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// L'essai du micro de la section Dictée : il partage le coureur des
     /// modèles de la dictée, et ne tient jamais le micro en même temps qu'elle.
     private(set) var micTrial: MicTrialController?
+    private var micTrialHideObserver: NSObjectProtocol?
 
     private func installDictation() {
         guard let engine = Dictation.makeEngine(
@@ -473,9 +474,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                           directory: id == DictationModel.system ? nil : model?.modelDirectory(id),
                                           runner: engine?.runner)
             },
-            dictationActive: { [weak controller] in controller?.isActive ?? false })
-        // Comme la dictée : la voix se tait pendant que le micro écoute.
-        trial.willStart = { [weak model] in model?.send(.pause) }
+            // Un échec ou un avis encore affiché par la dictée ne bloque pas.
+            dictationActive: { [weak controller] in controller?.holdsMicrophone ?? false })
+        // Comme la dictée : la voix se tait pendant que le micro écoute, un
+        // aperçu « Écouter » (seul ou de la bibliothèque) aussi ; le délai de
+        // libération du modèle est relu comme au début d'une dictée.
+        trial.willStart = { [weak model, weak engine] in
+            model?.send(.pause)
+            Task { await model?.stopPreview() }
+            engine?.willStart()
+        }
+        // L'app masquée : le micro se ferme (l'essai s'annule).
+        micTrialHideObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didHideNotification, object: nil, queue: .main
+        ) { [weak trial] _ in
+            MainActor.assumeIsolated { trial?.cancel() }
+        }
         controller.busy = { [weak trial] in trial?.isRunning == true ? MicTrialController.trialBusy : nil }
         micTrial = trial
         // L'icône de la pilule suit l'application où le texte ira.

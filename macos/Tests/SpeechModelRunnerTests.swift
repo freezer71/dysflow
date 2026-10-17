@@ -112,4 +112,17 @@ final class SpeechModelRunnerTests: XCTestCase {
         runner.release()
         XCTAssertNil(runner.loadedDirectory)
     }
+    /// La fin d'un essai du micro libère son modèle, mais jamais celui
+    /// qu'une dictée a chargé entre-temps.
+    func testReleaseIfLoadedOnlyUnloadsThatDirectory() async throws {
+        let clears = Clears()
+        let runner = SpeechModelRunner(load: { _ in Echo() }, clearCache: clears.clear)
+        try await runner.prepare(directory: URL(fileURLWithPath: "/a"))
+        runner.release(ifLoaded: URL(fileURLWithPath: "/b"))
+        XCTAssertEqual(runner.loadedDirectory, URL(fileURLWithPath: "/a"))
+        XCTAssertEqual(clears.count, 0)
+        runner.release(ifLoaded: URL(fileURLWithPath: "/a"))
+        XCTAssertNil(runner.loadedDirectory)
+        XCTAssertEqual(clears.count, 1)
+    }
 }

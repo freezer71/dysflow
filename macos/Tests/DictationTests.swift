@@ -293,6 +293,22 @@ final class DictationControllerTests: XCTestCase {
         XCTAssertTrue(listening)
     }
 
+    /// Seule une dictée qui tient le micro compte : un échec ou un avis
+    /// encore affiché ne bloque pas l'essai du micro.
+    func testOnlyAListeningDictationHoldsTheMicrophone() async {
+        let c = makeController()
+        XCTAssertFalse(c.holdsMicrophone)
+        engine.startError = .noMicrophone
+        c.toggle()
+        _ = await eventuallyTrue { c.phase == .failed(DictationError.noMicrophone.message) }
+        XCTAssertTrue(c.isActive, "le message est encore affiché")
+        XCTAssertFalse(c.holdsMicrophone)
+        engine.startError = nil
+        c.toggle()
+        _ = await eventuallyTrue { c.phase == .listening }
+        XCTAssertTrue(c.holdsMicrophone)
+    }
+
     func testTheLastDictationCanBeCopiedAgain() async {
         let c = makeController()
         var copied: [String] = []

@@ -101,6 +101,15 @@ final class DictationController {
 
     var isActive: Bool { phase != .hidden }
 
+    /// La dictée tient le micro (ou va le tenir) : un message encore
+    /// affiché (échec, avis) ne compte pas.
+    var holdsMicrophone: Bool {
+        switch phase {
+        case .preparing, .listening, .finishing: true
+        case .hidden, .notice, .failed: false
+        }
+    }
+
     /// Le raccourci : ouvre la dictée, ou saisit ce qui a été dit.
     func toggle() {
         switch phase {
