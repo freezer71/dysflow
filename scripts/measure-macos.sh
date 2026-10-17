@@ -8,21 +8,30 @@ APP=macos/build/Mesure/Sillon.app
 CHARGE=0
 CONSTRUIRE=1
 SECOND=0
+RTF=
 usage() {
-    echo "usage : $0 [--sans-construire] [--charge | --second-lancement]" >&2
+    echo "usage : $0 [--sans-construire] [--charge | --second-lancement | --rtf <id>]" >&2
     echo "  --charge            filtre de charge (pilote du banc, 7 verdicts)" >&2
     echo "  --second-lancement  juge froid_premier_son (1er) <= 300 ms : à lancer au SECOND lancement de la version" >&2
+    echo "  --rtf <id>          cadence d'un modèle de lecture à texte installé (Qwen3, Magpie)" >&2
     exit 2
 }
-for arg in "$@"; do
-    case "$arg" in
+while [ $# -gt 0 ]; do
+    case "$1" in
     --charge) CHARGE=1 ;;
     --sans-construire) CONSTRUIRE=0 ;;
     --second-lancement) SECOND=1 ;;
-    *) echo "argument inconnu : $arg" >&2; usage ;;
+    --rtf)
+        [ $# -ge 2 ] && [ -n "$2" ] || usage
+        RTF=$2
+        shift
+        ;;
+    *) echo "argument inconnu : $1" >&2; usage ;;
     esac
+    shift
 done
-[ "$CHARGE" = 1 ] && [ "$SECOND" = 1 ] && usage
+MODES=$((CHARGE + SECOND + $([ -n "$RTF" ] && echo 1 || echo 0)))
+[ "$MODES" -gt 1 ] && usage
 if [ "$CONSTRUIRE" = 1 ]; then
     ./scripts/build-macos.sh --mesure
 fi
@@ -32,6 +41,22 @@ mkdir -p target/runs
 if [ "$CHARGE" = 1 ]; then
     PY=${SILLON_BENCH_PY:-$HOME/Library/Caches/sillon-bench/light/venv-mlx/bin/python}
     exec "$PY" -I scripts/mesure-charge.py app --app "$APP" --out target/runs/sillon-charge.json
+fi
+# Cadence d'un modèle à texte : RTF par langue, vitesse tenue, phrase de la fiche.
+if [ -n "$RTF" ]; then
+    SORTIE=target/runs/sillon-rtf-$RTF.txt
+    JOURNAL=target/runs/sillon-rtf-$RTF.err
+    "$APP/Contents/MacOS/Sillon" --measure-rtf "$RTF" 2>"$JOURNAL" | { grep '^MESURE' || true; } | tee "$SORTIE"
+    if [ ! -s "$SORTIE" ]; then
+        echo "aucune ligne MESURE : l'app a planté ou n'a rien produit. Fin du journal d'erreurs :" >&2
+        tail -n 20 "$JOURNAL" >&2
+        exit 1
+    fi
+    if grep -q '^MESURE erreur' "$SORTIE"; then
+        echo "mesure interrompue : voir la ligne « MESURE erreur » ci-dessus" >&2
+        exit 1
+    fi
+    exit 0
 fi
 SORTIE=target/runs/sillon-mesures.txt
 JOURNAL=target/runs/sillon-mesures.err

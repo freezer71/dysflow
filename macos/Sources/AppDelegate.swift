@@ -202,6 +202,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             return
         }
+        // `--measure-rtf <id>` : la cadence d'un modèle de lecture à texte.
+        let arguments = ProcessInfo.processInfo.arguments
+        if let i = arguments.firstIndex(of: "--measure-rtf"), !isUnitTesting {
+            let id = i + 1 < arguments.count ? arguments[i + 1] : ""
+            Task { @MainActor [reader = reader!, text = textCompute] in
+                await Measure.rtf(reader: reader, compute: text, id: id)
+                NSApp.terminate(nil)
+            }
+            return
+        }
         if ProcessInfo.processInfo.arguments.contains("--measure"), !isUnitTesting {
             Task { @MainActor [reader = reader!] in
                 await Measure.run(reader: reader)
