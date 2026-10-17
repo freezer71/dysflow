@@ -146,53 +146,58 @@ extension MicrophoneCapture {
 /// Charge un modèle de dictée d'après son dossier (`models/<id>`), sous
 /// `MLXGate` (le chargeur de `SpeechModelRunner`).
 ///
-/// Plafonds de MLX : globaux au processus. Kokoro pose les siens (1 Go,
-/// cache 64 Mo) à son chargement seulement ; ils étoufferaient un modèle de
-/// dictée (Voxtral pèse 3 Go). Un modèle de dictée pose donc les siens à son
-/// chargement et à chaque lecture (Kokoro a pu se charger entre-temps) :
-/// mémoire = poids + 2 Go de marge, cache 256 Mo. Libéré, il remet ceux de
-/// Kokoro (`release`). Entre les deux, une synthèse de Kokoro tourne sous
-/// les plafonds de la dictée, plus larges : sans effet sur elle.
+/// Plafonds de MLX : globaux au processus, ils valent la somme des besoins
+/// des modèles chargés (`MLXBudget`). Un modèle de dictée y inscrit le sien
+/// à son chargement (clé `"dictee"`) : mémoire = poids + 2 Go de marge,
+/// cache 256 Mo. Libéré, il le retire : les plafonds redeviennent la somme
+/// de ce qui reste chargé (Kokoro, un modèle de lecture), jamais ceux de
+/// Kokoro remis en dur.
 enum SpeechModels {
     static let cacheLimit = 256 << 20
     static let memoryMargin = 2 << 30
 
     static func load(_ directory: URL) throws -> LoadedSpeechModel {
-        let memory = weightBytes(directory) + memoryMargin
-        DictationMLX.setLimits(memory: memory, cache: cacheLimit)
+        MLXBudget.shared.set("dictee", .init(memory: weightBytes(directory) + memoryMargin, cache: cacheLimit))
+        do {
+            return try loadModel(directory)
+        } catch {
+            MLXBudget.shared.remove("dictee")
+            throw error
+        }
+    }
+
+    private static func loadModel(_ directory: URL) throws -> LoadedSpeechModel {
         let id = directory.lastPathComponent
         switch id {
         case "parakeet_tdt_v3":
-            return ParakeetSpeech(try ParakeetModel.fromDirectory(directory), memoryLimit: memory)
+            return ParakeetSpeech(try ParakeetModel.fromDirectory(directory))
         case "canary_1b_v2_q8":
-            return CanarySpeech(try CanaryModel.fromModelDirectory(directory), memoryLimit: memory)
+            return CanarySpeech(try CanaryModel.fromModelDirectory(directory))
         case "voxtral_realtime_4bit":
-            return VoxtralSpeech(try VoxtralRealtimeModel.fromDirectory(directory), memoryLimit: memory)
+            return VoxtralSpeech(try VoxtralRealtimeModel.fromDirectory(directory))
         case _ where id.hasPrefix("whisper_"):
-            return WhisperSpeech(try WhisperModel.fromDirectory(directory), memoryLimit: memory)
+            return WhisperSpeech(try WhisperModel.fromDirectory(directory))
         default:
             throw DictationError.failed("modèle de dictée inconnu : \(id)")
         }
     }
 
-    /// Après la libération du modèle (sous `MLXGate`) : cache vidé, plafonds
-    /// de Kokoro remis.
+    /// Après la libération du modèle (sous `MLXGate`) : cache vidé, besoin
+    /// de la dictée retiré.
     static func release() {
         KokoroRunner.clearCache()
-        DictationMLX.setLimits(memory: KokoroMLXCompute.memoryLimit, cache: KokoroMLXCompute.cacheLimit)
+        MLXBudget.shared.remove("dictee")
     }
 
-    /// Avant chaque lecture (sous `MLXGate`).
-    static func applyLimits(memory: Int) {
-        DictationMLX.setLimits(memory: memory, cache: cacheLimit)
+    /// Avant chaque lecture (sous `MLXGate`) : la somme des besoins reposée
+    /// (un modèle a pu se charger ou se libérer entre-temps).
+    static func applyLimits() {
+        MLXBudget.shared.applyNow()
     }
 
-    /// Octets des poids (`*.safetensors`) du dossier.
+    /// Octets des poids (`*.safetensors`) du dossier et de ses sous-dossiers.
     static func weightBytes(_ directory: URL) -> Int {
-        let files = (try? FileManager.default.contentsOfDirectory(
-            at: directory, includingPropertiesForKeys: [.fileSizeKey])) ?? []
-        return files.filter { $0.pathExtension == "safetensors" }
-            .reduce(0) { $0 + ((try? $1.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0) }
+        MLXBudget.weightBytes(directory)
     }
 }
 
@@ -211,15 +216,12 @@ extension STTGenerateParameters {
 /// Parakeet v3 reconnaît la langue tout seul : `language` est ignoré.
 final class ParakeetSpeech: LoadedSpeechModel {
     private let model: ParakeetModel
-    private let memoryLimit: Int
-
-    init(_ model: ParakeetModel, memoryLimit: Int) {
+    init(_ model: ParakeetModel) {
         self.model = model
-        self.memoryLimit = memoryLimit
     }
 
     func transcribe(_ samples: [Float], language: String) throws -> String {
-        SpeechModels.applyLimits(memory: memoryLimit)
+        SpeechModels.applyLimits()
         return model.generate(samples: samples, generationParameters: model.defaultGenerationParameters)
             .text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
@@ -228,15 +230,12 @@ final class ParakeetSpeech: LoadedSpeechModel {
 /// Whisper : la langue est donnée (« fr », « en »), pas devinée.
 final class WhisperSpeech: LoadedSpeechModel {
     private let model: WhisperModel
-    private let memoryLimit: Int
-
-    init(_ model: WhisperModel, memoryLimit: Int) {
+    init(_ model: WhisperModel) {
         self.model = model
-        self.memoryLimit = memoryLimit
     }
 
     func transcribe(_ samples: [Float], language: String) throws -> String {
-        SpeechModels.applyLimits(memory: memoryLimit)
+        SpeechModels.applyLimits()
         let parameters = model.defaultGenerationParameters.with(language: language)
         return model.generate(samples: samples, generationParameters: parameters)
             .text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -252,15 +251,12 @@ final class CanarySpeech: LoadedSpeechModel {
     private static let special = try! NSRegularExpression(pattern: #"<\|[^|]*\|>"#)
 
     private let model: CanaryModel
-    private let memoryLimit: Int
-
-    init(_ model: CanaryModel, memoryLimit: Int) {
+    init(_ model: CanaryModel) {
         self.model = model
-        self.memoryLimit = memoryLimit
     }
 
     func transcribe(_ samples: [Float], language: String) throws -> String {
-        SpeechModels.applyLimits(memory: memoryLimit)
+        SpeechModels.applyLimits()
         let parameters = model.defaultGenerationParameters.with(language: language, maxTokens: Self.maxTokens)
         return Self.clean(model.generate(samples: samples, generationParameters: parameters).text)
     }
@@ -276,22 +272,19 @@ final class CanarySpeech: LoadedSpeechModel {
 /// sans invite : `language` est ignoré.
 final class VoxtralSpeech: LoadedSpeechModel {
     private let model: VoxtralRealtimeModel
-    private let memoryLimit: Int
-
-    init(_ model: VoxtralRealtimeModel, memoryLimit: Int) {
+    init(_ model: VoxtralRealtimeModel) {
         self.model = model
-        self.memoryLimit = memoryLimit
     }
 
     func transcribe(_ samples: [Float], language: String) throws -> String {
-        SpeechModels.applyLimits(memory: memoryLimit)
+        SpeechModels.applyLimits()
         return model.generate(samples: samples, generationParameters: model.defaultGenerationParameters)
             .text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// Une session neuve, retard `delayMs` (sous `MLXGate`).
     func makeSession(delayMs: Int) -> VoxtralSession {
-        SpeechModels.applyLimits(memory: memoryLimit)
+        SpeechModels.applyLimits()
         return VoxtralSession(model.makeStreamSession(transcriptionDelayMs: delayMs))
     }
 }
