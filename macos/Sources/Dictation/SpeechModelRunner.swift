@@ -36,6 +36,9 @@ final class SpeechModelRunner: @unchecked Sendable {
     /// La libération différée, relancée à chaque usage. Son propre verrou :
     /// la relancer n'attend jamais une transcription en cours.
     private let idle = OSAllocatedUnfairLock(initialState: Idle())
+    /// Le temps passé à calculer sous le verrou (`withModel`, donc
+    /// `transcribe`), chargements exclus : le débit de l'essai du micro.
+    private let compute = OSAllocatedUnfairLock(initialState: Duration.zero)
 
     private struct Idle {
         var delay: Duration?
@@ -103,9 +106,21 @@ final class SpeechModelRunner: @unchecked Sendable {
         return try await Task.detached(priority: .userInitiated) { [self] in
             try gate.run {
                 guard let model else { throw DictationError.failed("aucun modèle de dictée chargé") }
+                let begin = ContinuousClock.now
+                defer { compute.withLock { $0 += ContinuousClock.now - begin } }
                 return try body(model)
             }
         }.value
+    }
+
+    /// Le temps de calcul cumulé depuis la création du coureur ; l'essai du
+    /// micro en fait la différence avant et après.
+    var computeTime: Duration { compute.withLock { $0 } }
+
+    /// Le dossier du modèle chargé, `nil` s'il n'y en a pas. Attend une
+    /// transcription en cours (sous `gate`) : pas sur le fil principal.
+    var loadedDirectory: URL? {
+        gate.run { model == nil ? nil : directory }
     }
 
     /// Libère le modèle et vide le cache de MLX ; attend une transcription
