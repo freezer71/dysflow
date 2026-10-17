@@ -19,6 +19,7 @@ pub mod command;
 pub mod data;
 pub mod handle;
 pub mod language;
+pub mod library;
 pub mod migration;
 pub mod preview;
 pub mod settings;
@@ -60,6 +61,8 @@ pub struct Reader {
     lone_preview: Option<preview::LonePreview>,
     /// Dernier échec de cet aperçu.
     preview_error: Option<String>,
+    /// L'aperçu de la bibliothèque des voix, et le modèle chargé pour lui.
+    library_preview: Option<library::LibraryPreview>,
     /// Choix de langue faits à la main, par document.
     /// Relus au premier besoin, et seulement si le lecteur écrit sur disque.
     choices: Option<language::LanguageChoices>,
@@ -119,6 +122,7 @@ impl Reader {
             persist: true,
             lone_preview: None,
             preview_error: None,
+            library_preview: None,
             choices: None,
             choices_path: language::LanguageChoices::path(),
             language: None,
@@ -376,6 +380,7 @@ impl Reader {
     pub fn tick(&mut self, now: Instant) {
         self.poll_download(now);
         self.poll_lone_preview();
+        self.poll_library_preview();
         let Some(app) = self.session.as_mut() else {
             // Voix préparée sans texte : le délai court quand même.
             if self.engine.is_some() && !self.previewing() && self.idle_expired(now) {
@@ -399,6 +404,7 @@ impl Reader {
     /// la phrase pour reprendre.
     pub fn rest(&mut self) {
         self.drop_lone_preview();
+        self.drop_library_preview();
         let Some(mut app) = self.session.take() else {
             self.engine = None;
             return;

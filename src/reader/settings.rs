@@ -396,6 +396,7 @@ impl Reader {
         }
         // L'aperçu parlait avec l'ancienne voix.
         self.drop_lone_preview();
+        self.drop_library_preview();
         let prepared = self.engine.is_some();
         // Connu : pendant la toute première préparation MLX, cette libération attend le verrou MLX et peut bloquer le fil du lecteur ~9 s.
         self.engine = None;
