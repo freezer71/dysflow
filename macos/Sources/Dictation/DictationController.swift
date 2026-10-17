@@ -72,6 +72,9 @@ final class DictationController {
     /// Juste avant d'ouvrir le micro : la lecture se met en pause (le micro
     /// entendrait la voix).
     @ObservationIgnored var willStart: @MainActor () -> Void = {}
+    /// Le micro est déjà pris (un essai du micro, dans les réglages) : la
+    /// raison, dite à la place de la dictée ; `nil` : libre.
+    @ObservationIgnored var busy: @MainActor () -> String? = { nil }
     /// Durée d'un mot passager ; une erreur reste plus longtemps.
     @ObservationIgnored var noticeDuration: Duration = .milliseconds(1800)
     @ObservationIgnored var failureDuration: Duration = .seconds(4)
@@ -98,10 +101,25 @@ final class DictationController {
 
     var isActive: Bool { phase != .hidden }
 
+    /// La dictée tient le micro (ou va le tenir) : un message encore
+    /// affiché (échec, avis) ne compte pas.
+    var holdsMicrophone: Bool {
+        switch phase {
+        case .preparing, .listening, .finishing: true
+        case .hidden, .notice, .failed: false
+        }
+    }
+
     /// Le raccourci : ouvre la dictée, ou saisit ce qui a été dit.
     func toggle() {
         switch phase {
-        case .hidden, .notice, .failed: start()
+        case .hidden, .notice, .failed:
+            if let reason = busy() {
+                session &+= 1
+                flash(.failed(reason), for: failureDuration, session: session)
+            } else {
+                start()
+            }
         case .preparing: cancel()
         case .listening: commit()
         case .finishing: break
