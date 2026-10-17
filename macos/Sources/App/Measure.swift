@@ -406,6 +406,9 @@ enum Measure {
     /// verrou MLX) ; aucune fenêtre ne s'ouvre, l'appelant quitte l'app.
     static func rtf(reader: SillonReader, compute: TextSpeechMLXCompute?, id: String) async {
         defer { fflush(stdout) }
+        guard !id.isEmpty else {
+            print("MESURE erreur id manquant"); return
+        }
         guard let compute else {
             print("MESURE erreur \(id) pas de calcul MLX (lecteur muet)"); return
         }
@@ -416,9 +419,9 @@ enum Measure {
         switch result {
         case .failure(let error):
             print("MESURE erreur \(id) \(TextSpeechMLXCompute.message(of: error))")
-        case .success(let (calcul, son)):
+        case .success(let serie):
             func ratio(_ language: String) -> Double {
-                calcul[language, default: 0] / max(son[language, default: 0], 0.001)
+                serie.calcul[language, default: 0] / serie.son[language, default: 0]
             }
             for language in ["fr", "en"] {
                 print(String(format: "MESURE rtf %@ %@ %.3f", id, language, ratio(language)))
@@ -426,29 +429,43 @@ enum Measure {
             let fr = ratio("fr")
             print("MESURE cadence_max \(id) \(fluentSpeed(rtf: fr).map { String($0) } ?? "aucune")")
             print("MESURE fiche \(id) \(paceSentence(rtf: fr))")
-            print("MESURE empreinte \(id) \(residentMB()) Mo")
+            print("MESURE empreinte \(id) \(serie.empreinte) Mo")
         }
     }
 
-    /// La série elle-même : secondes de calcul et secondes de son, par langue.
+    /// Une série mesurée : secondes de calcul et secondes de son par langue,
+    /// empreinte (Mo) relevée le modèle encore chargé.
+    struct SerieRTF: Sendable {
+        var calcul: [String: Double] = [:]
+        var son: [String: Double] = [:]
+        var empreinte = -1
+    }
+
+    /// La série elle-même. Une synthèse sans un seul échantillon est une
+    /// erreur : un RTF proche de zéro passerait pour « fluide à 3× ».
     private nonisolated static func serieRTF(compute: TextSpeechMLXCompute, dir: String,
-                                             id: String) throws -> ([String: Double], [String: Double]) {
+                                             id: String) throws -> SerieRTF {
         let runtime = id.hasPrefix("magpie") ? TextSpeechMLXCompute.magpieRuntime : TextSpeechMLXCompute.qwenRuntime
         let voice = id.hasPrefix("magpie") ? "sofia" : (id.contains("customvoice") ? "vivian" : "siwis")
         try compute.load(modelDir: dir, runtime: runtime)
         defer { compute.release(modelDir: dir) }
         try compute.warmUp(modelDir: dir)
-        var calcul: [String: Double] = [:], son: [String: Double] = [:]
+        var serie = SerieRTF()
         for (language, text) in rtfPhrases {
             let start = ContinuousClock.now
             let out = try compute.synthesize(modelDir: dir, text: text, language: language, voice: voice,
                                              isCancelled: { false })
             let elapsed = start.duration(to: .now)
-            calcul[language, default: 0] += Double(elapsed.components.seconds)
+            guard !out.samples.isEmpty, out.sampleRate > 0 else {
+                throw SillonError.Failed(message: "synthèse vide (\(language)) : « \(text) »")
+            }
+            serie.calcul[language, default: 0] += Double(elapsed.components.seconds)
                 + Double(elapsed.components.attoseconds) / 1e18
-            son[language, default: 0] += Double(out.samples.count) / Double(out.sampleRate)
+            serie.son[language, default: 0] += Double(out.samples.count) / Double(out.sampleRate)
         }
-        return (calcul, son)
+        // Avant la libération (le `defer`) : l'empreinte compte le modèle.
+        serie.empreinte = residentMB()
+        return serie
     }
 }
 #endif
