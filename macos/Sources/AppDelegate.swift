@@ -452,6 +452,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// `fallbackNotice` (`AppDelegate.shared?.dictationRouter`).
     private(set) var dictationRouter: RoutingDictationEngine?
 
+    /// L'essai du micro de la section Dictée : il partage le coureur des
+    /// modèles de la dictée, et ne tient jamais le micro en même temps qu'elle.
+    private(set) var micTrial: MicTrialController?
+
     private func installDictation() {
         guard let engine = Dictation.makeEngine(
             directory: { [weak model] id in model?.modelDirectory(id) },
@@ -463,6 +467,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // La pause part toujours : le moteur l'ignore voix au repos, et
         // l'instantané peut être en retard (rien n'est relu en arrière-plan).
         controller.willStart = { [weak model] in model?.send(.pause) }
+        let trial = MicTrialController(
+            make: { [weak model, weak engine] id in
+                Dictation.makeTrialEngine(id: id,
+                                          directory: id == DictationModel.system ? nil : model?.modelDirectory(id),
+                                          runner: engine?.runner)
+            },
+            dictationActive: { [weak controller] in controller?.isActive ?? false })
+        // Comme la dictée : la voix se tait pendant que le micro écoute.
+        trial.willStart = { [weak model] in model?.send(.pause) }
+        controller.busy = { [weak trial] in trial?.isRunning == true ? MicTrialController.trialBusy : nil }
+        micTrial = trial
         // L'icône de la pilule suit l'application où le texte ira.
         dictationTargetObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main

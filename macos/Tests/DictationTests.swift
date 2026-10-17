@@ -274,6 +274,25 @@ final class DictationControllerTests: XCTestCase {
         XCTAssertEqual(c.target?.name, "Mail")
     }
 
+    /// Un essai du micro tient le micro (réglages) : la dictée ne s'ouvre
+    /// pas, le dit, et la lecture ne se met pas en pause.
+    func testABusyMicrophoneIsSaidWithoutStarting() async {
+        let c = makeController()
+        var paused = false
+        c.willStart = { paused = true }
+        c.busy = { "Un essai du micro est en cours" }
+        c.toggle()
+        XCTAssertEqual(c.phase, .failed("Un essai du micro est en cours"))
+        XCTAssertFalse(paused)
+        XCTAssertEqual(engine.started, [])
+        let gone = await eventuallyTrue { c.phase == .hidden }
+        XCTAssertTrue(gone)
+        c.busy = { nil }
+        c.toggle()
+        let listening = await eventuallyTrue { c.phase == .listening }
+        XCTAssertTrue(listening)
+    }
+
     func testTheLastDictationCanBeCopiedAgain() async {
         let c = makeController()
         var copied: [String] = []

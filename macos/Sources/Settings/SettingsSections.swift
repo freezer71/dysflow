@@ -351,7 +351,7 @@ struct ShortcutsSection: View {
     }
 }
 
-/// La dictée (macOS 26) : ses modèles, son raccourci et sa langue.
+/// La dictée (macOS 26) : ses modèles, l'essai du micro, son raccourci et sa langue.
 struct DictationSection: View {
     let model: ReaderModel
     /// Les modèles (lecture et dictée), tels que le moteur les donne.
@@ -404,7 +404,11 @@ struct DictationSection: View {
             ModelsTable(rows: Self.rows(rows, chosen: chosen), model: model, fallback: Self.fallback,
                         isUsed: { Self.isUsed($0, chosen: chosen) },
                         use: { row in chosen = row.id == Self.systemID ? DictationModel.system : row.id },
-                        removed: { row in if row.id == chosen { chosen = DictationModel.system } },
+                        removed: { row in
+                            if row.id == chosen { chosen = DictationModel.system }
+                            // Ses derniers essais partent avec lui.
+                            AppDelegate.shared?.micTrial?.forget(row.id)
+                        },
                         onChange: onChange, state: table)
                 // Le modèle choisi change (un autre, la dictée de macOS, ou le
                 // sien supprimé) : l'ancien quitte la mémoire, son repli s'efface.
@@ -420,6 +424,11 @@ struct DictationSection: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.vertical, 4)
                     .accessibilityIdentifier("dictee-repli")
+            }
+            // L'essai du micro : un modèle essayé sans changer celui de la dictée.
+            if let trial = AppDelegate.shared?.micTrial {
+                MicTrialBlock(trial: trial, rows: rows, chosen: chosen,
+                              dictating: AppDelegate.shared?.dictation?.isActive ?? false)
             }
             SettingRow(title: "Dicter",
                        detail: "Un appui ouvre la dictée, un second saisit le texte là où vous écrivez ; Échap annule") {
