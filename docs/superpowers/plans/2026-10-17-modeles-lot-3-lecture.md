@@ -2772,3 +2772,21 @@ final class MeasureRTFTests: XCTestCase {
   - supprimer le modèle utilisé : la lecture passe à la voix de macOS avec la confirmation de la spec.
 - [ ] **Step 4 : cadence (procédure RTF)** — si la Tâche 9 n'a pas pu mesurer un modèle, la faire maintenant : `./scripts/measure-macos.sh --rtf <id>` pour `qwen3_tts_06b_base_8bit`, `qwen3_tts_17b_customvoice_8bit`, `magpie_tts_357m_8bit`, machine calme, deux passages, le plus lent retenu. Lire : `MESURE rtf <id> fr|en <rtf>` (calcul / durée du son, ≤ 0,8 × vitesse pour une lecture tenue), `MESURE cadence_max`, `MESURE empreinte` (comparer à ≈ 3,5–3,7 Go pour le 1.7B, ≈ 2,5 Go pour le 0.6B, ≈ 1,6 Go pour Magpie : un écart de plus de 30 % se signale). Puis, pour le 1.7B, lire 5 minutes à 1× et 2 minutes à 1,5× et noter les attentes (`MESURE`-libre : à l'oreille, ou `./scripts/measure-macos.sh --charge` si l'utilisateur veut le filtre de charge complet).
 - [ ] **Step 5 :** pousser pour la CI seulement avec l'accord de l'utilisateur ; sur la CI, vérifier que `Qwen2BPETokenizerTests`, `Qwen3TTSRunnerTests`, `MagpieRunnerTests`, `MLXBudgetTests`, `TextSpeechMLXComputeTests`, `MeasureRTFTests` passent, et que les tests de fumée sont **ignorés** (pas en échec).
+
+---
+
+## Bilan d'exécution (17 oct. 2026)
+
+Fait : tâches 1 à 9 (code), relues une à une (corrections : lecture hors table des positions dans Magpie — signalée aussi par la revue de sécurité —, dictionnaire anglais absent, empreinte mémoire relevée après libération), puis relecture de toute la branche et une vague de corrections (fiche du 1.7B sans chiffre non mesuré, mention CC BY « adaptation » et « sans garantie », dossiers vides après suppression, repli silencieux quand le fichier du modèle manque, en-tête de licence de Sampling.swift, préchauffage une seule fois par dossier).
+
+Vérifié : `cargo test` sans échec ; clippy propre ; app et tests compilés. **Aucun modèle n'a encore tourné.**
+
+Décisions prises en cours de route :
+- Tests de fumée ignorés sans modèle ; la preuve est l'écoute et la mesure.
+- Voix SIWIS : CC BY 4.0 vérifiée ; les droits de la personne dont c'est la voix ne sont pas couverts par la licence (même cas que `ff_siwis` de Kokoro).
+- Le vocabulaire de Qwen (Apache-2.0) entre dans les fixtures de test.
+- Le texte lu n'est jamais encodé avec les jetons de contrôle de Qwen (`allowSpecial: false`).
+- Chiffres découpés un par un (vérifié contre transformers) ; le `{1,3}` du port d'origine était faux.
+- Magpie lit une phrase trop longue en morceaux (≤ 471 octets) au lieu de sortir de sa table.
+
+**Reste (Tâches 9 et 10)** : télécharger les trois modèles, lancer `./scripts/measure-macos.sh --rtf <id>` pour chacun, écrire les phrases `MESURE fiche` dans les `pace` de `src/models.rs` ; écoute par l'utilisateur (Qwen 0.6B voix française, 1.7B, Magpie ; changer de modèle pendant un chargement du 1.7B ; dicter pendant une lecture Qwen ; pause aux virgules).
