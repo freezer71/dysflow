@@ -94,4 +94,38 @@ final class SettingsNavigationTests: XCTestCase {
         XCTAssertNil(SettingsSection.requested(in: ["--ui-testing", "--show-settings"]))
         XCTAssertNil(SettingsSection.requested(in: ["--section-reglages=inconnue"]))
     }
+
+    /// ↓ et ↑ passent à la section voisine, sans boucler ni sortir de la
+    /// liste ; la Dictée absente est sautée. Le choix est gardé.
+    func testMovingGoesToTheNeighbourWithinTheList() {
+        let defaults = freshDefaults()
+        let navigation = SettingsNavigation(defaults: defaults, dictationSupported: false)
+        navigation.move(by: -1)
+        XCTAssertEqual(navigation.selection, .voix, "pas au-dessus de la première")
+        navigation.move(by: 1)
+        XCTAssertEqual(navigation.selection, .affichage)
+        navigation.move(by: 1)
+        XCTAssertEqual(navigation.selection, .raccourcis, "la Dictée absente est sautée")
+        navigation.select(.demarrage)
+        navigation.move(by: 1)
+        XCTAssertEqual(navigation.selection, .demarrage, "pas au-dessous de la dernière")
+        navigation.move(by: -1)
+        XCTAssertEqual(navigation.selection, .autorisations)
+        XCTAssertEqual(defaults.string(forKey: SettingsNavigation.defaultsKey), "autorisations")
+    }
+
+    /// Sous les tests, des préférences à part : jamais celles de l'utilisateur.
+    /// `--ui-testing-reglages-neufs` les vide (au début d'un test d'interface).
+    func testUnderTestsTheSelectionLivesInItsOwnSuite() {
+        XCTAssertTrue(SettingsNavigation.processDefaults(arguments: ["--ui-testing"], environment: [:])
+            !== UserDefaults.standard)
+        XCTAssertTrue(SettingsNavigation.processDefaults(arguments: [], environment: [:]) === UserDefaults.standard)
+        let suite = SettingsNavigation.processDefaults(arguments: ["--ui-testing"], environment: [:])
+        suite.set("raccourcis", forKey: SettingsNavigation.defaultsKey)
+        XCTAssertEqual(SettingsNavigation.processDefaults(arguments: ["--ui-testing"], environment: [:])
+            .string(forKey: SettingsNavigation.defaultsKey), "raccourcis", "gardé d'un lancement à l'autre")
+        let reset = SettingsNavigation.processDefaults(arguments: ["--ui-testing", "--ui-testing-reglages-neufs"],
+                                                       environment: [:])
+        XCTAssertNil(reset.string(forKey: SettingsNavigation.defaultsKey))
+    }
 }

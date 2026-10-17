@@ -20,12 +20,24 @@ struct ReglagesView: View {
     @State private var rows: [VoiceModel] = []
     @State private var used: UInt64 = 0
     @State private var free: UInt64?
+    /// L'erreur et la suppression en attente de chaque table, gardées ici :
+    /// changer de section ne les perd pas.
+    @State private var speechTable = ModelsTableState()
+    @State private var dictationTable = ModelsTableState()
+    /// La qualité des voix de macOS, lue quand la liste des voix change.
+    @State private var macQuality: [String: Int] = [:]
     /// La liste prend le clavier à l'ouverture : ↑ et ↓ changent de section.
     @FocusState private var listFocused: Bool
 
     /// La largeur de la liste, et la place laissée en haut aux boutons de la fenêtre.
     static let sidebarWidth: CGFloat = 190
     static let titlebarInset: CGFloat = 44
+    /// La fenêtre : à 860 pt au moins, le volet garde la largeur de
+    /// l'ancienne page (cartes de 597 pt, 588 avant) ; rien ne s'y coupe.
+    static let minWidth: CGFloat = 860
+    static let idealWidth: CGFloat = 880
+    static let minHeight: CGFloat = 520
+    static let idealHeight: CGFloat = 640
 
     init(model: ReaderModel, navigation: SettingsNavigation = .shared) {
         self.model = model
@@ -64,8 +76,8 @@ struct ReglagesView: View {
         .ignoresSafeArea()
         .modifier(HiddenWindowToolbar())
         .navigationTitle("Réglages")
-        .frame(minWidth: 720, idealWidth: 820, maxWidth: .infinity,
-               minHeight: 520, idealHeight: 640, maxHeight: .infinity)
+        .frame(minWidth: Self.minWidth, idealWidth: Self.idealWidth, maxWidth: .infinity,
+               minHeight: Self.minHeight, idealHeight: Self.idealHeight, maxHeight: .infinity)
         .font(Typo.body)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("page-reglages")
@@ -82,41 +94,31 @@ struct ReglagesView: View {
         .onDisappear { refresh.setVisible(false); closeWindow() }
         // La vitesse changée depuis le lecteur, resté visible à côté.
         .onChange(of: model.snapshot.speed) { _, _ in followReader() }
+        // VoiceOver entend la progression d'un téléchargement tous les 25 %,
+        // et l'échec d'un aperçu, quelle que soit la section affichée.
+        .onChange(of: model.snapshot.download) { old, new in announceProgress(old: old, new: new) }
+        .onChange(of: model.snapshot.preview.error) { _, error in
+            if let error { Announcement.post(error) }
+        }
+        // La qualité des voix de macOS, relue quand la liste change (pas à
+        // chaque retour sur Voix).
+        .task(id: store.capabilities.voices.map(\.id)) {
+            let c = store.capabilities
+            macQuality = c.family == "system"
+                ? VoiceSection.quality(of: c.voices.map(\.id), voices: VoiceSection.installedMacVoices()) : [:]
+        }
         // Un modèle installé (téléchargement fini) : sa ligne et ses voix changent.
         .onChange(of: ReaderModel.isDownloading(model.snapshot.download)) { was, running in
             if was, !running { Task { await reloadModels() } }
         }
     }
 
-    /// La liste des sections : une icône et un mot par ligne. La sélection
-    /// native de `List` : ↑ et ↓ y changent de section, VoiceOver dit la
-    /// ligne choisie.
     private func sidebar(topInset: CGFloat) -> some View {
-        List(selection: Binding<SettingsSection?>(get: { navigation.selection },
-                                                  set: { navigation.select($0) })) {
-            ForEach(navigation.available) { section in
-                Label {
-                    Text(section.title)
-                        .fixedSize(horizontal: false, vertical: true)
-                } icon: {
-                    Image(systemName: section.symbol)
-                        .frame(width: 20)
-                        .accessibilityHidden(true)
-                }
-                .font(.system(size: 14))
-                .padding(.vertical, 5)
-                .tag(section)
-                .accessibilityIdentifier(section.identifier)
-            }
-        }
-        .listStyle(.sidebar)
-        .scrollContentBackground(.hidden)
-        .focused($listFocused)
-        .accessibilityLabel("Sections des réglages")
-        .accessibilityIdentifier("sections-reglages")
-        .padding(.top, topInset)
-        .frame(width: Self.sidebarWidth)
-        .background(Palette.sidebar)
+        SettingsSidebar(navigation: navigation, focus: $listFocused)
+            .padding(.top, topInset)
+            .frame(width: Self.sidebarWidth)
+            .frame(maxHeight: .infinity, alignment: .top)
+            .background(Palette.sidebar)
     }
 
     /// Le volet d'une section : son nom en titre, ses réglages dessous, à
@@ -127,12 +129,13 @@ struct ReglagesView: View {
             switch section {
             case .voix:
                 VoiceSection(model: model, store: store, rows: rows, used: used, free: free,
-                             onChange: { await reloadModels() })
+                             onChange: { await reloadModels() }, table: speechTable, macQuality: macQuality)
             case .affichage:
                 ReadingSection(store: store)
             case .dictee:
                 if Dictation.isSupported {
-                    DictationSection(model: model, rows: rows, onChange: { await reloadModels() })
+                    DictationSection(model: model, rows: rows, onChange: { await reloadModels() },
+                                     table: dictationTable)
                 }
             case .raccourcis:
                 ShortcutsSection()
@@ -147,6 +150,17 @@ struct ReglagesView: View {
         .accessibilityElement(children: .contain)
         .accessibilityLabel(section.title)
         .accessibilityIdentifier("volet-\(section.rawValue)")
+    }
+
+    /// La progression d'un téléchargement de modèle (lecture ou dictée),
+    /// dite tous les 25 %.
+    private func announceProgress(old: DownloadView?, new: DownloadView?) {
+        guard let new, let row = rows.first(where: { $0.id == new.id }),
+              let current = ModelTable.fraction(new) else { return }
+        let previous = old?.id == new.id ? ModelTable.fraction(old) : nil
+        if let text = ModelTable.progressAnnouncement(name: row.name, previous: previous, current: current) {
+            Announcement.post(text)
+        }
     }
 
     /// Les lignes de la table et la place, lues hors du fil principal.
@@ -171,6 +185,91 @@ struct ReglagesView: View {
     private func closeWindow() {
         store.endDragging()
         Task { await store.flush() }
+    }
+}
+
+/// La liste des sections, dessinée au style « Felt » : la ligne choisie sur
+/// un fond gris arrondi, son icône sur une pastille citron, le texte à
+/// l'encre ; les autres, nues. Un clic choisit ; la liste a le clavier, ↑ et
+/// ↓ y changent de section. VoiceOver : un groupe « Sections des réglages »,
+/// la ligne choisie marquée sélectionnée.
+struct SettingsSidebar: View {
+    let navigation: SettingsNavigation
+    var focus: FocusState<Bool>.Binding
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(navigation.available) { section in
+                SettingsSidebarRow(section: section, selected: section == navigation.selection,
+                                   focused: focus.wrappedValue) {
+                    navigation.select(section)
+                    focus.wrappedValue = true
+                }
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.bottom, 10)
+        .focusable()
+        .focused(focus)
+        .focusEffectDisabled()
+        .onMoveCommand { direction in
+            switch direction {
+            case .up: navigation.move(by: -1)
+            case .down: navigation.move(by: 1)
+            default: break
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Sections des réglages")
+        .accessibilityIdentifier("sections-reglages")
+    }
+}
+
+/// Une ligne de la liste : une icône et un mot, jamais coupé.
+private struct SettingsSidebarRow: View {
+    let section: SettingsSection
+    let selected: Bool
+    /// La liste a le clavier : la ligne choisie porte un liseré.
+    let focused: Bool
+    let action: () -> Void
+    @State private var hovering = false
+
+    /// Le glyphe sur la pastille citron : l'encre sombre, en clair comme en sombre.
+    private static let onLime = Color(nsColor: NSColor(hex: 0x141414))
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Image(systemName: section.symbol)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(selected ? Self.onLime : Palette.muted)
+                    .frame(width: 26, height: 26)
+                    .background(RoundedRectangle(cornerRadius: 7).fill(selected ? Palette.accent : .clear))
+                    .accessibilityHidden(true)
+                Text(section.title)
+                    .font(.system(size: 14, weight: selected ? .semibold : .regular))
+                    .foregroundStyle(Palette.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .frame(minHeight: 36)
+            .background(RoundedRectangle(cornerRadius: 8)
+                .fill(selected ? Palette.selected : (hovering ? Palette.hover : .clear)))
+            .overlay {
+                if selected && focused {
+                    RoundedRectangle(cornerRadius: 8).strokeBorder(Palette.ink.opacity(0.4), lineWidth: 1.5)
+                }
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+        .focusable(false)
+        .onHover { hovering = $0 }
+        .accessibilityLabel(section.title)
+        .accessibilityIdentifier(section.identifier)
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
 

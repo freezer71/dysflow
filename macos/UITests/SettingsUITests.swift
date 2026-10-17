@@ -41,10 +41,9 @@ final class SettingsUITests: XCTestCase {
             for id in removed { XCTAssertFalse(any[id].exists, "\(id) est revenu") }
             try app.performAccessibilityAuditOutsideTouchBar(visibleIn: window)
             let pane = any["volet-\(section)"].scrollViews.firstMatch
-            if pane.exists {
-                pane.scroll(byDeltaX: 0, deltaY: -5000)
-                try app.performAccessibilityAuditOutsideTouchBar(visibleIn: window)
-            }
+            XCTAssertTrue(pane.exists, "le volet \(section) ne défile pas : l'audit du bas serait sauté")
+            pane.scroll(byDeltaX: 0, deltaY: -5000)
+            try app.performAccessibilityAuditOutsideTouchBar(visibleIn: window)
         }
         XCTAssertFalse(window.buttons["Avancé"].exists, "plus d'onglet Avancé")
     }
@@ -68,7 +67,8 @@ final class SettingsUITests: XCTestCase {
         XCTAssertTrue(window.waitForExistence(timeout: 5))
         window.selectSettingsSection("raccourcis")
         app.terminate()
-        app = launch(["--show-settings"])
+        // Sans `--ui-testing-reglages-neufs` : la section gardée reste.
+        app = launch(["--show-settings"], keepingSection: true)
         window = app.windows["Réglages"]
         XCTAssertTrue(window.waitForExistence(timeout: 5))
         XCTAssertTrue(window.descendants(matching: .any)["volet-raccourcis"].waitForExistence(timeout: 3))
@@ -99,7 +99,7 @@ final class SettingsUITests: XCTestCase {
             XCTAssertTrue(element.exists, "aucun contrôle n'a le focus")
             seen.insert(identity(element))
         }
-        XCTAssertGreaterThan(seen.count, 2, "Tab ne parcourt pas la fenêtre")
+        XCTAssertGreaterThan(seen.count, 4, "Tab ne parcourt pas la fenêtre")
     }
 
     /// ⌘, depuis le lecteur ouvre la page.
@@ -113,9 +113,11 @@ final class SettingsUITests: XCTestCase {
         XCTAssertTrue(window.descendants(matching: .any)["page-reglages"].waitForExistence(timeout: 3))
     }
 
-    private func launch(_ arguments: [String]) -> XCUIApplication {
+    /// Chaque test part de réglages neufs (la section gardée par les tests,
+    /// dans leur suite à part, est oubliée) ; `keepingSection` la garde.
+    private func launch(_ arguments: [String], keepingSection: Bool = false) -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["--ui-testing"] + arguments
+        app.launchArguments = ["--ui-testing"] + (keepingSection ? [] : ["--ui-testing-reglages-neufs"]) + arguments
         app.launch()
         return app
     }

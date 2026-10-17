@@ -70,13 +70,32 @@ enum SettingsSection: String, CaseIterable, Identifiable, Sendable {
 @Observable
 final class SettingsNavigation {
     static let defaultsKey = "reglagesSection"
-    static let shared = SettingsNavigation()
+    static let shared = SettingsNavigation(defaults: processDefaults())
+
+    /// `--ui-testing-reglages-neufs` : la section gardée par les tests est
+    /// oubliée (un test d'interface le passe à son premier lancement).
+    static let resetArgument = "--ui-testing-reglages-neufs"
+
+    /// Les préférences où garder la section : celles de l'utilisateur, sauf
+    /// sous les tests (`--ui-testing`, XCTest), qui ont leur suite à part,
+    /// gardée d'un lancement à l'autre et vidée seulement à la demande. Même
+    /// règle que `DisplayModeStore.processDefaults()`.
+    static func processDefaults(arguments: [String] = ProcessInfo.processInfo.arguments,
+                                environment: [String: String] = ProcessInfo.processInfo.environment)
+        -> UserDefaults {
+        let testing = arguments.contains("--ui-testing") || environment["XCTestConfigurationFilePath"] != nil
+        guard testing else { return .standard }
+        let name = "fr.sillon.tests.reglages"
+        guard let suite = UserDefaults(suiteName: name) else { return .standard }
+        if arguments.contains(resetArgument) { suite.removePersistentDomain(forName: name) }
+        return suite
+    }
 
     let available: [SettingsSection]
     private(set) var selection: SettingsSection
     @ObservationIgnored private let defaults: UserDefaults
 
-    init(defaults: UserDefaults = .standard, dictationSupported: Bool = Dictation.isSupported) {
+    init(defaults: UserDefaults, dictationSupported: Bool = Dictation.isSupported) {
         self.defaults = defaults
         available = SettingsSection.available(dictationSupported: dictationSupported)
         selection = SettingsSection.resolve(stored: defaults.string(forKey: Self.defaultsKey), available: available)
@@ -88,5 +107,12 @@ final class SettingsNavigation {
         guard let section, available.contains(section) else { return }
         if section != selection { selection = section }
         defaults.set(section.rawValue, forKey: Self.defaultsKey)
+    }
+
+    /// ↑ (-1) ou ↓ (+1) : la section voisine dans la liste, sans boucler.
+    func move(by offset: Int) {
+        guard let index = available.firstIndex(of: selection) else { return }
+        let target = min(max(index + offset, 0), available.count - 1)
+        select(available[target])
     }
 }
