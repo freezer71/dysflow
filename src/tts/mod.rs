@@ -251,7 +251,9 @@ fn build_text_engine(
     let main = std::path::Path::new(&settings.model_path);
     let dir = main.parent().filter(|_| main.is_file()).map(std::path::Path::to_path_buf);
     let Some(dir) = dir else {
-        return (fallback, Some(format!("{} n'est pas installé — voir les réglages", package.display_name)));
+        // L'app ne garde que le moteur : la raison doit y rester lisible.
+        let note = format!("{} n'est pas installé — voir les réglages", package.display_name);
+        return (fallback::explained(fallback, note.clone()), Some(note));
     };
     let repli = Arc::clone(&fallback);
     let engine = lazy::LazyEngine::spawn(package.display_name.to_string(), 1, fallback, move || {
@@ -465,12 +467,17 @@ mod tests {
             fn release(&self, _: &std::path::Path) {}
         }
         let compute = AppCompute { kokoro: None, text: Some(Arc::new(Never)) };
-        let (_, note) = build_engine_with(
+        let (engine, note) = build_engine_with(
             EnginePreference::Auto,
             &text_settings("/nulle/part/model.safetensors", "qwen3_tts_17b_customvoice_8bit"),
             &compute,
         );
-        assert!(note.unwrap().contains("n'est pas installé"));
+        let note = note.unwrap();
+        assert!(note.contains("n'est pas installé"));
+        // L'app jette la note : le moteur la porte lui-même.
+        assert_eq!(engine.readiness(), Readiness::Fallback(note));
+        assert!(engine.name().ends_with("(repli)"), "{}", engine.name());
+        assert_eq!(engine.max_sessions(), system::SystemEngine::new().max_sessions(), "la voix du système parle");
     }
 
     /// L'ancien Magpie d'audio.cpp (famille `magpie_tts`, un `.gguf`) n'est
