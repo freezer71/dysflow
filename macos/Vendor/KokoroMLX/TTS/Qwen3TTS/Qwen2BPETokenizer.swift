@@ -69,8 +69,13 @@ public final class Qwen2BPETokenizer: @unchecked Sendable {
         split = try NSRegularExpression(pattern: Self.pattern)
     }
 
-    public func encode(text: String) -> [Int] {
+    /// `allowSpecial` vrai (par défaut, comme `transformers`) : un jeton
+    /// ajouté écrit en toutes lettres (`<|im_end|>`, `<think>`…) devient son
+    /// id. Faux : tout est du texte ordinaire, pour la phrase à lire (un
+    /// livre peut contenir ces chaînes) ; seul le gabarit garde ses jetons.
+    public func encode(text: String, allowSpecial: Bool = true) -> [Int] {
         let text = text.precomposedStringWithCanonicalMapping
+        guard allowSpecial else { return encodeOrdinary(text) }
         var ids: [Int] = []
         var rest = Substring(text)
         while !rest.isEmpty {

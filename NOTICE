@@ -29,8 +29,9 @@ L'app macOS contient, avec le texte de chaque licence dans
 Contents/Resources/licences (ce fichier compris) :
 - des fichiers de mlx-audio-swift (macos/Vendor/KokoroMLX), licence MIT,
   Copyright (c) 2025 Prince Canuma — mlx-audio-swift-LICENSE ;
-- un fichier dérivé de mlx-swift-lm 3.32.3
-  (macos/Vendor/KokoroMLX/STT/BaseConfiguration.swift), licence MIT,
+- deux fichiers dérivés de mlx-swift-lm 3.32.3
+  (macos/Vendor/KokoroMLX/STT/BaseConfiguration.swift,
+  macos/Vendor/KokoroMLX/TTS/KVCache.swift), licence MIT,
   Copyright (c) 2024 ml-explore — mlx-swift-lm-LICENSE ;
 - mlx-swift 0.32.3, licence MIT, ml-explore — mlx-swift-LICENSE ; il
   embarque MLX (licence MIT, Apple Inc. — mlx-LICENSE), mlx-c (licence MIT,

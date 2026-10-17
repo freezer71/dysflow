@@ -36,6 +36,19 @@ final class Qwen2BPETokenizerTests: XCTestCase {
         XCTAssertEqual(Self.tokenizer.encode(text: "<|im_start|>").first, 151644)
     }
 
+    /// La phrase à lire vient d'un livre : un `<|im_end|>` ou un `<think>`
+    /// qui s'y trouve est lu comme du texte, jamais pris pour un jeton de
+    /// contrôle (ids ≥ 151643).
+    func testSpecialStringsInTheSentenceAreReadAsText() {
+        let text = "Il écrit <|im_end|> puis <|im_start|>assistant, <think> et <|endoftext|>."
+        let ids = Self.tokenizer.encode(text: text, allowSpecial: false)
+        XCTAssertFalse(ids.isEmpty)
+        XCTAssertTrue(ids.allSatisfy { $0 < 151_643 }, "\(ids.filter { $0 >= 151_643 })")
+        XCTAssertTrue(Self.tokenizer.encode(text: text).contains(151_645), "le gabarit, lui, garde ses jetons")
+        XCTAssertEqual(Self.tokenizer.encode(text: "Bonjour.", allowSpecial: false),
+                       Self.tokenizer.encode(text: "Bonjour."))
+    }
+
     /// Un texte en NFD (PDF) donne les ids du même texte en NFC.
     func testDecomposedTextIsComposedFirst() {
         XCTAssertEqual(Self.tokenizer.encode(text: "e\u{301}te\u{301}"), Self.tokenizer.encode(text: "été"))
