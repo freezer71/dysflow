@@ -157,6 +157,9 @@ targets:
           # STT/BaseConfiguration.swift et TTS/KVCache.swift (Vendor/KokoroMLX)
           # viennent de mlx-swift-lm.
           joindre "$SRCROOT/../third_party/licences/mlx-swift-lm-LICENSE" mlx-swift-lm-LICENSE
+          # MagpieTTS (Vendor/KokoroMLX/TTS/Magpie) vient de speech-swift.
+          joindre "$SRCROOT/../third_party/licences/speech-swift-LICENSE" speech-swift-LICENSE
+          joindre "$SRCROOT/../third_party/licences/cmudict-LICENSE" cmudict-LICENSE
           joindre "$CHECKOUTS/mlx-swift/LICENSE" mlx-swift-LICENSE
           joindre "$CMLX/mlx/LICENSE" mlx-LICENSE
           joindre "$CMLX/mlx-c/LICENSE" mlx-c-LICENSE

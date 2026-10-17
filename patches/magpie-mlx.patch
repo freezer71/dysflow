@@ -1,0 +1,478 @@
+diff -ruN a/Configuration.swift b/Configuration.swift
+--- a/Configuration.swift	2026-10-17 21:41:47
++++ b/Configuration.swift	2026-10-17 21:41:47
+@@ -1,24 +1,5 @@
+ import Foundation
+ 
+-/// Magpie-TTS Multilingual 357M variant. Weights are dequantised to FP at load
+-/// time — runtime is FP32 everywhere. int4 was decommissioned for TTS (too much
+-/// quality loss); INT8 is the floor (no bf16 bundle exists for Magpie).
+-public enum MagpieTTSVariant: String, Sendable, CaseIterable {
+-    case int8
+-
+-    public var huggingFaceRepoId: String {
+-        switch self {
+-        case .int8: return "aufklarer/Magpie-TTS-Multilingual-357M-MLX-8bit"
+-        }
+-    }
+-
+-    public var bits: Int {
+-        switch self {
+-        case .int8: return 8
+-        }
+-    }
+-}
+-
+ /// Baked speaker identity. The model checkpoint embeds five speaker contexts
+ /// (110 frames × 768 dim) used as the prefix of every AR decode.
+ public enum MagpieSpeaker: Int, Sendable, CaseIterable {
+@@ -246,6 +227,8 @@
+     case unsupportedSpeaker(Int)
+     case textEncodingFailed(String)
+     case invalidConfig(String)
++    /// `shouldStop` a dit vrai en route (ajout de Sillon).
++    case stopped
+ 
+     public var errorDescription: String? {
+         switch self {
+@@ -256,6 +239,7 @@
+         case .unsupportedSpeaker(let s): return "Magpie: invalid baked speaker index \(s) (valid: 0..4)"
+         case .textEncodingFailed(let m): return "Magpie: text encoding failed: \(m)"
+         case .invalidConfig(let m):     return "Magpie: invalid config: \(m)"
++        case .stopped:                  return "Magpie : synthèse arrêtée"
+         }
+     }
+ }
+diff -ruN a/EnglishG2P.swift b/EnglishG2P.swift
+--- a/EnglishG2P.swift	2026-10-17 21:41:47
++++ b/EnglishG2P.swift	2026-10-17 21:41:47
+@@ -20,11 +20,9 @@
+ ///
+ /// The result is an IPA + punctuation string ready for char-level lookup
+ /// against the Magpie shared vocab.
+-public final class MagpieDictG2P {
++public final class MagpieDictG2P: @unchecked Sendable {  // Sillon : dict écrit sous verrou, puis lu seulement
+ 
+     public static let english = MagpieDictG2P(resource: "cmudict_ipa_en")
+-    public static let spanish = MagpieDictG2P(resource: "cmudict_ipa_es")
+-    public static let german  = MagpieDictG2P(resource: "cmudict_ipa_de")
+ 
+     private let resource: String
+     private var dict: [String: String] = [:]
+@@ -39,8 +37,8 @@
+         loadLock.lock()
+         defer { loadLock.unlock() }
+         if loaded { return }
+-        guard let url = Bundle.module.url(forResource: resource, withExtension: "txt") else {
+-            throw MagpieTTSError.missingFile("\(resource).txt (resource bundle)")
++        guard let url = Bundle(for: MagpieRunner.self).url(forResource: resource, withExtension: "txt") else {
++            throw MagpieTTSError.missingFile("\(resource).txt (framework KokoroMLX)")
+         }
+         let text = try String(contentsOf: url, encoding: .utf8)
+         dict.reserveCapacity(150_000)
+diff -ruN a/MagpieTTS.swift b/MagpieTTS.swift
+--- a/MagpieTTS.swift	2026-10-17 21:41:47
++++ b/MagpieTTS.swift	2026-10-17 21:41:47
+@@ -1,8 +1,6 @@
+ import Foundation
+ import MLX
+ import MLXNN
+-import MLXRandom
+-import AudioCommon
+ 
+ /// Magpie-TTS Multilingual 357M (NVIDIA) — MLX port for Apple Silicon.
+ ///
+@@ -51,37 +49,35 @@
+ 
+     // MARK: - Loading
+ 
+-    public static func fromPretrained(
+-        variant: MagpieTTSVariant = .int8,
+-        progressHandler: ((Double) -> Void)? = nil
+-    ) async throws -> MagpieTTS {
+-        let paths = try await MagpieTTSDownloader.ensureDownloaded(
+-            variant: variant, progressHandler: progressHandler)
+-        return try MagpieTTS.load(from: paths)
+-    }
+-
+-    public static func load(from paths: MagpieTTSDownloader.Paths) throws -> MagpieTTS {
++    /// Lit `text_encoder/`, `decoder_prefill/`, `nanocodec_decoder/` et
++    /// `tokenizer/` sous `directory` (le dossier du dépôt HF). `decoder_step/`
++    /// n'est pas lu (mêmes poids que `decoder_prefill/`).
++    public static func load(directory: URL) throws -> MagpieTTS {
++        let textEncoderDir = directory.appendingPathComponent("text_encoder")
++        let decoderPrefillDir = directory.appendingPathComponent("decoder_prefill")
++        let nanocodecDir = directory.appendingPathComponent("nanocodec_decoder")
++        let tokenizerDir = directory.appendingPathComponent("tokenizer")
+         let teCfg = try decode(
+             MagpieTextEncoderConfig.self,
+-            from: paths.textEncoderDir.appendingPathComponent("config.json"))
++            from: textEncoderDir.appendingPathComponent("config.json"))
+         let decCfg = try decode(
+             MagpieDecoderConfig.self,
+-            from: paths.decoderPrefillDir.appendingPathComponent("config.json"))
++            from: decoderPrefillDir.appendingPathComponent("config.json"))
+         let codecCfg = try decode(
+             MagpieNanoCodecConfig.self,
+-            from: paths.nanocodecDir.appendingPathComponent("config.json"))
++            from: nanocodecDir.appendingPathComponent("config.json"))
+ 
+         let te = try MagpieWeightLoader.loadTextEncoder(
+-            bundleDir: paths.textEncoderDir, config: teCfg)
++            bundleDir: textEncoderDir, config: teCfg)
+         let (dec, lt) = try MagpieWeightLoader.loadDecoder(
+-            bundleDir: paths.decoderPrefillDir, config: decCfg)
++            bundleDir: decoderPrefillDir, config: decCfg)
+         let codec = try MagpieWeightLoader.loadNanoCodec(
+-            bundleDir: paths.nanocodecDir, config: codecCfg)
++            bundleDir: nanocodecDir, config: codecCfg)
+ 
+         return MagpieTTS(textEncoder: te, decoder: dec,
+                          localTransformer: lt, nanoCodec: codec,
+                          decoderConfig: decCfg, nanoCodecConfig: codecCfg,
+-                         tokenizerDir: paths.tokenizerDir)
++                         tokenizerDir: tokenizerDir)
+     }
+ 
+     private static func decode<T: Decodable>(_ type: T.Type, from url: URL) throws -> T {
+@@ -113,7 +109,8 @@
+                            speaker: MagpieSpeaker = .sofia,
+                            language: MagpieLanguage = .english,
+                            prephonemized: Bool = false,
+-                           params: MagpieTTSParams = MagpieTTSParams()) throws -> [Float] {
++                           params: MagpieTTSParams = MagpieTTSParams(),
++                           shouldStop: (() -> Bool)? = nil) throws -> [Float] {
+         if let seed = params.seed { MLXRandom.seed(seed) }
+         let tok = try tokenizer(for: language)
+         let ids = tok.tokenize(text, prephonemized: prephonemized)
+@@ -121,7 +118,8 @@
+             throw MagpieTTSError.textEncodingFailed("empty token sequence after tokenisation")
+         }
+         let codes = try sampleCodeSequence(
+-            textIds: ids, speaker: speaker, params: params)
++            textIds: ids, speaker: speaker, params: params, shouldStop: shouldStop)
++        if shouldStop?() == true { throw MagpieTTSError.stopped }
+         if codes.isEmpty { return [] }
+         let codeMatrix = MLXArray(codes.flatMap { $0 }, [codes.count, MagpieNumCodebooks])
+             .reshaped([1, codes.count, MagpieNumCodebooks])
+@@ -130,50 +128,15 @@
+         return audio[0].asArray(Float.self)
+     }
+ 
+-    // MARK: - Synthesis (streaming)
+-
+-    /// Streaming variant. Audio is emitted every ``framesPerChunk`` codec
+-    /// frames (≈ 46 ms each). The first chunk uses ``firstChunkFrames`` so
+-    /// callers can choose lower first-packet latency.
+-    public func synthesizeStream(
+-        text: String,
+-        speaker: MagpieSpeaker = .sofia,
+-        language: MagpieLanguage = .english,
+-        prephonemized: Bool = false,
+-        params: MagpieTTSParams = MagpieTTSParams(),
+-        firstChunkFrames: Int = 8,
+-        framesPerChunk: Int = 25
+-    ) -> AsyncThrowingStream<AudioChunk, Error> {
+-        AsyncThrowingStream { continuation in
+-            let task = Task { [weak self] in
+-                guard let self else {
+-                    continuation.finish()
+-                    return
+-                }
+-                do {
+-                    try self.runStreaming(
+-                        text: text, speaker: speaker, language: language,
+-                        prephonemized: prephonemized, params: params,
+-                        firstChunkFrames: firstChunkFrames,
+-                        framesPerChunk: framesPerChunk,
+-                        continuation: continuation)
+-                    continuation.finish()
+-                } catch {
+-                    continuation.finish(throwing: error)
+-                }
+-            }
+-            continuation.onTermination = { @Sendable _ in task.cancel() }
+-        }
+-    }
+-
+     // MARK: - Core AR loop
+ 
+     /// Run the AR loop and return the sampled `T_frames × 8` code matrix as a
+-    /// flat list of frames. Used by the batch path; the streaming path
+-    /// inlines the same logic so it can emit codec output incrementally.
++    /// flat list of frames. `shouldStop` est consulté toutes les 20 trames
++    /// (≈ 1 s de son) ; s'il dit vrai : `MagpieTTSError.stopped`.
+     private func sampleCodeSequence(textIds: [Int],
+                                      speaker: MagpieSpeaker,
+-                                     params: MagpieTTSParams) throws -> [[Int32]] {
++                                     params: MagpieTTSParams,
++                                     shouldStop: (() -> Bool)? = nil) throws -> [[Int32]] {
+         let textIdsArr = MLXArray(textIds.map(Int32.init), [textIds.count])
+             .reshaped([1, textIds.count])
+         let memMask = MLXArray.ones(textIdsArr.shape, dtype: .float32)
+@@ -189,14 +152,12 @@
+         var frames: [[Int32]] = []
+         var position = decoderConfig.bakedT
+         for step in 0..<params.maxSteps {
++            if step % 20 == 0, shouldStop?() == true { throw MagpieTTSError.stopped }
+             let codes = sampleLocalTransformer(
+                 hLast: hLast,
+                 forbidEos: (step < params.minFrames),
+                 temperature: params.temperature,
+                 topK: params.topK)
+-            if ProcessInfo.processInfo.environment["MAGPIE_DEBUG"] == "1", step < 5 {
+-                print("[magpie] frame \(step): \(codes)")
+-            }
+             if step >= params.minFrames, codes.contains(MagpieAudioEosId) {
+                 break
+             }
+@@ -216,94 +177,6 @@
+             eval(hLast)
+         }
+         return frames
+-    }
+-
+-    /// Streaming variant of ``sampleCodeSequence``: emits codec output
+-    /// every ``framesPerChunk`` frames (with ``firstChunkFrames`` for the
+-    /// very first chunk). Internally re-runs the codec on the *full*
+-    /// accumulated frame buffer at each emit, which is fine: the codec is
+-    /// causal so the new samples are deterministic suffixes.
+-    private func runStreaming(text: String,
+-                               speaker: MagpieSpeaker,
+-                               language: MagpieLanguage,
+-                               prephonemized: Bool,
+-                               params: MagpieTTSParams,
+-                               firstChunkFrames: Int,
+-                               framesPerChunk: Int,
+-                               continuation: AsyncThrowingStream<AudioChunk, Error>.Continuation) throws {
+-        if let seed = params.seed { MLXRandom.seed(seed) }
+-        let tok = try tokenizer(for: language)
+-        let ids = tok.tokenize(text, prephonemized: prephonemized)
+-        if ids.isEmpty { return }
+-
+-        let textIdsArr = MLXArray(ids.map(Int32.init), [ids.count])
+-            .reshaped([1, ids.count])
+-        let memMask = MLXArray.ones(textIdsArr.shape, dtype: .float32)
+-        let encOut = textEncoder(textIdsArr, mask: memMask)
+-        eval(encOut)
+-
+-        var (hLast, caches) = decoder.prefill(
+-            speakerIdx: speaker.rawValue,
+-            encoderOutput: encOut, encoderMask: memMask)
+-        eval(hLast)
+-
+-        let t0 = CFAbsoluteTimeGetCurrent()
+-        var frames: [[Int32]] = []
+-        var emittedSamples = 0
+-        var nextEmitAt = firstChunkFrames
+-        var position = decoderConfig.bakedT
+-
+-        func emit(isFinal: Bool) {
+-            if frames.isEmpty { return }
+-            let codes = frames.flatMap { $0 }
+-            let codeMatrix = MLXArray(codes, [frames.count, MagpieNumCodebooks])
+-                .reshaped([1, frames.count, MagpieNumCodebooks])
+-            let audio = nanoCodec(codeMatrix)
+-            eval(audio)
+-            let full = audio[0].asArray(Float.self)
+-            if emittedSamples >= full.count {
+-                if isFinal {
+-                    continuation.yield(AudioChunk(
+-                        samples: [], sampleRate: Self.sampleRate,
+-                        frameIndex: frames.count, isFinal: true,
+-                        elapsedTime: CFAbsoluteTimeGetCurrent() - t0))
+-                }
+-                return
+-            }
+-            let slice = Array(full[emittedSamples..<full.count])
+-            emittedSamples = full.count
+-            continuation.yield(AudioChunk(
+-                samples: slice, sampleRate: Self.sampleRate,
+-                frameIndex: frames.count, isFinal: isFinal,
+-                elapsedTime: CFAbsoluteTimeGetCurrent() - t0))
+-        }
+-
+-        for step in 0..<params.maxSteps {
+-            let codes = sampleLocalTransformer(
+-                hLast: hLast,
+-                forbidEos: (step < params.minFrames),
+-                temperature: params.temperature,
+-                topK: params.topK)
+-            if step >= params.minFrames, codes.contains(MagpieAudioEosId) {
+-                break
+-            }
+-            frames.append(codes)
+-            if frames.count >= nextEmitAt {
+-                emit(isFinal: false)
+-                nextEmitAt = frames.count + framesPerChunk
+-            }
+-            let codesArr = MLXArray(codes, [MagpieNumCodebooks])
+-                .reshaped([1, 1, MagpieNumCodebooks])
+-            let audioEmb = decoder.embedAudioFrame(codesArr)
+-            let (_, h, _) = decoder.step(
+-                audioEmb: audioEmb,
+-                encoderOutput: encOut, encoderMask: memMask,
+-                caches: caches, position: position)
+-            hLast = h
+-            position += 1
+-            eval(hLast)
+-        }
+-        emit(isFinal: true)
+     }
+ 
+     // MARK: - LocalTransformer per-frame sampling
+diff -ruN a/Sampling.swift b/Sampling.swift
+--- a/Sampling.swift	2026-10-17 21:41:47
++++ b/Sampling.swift	2026-10-17 21:41:47
+@@ -1,11 +1,10 @@
+ import Foundation
+ import MLX
+-import MLXRandom
+ 
+ /// Top-k filter — set logits below the k-th highest to a very negative
+ /// constant along the last axis. ``k <= 0`` or ``k >= V`` returns ``logits``
+ /// unmodified (greedy and full distribution).
+-public func topKFilter(_ logits: MLXArray, k: Int) -> MLXArray {
++func topKFilter(_ logits: MLXArray, k: Int) -> MLXArray {
+     let V = logits.dim(-1)
+     if k <= 0 || k >= V { return logits }
+     // Sort ascending along last axis, then the (V - k)-th entry is the k-th
+@@ -18,7 +17,7 @@
+ }
+ 
+ /// Add ``-1e30`` to specific vocab IDs to forbid them (BOS/EOS).
+-public func forbidIds(_ logits: MLXArray, ids: [Int]) -> MLXArray {
++func forbidIds(_ logits: MLXArray, ids: [Int]) -> MLXArray {
+     if ids.isEmpty { return logits }
+     let V = logits.dim(-1)
+     let arange = MLXArray(0..<Int32(V))
+@@ -32,7 +31,7 @@
+ 
+ /// Sample a single int32 token from ``logits`` (last axis). Greedy when
+ /// ``temperature <= 1e-3``; otherwise Gumbel-max over top-k filtered logits.
+-public func sampleTopK(_ logits: MLXArray, temperature: Float, k: Int) -> MLXArray {
++func sampleTopK(_ logits: MLXArray, temperature: Float, k: Int) -> MLXArray {
+     if temperature <= 1e-3 {
+         return argMax(logits, axis: -1).asType(Int32.self)
+     }
+diff -ruN a/Tokenizer.swift b/Tokenizer.swift
+--- a/Tokenizer.swift	2026-10-17 21:41:47
++++ b/Tokenizer.swift	2026-10-17 21:41:47
+@@ -1,5 +1,4 @@
+ import Foundation
+-import NaturalLanguage
+ 
+ /// Per-language tokenizer config dumped from NeMo's MagpieTTS multilingual
+ /// vocabulary. Each language's JSON ships the SAME shared 2360-entry vocab
+@@ -165,20 +164,10 @@
+                 .precomposedStringWithCompatibilityMapping  // close-enough NFC-ish
+             return charLookup(MagpieDictG2P.english.phonemize(normalised))
+ 
+-        case .spanish:
+-            // `spanish_text_preprocessing(text) = text.lower()`.
+-            return charLookup(MagpieDictG2P.spanish.phonemize(text.lowercased()))
+-
+-        case .german:
+-            // `any_locale_text_preprocessing` — NFC + smart quote → '.
+-            let normalised = text
+-                .precomposedStringWithCompatibilityMapping
+-                .replacingOccurrences(of: "\u{2019}", with: "'")
+-            return charLookup(MagpieDictG2P.german.phonemize(normalised))
+-
+         case .french:
+             // byt5_byte tokeniser. NeMo lowercases before encoding.
+-            return MagpieByT5Encoder.encode(text.lowercased(), language: .french)
++            // Sillon : NFC d'abord (un « é » décomposé ferait deux octets).
++            return MagpieByT5Encoder.encode(MagpieRunner.prepare(text).lowercased(), language: .french)
+ 
+         case .italian:
+             return MagpieByT5Encoder.encode(text.lowercased(), language: .italian)
+@@ -186,84 +175,12 @@
+         case .vietnamese:
+             return MagpieByT5Encoder.encode(text.lowercased(), language: .vietnamese)
+ 
+-        case .hindi:
+-            // char_hindi tokeniser: feed Devanagari graphemes verbatim, plus
+-            // standard ASCII punctuation. The vocab covers all Devanagari
+-            // chars (and most punctuation) so char-level lookup works.
++        case .hindi, .spanish, .german, .chinese, .japanese:
++            // hi : char_hindi tokeniser, Devanagari graphemes verbatim.
++            // Sillon : es, de (dictionnaires IPA), zh, ja (G2P) non copiés :
++            // lecture caractère par caractère, comme `prephonemized`.
+             return charLookup(text)
+-
+-        case .chinese:
+-            // Apple `mandarinToLatin` for Hanzi → tone-marked pinyin, then
+-            // our bundled pinyin → IPA dict + tone-marker injection
+-            // (`MagpieChineseG2P`). The phonemizer returns *grouped*
+-            // phonemes so we can concatenate within-syllable tokens
+-            // (matching NeMo's encode) and insert a space token between
+-            // syllables only.
+-            return lookupGroups(MagpieChineseG2P.shared.phonemize(text))
+-
+-        case .japanese:
+-            // Magpie's JA sub-vocab expects per-mora pitch markers `0`/`1`
+-            // interleaved with katakana (NeMo `JapaneseKatakanaAccentG2p`).
+-            // `MagpieJapaneseG2P.phonemes` produces a flat token stream
+-            // (chains contain no inter-word spaces — only explicit
+-            // whitespace / punctuation makes it into the stream) which
+-            // mirrors NeMo's `encode_from_g2p` exactly.
+-            return lookupFlatTokens(MagpieJapaneseG2P.phonemes(text))
+         }
+-    }
+-
+-    /// Lookup grouped phonemes as one flat adjacent stream — NeMo's
+-    /// `ChinesePhonemesTokenizer.encode_from_g2p` emits the G2P output
+-    /// verbatim with **no separator between syllables or words** (Chinese
+-    /// text has none); only literal whitespace in the input becomes a space
+-    /// token, deduplicated, and trailing spaces are dropped (the outer
+-    /// `pad_with_space` re-wraps). Unknown tokens are skipped, mirroring
+-    /// NeMo's warn-and-skip.
+-    ///
+-    /// Regression note: inserting a space token between every syllable
+-    /// group here put ~half the sequence out of distribution and made the
+-    /// model ignore the text conditioning entirely (free-running babble).
+-    private func lookupGroups(_ groups: [[String]]) -> [Int] {
+-        var ids: [Int] = []
+-        let space = tokenToId[" "]
+-        for group in groups {
+-            for token in group {
+-                if token == " " {
+-                    if let sp = space, ids.last != sp { ids.append(sp) }
+-                } else if let id = tokenToId[token] {
+-                    ids.append(id)
+-                }
+-            }
+-        }
+-        if let sp = space {
+-            while ids.last == sp { ids.removeLast() }
+-        }
+-        return ids
+-    }
+-
+-    /// Lookup a flat phoneme stream against the per-language vocab. Matches
+-    /// NeMo's `encode_from_g2p`: pass through tokens, deduplicate adjacent
+-    /// spaces, drop trailing spaces (the outer `pad_with_space` re-wraps).
+-    private func lookupFlatTokens(_ tokens: [String]) -> [Int] {
+-        let space = tokenToId[" "]
+-        var ids: [Int] = []
+-        for token in tokens {
+-            if token == " " {
+-                // Skip leading / duplicate spaces.
+-                if let sp = space, ids.last != sp, !ids.isEmpty {
+-                    ids.append(sp)
+-                }
+-                continue
+-            }
+-            if let id = tokenToId[token] {
+-                ids.append(id)
+-            } else if let oov = oovId {
+-                ids.append(oov)
+-            }
+-        }
+-        // Trim trailing space (the outer pad_with_space adds one back).
+-        while let last = ids.last, last == space { ids.removeLast() }
+-        return ids
+     }
+ 
+     /// Codepoint-by-codepoint vocab lookup for IPA / Devanagari / Latin

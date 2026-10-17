@@ -284,3 +284,78 @@ et, sous le nom `EuclideanCodebook.swift`, les lignes 1-54 de
 `Sources/MLXAudioCodecs/Mimi/Quantization.swift` ; copier les `.swift` de
 `TTS/Qwen3TTS/` dans `b/`, puis `diff -ruN a b`. `EuclideanCodebook.swift`
 est identique ; `Qwen2BPETokenizer.swift` y apparaît en entier (ajout).
+
+## TTS : MagpieTTS
+
+Fichiers de [speech-swift](https://github.com/soniqo/speech-swift) (licence
+Apache-2.0, soniqo, jointe : `third_party/licences/speech-swift-LICENSE` ;
+pas de `NOTICE` à la racine du dépôt), dossier `Sources/MagpieTTS`, au
+commit `28aef99510e438bcc5014df2582820d9fdba80e0` (11 juillet 2026, le
+dernier qui touche ce dossier ; HEAD du clone : `d74459f`, même contenu).
+Copiés dans `TTS/Magpie/` : `Configuration.swift`, `Transformer.swift`,
+`TextEncoder.swift`, `Decoder.swift`, `LocalTransformer.swift`,
+`NanoCodec.swift`, `Sampling.swift`, `WeightLoader.swift`, `SubVocab.swift`,
+`ByT5Encoder.swift`, `Tokenizer.swift`, `MagpieTTS.swift`, `EnglishG2P.swift`,
+et `Resources/cmudict_ipa_en.txt` (3,1 Mo, inchangé, livré dans le
+framework). Non copiés : `Downloader.swift`, `ChineseG2P.swift`,
+`JapaneseG2P.swift`, les dictionnaires espagnol, allemand, pinyin et
+`heteronyms_en.txt`.
+
+Le dictionnaire anglais vient de NVIDIA NeMo, dérivé de CMUdict 0.07
+(Carnegie Mellon University, licence de type BSD), avec des entrées de
+NeMo et de WikipediaHomographData (Apache 2.0) : son en-tête de licence
+(les lignes `;;;` du début) est joint, sans le préfixe, dans
+`third_party/licences/cmudict-LICENSE`.
+
+Seule dépendance : mlx-swift 0.32.3 (`MLX`, `MLXNN`) ; rien d'ajouté aux
+`dependencies` de `KokoroMLX`. Aucun nom public ne collide avec le reste du
+framework : tout est préfixé `Magpie…`, sauf les trois fonctions passées en
+`internal` ci-dessous.
+
+Changements, fichier par fichier :
+- `Sampling.swift` : `import MLXRandom` retiré (`MLXRandom` est un espace de
+  noms de `MLX` en 0.32.3) ; `topKFilter`, `forbidIds`, `sampleTopK`
+  passent de `public` à `internal` (fonctions globales aux noms génériques,
+  à ne pas exporter du framework).
+- `Configuration.swift` : `MagpieTTSVariant` (dépôt HF et nombre de bits,
+  pour le téléchargeur) supprimé ; `MagpieTTSError` gagne `case stopped`
+  (« Magpie : synthèse arrêtée »).
+- `MagpieTTS.swift` : `import MLXRandom` et `import AudioCommon` retirés ;
+  `fromPretrained` (téléchargeur) supprimé ; `load(from paths:
+  MagpieTTSDownloader.Paths)` devient `load(directory: URL)`, qui lit
+  `text_encoder/`, `decoder_prefill/`, `nanocodec_decoder/` et `tokenizer/`
+  sous le dossier (le catalogue Rust télécharge ces fichiers) ;
+  `synthesizeStream` et `runStreaming` supprimés (le flux rejoue le codec sur
+  tout le tampon à chaque morceau : RTF 0,93 au lieu de 0,24) ; le bloc
+  `MAGPIE_DEBUG` (un `print` des 5 premières trames) supprimé ;
+  `synthesize(…)` et `sampleCodeSequence(…)` prennent
+  `shouldStop: (() -> Bool)? = nil`, consulté toutes les 20 trames (≈ 1 s de
+  son) dans la boucle, et une fois avant le codec ; s'il dit vrai :
+  `MagpieTTSError.stopped`.
+- `Tokenizer.swift` : `import NaturalLanguage` (inutilisé) retiré ; le
+  français passe par `MagpieRunner.prepare` (NFC) avant `lowercased()` et
+  byT5 : un « é » décomposé (PDF) aurait donné deux octets inattendus ;
+  espagnol, allemand (dictionnaires non copiés), chinois et japonais (G2P
+  non copiés) tombent sur `charLookup(text)`, comme le hindi ;
+  `lookupGroups` et `lookupFlatTokens`, qui ne servaient qu'au chinois et au
+  japonais, supprimés. Sillon ne lit Magpie qu'en français et en anglais.
+- `EnglishG2P.swift` : `Bundle.module` (SPM seulement) →
+  `Bundle(for: MagpieRunner.self)` (le framework) ; `spanish`, `german`
+  supprimés ; `MagpieDictG2P` déclaré `@unchecked Sendable` (le dictionnaire
+  est écrit une fois sous `NSLock`, puis seulement lu) pour ses `static let`.
+
+Ajout de Sillon, hors des fichiers repris : `TTS/MagpieRunner.swift` (la
+porte : voix par id du catalogue, `sofia` si vide ; `en…` → anglais, sinon
+français ; NFC ; graine `StableSeed` ; borne de trames `maxSteps` = 4 par
+octet de texte + 50, sans dépasser `max_len − baked_T − 1`, au lieu des 500
+trames ≈ 23 s de l'amont, qui tronquaient une phrase longue ;
+échantillonnage d'origine, température 0,6, top-k 80 ; `nil` si arrêtée).
+Une synthèse à la fois, sous `MLXGate` dans l'app (cache des vocabulaires et
+graine de MLX partagés).
+
+Le détail exact : `patches/magpie-mlx.patch` (`diff -ruN`, de l'amont vers
+`TTS/Magpie/`). Pour le refaire : télécharger
+`https://github.com/soniqo/speech-swift/archive/28aef99510e438bcc5014df2582820d9fdba80e0.tar.gz`,
+copier dans `a/` les treize `.swift` ci-dessus de `Sources/MagpieTTS`, copier
+ceux de `TTS/Magpie/` dans `b/`, puis `diff -ruN a b`. Le dictionnaire est
+identique (`cmp`).

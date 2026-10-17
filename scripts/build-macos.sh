@@ -60,7 +60,7 @@ for f in COPYING SOURCE.txt sillon-espeak.c build-espeak.sh; do
 done
 licences=(NOTICE sonic-LICENSE mlx-audio-swift-LICENSE mlx-swift-lm-LICENSE mlx-swift-LICENSE mlx-LICENSE mlx-c-LICENSE
     metal-cpp-LICENSE nlohmann-json-LICENSE fmt-LICENSE KeyboardShortcuts-LICENSE
-    THIRD-PARTY-RUST.txt tesseract-LICENSE leptonica-LICENSE)
+    THIRD-PARTY-RUST.txt tesseract-LICENSE leptonica-LICENSE speech-swift-LICENSE cmudict-LICENSE)
 for f in "${licences[@]}"; do
     if [ ! -s "$APP_BUILT/Contents/Resources/licences/$f" ]; then
         echo "Erreur : $f manque dans l'app (Contents/Resources/licences)" >&2
