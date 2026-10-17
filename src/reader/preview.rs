@@ -28,6 +28,9 @@ pub struct PreviewView {
     pub playing: bool,
     /// Le dernier échec de synthèse.
     pub error: Option<String>,
+    /// L'aperçu attend que sa voix se charge (bibliothèque des voix : un
+    /// autre modèle que l'actif, quelques secondes la première fois).
+    pub preparing: bool,
 }
 
 impl Reader {
@@ -58,8 +61,10 @@ impl Reader {
         )
     }
 
-    /// Coupe l'aperçu, qu'il se prépare ou qu'il sonne.
+    /// Coupe l'aperçu, qu'il se prépare ou qu'il sonne (celui de la
+    /// bibliothèque des voix compris).
     pub fn stop_preview(&mut self) {
+        self.stop_library_preview();
         if let Some(app) = self.session.as_mut() {
             app.stop_preview();
         }
@@ -69,12 +74,29 @@ impl Reader {
         }
     }
 
+    /// L'aperçu des réglages et celui de la bibliothèque des voix, ensemble ;
+    /// la bibliothèque ouverte, l'échec dit est le sien.
     pub fn preview_view(&self) -> PreviewView {
+        let base = self.base_preview_view();
+        match self.library_preview_state() {
+            Some((pending, playing, preparing, error)) => PreviewView {
+                pending: base.pending || pending,
+                playing: base.playing || playing,
+                // Seul son échec : un vieil échec d'« Écouter » ne s'y montre pas.
+                error,
+                preparing,
+            },
+            None => base,
+        }
+    }
+
+    fn base_preview_view(&self) -> PreviewView {
         if let Some(app) = self.session.as_ref() {
             return PreviewView {
                 pending: app.preview_pending(),
                 playing: app.preview_playing(),
                 error: app.preview_error.clone(),
+                preparing: false,
             };
         }
         match &self.lone_preview {
@@ -82,6 +104,7 @@ impl Reader {
                 pending: lone.previewer.pending_for().is_some(),
                 playing: lone.player.preview_playing(),
                 error: self.preview_error.clone(),
+                preparing: false,
             },
             None => PreviewView { error: self.preview_error.clone(), ..PreviewView::default() },
         }

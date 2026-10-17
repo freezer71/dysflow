@@ -235,6 +235,35 @@ pub struct PreviewView {
     pub pending: bool,
     pub playing: bool,
     pub error: Option<String>,
+    /// L'aperçu attend que sa voix se charge (bibliothèque des voix).
+    #[uniffi(default = false)]
+    pub preparing: bool,
+}
+
+/// Une voix de la bibliothèque : toutes celles des modèles de lecture
+/// installés, et celles de macOS. Le genre et la qualité d'une voix de
+/// macOS se lisent dans AVFoundation, côté app.
+#[derive(uniffi::Record, Clone, PartialEq, Debug)]
+pub struct LibraryVoice {
+    /// Le paquet (`kokoro_82m_mlx`…) ou `system` : ce que `use_voice` prend.
+    pub model_id: String,
+    /// Le nom court du modèle : « Kokoro », « macOS ».
+    pub model_label: String,
+    pub voice_id: String,
+    pub label: String,
+    /// La langue de l'accent : `fr`, `en`.
+    pub language: String,
+    /// L'accent en toutes lettres : « française », « américaine »…
+    pub accent: String,
+    /// « femme », « homme », vide si le catalogue ne le dit pas.
+    pub gender: String,
+    /// La locale d'une voix de macOS (`fr_FR`), vide pour Kokoro.
+    pub locale: String,
+    pub recommended: bool,
+    /// Le modèle de la voix est celui qui lit.
+    pub model_active: bool,
+    /// La voix qui lit en ce moment.
+    pub active: bool,
 }
 
 #[derive(uniffi::Record, Clone, PartialEq, Debug)]
@@ -680,6 +709,52 @@ impl SillonReader {
             .map_err(failed)
     }
 
+    /// Toutes les voix des modèles de lecture installés, et celles de macOS
+    /// (relues ici, hors du fil du lecteur).
+    /// `system_locale` : la locale du Mac (`fr_FR`), pour la ligne de sa voix
+    /// par défaut.
+    pub fn voice_library(&self, system_locale: String) -> Vec<LibraryVoice> {
+        sillon::tts::system_voices::refresh_system_voices();
+        self.handle
+            .ask(move |reader| {
+                reader
+                    .voice_library(&system_locale)
+                    .into_iter()
+                    .map(|v| LibraryVoice {
+                        model_id: v.model_id,
+                        model_label: v.model_label,
+                        voice_id: v.voice_id,
+                        label: v.label,
+                        language: v.language,
+                        accent: v.accent,
+                        gender: v.gender,
+                        locale: v.locale,
+                        recommended: v.recommended,
+                        model_active: v.model_active,
+                        active: v.active,
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// Fait entendre `text` avec la voix `voice` du modèle `model_id` (un
+    /// paquet ou `system`), à `speed` pour l'aperçu seulement. Un autre
+    /// modèle que l'actif se charge pour l'aperçu (`snapshot.preview.preparing`),
+    /// avec le même calcul MLX partagé que la lecture.
+    pub fn preview_voice_with(&self, model_id: String, voice: String, text: String, speed: f32)
+        -> Result<(), SillonError> {
+        self.handle
+            .ask(move |reader| reader.preview_voice_with(&model_id, &voice, &text, speed, Instant::now()))
+            .ok_or_else(|| failed("lecteur indisponible"))?
+            .map_err(failed)
+    }
+
+    /// La bibliothèque se ferme : le modèle chargé pour l'aperçu est relâché.
+    pub fn release_voice_preview(&self) {
+        let _ = self.handle.ask(|reader| reader.release_voice_preview());
+    }
+
     /// Le passage unique à Kokoro, au lancement de l'app ; l'avis à montrer
     /// (passage fait, ou proposition, alors aussi dans `Snapshot.offer`).
     pub fn migrate_voice(&self) -> Option<String> {
@@ -805,6 +880,13 @@ pub fn default_settings() -> SettingsView {
     settings_of(settings::SettingsView::of(&Config::default()))
 }
 
+/// La phrase d'exemple des aperçus, dans `language` (`fr` par défaut) : le
+/// texte que la bibliothèque des voix propose d'abord.
+#[uniffi::export]
+pub fn preview_sample_text(language: String) -> String {
+    sillon::tts::preview::sample_text(&language).to_string()
+}
+
 fn settings_of(s: settings::SettingsView) -> SettingsView {
     SettingsView {
         voice: s.voice,
@@ -863,7 +945,7 @@ fn patch_from(p: SettingsPatch) -> settings::SettingsPatch {
 }
 
 fn preview_of(p: preview::PreviewView) -> PreviewView {
-    PreviewView { pending: p.pending, playing: p.playing, error: p.error }
+    PreviewView { pending: p.pending, playing: p.playing, error: p.error, preparing: p.preparing }
 }
 
 fn snapshot_of(s: view::Snapshot) -> Snapshot {
@@ -1087,6 +1169,26 @@ mod tests {
         assert!(err.contains("sortie audio"), "{err}");
         reader.stop_preview();
         assert!(!reader.snapshot().preview.pending);
+    }
+
+    #[test]
+    fn the_sample_text_is_the_one_of_the_previews() {
+        assert_eq!(preview_sample_text("fr".into()), sillon::tts::preview::sample_text("fr"));
+        assert!(preview_sample_text("en".into()).starts_with("Hello"));
+    }
+
+    #[test]
+    fn the_voice_library_answers_without_a_model() {
+        let reader = SillonReader::silent();
+        // Le lecteur muet ne propose aucun paquet : les voix de macOS seules.
+        assert!(reader.voice_library("fr_FR".into()).iter().all(|v| v.model_id == "system" && v.model_label == "macOS"));
+        let err = reader.preview_voice_with("system".into(), "Thomas".into(), "  ".into(), 1.0).unwrap_err();
+        assert!(err.to_string().contains("Rien à lire"), "{err}");
+        let err = reader.preview_voice_with("system".into(), "Thomas".into(), "Bonjour.".into(), 1.0).unwrap_err();
+        assert!(err.to_string().contains("sortie audio"), "{err}");
+        reader.release_voice_preview();
+        let preview = reader.snapshot().preview;
+        assert!(!preview.pending && !preview.preparing);
     }
 
     #[test]
