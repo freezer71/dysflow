@@ -206,8 +206,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let arguments = ProcessInfo.processInfo.arguments
         if let i = arguments.firstIndex(of: "--measure-rtf"), !isUnitTesting {
             let id = i + 1 < arguments.count ? arguments[i + 1] : ""
-            Task { @MainActor [reader = reader!, text = textCompute] in
-                await Measure.rtf(reader: reader, compute: text, id: id)
+            Task { @MainActor [reader = reader!, text = textCompute, kokoro = kokoroCompute] in
+                if id == "kokoro" {
+                    await Measure.reposKokoro(compute: kokoro)
+                } else {
+                    await Measure.rtf(reader: reader, compute: text, id: id)
+                }
+                NSApp.terminate(nil)
+            }
+            return
+        }
+        if let i = arguments.firstIndex(of: "--measure-repos-apercu"), !isUnitTesting {
+            let id = i + 1 < arguments.count ? arguments[i + 1] : ""
+            let secondes = i + 2 < arguments.count ? Int(arguments[i + 2]) ?? 90 : 90
+            Task { @MainActor [reader = reader!] in
+                await Measure.reposApercu(reader: reader, id: id, secondes: secondes)
+                NSApp.terminate(nil)
+            }
+            return
+        }
+        if arguments.contains("--measure-repos-lecteur"), !isUnitTesting {
+            Task { @MainActor [reader = reader!] in
+                await Measure.reposLecteur(reader: reader)
                 NSApp.terminate(nil)
             }
             return

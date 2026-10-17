@@ -17,6 +17,12 @@ public enum DictationMLX {
     public static func clearCache() {
         Memory.clearCache()
     }
+
+    /// Octets que MLX tient : tableaux vivants (`active`) et tampons gardés
+    /// dans son cache (`cache`). Pour les mesures.
+    public static func counters() -> (active: Int, cache: Int) {
+        (Memory.activeMemory, Memory.cacheMemory)
+    }
 }
 
 public extension STTGenerationModel {
