@@ -74,14 +74,16 @@ impl Reader {
         }
     }
 
-    /// L'aperçu des réglages et celui de la bibliothèque des voix, ensemble.
+    /// L'aperçu des réglages et celui de la bibliothèque des voix, ensemble ;
+    /// la bibliothèque ouverte, l'échec dit est le sien.
     pub fn preview_view(&self) -> PreviewView {
         let base = self.base_preview_view();
         match self.library_preview_state() {
             Some((pending, playing, preparing, error)) => PreviewView {
                 pending: base.pending || pending,
                 playing: base.playing || playing,
-                error: error.or(base.error),
+                // Seul son échec : un vieil échec d'« Écouter » ne s'y montre pas.
+                error,
                 preparing,
             },
             None => base,

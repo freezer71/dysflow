@@ -711,12 +711,14 @@ impl SillonReader {
 
     /// Toutes les voix des modèles de lecture installés, et celles de macOS
     /// (relues ici, hors du fil du lecteur).
-    pub fn voice_library(&self) -> Vec<LibraryVoice> {
+    /// `system_locale` : la locale du Mac (`fr_FR`), pour la ligne de sa voix
+    /// par défaut.
+    pub fn voice_library(&self, system_locale: String) -> Vec<LibraryVoice> {
         sillon::tts::system_voices::refresh_system_voices();
         self.handle
-            .ask(|reader| {
+            .ask(move |reader| {
                 reader
-                    .voice_library()
+                    .voice_library(&system_locale)
                     .into_iter()
                     .map(|v| LibraryVoice {
                         model_id: v.model_id,
@@ -873,16 +875,16 @@ fn crossbeam_channel_bounded() -> (
 
 /// Les défauts du moteur (`Config::default`), sans passer par le fil du
 /// lecteur : ce qu'un onglet montre avant son premier chargement.
+#[uniffi::export]
+pub fn default_settings() -> SettingsView {
+    settings_of(settings::SettingsView::of(&Config::default()))
+}
+
 /// La phrase d'exemple des aperçus, dans `language` (`fr` par défaut) : le
 /// texte que la bibliothèque des voix propose d'abord.
 #[uniffi::export]
 pub fn preview_sample_text(language: String) -> String {
     sillon::tts::preview::sample_text(&language).to_string()
-}
-
-#[uniffi::export]
-pub fn default_settings() -> SettingsView {
-    settings_of(settings::SettingsView::of(&Config::default()))
 }
 
 fn settings_of(s: settings::SettingsView) -> SettingsView {
@@ -1179,7 +1181,7 @@ mod tests {
     fn the_voice_library_answers_without_a_model() {
         let reader = SillonReader::silent();
         // Le lecteur muet ne propose aucun paquet : les voix de macOS seules.
-        assert!(reader.voice_library().iter().all(|v| v.model_id == "system" && v.model_label == "macOS"));
+        assert!(reader.voice_library("fr_FR".into()).iter().all(|v| v.model_id == "system" && v.model_label == "macOS"));
         let err = reader.preview_voice_with("system".into(), "Thomas".into(), "  ".into(), 1.0).unwrap_err();
         assert!(err.to_string().contains("Rien à lire"), "{err}");
         let err = reader.preview_voice_with("system".into(), "Thomas".into(), "Bonjour.".into(), 1.0).unwrap_err();

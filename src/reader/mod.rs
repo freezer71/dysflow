@@ -383,7 +383,9 @@ impl Reader {
         self.poll_library_preview();
         let Some(app) = self.session.as_mut() else {
             // Voix préparée sans texte : le délai court quand même.
-            if self.engine.is_some() && !self.previewing() && self.idle_expired(now) {
+            // Un modèle chargé pour l'aperçu de la bibliothèque aussi.
+            let loaded = self.engine.is_some() || self.library_preview.is_some();
+            if loaded && !self.previewing() && self.idle_expired(now) {
                 self.rest();
             }
             return;

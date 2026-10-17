@@ -21,6 +21,8 @@ use super::Reader;
 
 /// L'identifiant de la voix de macOS, comme dans `use_voice`.
 pub const SYSTEM: &str = "system";
+/// La voix de macOS quand aucune n'est choisie (`voice` vide).
+pub const MAC_DEFAULT_VOICE: &str = "Voix par défaut de macOS";
 /// Refus d'un texte vide.
 pub const NOTHING_TO_READ: &str = "Rien à lire";
 /// Au-delà, le texte de l'aperçu est coupé : un aperçu reste court.
@@ -92,6 +94,8 @@ pub fn kokoro_traits(id: &str) -> (&'static str, &'static str) {
 /// L'accent d'une locale de macOS (`fr_CA` : « canadienne »). Une région
 /// inconnue : la locale telle quelle.
 pub fn accent_of_locale(locale: &str) -> String {
+    // `fr_FR@rg=bezzzz` : la région de mise en forme ne dit rien de l'accent.
+    let locale = locale.split('@').next().unwrap_or(locale);
     let normalised = locale.replace('-', "_");
     let mut parts = normalised.split('_');
     let language = parts.next().unwrap_or("").to_ascii_lowercase();
@@ -144,12 +148,14 @@ pub fn active_voice(config: &Config) -> String {
 }
 
 /// Les voix de la bibliothèque : celles des paquets de lecture installés
-/// (`installed`), puis celles de macOS (toujours).
+/// (`installed`), puis celles de macOS (toujours), sa voix par défaut en
+/// tête (identifiant vide, accent de `system_locale`, la langue du Mac).
 pub fn library_entries(
     config: &Config,
     installed: &[&'static ModelPackage],
     active_model_id: &str,
     system: &[SystemVoice],
+    system_locale: &str,
 ) -> Vec<LibraryVoice> {
     let current = active_voice(config);
     let mut out = Vec::new();
@@ -173,6 +179,20 @@ pub fn library_entries(
         }
     }
     let model_active = active_model_id == SYSTEM;
+    let locale_language = crate::text::language::Lang::parse(system_locale).map_or("fr", |l| l.code());
+    out.push(LibraryVoice {
+        model_id: SYSTEM.to_string(),
+        model_label: "macOS".to_string(),
+        voice_id: String::new(),
+        label: MAC_DEFAULT_VOICE.to_string(),
+        language: locale_language.to_string(),
+        accent: if system_locale.trim().is_empty() { String::new() } else { accent_of_locale(system_locale) },
+        gender: String::new(),
+        locale: system_locale.to_string(),
+        recommended: false,
+        model_active,
+        active: model_active && current.is_empty(),
+    });
     for voice in system {
         out.push(LibraryVoice {
             model_id: SYSTEM.to_string(),
@@ -245,14 +265,16 @@ impl Reader {
         active_model(self.current_config(), &self.reading_packages())
     }
 
-    /// Toutes les voix des modèles de lecture installés, et celles de macOS.
-    pub fn voice_library(&self) -> Vec<LibraryVoice> {
+    /// Toutes les voix des modèles de lecture installés, et celles de macOS
+    /// (`system_locale` : la locale du Mac, pour sa voix par défaut).
+    pub fn voice_library(&self, system_locale: &str) -> Vec<LibraryVoice> {
         let installed: Vec<_> = self.reading_packages().into_iter().filter(|p| models::is_installed(p)).collect();
         library_entries(
             self.current_config(),
             &installed,
             &self.active_model_id(),
             &crate::tts::system_voices::system_voices(),
+            system_locale,
         )
     }
 
@@ -289,9 +311,10 @@ impl Reader {
         speed: f32,
         now: Instant,
     ) -> Result<(), String> {
+        // Un refus coupe aussi l'aperçu précédent : rien ne sonne sous lui.
+        self.stop_preview();
         let text = preview_text(text).ok_or_else(|| NOTHING_TO_READ.to_string())?;
         self.last_activity = now;
-        self.stop_preview();
         let active = model == self.active_model_id();
         let config = if active { self.current_config().clone() } else { self.config_for_model(model)? };
         let engine = if active {
@@ -449,14 +472,15 @@ mod tests {
         assert_eq!(accent_of_locale("en_US"), "américaine");
         assert_eq!(accent_of_locale("en-GB"), "britannique");
         assert_eq!(accent_of_locale("en_AU"), "australienne");
+        assert_eq!(accent_of_locale("fr_FR@rg=bezzzz"), "française");
         assert_eq!(accent_of_locale("xx_YY"), "xx_YY", "inconnue : la locale telle quelle");
     }
 
     #[test]
     fn the_library_lists_every_kokoro_voice_then_the_mac_ones() {
         let config = kokoro_config("am_fenrir");
-        let entries = library_entries(&config, &[kokoro_package()], "kokoro_82m_mlx", &mac_voices());
-        assert_eq!(entries.len(), 30 + 3);
+        let entries = library_entries(&config, &[kokoro_package()], "kokoro_82m_mlx", &mac_voices(), "fr_FR");
+        assert_eq!(entries.len(), 30 + 1 + 3);
         let fenrir = entries.iter().find(|e| e.voice_id == "am_fenrir").unwrap();
         assert!(fenrir.active && fenrir.model_active);
         assert_eq!(fenrir.model_label, "Kokoro");
@@ -473,12 +497,36 @@ mod tests {
     }
 
     #[test]
+    fn the_default_mac_voice_has_its_own_row_checked_when_it_reads() {
+        let mut config = Config::default();
+        config.engine.engine = "system".into();
+        config.voice.voice = String::new();
+        let entries = library_entries(&config, &[], SYSTEM, &mac_voices(), "fr_CA");
+        let default = entries.iter().find(|e| e.voice_id.is_empty()).expect("la ligne de la voix par défaut");
+        assert_eq!(default.label, MAC_DEFAULT_VOICE);
+        assert_eq!(default.model_id, SYSTEM);
+        assert_eq!((default.language.as_str(), default.accent.as_str()), ("fr", "canadienne"));
+        assert!(default.active && default.model_active);
+        assert_eq!(entries.iter().filter(|e| e.active).count(), 1);
+        // Une voix nommée lit : la ligne par défaut n'est pas cochée.
+        config.voice.voice = "Thomas".into();
+        let entries = library_entries(&config, &[], SYSTEM, &mac_voices(), "fr_FR");
+        assert!(!entries.iter().find(|e| e.voice_id.is_empty()).unwrap().active);
+        // Kokoro lit : pas cochée non plus.
+        let entries = library_entries(&kokoro_config("af_bella"), &[kokoro_package()], "kokoro_82m_mlx",
+                                      &mac_voices(), "en_US");
+        let default = entries.iter().find(|e| e.voice_id.is_empty()).unwrap();
+        assert!(!default.active && !default.model_active);
+        assert_eq!(default.language, "en");
+    }
+
+    #[test]
     fn without_kokoro_installed_only_the_mac_voices_are_listed() {
         let mut config = Config::default();
         config.engine.engine = "system".into();
         config.voice.voice = "Daniel".into();
-        let entries = library_entries(&config, &[], SYSTEM, &mac_voices());
-        assert_eq!(entries.len(), 3);
+        let entries = library_entries(&config, &[], SYSTEM, &mac_voices(), "fr_FR");
+        assert_eq!(entries.len(), 1 + 3);
         assert!(entries.iter().all(|e| e.model_active));
         let active: Vec<_> = entries.iter().filter(|e| e.active).map(|e| e.voice_id.as_str()).collect();
         assert_eq!(active, ["Daniel"]);
@@ -545,6 +593,49 @@ mod tests {
         let err = r.preview_voice_with(SYSTEM, "Thomas", "   ", 1.0, Instant::now()).unwrap_err();
         assert_eq!(err, NOTHING_TO_READ);
         assert_eq!(loads.load(Ordering::SeqCst), 0);
+    }
+
+    /// Un aperçu de la bibliothèque qui se synthétise encore (silence muet).
+    fn pending_library_preview(r: &mut Reader, own: bool) {
+        let engine: Arc<dyn TtsEngine> = Arc::new(SilentEngine);
+        let mut previewer = Previewer::new(Arc::clone(&engine));
+        previewer.request("Bonjour.".into(), r.config.tts_params(), "Thomas".into()).unwrap();
+        r.library_preview =
+            Some(LibraryPreview { model: SYSTEM.into(), engine, own, previewer, player: Player::silent(), error: None });
+    }
+
+    #[test]
+    fn a_refused_text_stops_the_voice_that_was_previewing() {
+        let (mut r, _, _) = reader(kokoro_config("af_bella"));
+        pending_library_preview(&mut r, true);
+        assert!(r.preview_view().pending);
+        let err = r.preview_voice_with(SYSTEM, "Thomas", " ", 1.0, Instant::now()).unwrap_err();
+        assert_eq!(err, NOTHING_TO_READ);
+        assert!(!r.preview_view().pending, "l'aperçu précédent ne continue pas sous un refus");
+    }
+
+    #[test]
+    fn the_view_of_the_library_shows_only_its_own_error() {
+        let (mut r, _, _) = reader(kokoro_config("af_bella"));
+        r.preview_error = Some("un vieil échec d'« Écouter »".into());
+        pending_library_preview(&mut r, true);
+        assert_eq!(r.preview_view().error, None);
+        r.library_preview.as_mut().unwrap().error = Some("le sien".into());
+        assert_eq!(r.preview_view().error.as_deref(), Some("le sien"));
+    }
+
+    #[test]
+    fn a_model_loaded_for_a_preview_rests_with_the_voice() {
+        let mut config = kokoro_config("af_bella");
+        config.app.keep_voice_minutes = 1;
+        let (mut r, _, _) = reader(config);
+        let t0 = Instant::now();
+        let _ = r.preview_voice_with(SYSTEM, "Thomas", "Bonjour.", 1.0, t0);
+        assert_eq!(r.preview_model_loaded(), Some(SYSTEM));
+        r.tick(t0 + Duration::from_secs(30));
+        assert_eq!(r.preview_model_loaded(), Some(SYSTEM), "pas avant le délai");
+        r.tick(t0 + Duration::from_secs(120));
+        assert_eq!(r.preview_model_loaded(), None, "jamais gardé en mémoire au-delà du délai");
     }
 
     #[test]
