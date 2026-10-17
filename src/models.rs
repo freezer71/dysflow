@@ -484,7 +484,7 @@ pub const CATALOG: &[ModelPackage] = &[
         id: "qwen3_tts_06b_base_8bit",
         family: "qwen3_tts_06b_base_8bit",
         display_name: "Qwen3 0.6B · voix française",
-        description: "Une voix française fixe, au timbre tiré de SIWIS, calculée par la puce graphique. Suivi des mots approché.",
+        description: "Une voix française fixe, au timbre tiré de SIWIS, calculée par la puce graphique. Suivi des mots approché. Avec l'autre Qwen installé, chacun garde sa copie du décodeur de son (682 Mo).",
         precision: "8 bits",
         languages: &["fr", "en"],
         repo: QWEN3_06B_REPO,
@@ -504,7 +504,7 @@ pub const CATALOG: &[ModelPackage] = &[
         id: "qwen3_tts_17b_customvoice_8bit",
         family: "qwen3_tts_17b_customvoice_8bit",
         display_name: "Qwen3 1.7B CustomVoice",
-        description: "Grand modèle expressif, neuf voix, aucune française. Suivi des mots approché.",
+        description: "Grand modèle expressif, neuf voix, aucune française. Suivi des mots approché. Avec l'autre Qwen installé, chacun garde sa copie du décodeur de son (682 Mo).",
         precision: "8 bits",
         languages: &["fr", "en"],
         repo: QWEN3_17B_REPO,
@@ -513,7 +513,7 @@ pub const CATALOG: &[ModelPackage] = &[
         languages_label: "10 langues, dont français et anglais",
         bytes: 2_393_308_931,
         recommended: false,
-        pace: "Lourd : lecture hachée au-delà de 1×.",
+        pace: "Lourd : cadence pas encore mesurée.",
         companions: QWEN3_17B_FILES,
         runtime: Runtime::Qwen3TtsMlx,
         kind: Kind::Speech,
@@ -785,9 +785,28 @@ pub fn remove_in(root: &Path, package: &ModelPackage) -> Result<()> {
             let _ = std::fs::remove_file(file.with_extension("part"));
         }
     }
-    // Laisse le dossier de famille propre s'il devient vide.
+    // Laisse le dossier de famille propre s'il devient vide : les dossiers
+    // des compagnons (`speech_tokenizer/`, `text_encoder/`, `voices/`…) d'abord,
+    // du plus profond au moins profond, puis la famille. Un dossier non vide
+    // (compagnon partagé gardé) ou absent reste tel quel.
     let family = root.join(package.family);
-    let _ = std::fs::remove_dir(family.join("voices"));
+    let mut dirs: Vec<PathBuf> = Vec::new();
+    for companion in package.companions {
+        let mut dir = companion_path_in(root, package, companion).parent().map(Path::to_path_buf);
+        while let Some(d) = dir {
+            if d == family || !d.starts_with(&family) {
+                break;
+            }
+            if !dirs.contains(&d) {
+                dirs.push(d.clone());
+            }
+            dir = d.parent().map(Path::to_path_buf);
+        }
+    }
+    dirs.sort_by_key(|d| std::cmp::Reverse(d.components().count()));
+    for dir in &dirs {
+        let _ = std::fs::remove_dir(dir);
+    }
     let _ = std::fs::remove_dir(&family);
     match first_error {
         Some(err) => Err(err),
@@ -1533,7 +1552,8 @@ mod tests {
 
     #[test]
     fn the_heavy_model_says_so_in_its_pace() {
-        assert!(package("qwen3_tts_17b_customvoice_8bit").pace.starts_with("Lourd : lecture hachée au-delà de"));
+        // Non mesuré : « lourd » est sûr, la cadence ne l'est pas encore.
+        assert_eq!(package("qwen3_tts_17b_customvoice_8bit").pace, "Lourd : cadence pas encore mesurée.");
     }
 
     #[test]
@@ -1860,6 +1880,19 @@ mod tests {
         assert!(!has_files_in(&root, mlx));
         assert!(!root.join("kokoro").exists());
         std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn removing_a_package_with_nested_companions_removes_its_family_folder() {
+        for id in ["qwen3_tts_06b_base_8bit", "magpie_tts_357m_8bit"] {
+            let root = scratch(&format!("imbrique-{id}"));
+            let pkg = package(id);
+            sparse(&root, pkg, true);
+            assert!(pkg.companions.iter().any(|c| c.dest.contains('/')), "{id} a des compagnons en sous-dossier");
+            remove_in(&root, pkg).unwrap();
+            assert!(!root.join(pkg.family).exists(), "{id} : dossier de famille retiré");
+            std::fs::remove_dir_all(&root).ok();
+        }
     }
 
     #[test]
