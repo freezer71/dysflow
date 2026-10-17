@@ -1,6 +1,6 @@
 diff -ruN a/Configuration.swift b/Configuration.swift
---- a/Configuration.swift	2026-10-17 21:49:24
-+++ b/Configuration.swift	2026-10-17 21:49:24
+--- a/Configuration.swift	2026-10-17 22:15:33
++++ b/Configuration.swift	2026-10-17 22:15:33
 @@ -1,24 +1,5 @@
  import Foundation
  
@@ -44,8 +44,8 @@ diff -ruN a/Configuration.swift b/Configuration.swift
      }
  }
 diff -ruN a/EnglishG2P.swift b/EnglishG2P.swift
---- a/EnglishG2P.swift	2026-10-17 21:49:24
-+++ b/EnglishG2P.swift	2026-10-17 21:49:24
+--- a/EnglishG2P.swift	2026-10-17 22:15:33
++++ b/EnglishG2P.swift	2026-10-17 22:15:33
 @@ -20,11 +20,9 @@
  ///
  /// The result is an IPA + punctuation string ready for char-level lookup
@@ -71,8 +71,8 @@ diff -ruN a/EnglishG2P.swift b/EnglishG2P.swift
          let text = try String(contentsOf: url, encoding: .utf8)
          dict.reserveCapacity(150_000)
 diff -ruN a/MagpieTTS.swift b/MagpieTTS.swift
---- a/MagpieTTS.swift	2026-10-17 21:49:24
-+++ b/MagpieTTS.swift	2026-10-17 21:49:24
+--- a/MagpieTTS.swift	2026-10-17 22:15:33
++++ b/MagpieTTS.swift	2026-10-17 22:15:33
 @@ -1,8 +1,6 @@
  import Foundation
  import MLX
@@ -333,9 +333,10 @@ diff -ruN a/MagpieTTS.swift b/MagpieTTS.swift
  
      // MARK: - LocalTransformer per-frame sampling
 diff -ruN a/Sampling.swift b/Sampling.swift
---- a/Sampling.swift	2026-10-17 21:49:24
-+++ b/Sampling.swift	2026-10-17 21:49:24
-@@ -1,11 +1,10 @@
+--- a/Sampling.swift	2026-10-17 22:15:33
++++ b/Sampling.swift	2026-10-17 22:15:38
+@@ -1,11 +1,11 @@
++// Modifié par Sillon (Apache-2.0 §4(b)) : `import MLXRandom` retiré, fonctions passées en `internal` — voir ORIGINE.md.
  import Foundation
  import MLX
 -import MLXRandom
@@ -348,7 +349,7 @@ diff -ruN a/Sampling.swift b/Sampling.swift
      let V = logits.dim(-1)
      if k <= 0 || k >= V { return logits }
      // Sort ascending along last axis, then the (V - k)-th entry is the k-th
-@@ -18,7 +17,7 @@
+@@ -18,7 +18,7 @@
  }
  
  /// Add ``-1e30`` to specific vocab IDs to forbid them (BOS/EOS).
@@ -357,7 +358,7 @@ diff -ruN a/Sampling.swift b/Sampling.swift
      if ids.isEmpty { return logits }
      let V = logits.dim(-1)
      let arange = MLXArray(0..<Int32(V))
-@@ -32,7 +31,7 @@
+@@ -32,7 +32,7 @@
  
  /// Sample a single int32 token from ``logits`` (last axis). Greedy when
  /// ``temperature <= 1e-3``; otherwise Gumbel-max over top-k filtered logits.
@@ -367,8 +368,8 @@ diff -ruN a/Sampling.swift b/Sampling.swift
          return argMax(logits, axis: -1).asType(Int32.self)
      }
 diff -ruN a/Tokenizer.swift b/Tokenizer.swift
---- a/Tokenizer.swift	2026-10-17 21:49:24
-+++ b/Tokenizer.swift	2026-10-17 21:49:24
+--- a/Tokenizer.swift	2026-10-17 22:15:33
++++ b/Tokenizer.swift	2026-10-17 22:15:33
 @@ -1,5 +1,4 @@
  import Foundation
 -import NaturalLanguage
