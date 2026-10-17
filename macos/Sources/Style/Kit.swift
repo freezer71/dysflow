@@ -95,16 +95,22 @@ struct SettingsPage<Content: View>: View {
 struct SettingsGroup<Content: View>: View {
     let title: String
     @ViewBuilder let content: Content
+    /// Seul dans un volet qui porte déjà son nom : pas de second titre.
+    @Environment(\.settingsGroupTitleHidden) private var titleHidden
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(title)
-                .font(Typo.sectionTitle)
-                .foregroundStyle(Palette.ink)
-                .accessibilityAddTraits(.isHeader)
-                .padding(.leading, 2)
-                .padding(.top, 28)
-                .padding(.bottom, 10)
+            if titleHidden {
+                Color.clear.frame(height: 20).accessibilityHidden(true)
+            } else {
+                Text(title)
+                    .font(Typo.sectionTitle)
+                    .foregroundStyle(Palette.ink)
+                    .accessibilityAddTraits(.isHeader)
+                    .padding(.leading, 2)
+                    .padding(.top, 28)
+                    .padding(.bottom, 10)
+            }
             VStack(alignment: .leading, spacing: 0) { content }
                 // Chaque ligne porte un filet au-dessus : celui de la première
                 // passe sous le bord du cadre.
@@ -113,6 +119,12 @@ struct SettingsGroup<Content: View>: View {
                 .background(RoundedRectangle(cornerRadius: 16).fill(Palette.sidebar))
         }
     }
+}
+
+extension EnvironmentValues {
+    /// Les groupes d'un volet de réglages taisent leur titre : le volet
+    /// porte déjà le nom de la section.
+    @Entry var settingsGroupTitleHidden = false
 }
 
 /// Une ligne : le titre et sa description à gauche, le contrôle à droite.

@@ -233,7 +233,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if arguments.contains("--show-panel") { panel.apply(.choose(.reader)) }
             if arguments.contains("--show-settings") {
                 // L'icône de la barre des menus donne l'action dès qu'elle paraît.
-                settings.open()
+                // `--section-reglages=<section>` : ouvert à cette section.
+                settings.open(SettingsSection.requested(in: arguments))
             }
             // Le seul ⌃⌥S, pour son test d'interface (quitter d'abord le
             // sillon installé, qui tiendrait le même raccourci).

@@ -14,14 +14,16 @@ struct VoiceSection: View {
     let free: UInt64?
     /// Relit les modèles et les réglages après une action de la table.
     let onChange: () async -> Void
-    /// La qualité des voix de macOS de la liste, relue quand la liste change
-    /// (pas à chaque affichage).
-    @State private var macQuality: [String: Int] = [:]
+    /// L'erreur et la suppression en attente de la table, gardées par la fenêtre.
+    let table: ModelsTableState
+    /// La qualité des voix de macOS de la liste, lue par la fenêtre quand la
+    /// liste change (pas à chaque retour sur la section).
+    let macQuality: [String: Int]
 
     var body: some View {
         SettingsGroup(title: "Voix") {
             ModelsTable(rows: rows.filter { $0.kind == "speech" }, model: model,
-                        fallback: "La lecture passera à la voix de macOS.", onChange: onChange)
+                        fallback: "La lecture passera à la voix de macOS.", onChange: onChange, state: table)
             if !store.capabilities.voices.isEmpty && !Self.suggestsModels(model.snapshot.voice) {
                 SettingRow(title: "Voix", detail: "Lit tout le texte, quelle que soit sa langue") {
                     HStack(spacing: 8) {
@@ -93,15 +95,8 @@ struct VoiceSection: View {
                     .frame(width: 240)
             }
         }
-        // Un aperçu qui échoue après coup (synthèse refusée) se dit aussi.
-        .task(id: store.capabilities.voices.map(\.id)) {
-            let c = store.capabilities
-            macQuality = c.family == "system"
-                ? Self.quality(of: c.voices.map(\.id), voices: Self.installedMacVoices()) : [:]
-        }
-        .onChange(of: model.snapshot.preview.error) { _, error in
-            if let error { Announcement.post(error) }
-        }
+        // L'échec d'un aperçu se dit à VoiceOver depuis la fenêtre
+        // (`ReglagesView`), quelle que soit la section affichée.
     }
 
     /// Voix de repli ou voix muette.
@@ -315,6 +310,8 @@ struct DictationSection: View {
     let rows: [VoiceModel]
     /// Relit les modèles et les réglages après une action de la table.
     let onChange: () async -> Void
+    /// L'erreur et la suppression en attente de la table, gardées par la fenêtre.
+    let table: ModelsTableState
     @AppStorage(DictationLanguage.defaultsKey) private var language = DictationLanguage.stored().rawValue
     @AppStorage(DictationModifier.defaultsKey) private var modifier = DictationModifier.stored().rawValue
     @AppStorage(DictationModel.defaultsKey) private var chosen = DictationModel.stored()
@@ -360,7 +357,7 @@ struct DictationSection: View {
                         isUsed: { Self.isUsed($0, chosen: chosen) },
                         use: { row in chosen = row.id == Self.systemID ? DictationModel.system : row.id },
                         removed: { row in if row.id == chosen { chosen = DictationModel.system } },
-                        onChange: onChange)
+                        onChange: onChange, state: table)
                 // Le modèle choisi change (un autre, la dictée de macOS, ou le
                 // sien supprimé) : l'ancien quitte la mémoire, son repli s'efface.
                 .onChange(of: chosen) { old, new in

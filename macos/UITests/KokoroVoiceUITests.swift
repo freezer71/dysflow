@@ -1,6 +1,6 @@
 import XCTest
 
-/// La section Voix de la page des réglages, et son audit. Lancé à la main,
+/// La section Voix des réglages, et son audit. Lancé à la main,
 /// avec l'accord de l'utilisateur : `-only-testing:SillonUITests/KokoroVoiceUITests`.
 /// Le lecteur des tests est muet : `--ui-testing-kokoro` lui prête les
 /// capacités de Kokoro (`UITestStaging`).
@@ -12,6 +12,7 @@ final class KokoroVoiceUITests: XCTestCase {
         app.launch()
         let window = app.windows["Réglages"]
         XCTAssertTrue(window.waitForExistence(timeout: 5))
+        window.selectSettingsSection("voix")
         return (app, window)
     }
 
@@ -67,5 +68,9 @@ final class KokoroVoiceUITests: XCTestCase {
         XCTAssertTrue(window.descendants(matching: .any)["configuration-illisible"].waitForExistence(timeout: 3))
         XCTAssertTrue(window.buttons["remplacer-configuration"].exists)
         try app.performAccessibilityAuditOutsideTouchBar(visibleIn: window)
+        // Le bandeau reste, quelle que soit la section.
+        window.selectSettingsSection("affichage")
+        XCTAssertTrue(window.descendants(matching: .any)["configuration-illisible"].exists)
+        XCTAssertTrue(window.buttons["remplacer-configuration"].exists)
     }
 }

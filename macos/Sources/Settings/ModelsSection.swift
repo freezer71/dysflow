@@ -18,8 +18,9 @@ struct ModelsTable: View {
     /// Après la suppression d'une ligne (la dictée repasse à macOS si c'était la sienne).
     var removed: (VoiceModel) -> Void = { _ in }
     let onChange: () async -> Void
-    @State private var confirming: VoiceModel?
-    @State private var error = ErrorNote()
+    /// L'erreur et la suppression à confirmer, gardées par la fenêtre : un
+    /// échec arrivé pendant qu'une autre section est affichée se retrouve au retour.
+    let state: ModelsTableState
 
     private static let choiceWidth: CGFloat = 22
     private static let sizeWidth: CGFloat = 80
@@ -42,14 +43,14 @@ struct ModelsTable: View {
                 line(row)
                 Rule()
             }
-            ErrorText(error.text, identifier: "erreur-modeles")
+            ErrorText(state.error.text, identifier: "erreur-modeles")
                 .padding(.top, 6)
         }
         .padding(.vertical, 6)
-        .alert(confirming.map { ModelTable.confirmation($0, fallback: fallback).title } ?? "",
-               isPresented: Binding(get: { confirming != nil },
-                                    set: { if !$0 { confirming = nil } }),
-               presenting: confirming) { row in
+        .alert(state.confirming.map { ModelTable.confirmation($0, fallback: fallback).title } ?? "",
+               isPresented: Binding(get: { state.confirming != nil },
+                                    set: { if !$0 { state.confirming = nil } }),
+               presenting: state.confirming) { row in
             // Annuler par défaut : Retour et Échap ne suppriment rien.
             Button("Annuler", role: .cancel) {}
                 .keyboardShortcut(.defaultAction)
@@ -62,16 +63,8 @@ struct ModelsTable: View {
         } message: { row in
             Text(ModelTable.confirmation(row, fallback: fallback).message)
         }
-        // VoiceOver entend la progression tous les 25 %, pour les lignes de
-        // cette table seulement (l'autre table la dit pour les siennes).
-        .onChange(of: model.snapshot.download) { old, new in
-            guard let new, let row = rows.first(where: { $0.id == new.id }),
-                  let current = ModelTable.fraction(new) else { return }
-            let previous = old?.id == new.id ? ModelTable.fraction(old) : nil
-            if let text = ModelTable.progressAnnouncement(name: row.name, previous: previous, current: current) {
-                Announcement.post(text)
-            }
-        }
+        // La progression (tous les 25 %) se dit à VoiceOver depuis la
+        // fenêtre (`ReglagesView`) : quelle que soit la section affichée.
     }
 
     /// Les lignes, l'utilisée marquée d'après `isUsed`.
@@ -150,7 +143,7 @@ struct ModelsTable: View {
     }
 
     private func removeButton(_ row: VoiceModel) -> some View {
-        Button("Supprimer…") { confirming = row }
+        Button("Supprimer…") { state.confirming = row }
             .buttonStyle(.notionPlain)
             .fixedSize()
             .accessibilityLabel("Supprimer \(row.name)")
@@ -215,11 +208,21 @@ struct ModelsTable: View {
         Task {
             do {
                 try await body()
-                error.clear()
+                state.error.clear()
             } catch {
-                self.error.fail(SettingsStore.message(of: error))
+                state.error.fail(SettingsStore.message(of: error))
             }
             await onChange()
         }
     }
+}
+
+/// Ce qu'une table de modèles garde au-delà de son affichage : son erreur
+/// (annoncée à VoiceOver à chaque échec) et la suppression qui attend sa
+/// confirmation. La fenêtre des réglages en tient une par table.
+@MainActor
+@Observable
+final class ModelsTableState {
+    let error = ErrorNote()
+    var confirming: VoiceModel?
 }

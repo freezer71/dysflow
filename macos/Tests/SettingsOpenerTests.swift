@@ -35,3 +35,44 @@ final class SettingsOpenerTests: XCTestCase {
         XCTAssertEqual(log, ["active", "réglages"])
     }
 }
+
+/// Ouvrir les réglages à une section : la liste y passe, puis la fenêtre
+/// s'ouvre ; sans section, la dernière choisie reste.
+@MainActor
+final class SettingsOpenerSectionTests: XCTestCase {
+    private func navigation() -> SettingsNavigation {
+        let name = "sillon.tests.reglages.ouverture"
+        let defaults = UserDefaults(suiteName: name)!
+        defaults.removePersistentDomain(forName: name)
+        return SettingsNavigation(defaults: defaults, dictationSupported: true)
+    }
+
+    func testOpeningAtASectionSelectsItBeforeOpening() {
+        var log: [String] = []
+        let navigation = navigation()
+        let opener = SettingsOpener(activate: {}, bringToFront: {}, navigation: navigation)
+        opener.install { log.append("réglages : \(navigation.selection.rawValue)") }
+        opener.open(.dictee)
+        XCTAssertEqual(log, ["réglages : dictee"])
+        XCTAssertEqual(navigation.selection, .dictee)
+    }
+
+    func testOpeningWithoutASectionKeepsTheLastOne() {
+        let navigation = navigation()
+        navigation.select(.demarrage)
+        let opener = SettingsOpener(activate: {}, bringToFront: {}, navigation: navigation)
+        opener.install {}
+        opener.open()
+        XCTAssertEqual(navigation.selection, .demarrage)
+    }
+
+    /// Une demande faite avant que l'action n'existe garde sa section.
+    func testAnEarlyRequestKeepsItsSection() {
+        let navigation = navigation()
+        let opener = SettingsOpener(activate: {}, bringToFront: {}, navigation: navigation)
+        opener.open(.autorisations)
+        var seen: SettingsSection?
+        opener.install { seen = navigation.selection }
+        XCTAssertEqual(seen, .autorisations)
+    }
+}
