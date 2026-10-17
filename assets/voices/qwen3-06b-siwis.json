@@ -8,5 +8,5 @@
   "preparation": "24 kHz mono, fondu 30 ms en fin, RMS -23 dBFS, écrêtage 0,98, WAV 16 bits relu par mlx_audio.utils.load_audio (prep_refs.py)",
   "method": "mlx-audio 0.5.8, Qwen3TTS.extract_speaker_embedding (mode x-vector)",
   "vector_sha256": "512dc98537a6bfb7cefea07c6b9acdeb1e9cb969f4f2335d391d8548ab380c22",
-  "evaluation": ".superpowers/research/eval/rapport.md §8 (mesuré sur le 1.7B Base)"
+  "evaluation": "rapport de banc local, non versionné (.superpowers/research/eval/rapport.md §8, mesuré sur le 1.7B Base) : non livré avec le dépôt"
 }

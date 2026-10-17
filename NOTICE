@@ -23,13 +23,15 @@ mlx-community (révisions dans src/models.rs).
 
 La voix « siwis » de Qwen3-TTS 0.6B Base, livrée avec Sillon
 (assets/voices/qwen3-06b-siwis.safetensors), est un vecteur de locuteur
-calculé à partir d'un extrait de la SIWIS French Speech Synthesis Database
+dérivé (adaptation) d'un extrait de la SIWIS French Speech Synthesis Database
 (J. Yamagishi, P.-E. Honnet, P. N. Garner, A. Lazaridis, 2017, University
 of Edinburgh, Centre for Speech Technology Research, et Idiap Research
 Institute, https://doi.org/10.7488/ds/1705 ; fichier
 wavs/part5/expr_chap_s01_0011.wav), sous licence Creative Commons
-Attribution 4.0 (https://creativecommons.org/licenses/by/4.0/). Seul ce
-vecteur est livré, pas l'enregistrement. Recette :
+Attribution 4.0 (https://creativecommons.org/licenses/by/4.0/), fourni
+sans garantie (voir la licence). L'extrait a été modifié : rééchantillonné,
+normalisé, puis réduit à ce vecteur ; seul ce vecteur est livré, pas
+l'enregistrement. Recette :
 scripts/qwen3-voix-siwis.py et assets/voices/qwen3-06b-siwis.json.
 
 L'app macOS contient, avec le texte de chaque licence dans

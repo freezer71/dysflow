@@ -99,7 +99,7 @@ def main():
                        "WAV 16 bits relu par mlx_audio.utils.load_audio (prep_refs.py)",
         "method": f"mlx-audio {MLX_AUDIO}, Qwen3TTS.extract_speaker_embedding (mode x-vector)",
         "vector_sha256": sha256(OUT + ".safetensors"),
-        "evaluation": ".superpowers/research/eval/rapport.md §8 (mesuré sur le 1.7B Base)",
+        "evaluation": "rapport de banc local, non versionné (.superpowers/research/eval/rapport.md §8, mesuré sur le 1.7B Base) : non livré avec le dépôt",
     }
     with open(OUT + ".json", "w", encoding="utf-8") as f:
         json.dump(provenance, f, ensure_ascii=False, indent=2)
