@@ -469,7 +469,7 @@ mod tests {
         let compute = AppCompute { kokoro: None, text: Some(Arc::new(Never)) };
         let (engine, note) = build_engine_with(
             EnginePreference::Auto,
-            &text_settings("/nulle/part/model.safetensors", "qwen3_tts_17b_customvoice_8bit"),
+            &text_settings("/nulle/part/model.safetensors", "qwen3_tts_06b_base_8bit"),
             &compute,
         );
         let note = note.unwrap();

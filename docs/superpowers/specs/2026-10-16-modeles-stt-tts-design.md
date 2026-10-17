@@ -143,6 +143,7 @@ Swift, même interface ; les temps des mots viennent de
 - **Qwen3-TTS 1.7B CustomVoice 8 bits** proposé **avec un avertissement**
   dans sa fiche (« Lourd : lecture hachée au-delà de … ») ; le chiffre est
   celui mesuré sur le port Swift, pas celui du banc Python.
+  **Retiré du catalogue le 17 oct. 2026** : mesuré à 110 % du temps occupé à 1× sur M5 (hachée même à vitesse normale) ; à reprendre après optimisation du port Swift.
 - **MagpieTTS multilingual 357M** 8 bits : le français d'abord (octets
   byT5), l'anglais par le dictionnaire de NeMo livré avec l'app ; ses cinq
   voix anglaises.

@@ -2779,7 +2779,7 @@ final class MeasureRTFTests: XCTestCase {
 
 Fait : tâches 1 à 9 (code), relues une à une (corrections : lecture hors table des positions dans Magpie — signalée aussi par la revue de sécurité —, dictionnaire anglais absent, empreinte mémoire relevée après libération), puis relecture de toute la branche et une vague de corrections (fiche du 1.7B sans chiffre non mesuré, mention CC BY « adaptation » et « sans garantie », dossiers vides après suppression, repli silencieux quand le fichier du modèle manque, en-tête de licence de Sampling.swift, préchauffage une seule fois par dossier).
 
-Vérifié : `cargo test` sans échec ; clippy propre ; app et tests compilés. **Aucun modèle n'a encore tourné.**
+Vérifié : `cargo test` sans échec ; clippy propre ; app et tests compilés.
 
 Décisions prises en cours de route :
 - Tests de fumée ignorés sans modèle ; la preuve est l'écoute et la mesure.
@@ -2789,4 +2789,14 @@ Décisions prises en cours de route :
 - Chiffres découpés un par un (vérifié contre transformers) ; le `{1,3}` du port d'origine était faux.
 - Magpie lit une phrase trop longue en morceaux (≤ 471 octets) au lieu de sortir de sa table.
 
-**Reste (Tâches 9 et 10)** : télécharger les trois modèles, lancer `./scripts/measure-macos.sh --rtf <id>` pour chacun, écrire les phrases `MESURE fiche` dans les `pace` de `src/models.rs` ; écoute par l'utilisateur (Qwen 0.6B voix française, 1.7B, Magpie ; changer de modèle pendant un chargement du 1.7B ; dicter pendant une lecture Qwen ; pause aux virgules).
+**Mesures (17 oct. 2026, M5, `scripts/measure-macos.sh --rtf`, la plus lente de deux séries) :**
+
+| Modèle | RTF fr | RTF en | Empreinte | Fiche (`pace`) |
+|---|---|---|---|---|
+| `magpie_tts_357m_8bit` | 0,694 | 0,695 | 1518–1633 Mo | Lourd : lecture hachée au-delà de 1× (occupé 69 % du temps à 1× sur M5). |
+| `qwen3_tts_06b_base_8bit` | 0,758 | 0,825 | 2619–2651 Mo | Lourd : lecture hachée au-delà de 1× (occupé 76 % du temps à 1× sur M5). |
+| `qwen3_tts_17b_customvoice_8bit` | 1,100 | 1,080 | ~4 Go | hachée même à 1× (occupé 110 % du temps) : **retiré du catalogue** |
+
+Décision de l'utilisateur : Qwen3 1.7B CustomVoice retiré du `CATALOG` le 17 oct. 2026 (le lanceur Swift et ses tests de fumée restent). À reprendre après optimisation du port Swift. Le catalogue du lot 3 compte donc deux paquets à texte (Qwen3 0.6B, Magpie), pas trois.
+
+**Reste (Tâche 10)** : écoute par l'utilisateur (Qwen 0.6B voix française, Magpie ; dicter pendant une lecture Qwen ; pause aux virgules).

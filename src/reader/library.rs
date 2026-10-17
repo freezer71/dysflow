@@ -124,17 +124,6 @@ pub fn voice_traits(family: &str, id: &str) -> (&'static str, &'static str) {
     match family {
         "kokoro" => kokoro_traits(id),
         "qwen3_tts_06b_base_8bit" => ("française", "femme"),
-        "qwen3_tts_17b_customvoice_8bit" => match id {
-            "vivian" | "serena" => ("chinoise", "femme"),
-            "uncle_fu" => ("chinoise", "homme"),
-            "dylan" => ("pékinoise", "homme"),
-            "eric" => ("sichuanaise", "homme"),
-            "aiden" => ("américaine", "homme"),
-            "ryan" => ("anglaise", "homme"),
-            "ono_anna" => ("japonaise", "femme"),
-            "sohee" => ("coréenne", "femme"),
-            _ => ("", ""),
-        },
         "magpie_tts_357m_8bit" => match id {
             "sofia" | "aria" => ("américaine", "femme"),
             "jason" | "leo" | "john_van_stan" => ("américaine", "homme"),
@@ -148,7 +137,6 @@ fn model_label(family: &str) -> String {
     match family {
         "kokoro" => "Kokoro".to_string(),
         "qwen3_tts_06b_base_8bit" => "Qwen3 0.6B".to_string(),
-        "qwen3_tts_17b_customvoice_8bit" => "Qwen3 1.7B".to_string(),
         "magpie_tts_357m_8bit" => "Magpie".to_string(),
         other => other.to_string(),
     }
@@ -765,9 +753,6 @@ mod tests {
     #[test]
     fn the_new_voices_say_their_accent_and_gender() {
         assert_eq!(voice_traits("qwen3_tts_06b_base_8bit", "siwis"), ("française", "femme"));
-        assert_eq!(voice_traits("qwen3_tts_17b_customvoice_8bit", "vivian"), ("chinoise", "femme"));
-        assert_eq!(voice_traits("qwen3_tts_17b_customvoice_8bit", "aiden"), ("américaine", "homme"));
-        assert_eq!(voice_traits("qwen3_tts_17b_customvoice_8bit", "eric"), ("sichuanaise", "homme"));
         assert_eq!(voice_traits("magpie_tts_357m_8bit", "sofia"), ("américaine", "femme"));
         assert_eq!(voice_traits("magpie_tts_357m_8bit", "john_van_stan"), ("américaine", "homme"));
         assert_eq!(voice_traits("kokoro", "bf_emma"), ("britannique", "femme"));

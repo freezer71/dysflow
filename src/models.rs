@@ -195,8 +195,6 @@ const fn hf(repo: &'static str, revision: &'static str, file: &'static str, byte
 
 const QWEN3_06B_REPO: &str = "mlx-community/Qwen3-TTS-12Hz-0.6B-Base-8bit";
 const QWEN3_06B_REVISION: &str = "50f45ef0047cde7e84c2ef04326acb8ada2436a7";
-const QWEN3_17B_REPO: &str = "mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-8bit";
-const QWEN3_17B_REVISION: &str = "41d3337e8b7f2843a75841595fc14e4b9a7a4b96";
 const MAGPIE_REPO: &str = "aufklarer/Magpie-TTS-Multilingual-357M-MLX-8bit";
 const MAGPIE_REVISION: &str = "260839c0a2c46993735d72082c3fba177710d477";
 
@@ -211,15 +209,6 @@ const QWEN3_06B_FILES: &[Companion] = &[
     hf(QWEN3_06B_REPO, QWEN3_06B_REVISION, "tokenizer_config.json", 7_344),
     hf(QWEN3_06B_REPO, QWEN3_06B_REVISION, "speech_tokenizer/config.json", 2_336),
     hf(QWEN3_06B_REPO, QWEN3_06B_REVISION, "speech_tokenizer/model.safetensors", 682_293_092),
-];
-
-const QWEN3_17B_FILES: &[Companion] = &[
-    hf(QWEN3_17B_REPO, QWEN3_17B_REVISION, "config.json", 6_058),
-    hf(QWEN3_17B_REPO, QWEN3_17B_REVISION, "vocab.json", 2_776_833),
-    hf(QWEN3_17B_REPO, QWEN3_17B_REVISION, "merges.txt", 1_671_839),
-    hf(QWEN3_17B_REPO, QWEN3_17B_REVISION, "tokenizer_config.json", 7_344),
-    hf(QWEN3_17B_REPO, QWEN3_17B_REVISION, "speech_tokenizer/config.json", 2_336),
-    hf(QWEN3_17B_REPO, QWEN3_17B_REVISION, "speech_tokenizer/model.safetensors", 682_293_092),
 ];
 
 /// Magpie (relevé §3.d) : encodeur de texte, décodeur (`decoder_prefill`
@@ -493,33 +482,15 @@ pub const CATALOG: &[ModelPackage] = &[
         languages_label: "10 langues, dont français et anglais",
         bytes: 1_304_461_214,
         recommended: false,
-        pace: "Cadence pas encore mesurée sur ce Mac.",
+        pace: "Lourd : lecture hachée au-delà de 1× (occupé 76 % du temps à 1× sur M5).",
         companions: QWEN3_06B_FILES,
         runtime: Runtime::Qwen3TtsMlx,
         kind: Kind::Speech,
         voices_label: "1 voix : siwis (française, fixe)",
         licenses: "Poids Apache-2.0 · code MLX MIT (mlx-audio-swift) · timbre tiré de SIWIS (CC-BY-4.0, Idiap)",
     },
-    ModelPackage {
-        id: "qwen3_tts_17b_customvoice_8bit",
-        family: "qwen3_tts_17b_customvoice_8bit",
-        display_name: "Qwen3 1.7B CustomVoice",
-        description: "Grand modèle expressif, neuf voix, aucune française. Suivi des mots approché. Avec l'autre Qwen installé, chacun garde sa copie du décodeur de son (682 Mo).",
-        precision: "8 bits",
-        languages: &["fr", "en"],
-        repo: QWEN3_17B_REPO,
-        revision: QWEN3_17B_REVISION,
-        file: "model.safetensors",
-        languages_label: "10 langues, dont français et anglais",
-        bytes: 2_393_308_931,
-        recommended: false,
-        pace: "Lourd : cadence pas encore mesurée.",
-        companions: QWEN3_17B_FILES,
-        runtime: Runtime::Qwen3TtsMlx,
-        kind: Kind::Speech,
-        voices_label: "9 voix, aucune française : vivian (recommandée en français), aiden (recommandée en anglais)…",
-        licenses: "Poids Apache-2.0 · code MLX MIT (mlx-audio-swift)",
-    },
+    // Qwen3 1.7B CustomVoice retiré le 17 oct. 2026 : mesuré à 110 % du temps occupé à 1× sur M5
+    // (lecture hachée même à vitesse normale) ; à reprendre après optimisation du port Swift.
     ModelPackage {
         id: "magpie_tts_357m_8bit",
         family: "magpie_tts_357m_8bit",
@@ -533,7 +504,7 @@ pub const CATALOG: &[ModelPackage] = &[
         languages_label: "9 langues, dont français et anglais",
         bytes: 32,
         recommended: false,
-        pace: "Cadence pas encore mesurée sur ce Mac.",
+        pace: "Lourd : lecture hachée au-delà de 1× (occupé 69 % du temps à 1× sur M5).",
         companions: MAGPIE_FILES,
         runtime: Runtime::MagpieMlx,
         kind: Kind::Speech,
@@ -1133,7 +1104,6 @@ pub fn voices_for_family(family: &str) -> &'static [VoiceOption] {
     match family {
         "kokoro" => KOKORO_VOICES,
         "qwen3_tts_06b_base_8bit" => QWEN3_BASE_VOICES,
-        "qwen3_tts_17b_customvoice_8bit" => QWEN3_CUSTOM_VOICES,
         "magpie_tts_357m_8bit" => MAGPIE_VOICES,
         _ => &[],
     }
@@ -1180,21 +1150,6 @@ const KOKORO_VOICES: &[VoiceOption] = &[
 
 const QWEN3_BASE_VOICES: &[VoiceOption] = &[
     VoiceOption { id: "siwis", label: "siwis · française, femme, recommandée", language: "fr" },
-];
-
-/// Les neuf locuteurs de CustomVoice (`talker_config.spk_id`), langue
-/// native d'après la carte du modèle. Aucun n'est français : vivian lit le
-/// mieux le français mesuré (WER médian 3,3 %), aiden l'anglais.
-const QWEN3_CUSTOM_VOICES: &[VoiceOption] = &[
-    VoiceOption { id: "vivian", label: "vivian · chinoise, femme, recommandée en français", language: "zh" },
-    VoiceOption { id: "aiden", label: "aiden · américaine, homme, recommandée en anglais", language: "en" },
-    VoiceOption { id: "serena", label: "serena · chinoise, femme", language: "zh" },
-    VoiceOption { id: "uncle_fu", label: "uncle_fu · chinoise, homme", language: "zh" },
-    VoiceOption { id: "dylan", label: "dylan · pékinoise, homme", language: "zh" },
-    VoiceOption { id: "eric", label: "eric · sichuanaise, homme", language: "zh" },
-    VoiceOption { id: "ryan", label: "ryan · anglaise, homme", language: "en" },
-    VoiceOption { id: "ono_anna", label: "ono_anna · japonaise, femme", language: "ja" },
-    VoiceOption { id: "sohee", label: "sohee · coréenne, femme", language: "ko" },
 ];
 
 /// Les cinq voix du paquet MLX, dans l'ordre de `baked_speaker_names`
@@ -1480,18 +1435,17 @@ mod tests {
                 "kokoro_82m_mlx",
                 "kokoro_82m_int8",
                 "qwen3_tts_06b_base_8bit",
-                "qwen3_tts_17b_customvoice_8bit",
                 "magpie_tts_357m_8bit"
             ]
         );
         assert!(available().iter().filter(|p| p.kind == Kind::Speech).all(|p| p.family == "kokoro"));
         assert_eq!(
             available_with(true).iter().filter(|p| matches!(p.runtime, Runtime::Qwen3TtsMlx | Runtime::MagpieMlx)).count(),
-            3
+            2
         );
     }
 
-    const TEXT_MODELS: [&str; 3] = ["qwen3_tts_06b_base_8bit", "qwen3_tts_17b_customvoice_8bit", "magpie_tts_357m_8bit"];
+    const TEXT_MODELS: [&str; 2] = ["qwen3_tts_06b_base_8bit", "magpie_tts_357m_8bit"];
 
     /// Tailles relevées sur les dépôts aux révisions figées (relevé §2.a,
     /// §2.b, §3.d) : seuls les fichiers que les chargeurs lisent.
@@ -1499,7 +1453,6 @@ mod tests {
     fn text_models_have_their_own_folder_and_only_the_files_they_read() {
         for (id, total) in [
             ("qwen3_tts_06b_base_8bit", 1_991_218_180),
-            ("qwen3_tts_17b_customvoice_8bit", 3_080_066_433),
             ("magpie_tts_357m_8bit", 301_589_611 + 32),
         ] {
             let p = package(id);
@@ -1512,7 +1465,7 @@ mod tests {
         }
         let magpie = package("magpie_tts_357m_8bit");
         assert!(!magpie.companions.iter().any(|c| c.file.starts_with("decoder_step/")), "jamais lu par MLX");
-        let qwen = package("qwen3_tts_17b_customvoice_8bit");
+        let qwen = package("qwen3_tts_06b_base_8bit");
         assert!(qwen.companions.iter().any(|c| c.dest == "speech_tokenizer/model.safetensors" && c.bytes == 682_293_092));
         assert!(!qwen.companions.iter().any(|c| c.file.ends_with("index.json")), "jamais lu");
     }
@@ -1530,13 +1483,7 @@ mod tests {
     fn qwen3_and_magpie_name_their_voices() {
         let ids = |family: &str| voices_for_family(family).iter().map(|v| v.id).collect::<Vec<_>>();
         assert_eq!(ids("qwen3_tts_06b_base_8bit"), ["siwis"]);
-        assert_eq!(
-            ids("qwen3_tts_17b_customvoice_8bit"),
-            ["vivian", "aiden", "serena", "uncle_fu", "dylan", "eric", "ryan", "ono_anna", "sohee"]
-        );
         assert_eq!(ids("magpie_tts_357m_8bit"), ["sofia", "aria", "jason", "leo", "john_van_stan"]);
-        assert_eq!(default_voice_for_language("qwen3_tts_17b_customvoice_8bit", "fr"), "vivian");
-        assert_eq!(default_voice_for_language("qwen3_tts_17b_customvoice_8bit", "en"), "aiden");
         assert_eq!(default_voice_for_language("magpie_tts_357m_8bit", "fr"), "sofia");
         assert_eq!(default_voice_for_language("qwen3_tts_06b_base_8bit", "en"), "siwis");
     }
@@ -1545,15 +1492,21 @@ mod tests {
     /// sans message (et sans réécrire la configuration).
     #[test]
     fn a_voice_of_another_model_gives_the_default() {
-        assert_eq!(voice_for_language("qwen3_tts_17b_customvoice_8bit", "fr", Some("p-fenrir60")), "vivian");
+        assert_eq!(voice_for_language("qwen3_tts_06b_base_8bit", "fr", Some("p-fenrir60")), "siwis");
         assert_eq!(voice_for_language("magpie_tts_357m_8bit", "fr", Some("Thomas")), "sofia");
         assert_eq!(voice_for_language("magpie_tts_357m_8bit", "en", Some("leo")), "leo");
     }
 
     #[test]
-    fn the_heavy_model_says_so_in_its_pace() {
-        // Non mesuré : « lourd » est sûr, la cadence ne l'est pas encore.
-        assert_eq!(package("qwen3_tts_17b_customvoice_8bit").pace, "Lourd : cadence pas encore mesurée.");
+    fn the_measured_models_say_so_in_their_pace() {
+        assert_eq!(
+            package("qwen3_tts_06b_base_8bit").pace,
+            "Lourd : lecture hachée au-delà de 1× (occupé 76 % du temps à 1× sur M5)."
+        );
+        assert_eq!(
+            package("magpie_tts_357m_8bit").pace,
+            "Lourd : lecture hachée au-delà de 1× (occupé 69 % du temps à 1× sur M5)."
+        );
     }
 
     #[test]

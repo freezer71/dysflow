@@ -340,25 +340,25 @@ mod tests {
     #[test]
     fn the_voice_of_another_model_reaches_the_compute_as_the_default() {
         let fake = Arc::new(Fake::speaking(vec![0.5; 10], 24_000));
-        let e = engine(&fake, "qwen3_tts_17b_customvoice_8bit", "/m/q17");
+        let e = engine(&fake, "qwen3_tts_06b_base_8bit", "/m/q17");
         let mut session = e.open_session().unwrap();
         session.synthesize("Bonjour.", &params("p-fenrir60", "fr-FR")).unwrap();
         session.synthesize("Hello.", &params("", "en")).unwrap();
         session.synthesize("Salut.", &params("eric", "de")).unwrap();
         let calls = fake.calls.locked().clone();
-        assert_eq!((calls[0].2.as_str(), calls[0].3.as_str()), ("fr", "vivian"));
-        assert_eq!((calls[1].2.as_str(), calls[1].3.as_str()), ("en", "aiden"));
-        assert_eq!((calls[2].2.as_str(), calls[2].3.as_str()), ("fr", "eric"), "langue inconnue : le français");
+        assert_eq!((calls[0].2.as_str(), calls[0].3.as_str()), ("fr", "siwis"));
+        assert_eq!((calls[1].2.as_str(), calls[1].3.as_str()), ("en", "siwis"));
+        assert_eq!((calls[2].2.as_str(), calls[2].3.as_str()), ("fr", "siwis"), "langue inconnue : le français");
     }
 
     #[test]
     fn each_engine_speaks_with_its_own_model() {
         let fake = Arc::new(Fake::speaking(vec![0.5; 10], 24_000));
-        let reading = engine(&fake, "qwen3_tts_17b_customvoice_8bit", "/m/q17");
+        let reading = engine(&fake, "qwen3_tts_06b_base_8bit", "/m/q17");
         let preview = engine(&fake, "magpie_tts_357m_8bit", "/m/magpie");
         preview.open_session().unwrap().synthesize("Aperçu.", &params("leo", "fr")).unwrap();
         drop(preview);
-        reading.open_session().unwrap().synthesize("Lecture.", &params("vivian", "fr")).unwrap();
+        reading.open_session().unwrap().synthesize("Lecture.", &params("siwis", "fr")).unwrap();
         let calls = fake.calls.locked().clone();
         assert_eq!(calls[0].0, PathBuf::from("/m/magpie"));
         assert_eq!(calls[1].0, PathBuf::from("/m/q17"), "l'aperçu relâché ne touche pas la lecture");
