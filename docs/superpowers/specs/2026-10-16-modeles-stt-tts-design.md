@@ -127,6 +127,43 @@ Voix de macOS : `AVSpeechSynthesizer.write(_:toBufferCallback:)` côté
 Swift, même interface ; les temps des mots viennent de
 `willSpeakRangeOfSpeechString` quand macOS les donne.
 
+**Lecture : révisé le 17 oct. 2026 (lot 3), décisions de l'utilisateur :**
+
+- **Copie des fichiers utiles, comme au lot 2** : Qwen3-TTS depuis
+  mlx-audio-swift (`244458d`, MIT), MagpieTTS depuis speech-swift
+  (`28aef99`, Apache-2.0), dans le framework MLX existant ; pas de
+  dépendance SPM nouvelle, MLX 0.32.3 lié une fois. Un encodeur BPE de
+  Qwen2 à nous remplace swift-transformers, vérifié jeton pour jeton contre
+  `transformers`. (Remplace la puce « mlx-audio-swift en dépendance » pour
+  Qwen3-TTS.)
+- **Qwen3-TTS 0.6B Base avec une voix française fixe** (« Qwen3 0.6B · voix
+  française ») : un x-vector calculé une fois, hors ligne, sur l'extrait
+  SIWIS `expr_chap_s01_0011` (CC-BY-4.0, Idiap), livré avec l'app ; ce
+  n'est pas du clonage par l'utilisateur (qui reste hors périmètre).
+- **Qwen3-TTS 1.7B CustomVoice 8 bits** proposé **avec un avertissement**
+  dans sa fiche (« Lourd : lecture hachée au-delà de … ») ; le chiffre est
+  celui mesuré sur le port Swift, pas celui du banc Python.
+- **MagpieTTS multilingual 357M** 8 bits : le français d'abord (octets
+  byT5), l'anglais par le dictionnaire de NeMo livré avec l'app ; ses cinq
+  voix anglaises.
+- Défauts du port Qwen corrigés : le dialecte d'Eric et Dylan ne remplace la
+  langue qu'en chinois ; le chargeur n'écrit ni n'efface rien dans le
+  dossier du modèle.
+- **Plafonds mémoire de MLX** : la somme des besoins des modèles chargés
+  (Kokoro, dictée, Qwen, Magpie), par un petit registre, au lieu de
+  plafonds remis en dur.
+- **Suivi des mots** : l'estimation existante (`words = None`, répartition
+  au prorata des lettres de la forme parlée, déjà en place), plus la coupe
+  du silence de tête et de queue. Les débuts de mots par l'attention de
+  Magpie ne sont pas dans ce lot.
+- Interface : `TextSpeechCompute` reçoit aussi le dossier du modèle
+  (`warm_up`, `synthesize`, `release`) : la bibliothèque des voix peut
+  tenir un second modèle pour l'aperçu pendant que la lecture garde le
+  sien. `SpeechOutput` = échantillons et fréquence, rien de plus.
+- App macOS seulement ; le terminal est inchangé.
+
+Plan : `docs/superpowers/plans/2026-10-17-modeles-lot-3-lecture.md`.
+
 ### Dictée : moteurs nouveaux
 
 **Révisé le 16 oct. 2026 (lot 2), décisions de l'utilisateur :**
