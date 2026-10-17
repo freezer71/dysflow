@@ -183,7 +183,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Self.exportEspeakLocation()
             let compute = KokoroMLXCompute()
             kokoroCompute = compute
-            reader = SillonReader.withKokoro(compute: compute)
+            reader = SillonReader.withMlx(kokoro: compute, text: UnavailableTextSpeech())
         }
         #if DEBUG || SILLON_MESURE
         // Mode mesure : seul le lecteur et les mesures tournent. Retour avant le
@@ -457,4 +457,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     On les retrouve partout : options, listes, promesses.
     """
+}
+
+/// Remplacé par `TextSpeechMLXCompute` (lot 3, Tâche 8).
+final class UnavailableTextSpeech: TextSpeechCompute, @unchecked Sendable {
+    func load(modelDir: String, runtime: String) throws {
+        throw SillonError.Failed(message: "Calcul Metal indisponible")
+    }
+    func warmUp(modelDir: String) throws {}
+    func synthesize(modelDir: String, text: String, language: String, voice: String,
+                    cancel: SynthesisCancel) throws -> SpeechOutput {
+        throw SillonError.Failed(message: "Calcul Metal indisponible")
+    }
+    func release(modelDir: String) {}
 }
