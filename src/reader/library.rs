@@ -430,6 +430,21 @@ impl Reader {
     }
 }
 
+/// Un modèle tenu par l'aperçu de la bibliothèque, son aperçu fini : rien
+/// ne se synthétise ni ne sonne, seul le délai de garde court.
+#[cfg(test)]
+pub(super) fn settled_library_preview(r: &mut Reader) {
+    let engine: Arc<dyn TtsEngine> = Arc::new(crate::tts::silent::SilentEngine);
+    r.library_preview = Some(LibraryPreview {
+        model: "qwen3_tts_06b_base_8bit".into(),
+        engine: Arc::clone(&engine),
+        own: true,
+        previewer: Previewer::new(engine),
+        player: Player::silent(),
+        error: None,
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
