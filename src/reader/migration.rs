@@ -52,7 +52,9 @@ pub fn plan(config: &Config, available: &[&'static ModelPackage], installed: imp
     let Some(first) = kokoro.first().copied() else {
         return Step::Nothing;
     };
-    if config.engine.family == "kokoro" {
+    // Déjà sur un modèle de lecture du catalogue (Kokoro, Qwen3, Magpie) :
+    // rien à basculer, la réponse est retenue.
+    if models::CATALOG.iter().any(|p| p.kind == models::Kind::Speech && p.family == config.engine.family) {
         return Step::Record;
     }
     match kokoro.iter().copied().find(|p| installed(p)) {
@@ -938,5 +940,16 @@ mod tests {
         r.set_persistent(false);
         r.ensure_default_voice(Instant::now()).unwrap();
         assert!(r.download().is_none());
+    }
+
+    /// Un lecteur déjà sur un moteur à texte du catalogue n'est pas basculé
+    /// vers Kokoro par le passage unique : la réponse est seulement retenue.
+    #[test]
+    fn a_catalogued_text_model_is_not_migrated_to_kokoro() {
+        let mut c = Config::default();
+        c.engine.family = "magpie_tts_357m_8bit".into();
+        c.engine.model_path = "/m/magpie_tts_357m_8bit/config.json".into();
+        let available = models::available_with(true);
+        assert_eq!(plan(&c, &available, |_| true), Step::Record);
     }
 }
