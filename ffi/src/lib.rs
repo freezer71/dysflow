@@ -138,6 +138,10 @@ impl KokoroBackend for ForeignKokoro {
 /// - un modèle **par dossier** : `load`/`release` vont par paires pour un
 ///   même `model_dir`, et deux dossiers peuvent être tenus à la fois (la
 ///   lecture et l'aperçu de la bibliothèque) ;
+/// - le **même** dossier peut aussi être chargé deux fois à la fois
+///   (l'aperçu et le moteur de lecture sur la même voix) : l'app compte les
+///   `load` par dossier, ne charge qu'au premier et ne libère qu'au dernier
+///   `release` ;
 /// - `runtime` : `qwen3_tts_mlx` ou `magpie_mlx` ;
 /// - `language` : `fr` ou `en` ; `voice` : une voix du catalogue (vide à la
 ///   préparation : la voix par défaut du modèle) ;

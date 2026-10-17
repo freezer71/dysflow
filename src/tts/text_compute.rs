@@ -28,6 +28,9 @@ pub struct SpeechRaw {
 ///
 /// Un modèle par dossier : la lecture et l'aperçu de la bibliothèque peuvent
 /// tenir chacun le leur. `load` et `release` vont par paires, par dossier.
+/// Le même dossier peut être chargé deux fois à la fois (l'aperçu et le
+/// moteur de lecture sur la même voix) : le calcul compte les `load` par
+/// dossier et ne libère qu'au dernier `release`.
 /// Les appels arrivent de fils d'arrière-plan et bloquent jusqu'au
 /// résultat ; le calcul les sérialise lui-même (un seul verrou MLX).
 pub trait TextCompute: Send + Sync {
