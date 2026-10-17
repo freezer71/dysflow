@@ -29,4 +29,46 @@ final class MagpieRunnerTests: XCTestCase {
     func testTheEnglishDictionaryShipsInTheFramework() {
         XCTAssertNotNil(Bundle(for: MagpieRunner.self).url(forResource: "cmudict_ipa_en", withExtension: "txt"))
     }
+    /// Un morceau tient dans la borne de trames : 4 trames par octet + 50
+    /// ne dépassent jamais le contexte du décodeur (relevé §3.c), donc la
+    /// borne n'atteint pas le plafond qui couperait en plein mot.
+    func testAChunkNeverReachesTheFrameCeiling() {
+        let limit = MagpieRunner.maxChunkBytes(maxLen: 2048, bakedT: 110)
+        XCTAssertGreaterThan(limit, 300)
+        XCTAssertLessThanOrEqual(4 * limit + 50, 2048 - 110 - 1)
+        XCTAssertLessThan(limit, 2048, "et bien sous le contexte de l'encodeur de texte")
+    }
+
+    func testAShortSentenceStaysWhole() {
+        XCTAssertEqual(MagpieRunner.chunks("Bonjour, le monde.", maxBytes: 471), ["Bonjour, le monde."])
+    }
+
+    /// Relevé de revue : au-delà de 2 048 jetons, l'encodeur lirait hors de
+    /// sa table de positions. Un texte de 3 000 octets est découpé en
+    /// morceaux sous la borne, aux ponctuations ou aux espaces, sans mot coupé.
+    func testALongFrenchTextIsSplitAtWordBoundaries() {
+        let phrase = "L'été dernier, à Besançon, nous avons lu « Les Misérables » ; c'était long… "
+        var text = ""
+        while text.utf8.count < 3000 { text += phrase }
+        let limit = 471
+        let parts = MagpieRunner.chunks(text, maxBytes: limit)
+        XCTAssertGreaterThan(parts.count, 6)
+        for part in parts {
+            XCTAssertLessThanOrEqual(part.utf8.count, limit)
+            XCTAssertFalse(part.isEmpty)
+        }
+        let words = { (s: String) in s.split(whereSeparator: \.isWhitespace).map(String.init) }
+        XCTAssertEqual(parts.flatMap(words), words(text), "aucun mot coupé ni perdu")
+        XCTAssertTrue(parts.dropLast().allSatisfy { $0.last.map { ".…;!?".contains($0) } ?? false },
+                      "coupé après une ponctuation forte quand il y en a une")
+    }
+
+    /// Un « mot » plus long que la borne (une URL…) est coupé quand même,
+    /// entre deux caractères, jamais au milieu d'un octet UTF-8.
+    func testAWordLongerThanTheLimitIsCutBetweenCharacters() {
+        let word = String(repeating: "é", count: 300)  // 600 octets
+        let parts = MagpieRunner.chunks(word, maxBytes: 471)
+        XCTAssertEqual(parts.joined(), word)
+        XCTAssertTrue(parts.allSatisfy { $0.utf8.count <= 471 })
+    }
 }

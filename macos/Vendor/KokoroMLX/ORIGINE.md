@@ -338,7 +338,12 @@ Changements, fichier par fichier :
   `synthesize(…)` et `sampleCodeSequence(…)` prennent
   `shouldStop: (() -> Bool)? = nil`, consulté toutes les 20 trames (≈ 1 s de
   son) dans la boucle, et une fois avant le codec ; s'il dit vrai :
-  `MagpieTTSError.stopped`.
+  `MagpieTTSError.stopped`. Deux barrières dans `sampleCodeSequence` : plus
+  de jetons que le `max_len` de l'encodeur de texte (2 048) lève
+  `MagpieTTSError.textEncodingFailed` (« phrase trop longue pour Magpie »)
+  au lieu de lire la table des positions hors limites (comportement
+  indéfini dans MLX) ; les pas sont bornés à `max_len − baked_T − 1` (même
+  raison côté décodeur), quel que soit `params.maxSteps`.
 - `Tokenizer.swift` : `import NaturalLanguage` (inutilisé) retiré ; le
   français passe par `MagpieRunner.prepare` (NFC) avant `lowercased()` et
   byT5 : un « é » décomposé (PDF) aurait donné deux octets inattendus ;
@@ -346,6 +351,8 @@ Changements, fichier par fichier :
   non copiés) tombent sur `charLookup(text)`, comme le hindi ;
   `lookupGroups` et `lookupFlatTokens`, qui ne servaient qu'au chinois et au
   japonais, supprimés. Sillon ne lit Magpie qu'en français et en anglais.
+  Deux commentaires corrigés : celui du japonais (plus de translittération)
+  et celui de l'anglais (le code fait NFKC, pas le NFD de NeMo).
 - `EnglishG2P.swift` : `Bundle.module` (SPM seulement) →
   `Bundle(for: MagpieRunner.self)` (le framework) ; `spanish`, `german`
   supprimés ; `MagpieDictG2P` déclaré `@unchecked Sendable` (le dictionnaire
@@ -359,6 +366,25 @@ trames ≈ 23 s de l'amont, qui tronquaient une phrase longue ;
 échantillonnage d'origine, température 0,6, top-k 80 ; `nil` si arrêtée).
 Une synthèse à la fois, sous `MLXGate` dans l'app (cache des vocabulaires et
 graine de MLX partagés).
+
+**Garantie de longueur** (`MagpieRunner`) : une phrase de plus de
+`maxChunkBytes` octets (471 pour ce paquet : `(max_len − baked_T − 1 − 50)
+/ 4`) est découpée par `chunks` après une ponctuation forte, sinon faible,
+sinon à une espace (en dernier recours entre deux caractères, jamais dans
+un octet UTF-8), et les morceaux sont synthétisés puis mis bout à bout,
+`shouldStop` consulté entre deux. Ainsi la borne de trames d'un morceau
+(4 × octets + 50) reste sous le contexte du décodeur : aucun morceau n'est
+tronqué par le plafond, et l'encodeur de texte ne voit jamais plus de
+2 048 jetons. Tests : `MagpieRunnerTests` (texte français de 3 000 octets).
+
+`MagpieRunner.load` lit d'abord le dictionnaire anglais
+(`MagpieDictG2P.english.ensureLoaded()`) : absent, `missingFile` au
+chargement, au lieu d'un anglais lu lettre à lettre en silence
+(`phonemize` rend le texte brut si le dictionnaire manque).
+
+**Mémoire :** les poids 8 bits sont déquantifiés en FP32 au chargement
+(`WeightLoader.swift`), ≈ 1,6 Go en RAM pour 357 M de paramètres (doc de
+speech-swift).
 
 Le détail exact : `patches/magpie-mlx.patch` (`diff -ruN`, de l'amont vers
 `TTS/Magpie/`). Pour le refaire : télécharger

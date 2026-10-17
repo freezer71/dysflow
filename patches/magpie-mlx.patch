@@ -1,6 +1,6 @@
 diff -ruN a/Configuration.swift b/Configuration.swift
---- a/Configuration.swift	2026-10-17 21:41:47
-+++ b/Configuration.swift	2026-10-17 21:41:47
+--- a/Configuration.swift	2026-10-17 21:49:24
++++ b/Configuration.swift	2026-10-17 21:49:24
 @@ -1,24 +1,5 @@
  import Foundation
  
@@ -44,8 +44,8 @@ diff -ruN a/Configuration.swift b/Configuration.swift
      }
  }
 diff -ruN a/EnglishG2P.swift b/EnglishG2P.swift
---- a/EnglishG2P.swift	2026-10-17 21:41:47
-+++ b/EnglishG2P.swift	2026-10-17 21:41:47
+--- a/EnglishG2P.swift	2026-10-17 21:49:24
++++ b/EnglishG2P.swift	2026-10-17 21:49:24
 @@ -20,11 +20,9 @@
  ///
  /// The result is an IPA + punctuation string ready for char-level lookup
@@ -71,8 +71,8 @@ diff -ruN a/EnglishG2P.swift b/EnglishG2P.swift
          let text = try String(contentsOf: url, encoding: .utf8)
          dict.reserveCapacity(150_000)
 diff -ruN a/MagpieTTS.swift b/MagpieTTS.swift
---- a/MagpieTTS.swift	2026-10-17 21:41:47
-+++ b/MagpieTTS.swift	2026-10-17 21:41:47
+--- a/MagpieTTS.swift	2026-10-17 21:49:24
++++ b/MagpieTTS.swift	2026-10-17 21:49:24
 @@ -1,8 +1,6 @@
  import Foundation
  import MLX
@@ -155,7 +155,7 @@ diff -ruN a/MagpieTTS.swift b/MagpieTTS.swift
          if codes.isEmpty { return [] }
          let codeMatrix = MLXArray(codes.flatMap { $0 }, [codes.count, MagpieNumCodebooks])
              .reshaped([1, codes.count, MagpieNumCodebooks])
-@@ -130,50 +128,15 @@
+@@ -130,50 +128,24 @@
          return audio[0].asArray(Float.self)
      }
  
@@ -207,13 +207,24 @@ diff -ruN a/MagpieTTS.swift b/MagpieTTS.swift
 -                                     params: MagpieTTSParams) throws -> [[Int32]] {
 +                                     params: MagpieTTSParams,
 +                                     shouldStop: (() -> Bool)? = nil) throws -> [[Int32]] {
++        // Sillon : au-delà de `max_len`, les plongements de position seraient
++        // lus hors table (comportement indéfini dans MLX). `MagpieRunner`
++        // découpe le texte avant ; ce test reste la dernière barrière.
++        guard textIds.count <= textEncoder.config.maxLen else {
++            throw MagpieTTSError.textEncodingFailed(
++                "phrase trop longue pour Magpie : \(textIds.count) jetons, \(textEncoder.config.maxLen) au plus")
++        }
++        // Même raison côté décodeur : dernière position = baked_T + pas − 1.
++        let maxSteps = min(params.maxSteps, decoderConfig.maxLen - decoderConfig.bakedT - 1)
          let textIdsArr = MLXArray(textIds.map(Int32.init), [textIds.count])
              .reshaped([1, textIds.count])
          let memMask = MLXArray.ones(textIdsArr.shape, dtype: .float32)
-@@ -189,14 +152,12 @@
+@@ -188,15 +160,13 @@
+ 
          var frames: [[Int32]] = []
          var position = decoderConfig.bakedT
-         for step in 0..<params.maxSteps {
+-        for step in 0..<params.maxSteps {
++        for step in 0..<max(0, maxSteps) {
 +            if step % 20 == 0, shouldStop?() == true { throw MagpieTTSError.stopped }
              let codes = sampleLocalTransformer(
                  hLast: hLast,
@@ -226,7 +237,7 @@ diff -ruN a/MagpieTTS.swift b/MagpieTTS.swift
              if step >= params.minFrames, codes.contains(MagpieAudioEosId) {
                  break
              }
-@@ -216,94 +177,6 @@
+@@ -216,94 +186,6 @@
              eval(hLast)
          }
          return frames
@@ -322,8 +333,8 @@ diff -ruN a/MagpieTTS.swift b/MagpieTTS.swift
  
      // MARK: - LocalTransformer per-frame sampling
 diff -ruN a/Sampling.swift b/Sampling.swift
---- a/Sampling.swift	2026-10-17 21:41:47
-+++ b/Sampling.swift	2026-10-17 21:41:47
+--- a/Sampling.swift	2026-10-17 21:49:24
++++ b/Sampling.swift	2026-10-17 21:49:24
 @@ -1,11 +1,10 @@
  import Foundation
  import MLX
@@ -356,16 +367,42 @@ diff -ruN a/Sampling.swift b/Sampling.swift
          return argMax(logits, axis: -1).asType(Int32.self)
      }
 diff -ruN a/Tokenizer.swift b/Tokenizer.swift
---- a/Tokenizer.swift	2026-10-17 21:41:47
-+++ b/Tokenizer.swift	2026-10-17 21:41:47
+--- a/Tokenizer.swift	2026-10-17 21:49:24
++++ b/Tokenizer.swift	2026-10-17 21:49:24
 @@ -1,5 +1,4 @@
  import Foundation
 -import NaturalLanguage
  
  /// Per-language tokenizer config dumped from NeMo's MagpieTTS multilingual
  /// vocabulary. Each language's JSON ships the SAME shared 2360-entry vocab
-@@ -165,20 +164,10 @@
-                 .precomposedStringWithCompatibilityMapping  // close-enough NFC-ish
+@@ -52,9 +51,9 @@
+ ///   dropped if `<oov>` is absent — older bundles).
+ /// * `pad_with_space` handling per the per-language NeMo config (Mandarin and
+ ///   Hindi prepend / append a space).
+-/// * For Japanese (no shipped tokenizer JSON) we transliterate the input via
+-///   Apple's `CFStringTokenizer` → katakana before falling back to the EN
+-///   tokenizer's vocab. This is the same trick KokoroTTS uses.
++/// * Sillon : le japonais, le chinois, l'espagnol et l'allemand (G2P et
++///   dictionnaires non copiés) sont lus caractère par caractère ; Sillon
++///   ne lit Magpie qu'en français et en anglais.
+ ///
+ /// **What is intentionally simplified.** Each language ships a NeMo G2P /
+ /// transliteration model on the Python side (eSpeak-style rule sets for
+@@ -158,27 +157,19 @@
+     private func encodePerLanguage(_ text: String) -> [Int] {
+         switch language {
+         case .english:
+-            // NeMo `english_text_preprocessing(text, lower=False)`: NFD
+-            // normalise + strip combining marks. We keep case to feed the
+-            // dictionary, which is uppercased on lookup.
++            // NeMo `english_text_preprocessing(text, lower=False)` fait NFD
++            // et retire les diacritiques ; ici, NFKC seulement (forme
++            // composée de compatibilité : ligatures et pleine chasse
++            // ramenées à l'ASCII), diacritiques gardés. Casse gardée : le
++            // dictionnaire est cherché en minuscules.
+             let normalised = text
+-                .precomposedStringWithCompatibilityMapping  // close-enough NFC-ish
++                .precomposedStringWithCompatibilityMapping
              return charLookup(MagpieDictG2P.english.phonemize(normalised))
  
 -        case .spanish:
@@ -387,7 +424,7 @@ diff -ruN a/Tokenizer.swift b/Tokenizer.swift
  
          case .italian:
              return MagpieByT5Encoder.encode(text.lowercased(), language: .italian)
-@@ -186,84 +175,12 @@
+@@ -186,84 +177,12 @@
          case .vietnamese:
              return MagpieByT5Encoder.encode(text.lowercased(), language: .vietnamese)
  

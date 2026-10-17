@@ -51,9 +51,9 @@ public struct MagpieTokenizerConfig: Codable, Sendable {
 ///   dropped if `<oov>` is absent — older bundles).
 /// * `pad_with_space` handling per the per-language NeMo config (Mandarin and
 ///   Hindi prepend / append a space).
-/// * For Japanese (no shipped tokenizer JSON) we transliterate the input via
-///   Apple's `CFStringTokenizer` → katakana before falling back to the EN
-///   tokenizer's vocab. This is the same trick KokoroTTS uses.
+/// * Sillon : le japonais, le chinois, l'espagnol et l'allemand (G2P et
+///   dictionnaires non copiés) sont lus caractère par caractère ; Sillon
+///   ne lit Magpie qu'en français et en anglais.
 ///
 /// **What is intentionally simplified.** Each language ships a NeMo G2P /
 /// transliteration model on the Python side (eSpeak-style rule sets for
@@ -157,11 +157,13 @@ public final class MagpieTokenizer {
     private func encodePerLanguage(_ text: String) -> [Int] {
         switch language {
         case .english:
-            // NeMo `english_text_preprocessing(text, lower=False)`: NFD
-            // normalise + strip combining marks. We keep case to feed the
-            // dictionary, which is uppercased on lookup.
+            // NeMo `english_text_preprocessing(text, lower=False)` fait NFD
+            // et retire les diacritiques ; ici, NFKC seulement (forme
+            // composée de compatibilité : ligatures et pleine chasse
+            // ramenées à l'ASCII), diacritiques gardés. Casse gardée : le
+            // dictionnaire est cherché en minuscules.
             let normalised = text
-                .precomposedStringWithCompatibilityMapping  // close-enough NFC-ish
+                .precomposedStringWithCompatibilityMapping
             return charLookup(MagpieDictG2P.english.phonemize(normalised))
 
         case .french:

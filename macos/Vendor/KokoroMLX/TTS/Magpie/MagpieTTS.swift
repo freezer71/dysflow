@@ -137,6 +137,15 @@ public final class MagpieTTS {
                                      speaker: MagpieSpeaker,
                                      params: MagpieTTSParams,
                                      shouldStop: (() -> Bool)? = nil) throws -> [[Int32]] {
+        // Sillon : au-delà de `max_len`, les plongements de position seraient
+        // lus hors table (comportement indéfini dans MLX). `MagpieRunner`
+        // découpe le texte avant ; ce test reste la dernière barrière.
+        guard textIds.count <= textEncoder.config.maxLen else {
+            throw MagpieTTSError.textEncodingFailed(
+                "phrase trop longue pour Magpie : \(textIds.count) jetons, \(textEncoder.config.maxLen) au plus")
+        }
+        // Même raison côté décodeur : dernière position = baked_T + pas − 1.
+        let maxSteps = min(params.maxSteps, decoderConfig.maxLen - decoderConfig.bakedT - 1)
         let textIdsArr = MLXArray(textIds.map(Int32.init), [textIds.count])
             .reshaped([1, textIds.count])
         let memMask = MLXArray.ones(textIdsArr.shape, dtype: .float32)
@@ -151,7 +160,7 @@ public final class MagpieTTS {
 
         var frames: [[Int32]] = []
         var position = decoderConfig.bakedT
-        for step in 0..<params.maxSteps {
+        for step in 0..<max(0, maxSteps) {
             if step % 20 == 0, shouldStop?() == true { throw MagpieTTSError.stopped }
             let codes = sampleLocalTransformer(
                 hLast: hLast,
