@@ -41,7 +41,10 @@ extension ReaderModel {
     // MARK: - Bibliothèque des voix
 
     /// Toutes les voix des modèles de lecture installés, et celles de macOS.
-    func loadVoiceLibrary() async -> [LibraryVoice] { await call { $0.voiceLibrary() } }
+    func loadVoiceLibrary() async -> [LibraryVoice] {
+        let locale = Locale.current.identifier
+        return await call { $0.voiceLibrary(systemLocale: locale) }
+    }
 
     /// Fait entendre `text` avec une voix de la bibliothèque, à `speed` pour
     /// l'aperçu seulement (un autre modèle se charge pour lui).

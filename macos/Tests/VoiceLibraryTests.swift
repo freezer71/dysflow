@@ -129,17 +129,92 @@ final class VoiceLibraryTests: XCTestCase {
         XCTAssertEqual(backend.log.last, "arrêt")
     }
 
-    func testThePlayingMarkFollowsTheEngine() async {
+    func testThePlayingMarkClearsWhenTheEngineGoesQuiet() async {
         let backend = FakeVoiceLibraryBackend()
         backend.voices = sample
         let store = VoiceLibraryStore(backend: backend, sampleText: "Salut.", speed: 1, macVoices: { [] })
         await store.load()
         await store.toggle(store.visible[0])
-        store.previewChanged(active: false)
-        XCTAssertNotNil(store.playing, "pas encore vu en route : la demande vient de partir")
         store.previewChanged(active: true)
         store.previewChanged(active: false)
         XCTAssertNil(store.playing, "fini : le bouton redevient « Écouter »")
+    }
+
+    /// B demandée pendant que A sonne : le moteur reste occupé d'un trait
+    /// (aucun « faux » entre les deux) ; le repos suivant finit B.
+    func testPlayingBWhileAIsStillSoundingEndsWithNothingMarked() async {
+        let backend = FakeVoiceLibraryBackend()
+        backend.voices = sample
+        let store = VoiceLibraryStore(backend: backend, sampleText: "Salut.", speed: 1, macVoices: { [] })
+        await store.load()
+        let (a, b) = (store.visible[0], store.visible[1])
+        await store.toggle(a)
+        store.previewChanged(active: true)
+        await store.toggle(b)
+        XCTAssertEqual(store.playing, b.id)
+        store.previewChanged(active: false)
+        XCTAssertNil(store.playing)
+    }
+
+    /// Aucune voix cochée : rien n'est choisi d'avance, « Utiliser » ne
+    /// changerait rien en silence.
+    func testNothingIsPreselectedWhenNoRowIsInUse() async {
+        let backend = FakeVoiceLibraryBackend()
+        backend.voices = sample.map { v in
+            var v = v
+            v.active = false
+            return v
+        }
+        let store = VoiceLibraryStore(backend: backend, sampleText: "", speed: 1, macVoices: { [] })
+        await store.load()
+        XCTAssertNil(store.selection)
+        XCTAssertNil(store.selected)
+    }
+
+    /// La voix par défaut de macOS a sa ligne, cochée quand elle lit.
+    func testTheDefaultMacVoiceIsPreselectedWhenItReads() async {
+        let backend = FakeVoiceLibraryBackend()
+        backend.voices = sample.map { v in
+            var v = v
+            v.active = false
+            v.modelActive = v.modelId == "system"
+            return v
+        } + [LibraryVoice(modelId: "system", modelLabel: "macOS", voiceId: "", label: "Voix par défaut de macOS",
+                          language: "fr", accent: "française", gender: "", locale: "fr_FR", recommended: false,
+                          modelActive: true, active: true)]
+        let store = VoiceLibraryStore(backend: backend, sampleText: "", speed: 1, macVoices: { [] })
+        await store.load()
+        XCTAssertEqual(store.selection, "system/")
+        XCTAssertEqual(store.selected?.label, "Voix par défaut de macOS")
+        XCTAssertNil(store.selected?.qualityBadge)
+    }
+
+    /// Une ligne choisie que les filtres cachent n'est ni écoutée ni utilisée.
+    func testAHiddenSelectionIsNotActedOn() async {
+        let backend = FakeVoiceLibraryBackend()
+        backend.voices = sample
+        let store = VoiceLibraryStore(backend: backend, sampleText: "", speed: 1, macVoices: { [] })
+        await store.load()
+        XCTAssertEqual(store.selected?.voiceID, "am_fenrir")
+        store.filter.model = "system"
+        XCTAssertNil(store.selected)
+        store.filter.model = ""
+        XCTAssertEqual(store.selected?.voiceID, "am_fenrir")
+    }
+
+    /// La feuille ne montre que l'échec de son propre aperçu.
+    func testTheSheetShowsOnlyTheErrorOfItsOwnPreview() {
+        let failed = PreviewView(pending: false, playing: false, error: "vieil échec", preparing: false)
+        XCTAssertNil(VoiceLibrarySheet.status(failed, refusal: nil, requested: false))
+        XCTAssertEqual(VoiceLibrarySheet.status(failed, refusal: nil, requested: true), "vieil échec")
+        let preparing = PreviewView(pending: true, playing: false, error: nil, preparing: true)
+        XCTAssertEqual(VoiceLibrarySheet.status(preparing, refusal: nil, requested: true), "Préparation de la voix…")
+    }
+
+    func testTheTextLimitIsShown() {
+        XCTAssertEqual(VoiceLibraryStore.countLine("Bonjour"), "7 caractères sur 500 au plus")
+        XCTAssertEqual(VoiceLibraryStore.countLine(String(repeating: "a", count: 600)),
+                       "600 caractères : seuls les 500 premiers seront lus")
     }
 
     func testARefusedPreviewIsShownAndNothingPlays() async {

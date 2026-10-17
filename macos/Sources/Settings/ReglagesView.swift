@@ -185,6 +185,9 @@ struct ReglagesView: View {
     private func closeWindow() {
         store.endDragging()
         Task { await store.flush() }
+        // Filet : un modèle chargé pour la bibliothèque des voix ne survit
+        // pas à la fenêtre (la feuille le relâche déjà en se fermant).
+        Task { await model.releaseVoicePreview() }
     }
 }
 

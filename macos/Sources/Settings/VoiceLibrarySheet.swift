@@ -11,7 +11,10 @@ struct VoiceLibrarySheet: View {
     @State private var library: VoiceLibraryStore
     @State private var useError = ErrorNote()
     @State private var using = false
-    @FocusState private var listFocused: Bool
+    /// Où est le clavier : Retour n'« utilise » que depuis la liste, jamais
+    /// en écrivant (recherche, texte à lire).
+    enum Field: Hashable { case list, search, text }
+    @FocusState private var focus: Field?
     @Environment(\.dismiss) private var dismiss
 
     static let width: CGFloat = 760
@@ -48,7 +51,7 @@ struct VoiceLibrarySheet: View {
         .accessibilityIdentifier("bibliotheque-voix")
         .task {
             await library.load()
-            listFocused = true
+            focus = .list
         }
         .onChange(of: preview.pending || preview.playing) { _, active in library.previewChanged(active: active) }
         // Le chargement d'un autre modèle, et l'échec d'un aperçu, se disent à VoiceOver.
@@ -79,6 +82,9 @@ struct VoiceLibrarySheet: View {
         HStack(spacing: 14) {
             TextField("Rechercher une voix", text: $library.filter.search)
                 .textFieldStyle(.notion)
+                .focused($focus, equals: .search)
+                // Retour : la recherche est faite, le clavier passe à la liste.
+                .onSubmit { focus = .list }
                 .frame(minWidth: 180)
                 .accessibilityLabel("Rechercher une voix par son nom")
                 .accessibilityIdentifier("bibliotheque-recherche")
@@ -124,7 +130,7 @@ struct VoiceLibrarySheet: View {
                 .scrollContentBackground(.hidden)
                 .background(RoundedRectangle(cornerRadius: 16).fill(Palette.sidebar))
                 .clipShape(RoundedRectangle(cornerRadius: 16))
-                .focused($listFocused)
+                .focused($focus, equals: .list)
                 .onKeyPress(.space) {
                     guard let entry = library.selected else { return .ignored }
                     Task { await library.toggle(entry) }
@@ -139,20 +145,23 @@ struct VoiceLibrarySheet: View {
 
     @ViewBuilder
     private func statusLine(_ preview: PreviewView) -> some View {
-        let line = Self.status(preview, refusal: library.error ?? useError.text)
+        let refusal = library.error ?? useError.text
+        let line = Self.status(preview, refusal: refusal, requested: library.requested)
+        let failed = refusal != nil || (library.requested && preview.error != nil)
         Text(line ?? " ")
             .font(Typo.detail)
-            .foregroundStyle(line != nil && (library.error != nil || useError.text != nil || preview.error != nil)
-                             ? ErrorStyle.color : Palette.muted)
+            .foregroundStyle(failed ? ErrorStyle.color : Palette.muted)
             .fixedSize(horizontal: false, vertical: true)
             .accessibilityHidden(line == nil)
             .accessibilityIdentifier("bibliotheque-etat")
     }
 
-    /// L'état de l'aperçu, en clair : refus, échec, préparation, synthèse, écoute.
-    static func status(_ preview: PreviewView, refusal: String?) -> String? {
+    /// L'état de l'aperçu, en clair : refus, échec, préparation, synthèse,
+    /// écoute. L'échec du moteur ne se montre qu'une fois un aperçu demandé
+    /// ici (`requested`) : un vieil échec d'« Écouter » n'est pas le sien.
+    static func status(_ preview: PreviewView, refusal: String?, requested: Bool) -> String? {
         if let refusal { return refusal }
-        if let error = preview.error { return error }
+        if requested, let error = preview.error { return error }
         if preview.preparing { return preparing }
         if preview.pending { return "Synthèse de l'aperçu…" }
         if preview.playing { return "Écoute…" }
@@ -172,8 +181,21 @@ struct VoiceLibrarySheet: View {
                     .padding(6)
                     .frame(height: 64)
                     .background(RoundedRectangle(cornerRadius: 10).fill(Palette.control))
+                    .focused($focus, equals: .text)
+                    // Échap ferme la feuille, même ici (le texte en ferait
+                    // sinon une demande de complétion).
+                    .onKeyPress(.escape) {
+                        dismiss()
+                        return .handled
+                    }
                     .accessibilityLabel("Texte à lire")
+                    .accessibilityHint("500 caractères au plus")
                     .accessibilityIdentifier("bibliotheque-texte")
+                Text(VoiceLibraryStore.countLine(library.text))
+                    .font(Typo.detail)
+                    .foregroundStyle(library.text.count > VoiceLibraryStore.maxCharacters
+                                     ? ErrorStyle.color : Palette.muted)
+                    .accessibilityIdentifier("bibliotheque-compte")
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
@@ -208,7 +230,8 @@ struct VoiceLibrarySheet: View {
                 .accessibilityIdentifier("bibliotheque-annuler")
             Button("Utiliser") { Task { await use() } }
                 .buttonStyle(.notionPrimary)
-                .keyboardShortcut(.defaultAction)
+                // Retour n'utilise que hors des champs : là, il écrit ou valide la recherche.
+                .keyboardShortcut(focus == .search || focus == .text ? nil : .defaultAction)
                 .disabled(library.selected == nil || using)
                 .accessibilityLabel(library.selected.map { "Utiliser \($0.label)" } ?? "Utiliser")
                 .accessibilityIdentifier("bibliotheque-utiliser")

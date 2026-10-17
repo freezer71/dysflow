@@ -122,6 +122,7 @@ enum VoiceLibrary {
 /// tests le simulent.
 @MainActor
 protocol VoiceLibraryBackend: AnyObject {
+    /// Les voix ; la voix par défaut de macOS prend l'accent de la locale du Mac.
     func loadVoiceLibrary() async -> [LibraryVoice]
     func previewLibraryVoice(model: String, voice: String, text: String, speed: Float) async throws
     func stopPreview() async
@@ -153,9 +154,21 @@ final class VoiceLibraryStore {
     var speed: Float
     /// La ligne dont l'aperçu est demandé ou sonne.
     private(set) var playing: String?
+    /// Un aperçu a été demandé depuis la feuille : l'échec du moteur est le sien.
+    private(set) var requested = false
     var error: String? { errorNote.text }
 
     static let speedRange: ClosedRange<Float> = 0.5...3
+    /// Au-delà, le moteur coupe le texte de l'essai (`MAX_PREVIEW_CHARS`).
+    static let maxCharacters = 500
+
+    /// Ce que le compteur sous « Texte à lire » dit.
+    static func countLine(_ text: String) -> String {
+        let count = text.count
+        return count > maxCharacters
+            ? "\(count) caractères : seuls les \(maxCharacters) premiers seront lus"
+            : "\(count) caractères sur \(maxCharacters) au plus"
+    }
 
     init(backend: VoiceLibraryBackend, sampleText: String, speed: Float,
          macVoices: @escaping () -> [VoiceSection.MacVoice] = VoiceSection.installedMacVoices,
@@ -169,13 +182,16 @@ final class VoiceLibraryStore {
 
     var visible: [VoiceLibraryEntry] { VoiceLibrary.filtered(entries, filter) }
 
-    var selected: VoiceLibraryEntry? { entries.first { $0.id == selection } }
+    /// La ligne choisie, si les filtres la montrent : une ligne cachée n'est
+    /// ni écoutée ni utilisée.
+    var selected: VoiceLibraryEntry? { visible.first { $0.id == selection } }
 
-    /// Lit les voix, et choisit celle qui lit.
+    /// Lit les voix, et choisit celle qui lit — aucune si aucune n'est
+    /// cochée : « Utiliser » ne change alors rien sans qu'on ait choisi.
     func load() async {
         let voices = await backend.loadVoiceLibrary()
         entries = VoiceLibrary.entries(voices, macVoices: macVoices())
-        if selection == nil { selection = entries.first(where: \.active)?.id ?? visible.first?.id }
+        if selection == nil { selection = entries.first(where: \.active)?.id }
         loaded = true
     }
 
@@ -186,13 +202,18 @@ final class VoiceLibraryStore {
             return
         }
         errorNote.clear()
-        seenActive = false
         playing = entry.id
+        requested = true
         do {
             try await backend.previewLibraryVoice(model: entry.modelID, voice: entry.voiceID, text: text,
                                                   speed: speed)
+            // La demande a abouti : le moteur se prépare déjà (l'instantané
+            // est relu au retour). Le prochain repos dit la fin — même si
+            // l'aperçu précédent occupait le moteur sans interruption.
+            seenActive = true
         } catch {
             playing = nil
+            seenActive = false
             errorNote.fail(SettingsStore.message(of: error))
         }
     }
