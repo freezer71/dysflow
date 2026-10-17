@@ -141,9 +141,15 @@ enum SayAttempt {
 /// `say`, essayé deux fois s'il rate : une phrase sautée en silence est
 /// pire qu'une erreur, qui se voit et se dit.
 fn synthesize_say(text: &str, params: &TtsParams) -> Result<PcmBuffer> {
+    retry_once(|| say_once(text, params))
+}
+
+/// Rejoue `attempt` une fois après un raté passager ; une vraie erreur
+/// (voix inconnue, `say` en échec) ressort aussitôt, sans nouvel essai.
+fn retry_once(mut attempt: impl FnMut() -> Result<SayAttempt>) -> Result<PcmBuffer> {
     let mut glitch = String::new();
     for _ in 0..2 {
-        match say_once(text, params)? {
+        match attempt()? {
             SayAttempt::Spoken(pcm) => return Ok(pcm),
             SayAttempt::Glitch(why) => glitch = why,
         }
@@ -155,15 +161,20 @@ fn say_once(text: &str, params: &TtsParams) -> Result<SayAttempt> {
     let wav = TempFile::new("wav");
     {
         let _seul = SAY_LOCK.locked();
-        if let Some(glitch) = run_say(text, params, wav.path())? {
+        let cmd = say_command(text, params, wav.path());
+        if let Some(glitch) = run_with_deadline(cmd, say_deadline(text))? {
             return Ok(SayAttempt::Glitch(glitch));
         }
     }
-    let pcm = decode_wav(wav.path())?;
+    Ok(judge(text, decode_wav(wav.path())?))
+}
+
+/// Une sortie quasi vide pour un texte qui a de quoi être dit est un raté.
+fn judge(text: &str, pcm: PcmBuffer) -> SayAttempt {
     if has_speakable(text) && pcm.duration < MIN_SPOKEN {
-        return Ok(SayAttempt::Glitch(format!("sortie quasi vide ({:?})", pcm.duration)));
+        return SayAttempt::Glitch(format!("sortie quasi vide ({:?})", pcm.duration));
     }
-    Ok(SayAttempt::Spoken(pcm))
+    SayAttempt::Spoken(pcm)
 }
 
 /// Vrai quand le texte a de quoi être dit : de la ponctuation seule rend,
@@ -178,8 +189,7 @@ fn say_deadline(text: &str) -> Duration {
     Duration::from_secs(5) + Duration::from_millis(30) * text.chars().count() as u32
 }
 
-/// Lance `say` vers `out`. `Ok(Some(_))` : raté passager (bloqué, tué).
-fn run_say(text: &str, params: &TtsParams, out: &Path) -> Result<Option<String>> {
+fn say_command(text: &str, params: &TtsParams, out: &Path) -> Command {
     // 175 mots/minute est le débit neutre de `say`. Toujours ce débit : la
     // vitesse s'applique au son à la lecture, comme pour les autres voix.
     let rate = 175u32;
@@ -192,19 +202,33 @@ fn run_say(text: &str, params: &TtsParams, out: &Path) -> Result<Option<String>>
     cmd.arg("-o").arg(out);
     // `--` protège un texte qui commencerait par un tiret.
     cmd.arg("--").arg(text);
+    cmd
+}
 
+/// Lance `cmd` et attend sa fin, au plus `deadline`. `Ok(Some(_))` : raté
+/// passager — bloqué, donc tué et ramassé. Un code de sortie non nul est
+/// une vraie erreur, avec ce que le programme a dit sur stderr.
+fn run_with_deadline(mut cmd: Command, deadline: Duration) -> Result<Option<String>> {
     cmd.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::piped());
-
-    let mut child = cmd.spawn().context("échec du lancement de `say`")?;
-    let deadline = Instant::now() + say_deadline(text);
+    let program = cmd.get_program().to_string_lossy().into_owned();
+    let mut child = cmd
+        .spawn()
+        .with_context(|| format!("échec du lancement de `{program}`"))?;
+    let until = Instant::now() + deadline;
     let status = loop {
-        if let Some(status) = child.try_wait().context("attente de `say`")? {
-            break status;
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) => {}
+            Err(err) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(err).with_context(|| format!("attente de `{program}`"));
+            }
         }
-        if Instant::now() >= deadline {
+        if Instant::now() >= until {
             let _ = child.kill();
             let _ = child.wait();
-            return Ok(Some(format!("bloqué plus de {:?}", say_deadline(text))));
+            return Ok(Some(format!("bloqué plus de {deadline:?}")));
         }
         std::thread::sleep(Duration::from_millis(10));
     };
@@ -213,7 +237,7 @@ fn run_say(text: &str, params: &TtsParams, out: &Path) -> Result<Option<String>>
         if let Some(mut pipe) = child.stderr.take() {
             let _ = pipe.read_to_string(&mut stderr);
         }
-        return Err(anyhow!("`say` a échoué : {}", stderr.trim()));
+        return Err(anyhow!("`{program}` a échoué : {}", stderr.trim()));
     }
     Ok(None)
 }
@@ -343,12 +367,107 @@ mod tests {
         assert!((pcm.duration.as_secs_f64() - expected).abs() < 1e-6);
     }
 
-    /// `say` lancé plusieurs fois en même temps rendait parfois, sans erreur,
-    /// un fichier de 128 échantillons muets (5 ms) : la phrase était sautée
-    /// sans bruit. Ici, plusieurs sessions synthétisent en parallèle, comme
-    /// les workers du lecteur : chaque phrase doit avoir vraiment été dite.
+    fn spoken() -> PcmBuffer {
+        PcmBuffer::new(vec![0.1; 24_000], 24_000, 1)
+    }
+
+    /// La sortie ratée de `say` : 128 échantillons muets, 5 ms.
+    fn empty() -> PcmBuffer {
+        PcmBuffer::new(vec![0.0; 128], 24_000, 1)
+    }
+
+    #[test]
+    fn one_glitch_then_speech_succeeds_after_one_retry() {
+        let mut calls = 0;
+        let pcm = retry_once(|| {
+            calls += 1;
+            Ok(if calls == 1 { SayAttempt::Glitch("vide".into()) } else { SayAttempt::Spoken(spoken()) })
+        })
+        .expect("le second essai parle");
+        assert_eq!(calls, 2);
+        assert!(!pcm.is_empty());
+    }
+
+    #[test]
+    fn two_glitches_are_a_visible_error_not_silence() {
+        let mut calls = 0;
+        let err = retry_once(|| {
+            calls += 1;
+            Ok(SayAttempt::Glitch(format!("raté {calls}")))
+        })
+        .expect_err("jamais de son vide");
+        assert_eq!(calls, 2, "un seul nouvel essai");
+        assert!(err.to_string().contains("raté 2"), "{err}");
+    }
+
+    #[test]
+    fn a_real_error_is_not_retried() {
+        let mut calls = 0;
+        let err = retry_once(|| {
+            calls += 1;
+            Err(anyhow!("voix inconnue"))
+        })
+        .expect_err("l'erreur ressort");
+        assert_eq!(calls, 1);
+        assert!(err.to_string().contains("voix inconnue"));
+    }
+
+    #[test]
+    fn a_near_empty_output_is_a_glitch_only_when_there_was_something_to_say() {
+        assert!(matches!(judge("Bonjour le monde.", empty()), SayAttempt::Glitch(_)));
+        assert!(matches!(judge("…", empty()), SayAttempt::Spoken(_)));
+        assert!(matches!(judge("Oui.", spoken()), SayAttempt::Spoken(_)));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_non_zero_exit_is_an_error_with_its_stderr() {
+        let mut cmd = Command::new("sh");
+        cmd.arg("-c").arg("echo 'voix introuvable' >&2; exit 1");
+        let err = run_with_deadline(cmd, Duration::from_secs(5)).expect_err("échec");
+        assert!(err.to_string().contains("voix introuvable"), "{err}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_finished_command_is_no_glitch() {
+        let outcome = run_with_deadline(Command::new("true"), Duration::from_secs(5)).expect("succès");
+        assert!(outcome.is_none());
+    }
+
+    /// Un `say` bloqué est tué et ramassé : le processus n'existe plus,
+    /// pas même en zombie, et l'essai compte comme raté.
+    #[cfg(unix)]
+    #[test]
+    fn a_blocked_command_is_killed_reaped_and_counts_as_a_glitch() {
+        let pid_file = TempFile::new("pid");
+        let mut cmd = Command::new("sh");
+        cmd.arg("-c")
+            .arg(format!("echo $$ > '{}'; exec sleep 30", pid_file.path().display()));
+        let started = Instant::now();
+        let outcome = run_with_deadline(cmd, Duration::from_millis(300)).expect("pas une erreur");
+        assert!(outcome.is_some_and(|why| why.contains("bloqué")));
+        assert!(started.elapsed() < Duration::from_secs(5), "tué à l'échéance");
+
+        let pid = std::fs::read_to_string(pid_file.path()).expect("pid écrit");
+        let alive = Command::new("kill")
+            .arg("-0")
+            .arg(pid.trim())
+            .stderr(Stdio::null())
+            .status()
+            .expect("kill -0")
+            .success();
+        assert!(!alive, "le processus bloqué doit être tué et ramassé");
+    }
+
+    /// Probabiliste et lent (~16 s de vrais `say`) : passé 3 fois sur 3 avant
+    /// la correction, les ratés du service étant rares (0 à 6 % des sorties).
+    /// Le comportement est couvert ci-dessus de façon déterministe ; à lancer
+    /// à la main pour mesurer :
+    /// `cargo test --lib parallel_macos_syntheses -- --ignored`.
     #[cfg(target_os = "macos")]
     #[test]
+    #[ignore]
     fn parallel_macos_syntheses_never_come_back_empty() {
         let engine = std::sync::Arc::new(SystemEngine::new());
         if engine.open_session().is_err() {
@@ -378,4 +497,3 @@ mod tests {
         }
     }
 }
-
