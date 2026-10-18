@@ -47,6 +47,9 @@ final class DictationController {
 
     private(set) var phase: Phase = .hidden
     private(set) var transcript = Transcript()
+    /// Le délai du dernier texte (`DictationEvent.latency`) ; `nil` tant
+    /// qu'il n'est pas connu, ou pour un moteur qui ne le dit pas.
+    private(set) var latency: Duration?
     /// Depuis quand le micro écoute (le chronomètre de la fenêtre).
     private(set) var listeningSince: Date?
     /// Le spectrogramme : lu par le dessin à chaque image, hors observation.
@@ -148,6 +151,7 @@ final class DictationController {
         let id = session
         willStart()
         transcript = Transcript()
+        latency = nil
         listeningSince = nil
         spectrum.reset()
         language = currentLanguage()
@@ -186,6 +190,8 @@ final class DictationController {
             transcript.receive(text, isFinal: isFinal)
         case .spectrum(let columns):
             spectrum.push(columns)
+        case .latency(let delay):
+            latency = delay
         }
     }
 

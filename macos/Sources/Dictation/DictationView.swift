@@ -1,9 +1,10 @@
 import SwiftUI
 
 /// La fenêtre de dictée : une petite carte sobre en bas de l'écran. En
-/// haut, l'icône de l'application où le texte ira et, au centre, huit
-/// barres fines qui suivent la voix ; dessous, les derniers mots entendus
-/// sur deux lignes (les provisoires plus pâles). Le fond de la carte, son
+/// haut, l'icône de l'application où le texte ira, au centre huit barres
+/// fines qui suivent la voix, à droite le délai du dernier texte ; dessous,
+/// les derniers mots entendus sur deux lignes (les provisoires plus pâles),
+/// qui s'écrivent lettre à lettre. Le fond de la carte, son
 /// filet et son ouverture sont dessinés par `DictationWindow` (Core Animation). Aucun bouton : le raccourci
 /// saisit, Échap annule ; seul « Autoriser » paraît quand il le faut.
 struct DictationView: View {
@@ -33,6 +34,8 @@ struct DictationView: View {
                 }
                 TargetIcon(target: controller.target)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                LatencyLabel(latency: controller.latency, theme: theme)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
             }
             .frame(height: VoiceBars.tallest)
             DictationLine(controller: controller, theme: theme)
@@ -65,6 +68,31 @@ struct TargetIcon: View {
         .frame(width: 14, height: 14)
         .help(target.map { "Saisie dans \($0.name)" } ?? "")
         .accessibilityLabel(target.map { "Saisie dans \($0.name)" } ?? "Saisie")
+    }
+}
+
+/// Le délai du dernier texte, discret, à droite des barres : rien tant
+/// qu'il n'est pas connu.
+struct LatencyLabel: View {
+    let latency: Duration?
+    let theme: Theme
+
+    var body: some View {
+        if let latency {
+            Text(Self.format(latency))
+                .font(.system(size: 10, weight: .medium).monospacedDigit())
+                .foregroundStyle(Color(nsColor: theme.chrome).opacity(0.8))
+                .help("Délai : de la fin de ce qui a été dit au texte affiché")
+                .accessibilityLabel("Délai : \(Self.format(latency))")
+                .accessibilityIdentifier("delai-dictee")
+        }
+    }
+
+    /// « 120 ms » sous la seconde, « 1,4 s » au-delà.
+    static func format(_ latency: Duration) -> String {
+        let ms = Double(latency.components.seconds) * 1000 + Double(latency.components.attoseconds) / 1e15
+        if ms < 1000 { return "\(Int(ms.rounded())) ms" }
+        return (ms / 1000).formatted(.number.precision(.fractionLength(1)).locale(Locale(identifier: "fr_FR"))) + " s"
     }
 }
 
@@ -148,10 +176,13 @@ final class BarMotion {
 // MARK: - Texte
 
 /// Les derniers mots entendus, sur deux lignes centrées (le début s'efface
-/// par l'avant) ; ou un message.
+/// par l'avant) ; ou un message. Les lettres nouvelles s'écrivent une à une
+/// (`TypingReveal`) au lieu d'arriver d'un bloc à chaque relecture.
 struct DictationLine: View {
     let controller: DictationController
     let theme: Theme
+    @State private var reveal = TypingReveal()
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     static let placeholder = "Parlez, le texte s'écrit ici."
 
@@ -174,8 +205,14 @@ struct DictationLine: View {
                 Text(Self.placeholder)
                     .foregroundStyle(Color(nsColor: theme.chrome).opacity(0.7))
             } else {
-                Text(Self.styled(controller.transcript, theme: theme,
-                                 from: Self.cut(controller.transcript.text, width: Self.width)))
+                let transcript = controller.transcript
+                // Au pas de l'écran tant que des lettres restent à écrire.
+                TimelineView(.animation(minimumInterval: 1.0 / 60,
+                                        paused: !reveal.isTyping(transcript.text))) { context in
+                    let shown = reveal.visible(transcript.text, at: context.date.timeIntervalSinceReferenceDate,
+                                               animated: !reduceMotion)
+                    Text(Self.styled(transcript, theme: theme, from: reveal.cut(shown), upTo: shown.count))
+                }
             }
         }
         .font(.system(size: Self.fontSize, weight: .medium))
@@ -225,11 +262,13 @@ struct DictationLine: View {
     }
 
     /// Le texte arrêté à l'encre ; les mots provisoires plus pâles. `from` :
-    /// le début de ce qui s'affiche (en caractères), précédé de « … ».
-    static func styled(_ transcript: Transcript, theme: Theme, from start: Int = 0) -> AttributedString {
+    /// le début de ce qui s'affiche (en caractères), précédé de « … » ;
+    /// `upTo` : sa fin (les lettres pas encore écrites), tout par défaut.
+    static func styled(_ transcript: Transcript, theme: Theme, from start: Int = 0,
+                       upTo end: Int? = nil) -> AttributedString {
         typealias Ink = AttributeScopes.SwiftUIAttributes.ForegroundColorAttribute
         let settledCount = transcript.settled.count
-        let full = transcript.text
+        let full = String(transcript.text.prefix(end ?? Int.max))
         let start = min(max(0, start), full.count)
         let index = full.index(full.startIndex, offsetBy: start)
         // La part arrêtée finit au même endroit dans `text` (puis une espace).
@@ -248,3 +287,58 @@ struct DictationLine: View {
     }
 }
 
+
+/// L'écriture lettre à lettre des mots nouveaux. Ce qui ne change pas reste ;
+/// une relecture qui corrige un mot déjà écrit repart de la première lettre
+/// qui diffère ; le reste s'écrit en `catchUp` au plus (25 lettres par
+/// seconde au moins), pour finir avant la relecture suivante. Sans
+/// animation (Réduire les animations) : tout, tout de suite.
+///
+/// `idle` est observé : il passe à vrai (hors du rendu en cours) quand tout
+/// est écrit, et l'horloge de `DictationLine` se met en pause.
+@MainActor @Observable
+final class TypingReveal {
+    static let catchUp: Double = 0.5
+    static let minimumRate: Double = 25
+
+    private(set) var idle = true
+    @ObservationIgnored private var target = ""
+    @ObservationIgnored private var shown: Double = 0
+    @ObservationIgnored private var rate: Double = minimumRate
+    @ObservationIgnored private var last: TimeInterval?
+    @ObservationIgnored private var cutCache: (text: String, start: Int)?
+
+    /// Vrai s'il reste des lettres de `text` à écrire.
+    func isTyping(_ text: String) -> Bool {
+        text != target || !idle
+    }
+
+    /// Ce qui est écrit de `text` à l'instant `now`.
+    func visible(_ text: String, at now: TimeInterval, animated: Bool) -> String {
+        if text != target {
+            let common = zip(target, text).prefix { $0 == $1 }.count
+            target = text
+            shown = min(shown, Double(common))
+            rate = max(Self.minimumRate, (Double(text.count) - shown) / Self.catchUp)
+        }
+        if !animated {
+            shown = Double(target.count)
+        } else if let last {
+            shown = min(Double(target.count), shown + rate * min(0.1, max(0, now - last)))
+        }
+        last = now
+        let done = shown >= Double(target.count)
+        // Pas pendant le rendu : au tour suivant.
+        if done != idle { Task { @MainActor in self.idle = done } }
+        return String(target.prefix(Int(shown)))
+    }
+
+    /// `DictationLine.cut` de ce texte, gardé tant qu'il ne change pas (la
+    /// mesure ne se refait pas à chaque image).
+    func cut(_ text: String) -> Int {
+        if let cutCache, cutCache.text == text { return cutCache.start }
+        let start = DictationLine.cut(text, width: DictationLine.width)
+        cutCache = (text, start)
+        return start
+    }
+}

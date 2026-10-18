@@ -361,6 +361,54 @@ final class DictationControllerTests: XCTestCase {
         XCTAssertEqual(Array(long)[start - 1], " ", "on coupe au début d'un mot")
     }
 
+    func testTheLatencyIsShownThenForgottenOnTheNextDictation() async {
+        let c = makeController()
+        c.toggle()
+        _ = await eventuallyTrue { c.phase == .listening }
+        XCTAssertNil(c.latency, "rien tant qu'aucune relecture n'est mesurée")
+        engine.send(.latency(.milliseconds(120)))
+        XCTAssertEqual(c.latency, .milliseconds(120))
+        c.cancel()
+        c.toggle()
+        XCTAssertNil(c.latency)
+    }
+
+    func testTheLatencyReadsInMillisecondsThenSeconds() {
+        XCTAssertEqual(LatencyLabel.format(.milliseconds(118)), "118 ms")
+        XCTAssertEqual(LatencyLabel.format(.milliseconds(1440)), "1,4 s")
+    }
+
+    func testNewLettersAreTypedOneByOne() {
+        let reveal = TypingReveal()
+        // Image par image, à 60 Hz.
+        func frames(_ text: String, from start: Double, to end: Double) -> String {
+            var shown = ""
+            for frame in stride(from: start, through: end, by: 1.0 / 60) {
+                shown = reveal.visible(text, at: frame, animated: true)
+            }
+            return shown
+        }
+        XCTAssertEqual(reveal.visible("Bonjour", at: 0, animated: true), "", "rien d'écrit au départ")
+        XCTAssertEqual(frames("Bonjour", from: 1.0 / 60, to: 0.1).count, 2, "25 lettres par seconde au moins")
+        XCTAssertEqual(frames("Bonjour", from: 0.1, to: 0.5), "Bonjour", "fini avant la relecture suivante")
+        XCTAssertEqual(reveal.visible("Bonjour à tous", at: 0.5, animated: true), "Bonjour",
+                       "ce qui est déjà écrit reste")
+        XCTAssertEqual(frames("Bonjour à tous", from: 0.5, to: 1.1), "Bonjour à tous")
+    }
+
+    func testACorrectionRestartsAtTheFirstDifferentLetter() {
+        let reveal = TypingReveal()
+        _ = reveal.visible("Je dict", at: 0, animated: false)
+        XCTAssertEqual(reveal.visible("Je dicte une phrase", at: 0, animated: true), "Je dict",
+                       "le début commun reste, la suite s'écrit")
+        XCTAssertEqual(reveal.visible("Tu dictes", at: 0, animated: true), "", "un début corrigé repart de zéro")
+    }
+
+    func testWithoutAnimationEverythingShowsAtOnce() {
+        let reveal = TypingReveal()
+        XCTAssertEqual(reveal.visible("Bonjour à tous", at: 0, animated: false), "Bonjour à tous")
+    }
+
     func testTheCutKeepsSettledAndPendingColors() {
         var t = Transcript()
         t.receive("Un deux trois.", isFinal: true)
@@ -368,6 +416,8 @@ final class DictationControllerTests: XCTestCase {
         let shown = DictationLine.styled(t, theme: .paper, from: 4)
         XCTAssertEqual(String(shown.characters), "…deux trois. quatre cinq")
         XCTAssertEqual(String(DictationLine.styled(t, theme: .paper).characters), "Un deux trois. quatre cinq")
+        XCTAssertEqual(String(DictationLine.styled(t, theme: .paper, upTo: 18).characters), "Un deux trois. qua",
+                       "les lettres pas encore écrites n'apparaissent pas")
     }
 
     func testTheBarsMakeAHillWithTheLowBandsInTheMiddle() {

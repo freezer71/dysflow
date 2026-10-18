@@ -244,6 +244,9 @@ final class MicTrialController {
                 timeline.speechOnset = clock()
                 speechHeard = true
             }
+        case .latency:
+            // L'essai mesure ses délais lui-même (`TrialTimeline`).
+            break
         }
     }
 

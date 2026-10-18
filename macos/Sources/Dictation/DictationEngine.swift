@@ -10,6 +10,10 @@ enum DictationEvent: Equatable, Sendable {
     case text(String, isFinal: Bool)
     /// Des tranches du spectre de la voix (voir `SpectrumAnalyzer`).
     case spectrum([[Float]])
+    /// Le délai du dernier texte : de la fin de l'audio qu'il couvre à son
+    /// arrivée (le temps de calcul d'une relecture). Seuls les modèles qui
+    /// relisent l'audio le disent.
+    case latency(Duration)
 }
 
 enum DictationError: Error, Equatable {
