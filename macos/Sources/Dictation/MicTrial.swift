@@ -39,6 +39,13 @@ enum TrialScore {
         return previous[heard.count]
     }
 
+    /// Vrai si `heard` dit la phrase mot pour mot (ponctuation et
+    /// majuscules mises à part) : l'essai peut s'arrêter seul.
+    static func isComplete(reference: String, heard: String) -> Bool {
+        let expected = words(reference)
+        return !expected.isEmpty && words(heard) == expected
+    }
+
     /// 0 à 100 : la part des mots de la phrase bien reconnus.
     static func precision(reference: String, heard: String) -> Double {
         let expected = words(reference)
@@ -123,6 +130,24 @@ struct SpeechOnsetDetector {
             }
         }
         return false
+    }
+}
+
+/// La fin de la parole : après le début repéré, `silence` tranches de suite
+/// (1,5 s) sans bande au-dessus du seuil de `SpeechOnsetDetector`. Une
+/// pause entre deux mots, plus courte, ne compte pas.
+struct SpeechEndDetector {
+    static let silence = 60
+
+    private var quiet = 0
+
+    /// Vrai dès que le silence dure assez (puis à chaque tranche, tant qu'il
+    /// dure).
+    mutating func push(_ columns: [[Float]]) -> Bool {
+        for column in columns {
+            quiet = (column.max() ?? 0) >= SpeechOnsetDetector.threshold ? 0 : quiet + 1
+        }
+        return quiet >= Self.silence
     }
 }
 
