@@ -3,9 +3,9 @@ import KokoroMLX
 
 /// La dictée par un modèle qui lit tout d'un bloc (Parakeet, Whisper,
 /// Canary) : le micro garde tout ce qui est dit, et le modèle relit le tout
-/// toutes les 1,5 s (`RollingTranscription`), un texte provisoire qui
-/// remplace le précédent ; à la fin, une dernière lecture donne le texte
-/// définitif.
+/// toutes les 0,4 à 1,5 s selon sa vitesse (`RollingTranscription`), un
+/// texte provisoire qui remplace le précédent, avec son délai ; à la fin,
+/// une dernière lecture donne le texte définitif.
 ///
 /// Le micro s'ouvre et `.listening` part tout de suite ; le modèle se charge
 /// pendant qu'on parle (rien n'est perdu : l'audio attend dans le tampon).
@@ -13,8 +13,8 @@ import KokoroMLX
 /// passent par `SpeechModelRunner` (sous `MLXGate`, hors du fil principal).
 @MainActor
 final class MLXDictationEngine: DictationEngine {
-    /// Entre deux relectures.
-    static let interval: Duration = .milliseconds(1500)
+    /// Entre deux relectures, avant la première mesure.
+    static let interval: Duration = RollingTranscription.slowest
     /// La boucle regarde l'heure à ce pas.
     static let tick: Duration = .milliseconds(100)
     /// Moins d'audio que cela (0,1 s) : rien à lire.
@@ -100,8 +100,9 @@ final class MLXDictationEngine: DictationEngine {
         events = nil
     }
 
-    /// Toutes les 100 ms, l'heure ; toutes les 1,5 s, une relecture de tout
-    /// l'audio. La lecture est attendue dans la boucle : jamais deux à la fois.
+    /// Toutes les 100 ms, l'heure ; au rythme de `RollingTranscription`, une
+    /// relecture de tout l'audio, dont la durée règle le rythme et donne le
+    /// délai. La lecture est attendue dans la boucle : jamais deux à la fois.
     private func rollingLoop(capture: MicrophoneCapture,
                              events: @escaping @MainActor @Sendable (DictationEvent) -> Void,
                              generation id: Int) -> Task<Void, Never> {
@@ -111,9 +112,13 @@ final class MLXDictationEngine: DictationEngine {
             while !Task.isCancelled, self?.generation == id {
                 if rolling.shouldRead(now: .now, busy: false) {
                     let samples = capture.samples()
+                    let clock = ContinuousClock(), start = clock.now
                     if samples.count >= Self.minimumSamples,
                        let text = try? await runner.transcribe(samples, language: language) {
                         guard !Task.isCancelled, self?.generation == id else { return }
+                        let read = clock.now - start
+                        rolling.adapt(lastRead: read)
+                        events(.latency(read))
                         events(.text(text, isFinal: false))
                     }
                 }
