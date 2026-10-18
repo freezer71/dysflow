@@ -113,6 +113,11 @@ impl Cancel {
         self.0.as_ref().is_some_and(|test| test())
     }
 
+    /// Faux pour `never` : inutile de surveiller l'abandon.
+    pub fn may_cancel(&self) -> bool {
+        self.0.is_some()
+    }
+
     /// `Err(Cancelled)` si la synthèse est devenue inutile.
     pub fn check(&self) -> Result<()> {
         if self.is_cancelled() {
@@ -274,7 +279,7 @@ fn build_kokoro(
     let Some(dir) = crate::models::kokoro_dir(&settings.model_path) else {
         return (fallback, Some("Kokoro n'est pas installé — voir l'onglet Modèles".to_string()));
     };
-    let backend = match kokoro_backend(settings, mlx) {
+    let backend = match kokoro_backend(settings, &dir, mlx) {
         Ok(backend) => backend,
         Err(reason) => return (fallback, Some(reason)),
     };
@@ -290,21 +295,47 @@ fn build_kokoro(
 
 fn kokoro_backend(
     settings: &EngineSettings,
+    dir: &std::path::Path,
     mlx: Option<Arc<kokoro::SharedCompute>>,
 ) -> Result<Arc<dyn kokoro::KokoroBackend>, String> {
     if settings.model_path.ends_with(".onnx") {
-        // ONNX Runtime sur processeur, `min(engine.threads, 4)` fils. Un
-        // calcul propre à chaque construction : l'envelopper dans un
-        // `SharedCompute` neuf garde le même contrat que MLX.
+        // ONNX Runtime sur processeur, `min(engine.threads, 4)` fils.
         #[cfg(feature = "kokoro-onnx")]
-        return Ok(Arc::new(kokoro::SharedCompute::new(Arc::new(kokoro::onnx::OrtBackend::new(settings.threads)))));
+        return Ok(shared_ort(dir, settings.threads));
         #[cfg(not(feature = "kokoro-onnx"))]
-        return Err("Kokoro int8 : binaire compilé sans `kokoro-onnx`".to_string());
+        {
+            let _ = dir;
+            return Err("Kokoro int8 : binaire compilé sans `kokoro-onnx`".to_string());
+        }
     }
     match mlx {
         Some(backend) => Ok(backend as Arc<dyn kokoro::KokoroBackend>),
         None => Err("Calcul Metal indisponible — Kokoro MLX ne tourne que dans l'app, sur la puce graphique".to_string()),
     }
+}
+
+/// Le calcul ORT d'un dossier et d'un nombre de fils, partagé entre les
+/// moteurs qui vivent en même temps : au rechargement, l'ancien moteur part
+/// sur un autre fil pendant que le nouveau charge, et deux calculs à part
+/// tiendraient deux fois le modèle en mémoire. Seule une référence faible est
+/// gardée : le dernier moteur parti, le calcul part avec lui.
+#[cfg(feature = "kokoro-onnx")]
+fn shared_ort(dir: &std::path::Path, threads: u32) -> Arc<kokoro::SharedCompute> {
+    use crate::sync::LockExt;
+    use std::sync::{Mutex, Weak};
+    type Slot = Option<((std::path::PathBuf, u32), Weak<kokoro::SharedCompute>)>;
+    static SHARED: Mutex<Slot> = Mutex::new(None);
+    let mut slot = SHARED.locked();
+    if let Some((key, weak)) = slot.as_ref() {
+        if key.0 == dir && key.1 == threads {
+            if let Some(shared) = weak.upgrade() {
+                return shared;
+            }
+        }
+    }
+    let shared = Arc::new(kokoro::SharedCompute::new(Arc::new(kokoro::onnx::OrtBackend::new(threads))));
+    *slot = Some(((dir.to_path_buf(), threads), Arc::downgrade(&shared)));
+    shared
 }
 
 /// Moteur souhaité par l'utilisateur.
@@ -338,6 +369,18 @@ pub struct EngineSettings {
 mod tests {
     use super::*;
     use std::time::Duration;
+
+    #[cfg(feature = "kokoro-onnx")]
+    #[test]
+    fn engines_alive_together_share_one_ort_compute() {
+        let dir = std::path::Path::new("/nulle/part/kokoro-partage");
+        let first = shared_ort(dir, 3);
+        assert!(Arc::ptr_eq(&first, &shared_ort(dir, 3)), "deux calculs pour un même modèle");
+        assert!(!Arc::ptr_eq(&first, &shared_ort(dir, 2)), "d'autres fils : un autre calcul");
+        let weak = Arc::downgrade(&first);
+        drop(first);
+        assert!(weak.upgrade().is_none(), "le calcul survit à ses moteurs");
+    }
 
     fn kokoro_settings(model_path: &str) -> EngineSettings {
         EngineSettings {

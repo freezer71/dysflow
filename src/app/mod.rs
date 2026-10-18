@@ -112,6 +112,9 @@ pub struct App {
 
     status: String,
     status_until: Option<Instant>,
+    /// Dernière erreur de la sortie audio déjà dite : une sortie qui ne se
+    /// rouvre pas au réveil le dit une fois, pas à chaque tour.
+    output_error: Option<String>,
     pub notices: Vec<String>,
 
     /// Lancement du lecteur, origine du chrono de démarrage.
@@ -212,7 +215,8 @@ impl App {
         player.set_speed(config.voice.speed);
 
         let mut notices = notices;
-        if let Some(err) = player.error() {
+        let output_error = player.error().map(str::to_string);
+        if let Some(err) = &output_error {
             notices.push(format!("sortie audio indisponible : {err}"));
         }
 
@@ -255,6 +259,7 @@ impl App {
             should_quit: false,
             status: String::new(),
             status_until: None,
+            output_error,
             notices,
             started_at: Instant::now(),
             synthesis_started: false,
@@ -282,6 +287,12 @@ impl App {
     pub fn into_parts(mut self) -> (Synthesizer, Player) {
         self.player.flush();
         (self.synth, self.player)
+    }
+
+    /// Le document lu, la session finie : synthèse et sortie partent avec
+    /// le reste.
+    pub fn into_document(self) -> Document {
+        self.builder.into_document()
     }
 
     /// Nom du moteur, tel qu'il doit s'afficher à cet instant.
@@ -375,6 +386,47 @@ impl App {
     /// (un saut en attente, une pause avant le premier son).
     pub fn reading_word_progress(&self) -> f32 {
         self.current_word_fraction().map_or(0.0, |(_, fraction)| fraction)
+    }
+
+    /// Empreinte de ce que l'écran montre et qui change sans touche : mot et
+    /// phrase lus, chrono, avance de synthèse, messages, téléchargement.
+    /// La boucle ne refait la mise en page que si elle bouge.
+    pub fn frame_key(&self) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        self.current_sentence().hash(&mut h);
+        self.current_word().hash(&mut h);
+        self.player.is_playing().hash(&mut h);
+        self.doc().sentences.len().hash(&mut h);
+        self.input_done.hash(&mut h);
+        self.is_finished().hash(&mut h);
+        self.skipped.len().hash(&mut h);
+        self.status.hash(&mut h);
+        self.screen.notice.hash(&mut h);
+        self.notices.len().hash(&mut h);
+        self.config.voice.speed.to_bits().hash(&mut h);
+        let stats = self.synth.stats();
+        (stats.ready, stats.in_flight, stats.failed, stats.workers).hash(&mut h);
+        let engine = self.engine_name();
+        engine.hash(&mut h);
+        self.estimated_total().map(|s| s as u64).hash(&mut h);
+        match startup::phase(&engine, stats, self.synthesis_started) {
+            // Le sablier tourne par pas de 80 ms, le chrono par dixièmes.
+            Some(phase) => (phase as u8, self.startup_elapsed().as_millis() / 80).hash(&mut h),
+            None => self.estimated_elapsed().map(|s| s as u64).hash(&mut h),
+        }
+        self.voice_install_status().hash(&mut h);
+        self.previewer.pending_for().is_some().hash(&mut h);
+        h.finish()
+    }
+
+    /// Rien ne joue, rien n'arrive : la boucle peut s'éveiller moins souvent.
+    pub fn is_idle(&self) -> bool {
+        !self.player.is_playing()
+            && self.input_done
+            && self.screen.download.is_none()
+            && self.previewer.pending_for().is_none()
+            && self.startup_phase().is_none()
     }
 
     // ---------------------------------------------------------------- cycle
@@ -481,6 +533,22 @@ pub(crate) mod tests {
             Vec::new(),
             crate::audio::Player::silent(),
         )
+    }
+
+    #[test]
+    fn an_unchanged_screen_keeps_its_frame_key() {
+        // Le terminal ne remet le texte en page que si cette clé bouge : un
+        // tour sans rien de nouveau ne doit pas la changer, un message si.
+        let mut app = app_reading("Une phrase. Une autre.");
+        tick_until(&mut app, |app| {
+            let stats = app.synth.stats();
+            stats.ready == 2 && stats.in_flight == 0
+        });
+        let key = app.frame_key();
+        app.tick();
+        assert_eq!(app.frame_key(), key);
+        app.notify("message");
+        assert_ne!(app.frame_key(), key);
     }
 
     #[test]

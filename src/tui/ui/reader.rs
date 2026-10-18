@@ -40,6 +40,7 @@ pub(super) fn render_reader(frame: &mut Frame, app: &App, area: Rect) {
         current_word: app.current_word(),
         style: app.reading_style(),
         search: app.search(),
+        rows: viewport.height as usize,
         ..ReaderFrame::new(doc, width)
     });
 
@@ -463,6 +464,9 @@ pub(super) struct ReaderFrame<'a> {
     pub(super) style: ReadingStyle,
     /// Recherche en cours, dont les occurrences se signalent dans le texte.
     pub(super) search: Option<&'a crate::app::search::Search>,
+    /// Lignes visibles sous l'ancre : au-delà, rien ne se met en page. Zéro
+    /// ne borne rien.
+    pub(super) rows: usize,
 }
 
 impl<'a> ReaderFrame<'a> {
@@ -475,6 +479,7 @@ impl<'a> ReaderFrame<'a> {
             width,
             style: ReadingStyle { spacing: 0, ruler: false },
             search: None,
+            rows: 0,
         }
     }
 }
@@ -492,6 +497,7 @@ pub(super) fn document_lines(frame: ReaderFrame<'_>) -> ReaderView {
         width,
         style,
         search,
+        rows,
     } = frame;
     let mut lines: Vec<Line> = Vec::new();
     let mut anchor = 0usize;
@@ -514,6 +520,11 @@ pub(super) fn document_lines(frame: ReaderFrame<'_>) -> ReaderView {
     for (n, block) in window.iter().enumerate() {
         if block.id == anchor_block {
             anchor = lines.len();
+        }
+        // L'ancre se tient au tiers de l'écran : ce qui passe sa hauteur
+        // sous elle ne se verrait pas, inutile de le mettre en page.
+        if rows > 0 && block.id > anchor_block && lines.len() >= anchor + rows {
+            break;
         }
         let is_current_block = block.id == current_block;
         // Les lignes d'un même tableau se tiennent : une ligne vide entre
@@ -547,6 +558,9 @@ pub(super) fn document_lines(frame: ReaderFrame<'_>) -> ReaderView {
         for id in block.sentences.0..block.sentences.1 {
             let Some(sentence) = doc.sentence(id) else { continue };
             let is_current_sentence = id == current_sentence;
+            // Seules les phrases trouvées ont des mots à souligner : les
+            // autres ne passent pas chaque mot à la comparaison.
+            let search = search.filter(|s| s.contains_sentence(id));
             for (i, word) in sentence.words.iter().enumerate() {
                 let is_current_word = is_current_sentence && current_word == Some(i);
                 let mut style = word_style(

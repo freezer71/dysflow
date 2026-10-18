@@ -414,11 +414,9 @@ impl Reader {
         app.remember_position();
         self.config = app.config.clone();
         self.resting_at = Some(app.current_sentence());
-        drop(app);
-        let language = self.current_language();
-        self.resting_doc = self.text.as_ref().map(|t| {
-            crate::doc::builder::parse_document_in(&t.markdown, self.config.code_policy(), &language)
-        });
+        // Le document de la session est celui qu'une nouvelle analyse
+        // rendrait : il est gardé tel quel, sans relire tout le texte.
+        self.resting_doc = self.text.as_ref().map(|_| app.into_document());
         self.engine = None;
     }
 

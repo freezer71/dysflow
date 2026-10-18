@@ -1223,8 +1223,9 @@ pub fn sessions_for_family(family: &str) -> u32 {
         // une session.
         f if f == "kokoro" || reads_text(f) => 1,
         // Les familles inconnues sont supposées lentes et parallélisables, la
-        // synthèse en avance valant mieux qu'un silence.
-        _ => (cores / 3).clamp(2, 4),
+        // synthèse en avance valant mieux qu'un silence ; jamais plus d'une
+        // session pour deux cœurs, pour que la lecture garde les siens.
+        _ => (cores / 3).clamp(2, 4).min((cores / 2).max(1)),
     }
 }
 
@@ -1421,7 +1422,10 @@ mod tests {
     #[test]
     fn kokoro_gets_a_single_session() {
         assert_eq!(sessions_for_family("kokoro"), 1);
-        assert!(sessions_for_family("inconnue") >= 2);
+        let cores = std::thread::available_parallelism().map_or(4, |n| n.get() as u32);
+        let unknown = sessions_for_family("inconnue");
+        assert!(unknown >= 1 && unknown <= (cores / 2).max(1), "{unknown} sessions pour {cores} cœurs");
+        assert!(cores < 4 || unknown >= 2);
     }
 
     #[test]

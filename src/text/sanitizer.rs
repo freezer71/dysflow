@@ -103,8 +103,13 @@ pub fn sanitize(raw: &str) -> String {
     // portent ainsi exactement les mêmes mots, dans le même ordre. C'est ce
     // qui permet au surlignage de suivre la voix sur un texte qui, lui, garde
     // la mise en page du fichier.
-    let layout = sanitize_layout(raw);
-    PATTERNS.whitespace.replace_all(&layout, " ").trim().to_string()
+    collapse_layout(&sanitize_layout(raw))
+}
+
+/// La prose d'un texte déjà passé par [`sanitize_layout`] : ce que rendrait
+/// `sanitize`, sans refaire le nettoyage.
+pub fn collapse_layout(layout: &str) -> String {
+    PATTERNS.whitespace.replace_all(layout, " ").trim().to_string()
 }
 
 /// Retire le balisage : marqueurs markdown, filets, barres, URL.

@@ -22,7 +22,7 @@ pub struct KokoroRaw {
 ///
 /// `infer` rend `Err(Cancelled)` quand `cancel` dit la synthèse inutile :
 /// MLX le consulte avant le passage et entre les durées et le décodeur, ORT
-/// avant l'appel seulement.
+/// avant l'appel puis pendant (drapeau d'arrêt de `RunOptions`).
 pub trait KokoroBackend: Send + Sync {
     /// « MLX », « int8 » : pour le nom du moteur.
     fn label(&self) -> &'static str;

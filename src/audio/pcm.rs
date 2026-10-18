@@ -33,18 +33,22 @@ impl PcmBuffer {
     }
 
     pub fn new(samples: Vec<f32>, sample_rate: u32, channels: u16) -> Self {
+        Self::from_shared(samples.into(), sample_rate, channels)
+    }
+
+    /// Comme `new`, sur un tampon déjà partagé : rien n'est recopié.
+    pub fn from_shared(samples: Arc<[f32]>, sample_rate: u32, channels: u16) -> Self {
         let channels = channels.max(1);
         let sample_rate = sample_rate.max(1);
         let frames = samples.len() / channels as usize;
         let duration = Duration::from_secs_f64(frames as f64 / sample_rate as f64);
         Self {
-            samples: samples.into(),
+            samples,
             sample_rate,
             channels,
             duration,
         }
     }
-
 
     pub fn is_empty(&self) -> bool {
         self.samples.is_empty()
@@ -68,14 +72,20 @@ const CUT_FADE: Duration = Duration::from_millis(5);
 /// qui part d'un silence et y retourne : une tête coupée en pleine onde
 /// claquait à la jonction dès que la carte son ne tourne pas à la fréquence
 /// de la synthèse (24 kHz contre 48 kHz, le cas courant sur Mac).
-pub fn fade_edge(pcm: PcmBuffer, edge: Edge) -> PcmBuffer {
+///
+/// Sur place quand le son n'est pas partagé (sortie de synthèse), sinon sur
+/// une copie.
+pub fn fade_edge(mut pcm: PcmBuffer, edge: Edge) -> PcmBuffer {
     let ch = pcm.channels as usize;
     let frames = pcm.samples.len() / ch;
     let n = ((pcm.sample_rate as f64 * CUT_FADE.as_secs_f64()) as usize).min(frames);
     if n == 0 {
         return pcm;
     }
-    let mut samples = pcm.samples.to_vec();
+    if Arc::get_mut(&mut pcm.samples).is_none() {
+        pcm.samples = Arc::from(&pcm.samples[..]);
+    }
+    let samples = Arc::get_mut(&mut pcm.samples).expect("tampon à soi");
     for k in 0..n {
         // `k` : distance au bord, en trames ; gain nul au bord même.
         let gain = 0.5 * (1.0 - (std::f32::consts::PI * k as f32 / n as f32).cos());
@@ -87,7 +97,7 @@ pub fn fade_edge(pcm: PcmBuffer, edge: Edge) -> PcmBuffer {
             *sample *= gain;
         }
     }
-    PcmBuffer::new(samples, pcm.sample_rate, pcm.channels)
+    pcm
 }
 
 #[cfg(test)]
@@ -102,6 +112,17 @@ mod tests {
         assert_eq!(rest.samples.len(), 14);
         assert_eq!(rest.samples[0], 6.0);
         assert_eq!(rest.channels, 2);
+    }
+
+    #[test]
+    fn a_fade_leaves_a_shared_sound_untouched() {
+        let pcm = PcmBuffer::new(vec![1.0; 1000], 1000, 1);
+        let kept = pcm.clone();
+        let faded = fade_edge(pcm, Edge::Start);
+        assert_eq!(faded.samples[0], 0.0);
+        assert_eq!(kept.samples[0], 1.0, "le son partagé a été modifié");
+        assert_eq!(faded.samples[999], 1.0);
+        assert_eq!(faded.duration, kept.duration);
     }
 
     #[test]

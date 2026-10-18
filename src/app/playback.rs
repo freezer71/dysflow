@@ -21,7 +21,20 @@ impl App {
             self.status.clear();
             self.status_until = None;
         }
+        self.announce_output_error();
         self.announce_unavailable_voice();
+    }
+
+    /// La sortie audio, fermée au repos, peut ne pas se rouvrir (carte prise,
+    /// casque en reconnexion) : la lecture s'arrête alors, et le dit.
+    fn announce_output_error(&mut self) {
+        if self.player.error() == self.output_error.as_deref() {
+            return;
+        }
+        self.output_error = self.player.error().map(str::to_string);
+        if let Some(err) = self.output_error.clone() {
+            self.notify(&format!("sortie audio indisponible : {err}"));
+        }
     }
 
     /// Raison pour laquelle la voix ne peut rien dire : l'ouverture d'une
@@ -36,9 +49,10 @@ impl App {
     pub(super) fn announce_unavailable_voice(&mut self) {
         match self.voice_unavailable() {
             Some(reason) => {
-                let message = format!("{VOICE_UNAVAILABLE}{reason}");
-                if self.status != message {
-                    self.status = message;
+                // Appelé à chaque tour : le message ne se refait que si la
+                // raison a changé.
+                if self.status.strip_prefix(VOICE_UNAVAILABLE) != Some(reason.as_str()) {
+                    self.status = format!("{VOICE_UNAVAILABLE}{reason}");
                     self.status_until = None;
                 }
             }
@@ -303,13 +317,15 @@ impl App {
     pub fn estimated_elapsed(&self) -> Option<f64> {
         let rate = self.seconds_per_word()?;
         let current = self.current_sentence();
-        let words: usize = self
-            .doc()
+        // Les mots sont numérotés dans tout le document : le premier mot
+        // de la phrase courante (ou de la suivante qui en a) compte ceux
+        // d'avant, sans tout relire à chaque trame.
+        let doc = self.doc();
+        let words = doc
             .sentences
-            .iter()
-            .take(current)
-            .map(|s| s.words.len())
-            .sum();
+            .get(current..)
+            .and_then(|rest| rest.iter().find_map(|s| s.words.first()))
+            .map_or(doc.total_words, |w| w.index);
         let inside = self
             .doc()
             .sentence(current)

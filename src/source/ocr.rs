@@ -4,6 +4,7 @@
 //! module `layout` s'applique ensuite sans rien savoir de l'origine du texte.
 
 use anyhow::{Context, Result};
+use crate::sync::LockExt;
 use std::path::{Path, PathBuf};
 
 use super::pdf::Page;
@@ -28,7 +29,22 @@ const ENG: &[u8] = include_bytes!(concat!(
 ///
 /// La taille sert de témoin : réécrire cinq mégaoctets à chaque lancement
 /// serait inutile, mais un fichier tronqué doit être remplacé.
+///
+/// Une seule préparation par processus : les fils qui reconnaissent les pages
+/// d'un PDF s'ouvrent ensemble, et leurs fichiers temporaires, nommés par
+/// processus, se seraient écrasés l'un l'autre au premier lancement.
 fn tessdata_dir() -> Result<PathBuf> {
+    static READY: std::sync::Mutex<Option<PathBuf>> = std::sync::Mutex::new(None);
+    let mut ready = READY.locked();
+    if let Some(dir) = ready.as_ref() {
+        return Ok(dir.clone());
+    }
+    let dir = prepare_tessdata()?;
+    *ready = Some(dir.clone());
+    Ok(dir)
+}
+
+fn prepare_tessdata() -> Result<PathBuf> {
     let dir = crate::paths::cache_dir()
         .context("répertoire de cache introuvable")?
         .join("tessdata");

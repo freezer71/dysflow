@@ -100,16 +100,106 @@ fn clear_in(dir: &Path) -> std::io::Result<u64> {
 }
 
 fn read_in(dir: &Path, key: &str) -> Option<String> {
-    std::fs::read_to_string(dir.join(format!("{key}.md"))).ok()
+    let path = dir.join(format!("{key}.md"));
+    let markdown = std::fs::read_to_string(&path).ok()?;
+    // Relu, il redevient récent : la borne du cache part des documents
+    // qu'on n'ouvre plus, pas d'un scan relu chaque jour.
+    if let Ok(file) = std::fs::File::options().write(true).open(&path) {
+        let _ = file.set_modified(std::time::SystemTime::now());
+    }
+    Some(markdown)
 }
 
 fn write_in(dir: &Path, key: &str, markdown: &str) {
     let _ = crate::paths::write_atomic(&dir.join(format!("{key}.md")), markdown.as_bytes());
+    trim_in(dir, key, BUDGET);
+}
+
+/// Vrai pour une entrée d'une autre version de l'extraction (`v1-…` quand
+/// la courante est `v2-`).
+fn stale(stem: &str, current: &str) -> bool {
+    let Some(rest) = stem.strip_prefix('v') else { return false };
+    let digits = rest.chars().take_while(char::is_ascii_digit).count();
+    digits > 0 && rest[digits..].starts_with('-') && !stem.starts_with(current)
+}
+
+/// Place que le cache des documents peut prendre sur le disque.
+///
+/// Le markdown d'un livre de cinq cents pages pèse environ un mégaoctet : la
+/// borne garde des dizaines de documents, sans grossir sans fin.
+const BUDGET: u64 = 64 * 1024 * 1024;
+
+/// Retire ce que plus rien ne relira — les entrées d'une ancienne version
+/// de l'extraction — puis les plus anciennes, tant que le cache dépasse
+/// `budget`. L'entrée `keep`, qui vient d'être écrite, reste.
+fn trim_in(dir: &Path, keep: &str, budget: u64) {
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    let current = format!("v{CACHE_VERSION}-");
+    let mut kept = Vec::new();
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Some(stem) = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .filter(|_| path.extension().is_some_and(|e| e == "md"))
+        else {
+            continue;
+        };
+        if stale(stem, &current) {
+            let _ = std::fs::remove_file(&path);
+            continue;
+        }
+        if stem == keep {
+            continue;
+        }
+        let Ok(meta) = entry.metadata() else { continue };
+        let modified = meta.modified().unwrap_or(std::time::UNIX_EPOCH);
+        kept.push((modified, meta.len(), path));
+    }
+    let keep_size = std::fs::metadata(dir.join(format!("{keep}.md"))).map_or(0, |m| m.len());
+    let mut total: u64 = keep_size + kept.iter().map(|(_, size, _)| size).sum::<u64>();
+    // Les plus anciennes d'abord.
+    kept.sort_by_key(|(modified, _, _)| *modified);
+    for (_, size, path) in kept {
+        if total <= budget {
+            break;
+        }
+        if std::fs::remove_file(&path).is_ok() {
+            total -= size;
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_cache_drops_stale_versions_and_its_oldest_entries() {
+        let dir = std::env::temp_dir().join(format!("sillon-cache-trim-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("v0-ancien.md"), "x").unwrap();
+        let old = format!("v{CACHE_VERSION}-vieux");
+        std::fs::write(dir.join(format!("{old}.md")), "a".repeat(100)).unwrap();
+        // Les dates de fichiers ont une résolution grossière sur certains
+        // systèmes : la plus ancienne est vieillie explicitement.
+        let file = std::fs::File::options().write(true).open(dir.join(format!("{old}.md"))).unwrap();
+        file.set_modified(std::time::UNIX_EPOCH + std::time::Duration::from_secs(1)).unwrap();
+        drop(file);
+        let recent = format!("v{CACHE_VERSION}-recent");
+        std::fs::write(dir.join(format!("{recent}.md")), "b".repeat(100)).unwrap();
+        let new = format!("v{CACHE_VERSION}-neuf");
+        std::fs::write(dir.join(format!("{new}.md")), "c".repeat(100)).unwrap();
+
+        trim_in(&dir, &new, 250);
+
+        assert!(!dir.join("v0-ancien.md").exists(), "une ancienne version ne se relit plus");
+        assert!(!dir.join(format!("{old}.md")).exists(), "la plus ancienne part la première");
+        assert!(dir.join(format!("{recent}.md")).exists());
+        assert!(dir.join(format!("{new}.md")).exists(), "celle qu'on vient d'écrire reste");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     fn fixture(name: &str) -> PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR"))

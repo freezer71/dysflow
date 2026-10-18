@@ -211,19 +211,33 @@ fn enforce_length(sentence: &str, out: &mut Vec<String>) {
 /// Plus longue tranche depuis `start` qui tienne dans la fenêtre une fois dite.
 ///
 /// L'expansion n'est pas uniforme — un montant s'allonge, de la prose non —,
-/// donc aucun budget calculé d'avance ne convient : on mesure. La recherche
-/// est dichotomique pour ne pas mettre en mots la phrase entière à chaque pas.
+/// donc aucun budget calculé d'avance ne convient : on mesure. La borne
+/// haute se cherche en doublant depuis la fenêtre, puis se resserre par
+/// dichotomie : chaque mesure porte sur quelques centaines de caractères,
+/// jamais sur tout le reste du texte (un paragraphe sans point de 50 000
+/// caractères coûtait sinon des secondes).
 fn longest_that_fits(chars: &[char], start: usize) -> usize {
     let fits = |end: usize| {
         let slice: String = chars[start..end].iter().collect();
         spoken_len(&slice) <= MAX_SENTENCE_CHARS
     };
-    if fits(chars.len()) {
-        return chars.len();
-    }
     // Au moins un caractère avance, sans quoi la boucle appelante tournerait.
     let mut low = start + 1;
-    let mut high = chars.len();
+    let mut high;
+    let mut step = MAX_SENTENCE_CHARS;
+    loop {
+        let probe = (start + step).min(chars.len());
+        if fits(probe) {
+            if probe == chars.len() {
+                return probe;
+            }
+            low = low.max(probe);
+            step *= 2;
+        } else {
+            high = probe.saturating_sub(1).max(low);
+            break;
+        }
+    }
     while low < high {
         let middle = low + (high - low).div_ceil(2);
         if fits(middle) {
@@ -286,6 +300,18 @@ mod tests {
     #[test]
     fn drops_punctuation_only_fragments() {
         assert!(split_sentences("... ; . !").is_empty());
+    }
+
+    #[test]
+    fn splits_a_huge_unpunctuated_paragraph_in_linear_time() {
+        // Un texte collé ou reconnu sans un seul point : chaque coupe ne
+        // mesure que sa fenêtre, pas tout le reste du paragraphe.
+        let long = "mot ".repeat(15_000);
+        let started = std::time::Instant::now();
+        let s = split_sentences(&long);
+        assert!(s.len() > 100);
+        assert!(s.iter().all(|x| x.chars().count() <= MAX_SENTENCE_CHARS));
+        assert!(started.elapsed() < std::time::Duration::from_secs(5), "{:?}", started.elapsed());
     }
 
     #[test]

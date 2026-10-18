@@ -71,7 +71,9 @@ impl Default for EngineConfig {
             engine: "auto".to_string(),
             model_path: String::new(),
             family: String::new(),
-            threads: cores.clamp(1, 8),
+            // Un cœur reste à l'interface et au son ; au-delà de 4, ORT n'y
+            // gagne rien (`OrtBackend::new`).
+            threads: cores.saturating_sub(1).clamp(1, 4),
             // Ce que la famille demande : une session pour Kokoro. Voir
             // `models::sessions_for_family`.
             sessions: 0,

@@ -22,6 +22,15 @@ use crate::app::App;
 /// le rendu ne recalcule de toute façon que la fenêtre visible.
 const FRAME: Duration = Duration::from_millis(33);
 
+/// Cadence au repos : rien ne joue, rien n'arrive. Une touche réveille la
+/// boucle sur-le-champ ; seul ce qui change sans touche (fin d'un message)
+/// attend ce délai.
+const IDLE_FRAME: Duration = Duration::from_millis(250);
+
+/// Délai au-delà duquel l'écran se redessine même si sa clé n'a pas bougé :
+/// un état que la clé oublierait ne reste pas figé longtemps.
+const REFRESH: Duration = Duration::from_millis(500);
+
 pub fn run(mut app: App) -> Result<()> {
     let mut terminal = setup().context("initialisation du terminal")?;
     let result = event_loop(&mut terminal, &mut app);
@@ -41,18 +50,33 @@ pub fn run(mut app: App) -> Result<()> {
 
 fn event_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) -> Result<()> {
     let mut last_frame = Instant::now();
+    // Clé et instant de la dernière trame dessinée. La mise en page du texte
+    // coûte : on ne la refait que si ce qui se voit a changé (mot, phrase,
+    // message…), après une touche, ou passé `REFRESH`.
+    let mut drawn: Option<(u64, Instant)> = None;
+    let mut dirty = true;
     while !app.should_quit {
         app.tick();
-        terminal.draw(|frame| ui::render(frame, app))?;
+        let key = app.frame_key();
+        let stale = drawn.is_none_or(|(k, at)| k != key || at.elapsed() >= REFRESH);
+        if dirty || stale {
+            terminal.draw(|frame| ui::render(frame, app))?;
+            drawn = Some((key, Instant::now()));
+            dirty = false;
+        }
 
         // Consomme les touches en attente sans jamais dépasser une trame : les
         // frappes répétées (avance maintenue) restent réactives.
-        let budget = FRAME.saturating_sub(last_frame.elapsed());
+        let frame = if app.is_idle() { IDLE_FRAME } else { FRAME };
+        let budget = frame.saturating_sub(last_frame.elapsed());
         if event::poll(budget)? {
             loop {
                 match event::read()? {
-                    Event::Key(key) => keymap::handle(app, key),
-                    Event::Resize(_, _) => {}
+                    Event::Key(key) => {
+                        keymap::handle(app, key);
+                        dirty = true;
+                    }
+                    Event::Resize(_, _) => dirty = true,
                     _ => {}
                 }
                 if !event::poll(Duration::ZERO)? {
