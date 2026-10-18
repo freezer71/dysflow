@@ -13,7 +13,7 @@ macos/Libraries/
 macos/*.xcodeproj
 macos/build/
 # Le certificat qui signe l'app sur ce Mac (scripts/build-macos.sh).
-.sillon-signature
+.sillage-signature
 
 # Relevés de mesure : les scripts écrivent sous target/runs ; un ancien
 # runs/ à la racine (calme.sh du banc) reste hors du dépôt.

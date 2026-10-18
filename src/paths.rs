@@ -2,16 +2,17 @@
 //!
 //! Un seul nom de répertoire pour la configuration, les données et le cache,
 //! et un seul endroit pour le changer. Le lecteur s'est d'abord appelé
-//! `rs-reader` : un répertoire de l'ancien nom est repris tel quel — les
-//! modèles y pèsent des gigaoctets, les recopier serait absurde, et perdre
-//! les signets ne se pardonne pas.
+//! `rs-reader`, puis `sillon` (jusqu'au 18 oct. 2026) : un répertoire d'un
+//! ancien nom est repris tel quel — les modèles y pèsent des gigaoctets, les
+//! recopier serait absurde, et perdre les positions ne se pardonne pas.
 
 use std::path::{Path, PathBuf};
 
 /// Nom du lecteur, tel qu'il apparaît dans les chemins.
-pub const APP: &str = "sillon";
-/// Nom sous lequel les répertoires ont pu être créés avant.
-const FORMER: &str = "rs-reader";
+pub const APP: &str = "sillage";
+/// Noms sous lesquels les répertoires ont pu être créés avant, du plus
+/// récent au plus ancien : le premier trouvé est repris.
+const FORMER: &[&str] = &["sillon", "rs-reader"];
 
 /// Configuration : `config.toml`.
 pub fn config_dir() -> Option<PathBuf> {
@@ -58,7 +59,7 @@ pub(crate) fn test_scratch(name: &str) -> PathBuf {
     dir
 }
 
-/// `sillon-tests-<pid>` : créée au premier usage, retirée par `atexit` à la
+/// `sillage-tests-<pid>` : créée au premier usage, retirée par `atexit` à la
 /// sortie du processus de test. Au même moment, les racines laissées par un
 /// processus mort (test interrompu, plantage) partent aussi.
 #[cfg(test)]
@@ -78,7 +79,7 @@ fn test_base() -> PathBuf {
 }
 
 #[cfg(test)]
-const TEST_PREFIX: &str = "sillon-tests-";
+const TEST_PREFIX: &str = "sillage-tests-";
 
 /// Retire les racines de test dont le processus n'existe plus.
 #[cfg(test)]
@@ -167,8 +168,10 @@ pub fn save_json<T: serde::Serialize>(path: &Path, value: &T) -> anyhow::Result<
 
 fn adopt(base: &Path) -> PathBuf {
     let current = base.join(APP);
-    let former = base.join(FORMER);
-    if !current.exists() && former.is_dir() {
+    if current.exists() {
+        return current;
+    }
+    if let Some(former) = FORMER.iter().map(|name| base.join(name)).find(|dir| dir.is_dir()) {
         // Un échec — droits, disque — laisse simplement le lecteur repartir
         // à neuf dans le nouveau répertoire.
         let _ = std::fs::rename(&former, &current);
@@ -225,7 +228,7 @@ mod tests {
 
         let dir = adopt(&base);
 
-        assert_eq!(dir, base.join("sillon"));
+        assert_eq!(dir, base.join("sillage"));
         assert!(dir.join("models").is_dir(), "les modèles suivent");
         assert!(dir.join("bookmarks.json").is_file(), "les signets suivent");
         assert!(!base.join("rs-reader").exists(), "l'ancien répertoire n'est pas dupliqué");
@@ -236,14 +239,29 @@ mod tests {
     fn two_directories_are_left_alone() {
         let base = scratch();
         std::fs::create_dir_all(base.join("rs-reader")).unwrap();
-        std::fs::create_dir_all(base.join("sillon")).unwrap();
-        std::fs::write(base.join("sillon").join("config.toml"), "").unwrap();
+        std::fs::create_dir_all(base.join("sillage")).unwrap();
+        std::fs::write(base.join("sillage").join("config.toml"), "").unwrap();
 
         let dir = adopt(&base);
 
-        assert_eq!(dir, base.join("sillon"));
+        assert_eq!(dir, base.join("sillage"));
         assert!(dir.join("config.toml").is_file(), "le nouveau n'est pas écrasé");
         assert!(base.join("rs-reader").is_dir(), "l'ancien reste intact");
+        std::fs::remove_dir_all(&base).ok();
+    }
+
+    #[test]
+    fn the_sillon_directory_is_adopted_before_rs_reader() {
+        let base = scratch();
+        std::fs::create_dir_all(base.join("sillon").join("models")).unwrap();
+        std::fs::create_dir_all(base.join("rs-reader")).unwrap();
+
+        let dir = adopt(&base);
+
+        assert_eq!(dir, base.join("sillage"));
+        assert!(dir.join("models").is_dir(), "les modèles de sillon suivent");
+        assert!(!base.join("sillon").exists(), "sillon n'est pas dupliqué");
+        assert!(base.join("rs-reader").is_dir(), "le plus ancien reste intact");
         std::fs::remove_dir_all(&base).ok();
     }
 
@@ -251,7 +269,7 @@ mod tests {
     fn nothing_is_created_when_neither_exists() {
         let base = scratch();
         let dir = adopt(&base);
-        assert_eq!(dir, base.join("sillon"));
+        assert_eq!(dir, base.join("sillage"));
         assert!(!dir.exists(), "le répertoire n'est créé qu'à la première écriture");
         std::fs::remove_dir_all(&base).ok();
     }

@@ -29,7 +29,7 @@ enum DictationError: Error, Equatable {
     var message: String {
         switch self {
         case .microphoneDenied:
-            "sillon n'a pas accès au micro : autorisez-le pour dicter"
+            "sillage n'a pas accès au micro : autorisez-le pour dicter"
         case .noMicrophone:
             "Aucun micro branché"
         case .languageUnavailable:

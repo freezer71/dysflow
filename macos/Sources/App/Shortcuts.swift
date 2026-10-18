@@ -14,7 +14,7 @@ extension KeyboardShortcuts.Name {
 /// « Ouvrir à la connexion », activé au premier lancement.
 enum LoginItem {
     private static let firstLaunchKey = "loginItemOffered"
-    private static let log = Logger(subsystem: "fr.sillon.app", category: "connexion")
+    private static let log = Logger(subsystem: "fr.sillage.app", category: "connexion")
 
     static var isEnabled: Bool { SMAppService.mainApp.status == .enabled }
 

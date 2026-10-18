@@ -1,6 +1,6 @@
 import AppKit
 import XCTest
-@testable import Sillon
+@testable import Sillage
 
 @MainActor
 final class ErrorTextTests: XCTestCase {

@@ -2,11 +2,11 @@ import XCTest
 import KokoroMLX
 
 /// Fumée de Magpie copié dans le framework : le vrai modèle, seulement avec
-/// `SILLON_TTS_MODELS` (dossier contenant `magpie_tts_357m_8bit/`).
+/// `SILLAGE_TTS_MODELS` (dossier contenant `magpie_tts_357m_8bit/`).
 final class MagpieSmokeTests: XCTestCase {
     func runner() throws -> MagpieRunner {
-        guard let root = ProcessInfo.processInfo.environment["SILLON_TTS_MODELS"] else {
-            throw XCTSkip("SILLON_TTS_MODELS absent")
+        guard let root = ProcessInfo.processInfo.environment["SILLAGE_TTS_MODELS"] else {
+            throw XCTSkip("SILLAGE_TTS_MODELS absent")
         }
         let dir = URL(fileURLWithPath: root).appendingPathComponent("magpie_tts_357m_8bit")
         guard FileManager.default.fileExists(atPath: dir.path) else { throw XCTSkip("magpie absent") }

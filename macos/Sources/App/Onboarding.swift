@@ -1,7 +1,7 @@
 import AppKit
 import ApplicationServices
 
-/// Au premier lancement, dire pourquoi sillon demande l'accessibilité, et
+/// Au premier lancement, dire pourquoi sillage demande l'accessibilité, et
 /// mener au bon réglage. Sans elle, le presse-papiers seul.
 @MainActor
 enum Onboarding {
@@ -16,7 +16,7 @@ enum Onboarding {
         alert.messageText = "Lire ce que vous sélectionnez"
         alert.informativeText = """
         Pour lire le texte sélectionné dans n'importe quelle application, \
-        sillon a besoin de l'autorisation Accessibilité. Sans elle, il lit \
+        sillage a besoin de l'autorisation Accessibilité. Sans elle, il lit \
         seulement ce que vous copiez.
         """
         alert.addButton(withTitle: "Ouvrir les réglages")

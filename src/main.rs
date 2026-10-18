@@ -1,10 +1,10 @@
-//! `sillon` — lecteur audio en terminal pour du texte pipé ou un fichier.
+//! `sillage` — lecteur audio en terminal pour du texte pipé ou un fichier.
 
 use anyhow::Result;
 use clap::Parser;
 
-use sillon::launch::{self, Args, Launch, Prepared};
-use sillon::tui;
+use sillage::launch::{self, Args, Launch, Prepared};
+use sillage::tui;
 
 fn main() -> Result<()> {
     let args = Args::parse();

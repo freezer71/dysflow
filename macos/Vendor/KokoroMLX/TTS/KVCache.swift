@@ -13,7 +13,7 @@ public protocol KVCache: AnyObject {
 /// Standard KV cache implementation based on Python's KVCache
 /// See https://github.com/ml-explore/mlx-examples/blob/main/llms/mlx_lm/models/base.py#L11
 ///
-/// Sillon : recopié de `KVCache.swift:408-497` (allocation par pas de 256),
+/// Sillage : recopié de `KVCache.swift:408-497` (allocation par pas de 256),
 /// sans `BaseKVCache` ni l'état sérialisable (`innerState`, `state`,
 /// `isTrimmable`) ni la conversion en cache quantifié, qui servent aux
 /// autres caches de MLXLMCommon.

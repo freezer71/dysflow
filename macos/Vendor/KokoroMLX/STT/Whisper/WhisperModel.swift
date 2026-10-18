@@ -10,7 +10,7 @@ public final class WhisperModel: Module, STTGenerationModel {
 
     private var tokenizer: WhisperTokenizer?
 
-    /// Interne dans Sillon (public en amont) : un modèle sans vocabulaire ne
+    /// Interne dans Sillage (public en amont) : un modèle sans vocabulaire ne
     /// peut pas transcrire ; seul `fromDirectory(_:)` en fabrique un.
     init(config: WhisperConfig, generationConfig: WhisperGenerationConfig? = nil) {
         self.config = config
@@ -227,7 +227,7 @@ public final class WhisperModel: Module, STTGenerationModel {
             )
         )
 
-        // Sillon : les masques des jetons interdits, construits une fois
+        // Sillage : les masques des jetons interdits, construits une fois
         // (ils ne changent pas d'un pas à l'autre) et ajoutés dans le même
         // ordre qu'à l'amont : mêmes logits au bit près.
         let beginMask = beginSuppress.isEmpty ? nil : suppressMask(logits, ids: beginSuppress)
@@ -301,7 +301,7 @@ public final class WhisperModel: Module, STTGenerationModel {
         return categorical(scaled).item(Int.self)
     }
 
-    /// Sillon : le masque qu'ajoutait `suppressLogits` (−1e9 sur `ids`),
+    /// Sillage : le masque qu'ajoutait `suppressLogits` (−1e9 sur `ids`),
     /// au type et à la largeur de `logits`.
     private func suppressMask(_ logits: MLXArray, ids: [Int]) -> MLXArray {
         let length = logits.dim(-1)
@@ -312,7 +312,7 @@ public final class WhisperModel: Module, STTGenerationModel {
         return MLXArray(mask).asType(logits.dtype)
     }
 
-    /// Sillon : le masque qu'ajoutait `suppressFromIndex` (−1e9 à partir de
+    /// Sillage : le masque qu'ajoutait `suppressFromIndex` (−1e9 à partir de
     /// `fromIndex`) ; `nil` s'il n'y a rien à masquer.
     private func suppressFromIndexMask(_ logits: MLXArray, fromIndex: Int) -> MLXArray? {
         let length = logits.dim(-1)

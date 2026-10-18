@@ -1,6 +1,6 @@
 import Foundation
 
-/// L'encodeur BPE de Qwen2 (ByteLevel), écrit pour Sillon à la place de
+/// L'encodeur BPE de Qwen2 (ByteLevel), écrit pour Sillage à la place de
 /// swift-transformers : `vocab.json`, `merges.txt` et les jetons ajoutés de
 /// `tokenizer_config.json`. Seul l'encodage sert (le texte à dire). Ne lit
 /// que : n'écrit jamais dans le dossier du modèle. Parité :

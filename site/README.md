@@ -1,4 +1,4 @@
-# Le site de sillon
+# Le site de sillage
 
 Site de présentation, en Next.js : l'accueil (avantages, comparaison,
 questions), le catalogue des modèles (`/modeles`) et le téléchargement

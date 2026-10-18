@@ -1,10 +1,10 @@
 import XCTest
-@testable import Sillon
+@testable import Sillage
 
 @MainActor
 final class DocumentLayoutTests: XCTestCase {
     private func doc(_ markdown: String) -> DocView {
-        let r = SillonReader.silent()
+        let r = SillageReader.silent()
         r.openText(markdown: markdown, source: "t")
         XCTAssertTrue(waitUntil { r.snapshot().revision == 1 })
         return r.document()

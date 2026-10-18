@@ -12,6 +12,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// SwiftUI, le reste en paramètre.
     static private(set) weak var shared: AppDelegate?
 
+    /// Les réglages de sillon (l'ancien nom), repris avant que quoi que ce
+    /// soit ne les lise : première propriété stockée, donc initialisée en
+    /// premier.
+    private let formerDefaults: Void = FormerDefaults.adopt()
+
     /// Ce que les scènes SwiftUI lisent (`.environment(services)`).
     let services = AppServices()
 
@@ -21,7 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Hôte des tests unitaires : ni ouverture à la connexion, ni alerte, ni
     /// raccourcis globaux (ils s'inscriraient pour l'app de développement).
     let isUnitTesting = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
-    private(set) var reader: SillonReader!
+    private(set) var reader: SillageReader!
     /// Le calcul MLX de Kokoro ; jamais avec le lecteur muet des tests.
     private(set) var kokoroCompute: KokoroMLXCompute?
     /// Le calcul MLX des modèles de lecture à texte (Qwen3-TTS, MagpieTTS) ;
@@ -31,8 +36,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private(set) var readerIsSilent = false
 
     /// Sous XCTest (tests unitaires) comme sous les tests d'interface, le
-    /// lecteur est muet et n'écrit rien : jamais ~/.config/sillon ni
-    /// ~/Library/Application Support/sillon.
+    /// lecteur est muet et n'écrit rien : jamais ~/.config/sillage ni
+    /// ~/Library/Application Support/sillage.
     nonisolated static func usesSilentReader(arguments: [String], environment: [String: String]) -> Bool {
         isUITestLaunch(arguments) || environment["XCTestConfigurationFilePath"] != nil
     }
@@ -64,7 +69,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var pendingFiles: [URL] = []
     private var launchedWithFiles = false
 
-    /// `sillon fichier.pdf`, « Ouvrir avec », un fichier posé sur l'icône :
+    /// `sillage fichier.pdf`, « Ouvrir avec », un fichier posé sur l'icône :
     /// le panneau s'ouvre sur lui. Un seul document à la fois : le dernier.
     func application(_ application: NSApplication, open urls: [URL]) {
         let files = urls.filter(\.isFileURL)
@@ -114,7 +119,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         launchedWithFiles = LaunchKind.launchedWithFiles()
     }
 
-    /// sillon déjà lancé, rouvert depuis le Dock, le Finder, Spotlight ou un
+    /// sillage déjà lancé, rouvert depuis le Dock, le Finder, Spotlight ou un
     /// lanceur : le lecteur.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         guard let model else { return false }
@@ -181,20 +186,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         readerIsSilent = Self.usesSilentReader(arguments: ProcessInfo.processInfo.arguments,
                                                environment: ProcessInfo.processInfo.environment)
         if readerIsSilent {
-            reader = SillonReader.silent()
+            reader = SillageReader.silent()
         } else {
             Self.exportEspeakLocation()
             let compute = KokoroMLXCompute()
             kokoroCompute = compute
             let text = TextSpeechMLXCompute()
             textCompute = text
-            reader = SillonReader.withMlx(kokoro: compute, text: text)
+            reader = SillageReader.withMlx(kokoro: compute, text: text)
         }
-        #if DEBUG || SILLON_MESURE
+        #if DEBUG || SILLAGE_MESURE
         // Mode mesure : seul le lecteur et les mesures tournent. Retour avant le
         // modèle, le panneau, les raccourcis, l'ouverture à la connexion et
         // l'accueil ; sans l'argument, rien ne change. Absent de l'app livrée :
-        // `scripts/measure-macos.sh` construit sa propre copie (SILLON_MESURE).
+        // `scripts/measure-macos.sh` construit sa propre copie (SILLAGE_MESURE).
         if ProcessInfo.processInfo.arguments.contains("--measure-charge"), !isUnitTesting {
             Task { @MainActor [reader = reader!, compute = kokoroCompute] in
                 await Measure.charge(reader: reader, compute: compute)
@@ -272,7 +277,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 settings.open(SettingsSection.requested(in: arguments))
             }
             // Le seul ⌃⌥S, pour son test d'interface (quitter d'abord le
-            // sillon installé, qui tiendrait le même raccourci).
+            // sillage installé, qui tiendrait le même raccourci).
             if arguments.contains("--ui-testing-raccourcis") { installToggleShortcut() }
             // Le chemin d'un lancement fait à la main, sous les tests.
             if arguments.contains("--ui-testing-lancement-manuel") {
@@ -307,13 +312,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// sillon-espeak (la phonétisation de Kokoro) livré dans l'app : le
+    /// sillage-espeak (la phonétisation de Kokoro) livré dans l'app : le
     /// moteur le trouve par ces variables, posées avant la première voix.
     nonisolated static func exportEspeakLocation(bundle: Bundle = .main) {
-        let helper = bundle.bundleURL.appendingPathComponent("Contents/Helpers/sillon-espeak")
-        setenv("SILLON_ESPEAK", helper.path, 1)
+        let helper = bundle.bundleURL.appendingPathComponent("Contents/Helpers/sillage-espeak")
+        setenv("SILLAGE_ESPEAK", helper.path, 1)
         if let resources = bundle.resourceURL {
-            setenv("SILLON_ESPEAK_DATA", resources.path, 1)
+            setenv("SILLAGE_ESPEAK_DATA", resources.path, 1)
         }
     }
 
@@ -371,7 +376,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let readGate = ReadGate()
 
     /// « Lire » : la capture d'abord (l'application au premier plan garde le
-    /// clavier pour le ⌘C simulé), puis le panneau, sans activer sillon.
+    /// clavier pour le ⌘C simulé), puis le panneau, sans activer sillage.
     /// `capture` nil : le presse-papiers seul (depuis le menu). En mode
     /// mesure, ni modèle ni panneau : rien à faire (le menu plantait).
     func read(capture: (@MainActor () async -> CaptureOutcome)? = nil) async {

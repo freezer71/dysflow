@@ -146,7 +146,7 @@ macro_rules! kokoro_voice {
 
 /// Ce que les deux paquets Kokoro partagent : la configuration (elle porte
 /// le vocabulaire des phonèmes) et les voix. `p-fenrir60` n'y est pas : elle
-/// est livrée avec Sillon.
+/// est livrée avec Sillage.
 ///
 /// Les 29 voix du paquet sont toutes proposées (`KOKORO_VOICES`) ; `ff_siwis`
 /// et `am_fenrir` refont aussi `p-fenrir60` (`examples/kokoro_blend.rs`).
@@ -880,7 +880,7 @@ impl Download {
         let cancel = Arc::new(AtomicBool::new(false));
 
         let worker = (Arc::clone(&received), Arc::clone(&outcome), Arc::clone(&cancel));
-        crate::sync::spawn_named("sillon-telechargement", move || {
+        crate::sync::spawn_named("sillage-telechargement", move || {
             let (received, outcome, cancel) = worker;
             let mut base = 0u64;
             let mut result = Ok(());
@@ -1149,7 +1149,7 @@ pub fn voices_for_family(family: &str) -> &'static [VoiceOption] {
 }
 
 /// Voix de Kokoro : toutes celles du paquet, plus `p-fenrir60` livrée avec
-/// Sillon (16 oct. 2026 : une seule voix pour tout, choisie librement).
+/// Sillage (16 oct. 2026 : une seule voix pour tout, choisie librement).
 ///
 /// `language` dit l'accent de la voix, pas ce qu'elle a le droit de lire :
 /// la prononciation suit la langue du texte. La première d'une langue est

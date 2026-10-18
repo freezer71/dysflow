@@ -366,7 +366,7 @@ impl Synthesizer {
         let handles = (0..worker_count)
             .map(|_| {
                 let shared = Arc::clone(&shared);
-                crate::sync::spawn_named("sillon-synthese", move || worker_loop(shared))
+                crate::sync::spawn_named("sillage-synthese", move || worker_loop(shared))
             })
             .collect();
 

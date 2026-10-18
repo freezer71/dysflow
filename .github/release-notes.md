@@ -6,14 +6,14 @@ Lecteur à voix haute fait pour être suivi des yeux : markdown, PDF et images
 **Mac (puce Apple) et Linux (x86_64, ARM64)**, une seule commande :
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/freezer71/sillon/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/freezer71/sillage/main/install.sh | sh
 ```
 
 Elle choisit l'archive de votre système, vérifie son empreinte SHA-256 et
-installe sans `sudo` : l'app dans `/Applications` et la commande `sillon` sur
+installe sans `sudo` : l'app dans `/Applications` et la commande `sillage` sur
 Mac, le lecteur au terminal dans `~/.local` sous Linux.
 
-**Ou, sur Mac, le `.dmg`** ci-dessous : l'ouvrir, glisser Sillon dans
+**Ou, sur Mac, le `.dmg`** ci-dessous : l'ouvrir, glisser Sillage dans
 Applications. L'app n'est pas encore notariée par Apple : au premier
 lancement, macOS la bloque. Ouvrez *Réglages Système › Confidentialité et
 sécurité* et cliquez sur *Ouvrir quand même* (la commande ci-dessus évite ce
@@ -32,7 +32,7 @@ système lit en attendant.
 ## Désinstaller
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/freezer71/sillon/main/install.sh | sh -s -- --desinstaller
+curl -fsSL https://raw.githubusercontent.com/freezer71/sillage/main/install.sh | sh -s -- --desinstaller
 ```
 
 Chaque archive a son empreinte SHA-256 (`.sha256`).

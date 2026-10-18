@@ -374,7 +374,7 @@ fn reaper() -> &'static crossbeam_channel::Sender<Heavy> {
         // File bornée : son tableau est alloué une fois, l'envoi n'alloue rien.
         let (tx, rx) = crossbeam_channel::bounded::<Heavy>(64);
         std::thread::Builder::new()
-            .name("sillon-ramassage-audio".into())
+            .name("sillage-ramassage-audio".into())
             .spawn(move || for heavy in rx { drop(heavy) })
             .expect("fil de ramassage audio");
         tx

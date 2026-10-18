@@ -1,7 +1,7 @@
 import XCTest
 
 /// Audit d'accessibilité du lecteur et du mini. Écrit pour être lancé à la
-/// main : `-only-testing:SillonUITests/AccessibilityAuditUITests`.
+/// main : `-only-testing:SillageUITests/AccessibilityAuditUITests`.
 @MainActor
 final class AccessibilityAuditUITests: XCTestCase {
     func testReaderAndMiniPassTheAudit() throws {

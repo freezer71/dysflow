@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """Écrit THIRD-PARTY-RUST.txt : le texte des licences de chaque crate Rust liée
-statiquement dans ce que Sillon distribue.
+statiquement dans ce que Sillage distribue.
 
     python3 scripts/third-party-rust.py            # écrit THIRD-PARTY-RUST.txt
     python3 scripts/third-party-rust.py --check    # échoue si le fichier n'est pas à jour
 
 Deux livrables :
-  (a) la bibliothèque de l'app macOS : sillon-ffi, avec les features de
+  (a) la bibliothèque de l'app macOS : sillage-ffi, avec les features de
       build-ffi.sh (ocr), pour aarch64-apple-darwin ;
-  (b) le binaire du terminal : sillon, avec les features de package.sh
+  (b) le binaire du terminal : sillage, avec les features de package.sh
       (ocr,kokoro-onnx), pour Linux x86_64 et ARM64 et macOS.
 
 Le graphe vient de `cargo tree -e normal,no-proc-macro` (dépendances liées
@@ -35,18 +35,18 @@ OUT = ROOT / "THIRD-PARTY-RUST.txt"
 DELIVERABLES = [
     {
         "key": "app",
-        "title": "bibliothèque de l'app macOS (sillon-ffi, features ocr)",
-        "package": "sillon-ffi",
+        "title": "bibliothèque de l'app macOS (sillage-ffi, features ocr)",
+        "package": "sillage-ffi",
         "features": "ocr",
-        "metadata_features": "sillon-ffi/ocr",
+        "metadata_features": "sillage-ffi/ocr",
         "targets": ["aarch64-apple-darwin"],
     },
     {
         "key": "terminal",
-        "title": "binaire du terminal (sillon, features ocr,kokoro-onnx)",
-        "package": "sillon",
+        "title": "binaire du terminal (sillage, features ocr,kokoro-onnx)",
+        "package": "sillage",
         "features": "ocr,kokoro-onnx",
-        "metadata_features": "sillon/ocr,sillon/kokoro-onnx",
+        "metadata_features": "sillage/ocr,sillage/kokoro-onnx",
         "targets": ["x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu", "aarch64-apple-darwin"],
     },
 ]
@@ -81,7 +81,7 @@ def linked_crates(d):
         parts = line.split(" ")
         name, version = parts[0], parts[1].lstrip("v")
         if len(parts) > 2 and parts[2].startswith("(/"):
-            continue  # paquet du dépôt (sillon, sillon-ffi) : notre code
+            continue  # paquet du dépôt (sillage, sillage-ffi) : notre code
         crates.add((name, version))
     return crates
 
@@ -259,7 +259,7 @@ def main():
 
     standards = standard_texts([e[3] for e in entries])
     out = []
-    out.append("Sillon — licences des crates Rust liées statiquement")
+    out.append("Sillage — licences des crates Rust liées statiquement")
     out.append("=" * 52)
     out.append("")
     out.append("Généré par scripts/third-party-rust.py à partir de Cargo.lock. Livrables :")

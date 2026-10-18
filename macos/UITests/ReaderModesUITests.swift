@@ -1,7 +1,7 @@
 import XCTest
 
 /// Le lecteur et le mini, fermer, rouvrir. Lancé à la main, avec l'accord
-/// de l'utilisateur : `-only-testing:SillonUITests/ReaderModesUITests`.
+/// de l'utilisateur : `-only-testing:SillageUITests/ReaderModesUITests`.
 @MainActor
 final class ReaderModesUITests: XCTestCase {
     override func setUp() {

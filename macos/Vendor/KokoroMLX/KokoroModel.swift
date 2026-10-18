@@ -4,7 +4,7 @@ import MLXNN
 
 /// Kokoro-82M (StyleTTS2), repris de mlx-audio-swift (MIT, Prince Canuma,
 /// commit 244458d) : le passage avant seul. Phonétisation, voix, vitesse et
-/// minutage sont côté Sillon ; la vitesse reste 1.
+/// minutage sont côté Sillage ; la vitesse reste 1.
 public final class KokoroModel: Module, @unchecked Sendable {
     public let config: KokoroConfig
     public let sampleRate: Int
@@ -37,7 +37,7 @@ public final class KokoroModel: Module, @unchecked Sendable {
 
     // MARK: - Passage avant
 
-    /// `shouldStop` (ajout de Sillon) : consulté quand les durées sont
+    /// `shouldStop` (ajout de Sillage) : consulté quand les durées sont
     /// calculées, puis dans le décodeur après `encode`, après chaque bloc de
     /// `decode` et après chaque étage du générateur (chaque fois après une
     /// évaluation) ; s'il dit vrai, le passage s'arrête là et rend `nil`.
@@ -69,7 +69,7 @@ public final class KokoroModel: Module, @unchecked Sendable {
             .asType(.int32)[0]
 
         let durArray: [Int32] = predDur.asArray(Int32.self)
-        // Sillon : point d'arrêt, après la synchronisation des durées.
+        // Sillage : point d'arrêt, après la synchronisation des durées.
         if shouldStop?() == true { return nil }
         var indices = [MLXArray]()
         for (i, n) in durArray.enumerated() {

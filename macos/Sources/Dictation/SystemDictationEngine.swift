@@ -35,7 +35,7 @@ final class SystemDictationEngine: DictationEngine {
         let format: AVAudioFormat
     }
 
-    nonisolated static let log = Logger(subsystem: "fr.sillon.app", category: "dictee")
+    nonisolated static let log = Logger(subsystem: "fr.sillage.app", category: "dictee")
 
     /// Au-delà, la fin de l'analyse est abandonnée : la saisie n'attend pas.
     static let finishDeadline: Duration = .seconds(3)

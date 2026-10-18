@@ -5,14 +5,14 @@ import { commandeDesinstallation, commandeInstallation, depot, derniereVersion, 
 
 export const metadata: Metadata = {
   title: "Télécharger",
-  description: "Installez sillon en une commande sur Mac et Linux, ou téléchargez l'app macOS en .dmg.",
+  description: "Installez sillage en une commande sur Mac et Linux, ou téléchargez l'app macOS en .dmg.",
 };
 
 const etapes = [
   "Choisit la bonne version pour votre machine",
   "Vérifie l'empreinte du téléchargement",
   "Installe sans mot de passe administrateur",
-  "Ouvre sillon — la voix s'installe toute seule",
+  "Ouvre sillage — la voix s'installe toute seule",
 ];
 
 export default async function Telecharger() {
@@ -58,7 +58,7 @@ export default async function Telecharger() {
             <Pastille className="bg-carte-2 text-encre-douce">Puce Apple</Pastille>
           </div>
           <p className="mt-2 leading-relaxed text-encre-douce">
-            Ouvrez le .dmg et glissez Sillon dans Applications. macOS 14 ou plus ; la dictée demande
+            Ouvrez le .dmg et glissez Sillage dans Applications. macOS 14 ou plus ; la dictée demande
             macOS 26.
           </p>
           <div className="mt-6">

@@ -15,11 +15,11 @@ const atkinsonMono = Atkinson_Hyperlegible_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "sillon — le lecteur à voix haute qu'on suit des yeux",
-    template: "%s · sillon",
+    default: "sillage — le lecteur à voix haute qu'on suit des yeux",
+    template: "%s · sillage",
   },
   description:
-    "sillon lit vos documents à voix haute et surligne chaque mot. Voix neurales et dictée 100 % sur votre machine, gratuit et open source. macOS et Linux.",
+    "sillage lit vos documents à voix haute et surligne chaque mot. Voix neurales et dictée 100 % sur votre machine, gratuit et open source. macOS et Linux.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

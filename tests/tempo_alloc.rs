@@ -8,8 +8,8 @@ use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
 use std::sync::Arc;
 
-use sillon::audio::sonic::heap_calls_on_this_thread;
-use sillon::audio::tempo::{prepare, SpeedControl, Tempo};
+use sillage::audio::sonic::heap_calls_on_this_thread;
+use sillage::audio::tempo::{prepare, SpeedControl, Tempo};
 
 struct Counting;
 

@@ -1,4 +1,4 @@
-// Modifié par Sillon (Apache-2.0 §4(b)) : `MagpieTTSVariant` supprimé, `MagpieTTSError.stopped` ajouté — voir ORIGINE.md.
+// Modifié par Sillage (Apache-2.0 §4(b)) : `MagpieTTSVariant` supprimé, `MagpieTTSError.stopped` ajouté — voir ORIGINE.md.
 import Foundation
 
 /// Baked speaker identity. The model checkpoint embeds five speaker contexts
@@ -228,7 +228,7 @@ public enum MagpieTTSError: Error, LocalizedError {
     case unsupportedSpeaker(Int)
     case textEncodingFailed(String)
     case invalidConfig(String)
-    /// `shouldStop` a dit vrai en route (ajout de Sillon).
+    /// `shouldStop` a dit vrai en route (ajout de Sillage).
     case stopped
 
     public var errorDescription: String? {

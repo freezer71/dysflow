@@ -85,7 +85,7 @@ final class SettingsNavigation {
         -> UserDefaults {
         let testing = arguments.contains("--ui-testing") || environment["XCTestConfigurationFilePath"] != nil
         guard testing else { return .standard }
-        let name = "fr.sillon.tests.reglages"
+        let name = "fr.sillage.tests.reglages"
         guard let suite = UserDefaults(suiteName: name) else { return .standard }
         if arguments.contains(resetArgument) { suite.removePersistentDomain(forName: name) }
         return suite

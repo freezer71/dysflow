@@ -1,4 +1,4 @@
-/// Les deux formes de sillon, et « masqué ». Une seule fenêtre : le
+/// Les deux formes de sillage, et « masqué ». Une seule fenêtre : le
 /// lecteur (texte, en-tête, barre) ou le mini (une barre flottante).
 enum DisplayMode: String, Equatable, CaseIterable {
     case mini, reader, hidden

@@ -43,7 +43,7 @@ impl LanguageChoices {
     pub(crate) fn load_from(path: &Path) -> Self {
         let (choices, notice) = crate::paths::load_json(path, "choix de langue");
         if let Some(notice) = notice {
-            eprintln!("sillon : {notice}");
+            eprintln!("sillage : {notice}");
         }
         choices
     }

@@ -1,5 +1,5 @@
 import XCTest
-@testable import Sillon
+@testable import Sillage
 
 func text(_ s: String) -> SavedItem {
     SavedItem(types: [SavedType(type: "public.utf8-plain-text", data: Data(s.utf8))])
@@ -30,7 +30,7 @@ final class FakePasteboard: PasteboardAccess, @unchecked Sendable {
         items.first?.types.first { $0.type == "public.utf8-plain-text" }
             .flatMap { String(data: $0.data, encoding: .utf8) }
     }
-    var isConcealed: Bool { Sillon.isConcealed(items) }
+    var isConcealed: Bool { Sillage.isConcealed(items) }
     func imageData() -> Data? {
         items.lazy.compactMap { $0.types.first { imageTypes.contains($0.type) }?.data }.first
     }

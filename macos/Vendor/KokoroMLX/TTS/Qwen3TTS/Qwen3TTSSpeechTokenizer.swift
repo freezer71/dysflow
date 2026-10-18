@@ -948,11 +948,11 @@ final class Qwen3TTSSpeechTokenizer: Module {
             return try! JSONDecoder().decode(Qwen3TTSTokenizerDecoderConfig.self, from: json)
         }()
         _decoder.wrappedValue = Qwen3TTSSpeechTokenizerDecoder(config: decoderConfig)
-        // Sillon : pas d'encodeur (il ne sert qu'au clonage) ; ses poids
+        // Sillage : pas d'encodeur (il ne sert qu'au clonage) ; ses poids
         // `encoder_model.*` sont écartés au chargement (`loadSpeechTokenizer`).
     }
 
-    /// Sillon : l'encodeur du codec est retiré (clonage hors périmètre).
+    /// Sillage : l'encodeur du codec est retiré (clonage hors périmètre).
     var hasEncoder: Bool { false }
 
     func decode(_ audioCodes: MLXArray) -> (MLXArray, MLXArray) {
@@ -980,7 +980,7 @@ final class Qwen3TTSSpeechTokenizer: Module {
             wavChunk = wavChunk.squeezed(axis: 1)
             eval(wavChunk)
             chunks.append(wavChunk)
-            // Sillon : pas de `Memory.clearCache()` par paquet (cache plafonné
+            // Sillage : pas de `Memory.clearCache()` par paquet (cache plafonné
             // par `MLXBudget` dans l'app).
             startIndex = endIndex
         }
@@ -1117,7 +1117,7 @@ final class Qwen3TTSSpeechTokenizer: Module {
             }
 
             // Skip speaker encoder weights now handled separately
-            // Sillon : `Qwen3TTSSpeakerEncoder.stripSpeakerEncoderPrefix(from:) != nil`
+            // Sillage : `Qwen3TTSSpeakerEncoder.stripSpeakerEncoderPrefix(from:) != nil`
             // en ligne (l'encodeur de locuteur n'est pas copié).
             let keyParts = k.split(separator: ".")
             if let marker = keyParts.firstIndex(of: "speaker_encoder"), marker + 1 < keyParts.count {

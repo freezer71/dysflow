@@ -1,14 +1,15 @@
 #!/bin/sh
-# Installe sillon en une commande, depuis la dernière publication GitHub :
+# Installe sillage en une commande, depuis la dernière publication GitHub :
 #
-#   curl -fsSL https://raw.githubusercontent.com/freezer71/sillon/main/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/freezer71/sillage/main/install.sh | sh
 #
 # Sur un Mac à puce Apple : l'app dans /Applications (ou ~/Applications), et la
-# commande `sillon` qui l'ouvre. Sous Linux (x86_64, ARM64) : le lecteur au
-# terminal dans ~/.local/lib/sillon, et la commande `sillon`. L'empreinte
+# commande `sillage` qui l'ouvre. Sous Linux (x86_64, ARM64) : le lecteur au
+# terminal dans ~/.local/lib/sillage, et la commande `sillage`. L'empreinte
 # SHA-256 de chaque archive est vérifiée avant d'installer quoi que ce soit.
 #
-# SILLON_VERSION=0.2.1 : une version précise plutôt que la dernière.
+# SILLAGE_VERSION=0.3.0 : une version précise plutôt que la dernière (0.3.0 ou
+# plus : avant, le lecteur s'appelait sillon).
 # PREFIX=/usr/local    : où poser la commande (défaut ~/.local).
 #
 # Pour compiler depuis les sources, voir scripts/install.sh et
@@ -17,8 +18,8 @@
 # shellcheck disable=SC1112,SC2016
 set -eu
 
-# SILLON_DEPOT : un autre dépôt (ou un serveur local, pour les tests).
-DEPOT="${SILLON_DEPOT:-https://github.com/freezer71/sillon}"
+# SILLAGE_DEPOT : un autre dépôt (ou un serveur local, pour les tests).
+DEPOT="${SILLAGE_DEPOT:-https://github.com/freezer71/sillage}"
 PREFIX="${PREFIX:-$HOME/.local}"
 
 if [ -t 2 ]; then
@@ -29,19 +30,42 @@ fi
 etape() { printf '%s›%s %s\n' "$gras" "$fin" "$*" >&2; }
 echec() { printf '%sErreur :%s %s\n' "$rouge" "$fin" "$*" >&2; exit 1; }
 
+# sillon, l'ancien nom (jusqu'à 0.2.1) : son app, sa commande et son
+# dossier, s'ils viennent de lui. Ses modèles et réglages, eux, sont repris
+# par sillage au premier lancement. Jamais en test (SILLAGE_APPLICATIONS).
+retirer_sillon() {
+    [ -z "${SILLAGE_APPLICATIONS:-}" ] || return 0
+    ancienne="$PREFIX/bin/sillon"
+    if [ -L "$ancienne" ] && readlink "$ancienne" | grep -q 'lib/sillon/sillon'; then
+        rm -f "$ancienne"
+    elif [ -f "$ancienne" ] && grep -q "ouvre l'app" "$ancienne" 2>/dev/null; then
+        rm -f "$ancienne"
+    fi
+    rm -rf "$PREFIX/lib/sillon"
+    if [ "$(uname -s)" = Darwin ]; then
+        osascript -e 'quit app "Sillon"' >/dev/null 2>&1 || true
+        for vieille in /Applications/Sillon.app "$HOME/Applications/Sillon.app"; do
+            if [ -d "$vieille" ]; then
+                rm -rf "$vieille" && etape "Ancienne app retirée : $vieille"
+            fi
+        done
+    fi
+}
+
 # --desinstaller : retire ce que ce script a posé, et rien d'autre (les
 # modèles téléchargés et les réglages restent, pour une réinstallation).
 if [ "${1:-}" = --desinstaller ]; then
     if [ "$(uname -s)" = Darwin ]; then
-        osascript -e 'quit app "Sillon"' >/dev/null 2>&1 || true
-        rm -rf /Applications/Sillon.app "$HOME/Applications/Sillon.app"
-        donnees="$HOME/Library/Application Support/sillon"
+        osascript -e 'quit app "Sillage"' >/dev/null 2>&1 || true
+        rm -rf /Applications/Sillage.app "$HOME/Applications/Sillage.app"
+        donnees="$HOME/Library/Application Support/sillage"
     else
-        rm -rf "$PREFIX/lib/sillon"
-        donnees="${XDG_DATA_HOME:-$HOME/.local/share}/sillon"
+        rm -rf "$PREFIX/lib/sillage"
+        donnees="${XDG_DATA_HOME:-$HOME/.local/share}/sillage"
     fi
-    rm -f "$PREFIX/bin/sillon"
-    printf '%s✓ sillon est désinstallé.%s\n' "$vert$gras" "$fin" >&2
+    rm -f "$PREFIX/bin/sillage"
+    retirer_sillon
+    printf '%s✓ sillage est désinstallé.%s\n' "$vert$gras" "$fin" >&2
     printf 'Les modèles et les réglages restent dans %s (rm -r pour les retirer).\n' "$donnees" >&2
     exit 0
 fi
@@ -51,8 +75,8 @@ command -v tar >/dev/null 2>&1 || echec "tar est nécessaire"
 
 # La version : celle demandée, sinon celle de la dernière publication (la
 # redirection de /releases/latest donne son tag, sans passer par l'API).
-if [ -n "${SILLON_VERSION:-}" ]; then
-    version=${SILLON_VERSION#v}
+if [ -n "${SILLAGE_VERSION:-}" ]; then
+    version=${SILLAGE_VERSION#v}
 else
     tag=$(curl -fsSLI -o /dev/null -w '%{url_effective}' "$DEPOT/releases/latest") \
         || echec "impossible de joindre GitHub"
@@ -69,10 +93,10 @@ if [ "$systeme" = Darwin ] && [ "$(sysctl -n hw.optional.arm64 2>/dev/null)" = 1
     arch=arm64
 fi
 case "$systeme/$arch" in
-Darwin/arm64) cible=macos-arm64 ; archive="sillon-macos-arm64.zip" ;;
+Darwin/arm64) archive="sillage-macos-arm64.zip" ;;
 Darwin/*) echec "l'app demande un Mac à puce Apple (M1 et suivants)" ;;
-Linux/x86_64 | Linux/amd64) cible=linux-x86_64 ; archive="sillon-linux-x86_64.tar.gz" ;;
-Linux/aarch64 | Linux/arm64) cible=linux-aarch64 ; archive="sillon-linux-aarch64.tar.gz" ;;
+Linux/x86_64 | Linux/amd64) archive="sillage-linux-x86_64.tar.gz" ;;
+Linux/aarch64 | Linux/arm64) archive="sillage-linux-aarch64.tar.gz" ;;
 *) echec "$systeme $arch n'est pas pris en charge (macOS à puce Apple, Linux x86_64 ou ARM64)" ;;
 esac
 
@@ -80,15 +104,7 @@ tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT INT TERM
 
 url="$DEPOT/releases/download/v$version/$archive"
-if ! curl -fsSLI -o /dev/null "$url" 2>/dev/null; then
-    # Jusqu'à 0.2.0, le nom de l'archive portait la version.
-    case "$cible" in
-    linux-*) archive="sillon-$version-$cible.tar.gz" ;;
-    *) archive="sillon-$version-$cible.zip" ;;
-    esac
-    url="$DEPOT/releases/download/v$version/$archive"
-fi
-etape "Téléchargement de sillon $version ($archive)"
+etape "Téléchargement de sillage $version ($archive)"
 curl -fL --progress-bar -o "$tmp/$archive" "$url" || echec "téléchargement impossible : $url"
 curl -fsSL -o "$tmp/$archive.sha256" "$url.sha256" || echec "empreinte introuvable : $url.sha256"
 
@@ -102,63 +118,64 @@ fi
 etape "Empreinte SHA-256 vérifiée"
 
 mkdir -p "$PREFIX/bin"
+retirer_sillon
 
 if [ "$systeme" = Darwin ]; then
     # /Applications si on peut y écrire, sinon ~/Applications : jamais de sudo.
-    # SILLON_APPLICATIONS (tests) : un autre dossier, sans fermer ni ouvrir l'app.
-    apps=${SILLON_APPLICATIONS:-/Applications}
+    # SILLAGE_APPLICATIONS (tests) : un autre dossier, sans fermer ni ouvrir l'app.
+    apps=${SILLAGE_APPLICATIONS:-/Applications}
     if [ ! -w "$apps" ]; then
         apps="$HOME/Applications"
         mkdir -p "$apps"
     fi
-    if [ -z "${SILLON_APPLICATIONS:-}" ] && pgrep -xq Sillon; then
-        etape "Fermeture de sillon, ouvert"
-        osascript -e 'quit app "Sillon"' >/dev/null 2>&1 || true
+    if [ -z "${SILLAGE_APPLICATIONS:-}" ] && pgrep -xq Sillage; then
+        etape "Fermeture de sillage, ouvert"
+        osascript -e 'quit app "Sillage"' >/dev/null 2>&1 || true
         sleep 1
     fi
     ditto -x -k "$tmp/$archive" "$tmp/app"
-    [ -d "$tmp/app/Sillon.app" ] || echec "l'archive ne contient pas Sillon.app"
-    rm -rf "$apps/Sillon.app"
-    mv "$tmp/app/Sillon.app" "$apps/"
+    [ -d "$tmp/app/Sillage.app" ] || echec "l'archive ne contient pas Sillage.app"
+    rm -rf "$apps/Sillage.app"
+    mv "$tmp/app/Sillage.app" "$apps/"
     # Téléchargée par curl, l'app n'est pas mise en quarantaine ; on retire
     # quand même l'attribut, au cas où.
-    xattr -dr com.apple.quarantine "$apps/Sillon.app" 2>/dev/null || true
-    etape "Sillon.app installée dans $apps"
+    xattr -dr com.apple.quarantine "$apps/Sillage.app" 2>/dev/null || true
+    etape "Sillage.app installée dans $apps"
 
-    # La commande `sillon`, qui ouvre l'app — sauf si elle est déjà le
+    # La commande `sillage`, qui ouvre l'app — sauf si elle est déjà le
     # lecteur au terminal (installé depuis les sources), qu'on ne remplace pas.
-    commande="$PREFIX/bin/sillon"
-    if [ -L "$commande" ] && readlink "$commande" | grep -q 'lib/sillon/sillon'; then
+    commande="$PREFIX/bin/sillage"
+    if [ -L "$commande" ] && readlink "$commande" | grep -q 'lib/sillage/sillage'; then
         etape "$commande est le lecteur au terminal : laissé tel quel"
     else
         cat >"$commande" <<EOF
 #!/bin/sh
-# La commande \`sillon\` du Mac : ouvre l'app, pas le terminal.
+# La commande \`sillage\` du Mac : ouvre l'app, pas le terminal.
 # Installée par install.sh. Pour la retirer : rm "$commande"
-APP="\${SILLON_APP:-$apps/Sillon.app}"
-[ -d "\$APP" ] || { echo "sillon : \$APP introuvable" >&2; exit 1; }
+APP="\${SILLAGE_APP:-$apps/Sillage.app}"
+[ -d "\$APP" ] || { echo "sillage : \$APP introuvable" >&2; exit 1; }
 [ \$# -eq 0 ] && exec open -a "\$APP"
 exec open -a "\$APP" -- "\$@"
 EOF
         chmod +x "$commande"
     fi
-    [ -n "${SILLON_APPLICATIONS:-}" ] || open "$apps/Sillon.app" 2>/dev/null || true
+    [ -n "${SILLAGE_APPLICATIONS:-}" ] || open "$apps/Sillage.app" 2>/dev/null || true
 else
     mkdir "$tmp/paquet"
     tar -xzf "$tmp/$archive" -C "$tmp/paquet"
-    # Un seul dossier dans l'archive (sillon-<version>-linux-<arch>).
+    # Un seul dossier dans l'archive (sillage-<version>-linux-<arch>).
     dossier=$(find "$tmp/paquet" -mindepth 1 -maxdepth 1 -type d | head -1)
-    [ -n "$dossier" ] && [ -x "$dossier/sillon" ] || echec "l'archive ne contient pas le binaire sillon"
+    [ -n "$dossier" ] && [ -x "$dossier/sillage" ] || echec "l'archive ne contient pas le binaire sillage"
     mkdir -p "$PREFIX/lib"
-    rm -rf "$PREFIX/lib/sillon"
-    mv "$dossier" "$PREFIX/lib/sillon"
-    ln -sfn ../lib/sillon/sillon "$PREFIX/bin/sillon"
-    etape "Installé dans $PREFIX/lib/sillon"
-    "$PREFIX/bin/sillon" --check-kokoro >/dev/null 2>&1 \
-        || etape "Attention : Kokoro ne se charge pas ($PREFIX/bin/sillon --check-kokoro) ; la voix du système lira"
+    rm -rf "$PREFIX/lib/sillage"
+    mv "$dossier" "$PREFIX/lib/sillage"
+    ln -sfn ../lib/sillage/sillage "$PREFIX/bin/sillage"
+    etape "Installé dans $PREFIX/lib/sillage"
+    "$PREFIX/bin/sillage" --check-kokoro >/dev/null 2>&1 \
+        || etape "Attention : Kokoro ne se charge pas ($PREFIX/bin/sillage --check-kokoro) ; la voix du système lira"
 fi
 
-printf '\n%s✓ sillon %s est installé.%s\n' "$vert$gras" "$version" "$fin" >&2
+printf '\n%s✓ sillage %s est installé.%s\n' "$vert$gras" "$version" "$fin" >&2
 case ":$PATH:" in
 *":$PREFIX/bin:"*) ;;
 *)
@@ -167,10 +184,10 @@ case ":$PATH:" in
     ;;
 esac
 if [ "$systeme" = Darwin ]; then
-    printf '\nsillon est ouvert dans la barre des menus. La voix Kokoro s’installe toute seule.\n' >&2
-    printf 'Pour lire un fichier : %ssillon document.pdf%s\n' "$gras" "$fin" >&2
+    printf '\nsillage est ouvert dans la barre des menus. La voix Kokoro s’installe toute seule.\n' >&2
+    printf 'Pour lire un fichier : %ssillage document.pdf%s\n' "$gras" "$fin" >&2
 else
-    printf '\nPour lire un fichier : %ssillon document.md%s   ·   cat notes.md | sillon\n' "$gras" "$fin" >&2
+    printf '\nPour lire un fichier : %ssillage document.md%s   ·   cat notes.md | sillage\n' "$gras" "$fin" >&2
     printf 'La voix Kokoro (108 Mo) se télécharge toute seule à la première lecture.\n' >&2
 fi
-printf 'Pour désinstaller : %scurl -fsSL https://raw.githubusercontent.com/freezer71/sillon/main/install.sh | sh -s -- --desinstaller%s\n' "$gras" "$fin" >&2
+printf 'Pour désinstaller : %scurl -fsSL https://raw.githubusercontent.com/freezer71/sillage/main/install.sh | sh -s -- --desinstaller%s\n' "$gras" "$fin" >&2

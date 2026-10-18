@@ -11,7 +11,7 @@ fn fixture(name: &str) -> PathBuf {
 
 #[test]
 fn a_capture_becomes_markdown_the_reader_can_navigate() {
-    let markdown = sillon::source::load_with_cache(&fixture("capture.png"), false).expect("l'image doit se lire");
+    let markdown = sillage::source::load_with_cache(&fixture("capture.png"), false).expect("l'image doit se lire");
     assert!(markdown.contains("Spécification"), "accents perdus : {markdown}");
     assert!(
         markdown.contains("## 1. Contexte"),
@@ -21,9 +21,9 @@ fn a_capture_becomes_markdown_the_reader_can_navigate() {
 
 #[test]
 fn a_capture_produces_sentences_to_speak() {
-    use sillon::doc::builder::{parse_document, CodePolicy};
+    use sillage::doc::builder::{parse_document, CodePolicy};
 
-    let markdown = sillon::source::load_with_cache(&fixture("capture.png"), false).expect("l'image doit se lire");
+    let markdown = sillage::source::load_with_cache(&fixture("capture.png"), false).expect("l'image doit se lire");
     let doc = parse_document(&markdown, CodePolicy::Announce);
     let spoken: String = doc.sentences.iter().map(|s| s.text.as_str()).collect();
     assert!(

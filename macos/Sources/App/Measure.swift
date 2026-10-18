@@ -1,9 +1,9 @@
-#if DEBUG || SILLON_MESURE
+#if DEBUG || SILLAGE_MESURE
 import Foundation
 import KokoroMLX
 
 /// Mesures des seuils de la spec, sur le vrai moteur. Lancé par
-/// `scripts/measure-macos.sh` (`Sillon --measure`) ; écrit `MESURE nom valeur
+/// `scripts/measure-macos.sh` (`Sillage --measure`) ; écrit `MESURE nom valeur
 /// unité` sur la sortie standard, puis l'app quitte.
 ///
 /// Deux réserves sur ce que les chiffres veulent dire :
@@ -29,7 +29,7 @@ enum Measure {
     /// Échec d'une mesure : la ligne `MESURE erreur …` est déjà écrite.
     struct Echec: Error {}
 
-    static func run(reader: SillonReader) async {
+    static func run(reader: SillageReader) async {
         do {
             try await mesurer(reader: reader)
         } catch {
@@ -37,7 +37,7 @@ enum Measure {
         }
     }
 
-    private static func mesurer(reader: SillonReader) async throws {
+    private static func mesurer(reader: SillageReader) async throws {
         // À froid : voix au repos, puis le geste du raccourci.
         for i in 1...5 {
             reader.restVoice()
@@ -104,7 +104,7 @@ enum Measure {
     /// automatiquement (autoplay) : on attend que l'ouverture soit prise en
     /// compte (la révision change) et on ne bascule que si ça ne joue pas, sinon
     /// on mettrait en pause.
-    private static func ouvrirEtLire(_ reader: SillonReader, source: String) async throws {
+    private static func ouvrirEtLire(_ reader: SillageReader, source: String) async throws {
         let avant = reader.snapshot().revision
         reader.openText(markdown: text, source: source)
         try await attendre(reader) { $0.revision != avant }
@@ -113,13 +113,13 @@ enum Measure {
         }
     }
 
-    private static func attendreSon(_ reader: SillonReader) async throws {
+    private static func attendreSon(_ reader: SillageReader) async throws {
         try await attendre(reader) { $0.audible }
     }
 
     /// Attend la condition (10 s au plus, sondage toutes les 2 ms). Au délai
     /// dépassé : voix indisponible si elle n'est pas prête, sinon simple délai.
-    private static func attendre(_ reader: SillonReader, _ condition: (Snapshot) -> Bool) async throws {
+    private static func attendre(_ reader: SillageReader, _ condition: (Snapshot) -> Bool) async throws {
         let echeance = ContinuousClock.now + .seconds(10)
         while !condition(reader.snapshot()) {
             if ContinuousClock.now >= echeance {
@@ -175,7 +175,7 @@ enum Measure {
     /// sans identité stable, dont la position n'est jamais retenue
     /// (`positions.json` reste intact). Seule la vitesse passe par la
     /// configuration ; elle est rendue ici dans tous les cas, échec compris.
-    static func charge(reader: SillonReader, compute: KokoroMLXCompute?) async {
+    static func charge(reader: SillageReader, compute: KokoroMLXCompute?) async {
         let vitesse = reader.snapshot().speed
         do {
             try await mesurerCharge(reader: reader, compute: compute)
@@ -192,7 +192,7 @@ enum Measure {
         fflush(stdout)
     }
 
-    private static func counters(_ reader: SillonReader, _ compute: KokoroMLXCompute?) {
+    private static func counters(_ reader: SillageReader, _ compute: KokoroMLXCompute?) {
         let m = reader.measures()
         print(String(format: "COMPTEUR busy_s=%.3f stalls=%u mlx_calls=%ld forward_s=%.3f", m.busySeconds, m.stalls, compute?.calls ?? -1, compute?.forwardSeconds ?? -1))
         fflush(stdout)
@@ -202,7 +202,7 @@ enum Measure {
         try? await Task.sleep(for: .seconds(seconds))
     }
 
-    private static func mesurerCharge(reader: SillonReader, compute: KokoroMLXCompute?) async throws {
+    private static func mesurerCharge(reader: SillageReader, compute: KokoroMLXCompute?) async throws {
         // Repos : l'app sans voix, puis le GPU de la machine au repos.
         reader.restVoice()
         phase("baseline")
@@ -287,7 +287,7 @@ enum Measure {
     /// un modèle absent, ou une voix « prête » d'un autre moteur (un moteur qui
     /// ne sait pas lire le `.safetensors`, muet) n'est pas Kokoro MLX : la mesure s'arrête,
     /// elle ne mesurerait pas ce que la spec demande.
-    private static func attendreVoixKokoro(_ reader: SillonReader) async throws {
+    private static func attendreVoixKokoro(_ reader: SillageReader) async throws {
         let debut = ContinuousClock.now
         let echeance = debut + .seconds(60)
         while true {
@@ -315,7 +315,7 @@ enum Measure {
 
     /// La lecture doit encore être en cours : un texte fini ou une pause
     /// feraient passer « aucun appel » pour un succès.
-    private static func verifierEnCours(_ reader: SillonReader, _ phase: String) throws {
+    private static func verifierEnCours(_ reader: SillageReader, _ phase: String) throws {
         let s = reader.snapshot()
         print("MESURE phrase_apres_\(phase) \(s.sentence) phrase")
         fflush(stdout)
@@ -405,7 +405,7 @@ enum Measure {
     /// du son), la vitesse tenue, la phrase de la fiche et l'empreinte après
     /// la série. Le calcul tourne hors du fil principal (il bloque sous le
     /// verrou MLX) ; aucune fenêtre ne s'ouvre, l'appelant quitte l'app.
-    static func rtf(reader: SillonReader, compute: TextSpeechMLXCompute?, id: String) async {
+    static func rtf(reader: SillageReader, compute: TextSpeechMLXCompute?, id: String) async {
         defer { fflush(stdout) }
         guard !id.isEmpty else {
             print("MESURE erreur id manquant"); return
@@ -474,7 +474,7 @@ enum Measure {
     /// est celle de `HOME` : lancer avec un `HOME` de mesure (copie de
     /// `config.toml`, `volume = 0.0`, lien vers `models/`) pour ne rien
     /// entendre ni toucher aux réglages de l'utilisateur.
-    static func reposLecteur(reader: SillonReader) async {
+    static func reposLecteur(reader: SillageReader) async {
         defer { fflush(stdout) }
         reader.restVoice()
         await empreinteSansVoix()
@@ -508,11 +508,11 @@ enum Measure {
     /// ouverte ; l'empreinte toutes les 5 s pendant `secondes`. Le délai de
     /// garde (`keep_voice_minutes`) doit le mettre au repos. Même `HOME` de
     /// mesure que `reposLecteur` (l'aperçu sonne au volume configuré).
-    static func reposApercu(reader: SillonReader, id: String, secondes: Int) async {
+    static func reposApercu(reader: SillageReader, id: String, secondes: Int) async {
         defer { fflush(stdout) }
         reader.restVoice()
         await empreinteSansVoix()
-        if ProcessInfo.processInfo.environment["SILLON_MESURE_PREPARER"] == "1" {
+        if ProcessInfo.processInfo.environment["SILLAGE_MESURE_PREPARER"] == "1" {
             reader.prepareVoice()
             while reader.snapshot().voice != .ready { try? await Task.sleep(for: .milliseconds(100)) }
             print("MESURE voix_lecture \(reader.snapshot().engine) \(residentMB()) Mo \(compteursMLX())")
@@ -538,7 +538,7 @@ enum Measure {
         defer { fflush(stdout) }
         guard let compute else { print("MESURE erreur kokoro pas de calcul MLX"); return }
         let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("sillon/models/kokoro").path
+            .appendingPathComponent("sillage/models/kokoro").path
         await empreinteSansVoix()
         let result = await Task.detached { () throws -> Int in
             try compute.load(modelDir: dir)
@@ -577,7 +577,7 @@ enum Measure {
                                              isCancelled: { false })
             let elapsed = start.duration(to: .now)
             guard !out.samples.isEmpty, out.sampleRate > 0 else {
-                throw SillonError.Failed(message: "synthèse vide (\(language)) : « \(text) »")
+                throw SillageError.Failed(message: "synthèse vide (\(language)) : « \(text) »")
             }
             serie.calcul[language, default: 0] += Double(elapsed.components.seconds)
                 + Double(elapsed.components.attoseconds) / 1e18

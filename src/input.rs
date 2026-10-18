@@ -17,7 +17,7 @@ pub enum InputEvent {
 /// Lit une source ligne par ligne dans un thread dédié.
 pub fn spawn_reader<R: Read + Send + 'static>(source: R) -> Receiver<InputEvent> {
     let (tx, rx) = mpsc::channel();
-    crate::sync::spawn_named("sillon-entree", move || {
+    crate::sync::spawn_named("sillage-entree", move || {
         let mut reader = BufReader::new(source);
         let mut raw = Vec::new();
         let mut first = true;
@@ -76,7 +76,7 @@ pub fn decode_text(raw: &[u8]) -> String {
 /// Quand le contenu arrive par un tube, `stdin` n'est plus un terminal. La
 /// bibliothèque de terminal se rabat alors sur `/dev/tty` — et sur macOS,
 /// kqueue refuse ce descripteur avec `EINVAL` : le clavier devient muet dans le
-/// cas d'usage principal, `cat notes.md | sillon`.
+/// cas d'usage principal, `cat notes.md | sillage`.
 ///
 /// L'alias `/dev/tty` n'est pas surveillable, mais le périphérique qu'il désigne
 /// l'est. On résout donc le vrai chemin (`/dev/ttys001`…) depuis une sortie

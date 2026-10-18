@@ -403,8 +403,8 @@ struct ValueText: View {
 
 // MARK: - Logo
 
-/// La marque de sillon : un « s » d'un seul trait, comme un sillon de
-/// labour, et la tête de lecture au bout. Même tracé que
+/// La marque de sillage : un « s » d'un seul trait, le sillage que la voix
+/// laisse, et la tête de lecture au bout. Même tracé que
 /// `scripts/logo_gen.py`, sur la même grille de 64.
 struct LogoMark: View {
     /// Le trait gras des petites tailles (sous 32 pt).
@@ -433,7 +433,7 @@ struct LogoMark: View {
         let image = renderer.nsImage ?? NSImage(size: NSSize(width: points, height: points))
         image.size = NSSize(width: points, height: points)
         image.isTemplate = true
-        image.accessibilityDescription = "sillon"
+        image.accessibilityDescription = "sillage"
         return image
     }
 }

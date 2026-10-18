@@ -1,5 +1,5 @@
 import XCTest
-@testable import Sillon
+@testable import Sillage
 
 final class TranscriptTests: XCTestCase {
     func testAVolatileResultReplacesThePreviousOne() {
@@ -499,7 +499,7 @@ final class WritablePasteboard: PasteboardWriting, @unchecked Sendable {
         items.first?.types.first { $0.type == "public.utf8-plain-text" }
             .flatMap { String(data: $0.data, encoding: .utf8) }
     }
-    var isConcealed: Bool { Sillon.isConcealed(items) }
+    var isConcealed: Bool { Sillage.isConcealed(items) }
     func imageData() -> Data? { nil }
     var transient: Bool { items.first?.types.contains { $0.type == transientType } ?? false }
     var concealed: Bool { items.first?.types.contains { $0.type == concealedType } ?? false }
@@ -593,7 +593,7 @@ final class TextInserterTests: XCTestCase {
         XCTAssertTrue(board.transient)
     }
 
-    func testSillonsOwnWindowAndSecureInputGetACopy() async {
+    func testSillagesOwnWindowAndSecureInputGetACopy() async {
         let board = WritablePasteboard()
         let keys = PasteRecorder(board)
         let own = await inserter(board, keys, own: true).insert("Bonjour")

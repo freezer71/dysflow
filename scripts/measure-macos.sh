@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Mesure les seuils de la spec sur Sillon.app construite en Release, avec
+# Mesure les seuils de la spec sur Sillage.app construite en Release, avec
 # le code de mesure (`build-macos.sh --mesure`, absent de l'app livrée).
 set -euo pipefail
 cd "$(dirname "$0")/.."
-APP=macos/build/Mesure/Sillon.app
+APP=macos/build/Mesure/Sillage.app
 # Toujours reconstruire (incrémental), sinon on mesure une app périmée.
 CHARGE=0
 CONSTRUIRE=1
@@ -39,14 +39,14 @@ fi
 mkdir -p target/runs
 # Filtre de charge : le pilote du banc échantillonne l'app pendant son scénario.
 if [ "$CHARGE" = 1 ]; then
-    PY=${SILLON_BENCH_PY:-$HOME/Library/Caches/sillon-bench/light/venv-mlx/bin/python}
-    exec "$PY" -I scripts/mesure-charge.py app --app "$APP" --out target/runs/sillon-charge.json
+    PY=${SILLAGE_BENCH_PY:-$HOME/Library/Caches/sillage-bench/light/venv-mlx/bin/python}
+    exec "$PY" -I scripts/mesure-charge.py app --app "$APP" --out target/runs/sillage-charge.json
 fi
 # Cadence d'un modèle à texte : RTF par langue, vitesse tenue, phrase de la fiche.
 if [ -n "$RTF" ]; then
-    SORTIE=target/runs/sillon-rtf-$RTF.txt
-    JOURNAL=target/runs/sillon-rtf-$RTF.err
-    "$APP/Contents/MacOS/Sillon" --measure-rtf "$RTF" 2>"$JOURNAL" | { grep '^MESURE' || true; } | tee "$SORTIE"
+    SORTIE=target/runs/sillage-rtf-$RTF.txt
+    JOURNAL=target/runs/sillage-rtf-$RTF.err
+    "$APP/Contents/MacOS/Sillage" --measure-rtf "$RTF" 2>"$JOURNAL" | { grep '^MESURE' || true; } | tee "$SORTIE"
     if [ ! -s "$SORTIE" ]; then
         echo "aucune ligne MESURE : l'app a planté ou n'a rien produit. Fin du journal d'erreurs :" >&2
         tail -n 20 "$JOURNAL" >&2
@@ -58,10 +58,10 @@ if [ -n "$RTF" ]; then
     fi
     exit 0
 fi
-SORTIE=target/runs/sillon-mesures.txt
-JOURNAL=target/runs/sillon-mesures.err
+SORTIE=target/runs/sillage-mesures.txt
+JOURNAL=target/runs/sillage-mesures.err
 # grep sans correspondance ne doit pas masquer le vrai diagnostic (|| true).
-"$APP/Contents/MacOS/Sillon" --measure 2>"$JOURNAL" | { grep '^MESURE' || true; } | tee "$SORTIE"
+"$APP/Contents/MacOS/Sillage" --measure 2>"$JOURNAL" | { grep '^MESURE' || true; } | tee "$SORTIE"
 if [ ! -s "$SORTIE" ]; then
     echo "aucune ligne MESURE : l'app a planté ou n'a rien produit. Fin du journal d'erreurs :" >&2
     tail -n 20 "$JOURNAL" >&2

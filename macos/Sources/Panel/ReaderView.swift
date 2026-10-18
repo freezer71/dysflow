@@ -107,7 +107,7 @@ struct ReaderHeader: View {
 
     var body: some View {
         let model = controller.model
-        let title = model.breadcrumb.isEmpty ? "sillon" : model.breadcrumb
+        let title = model.breadcrumb.isEmpty ? "sillage" : model.breadcrumb
         HStack(spacing: 4) {
             LogoMark(small: true)
                 .frame(width: 16, height: 16)

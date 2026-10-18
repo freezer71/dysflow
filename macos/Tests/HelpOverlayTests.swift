@@ -1,5 +1,5 @@
 import XCTest
-@testable import Sillon
+@testable import Sillage
 
 /// L'aide liste toutes les touches du lecteur, et chacune fait quelque chose.
 @MainActor

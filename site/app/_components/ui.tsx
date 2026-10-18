@@ -25,7 +25,7 @@ export function Entete() {
       <nav className="mx-auto flex h-16 max-w-6xl items-center gap-6 px-4 sm:px-6">
         <Link href="/" className="flex items-center gap-2 text-lg font-extrabold tracking-tight">
           <Logo />
-          sillon
+          sillage
         </Link>
         <div className="ml-auto flex items-center gap-1 text-[15px] text-encre-douce sm:gap-2">
           <Link href="/#avantages" className="hidden rounded-full px-3 py-1.5 hover:bg-carte-2 hover:text-encre sm:block">
@@ -55,7 +55,7 @@ export function Pied() {
       <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-10 text-[15px] text-encre-douce sm:flex-row sm:items-center sm:px-6">
         <div className="flex items-center gap-2 font-bold text-encre">
           <Logo className="size-6" />
-          sillon
+          sillage
         </div>
         <p>Logiciel libre, sous licence MIT. Fait en France.</p>
         <div className="flex gap-5 sm:ml-auto">

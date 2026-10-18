@@ -124,7 +124,7 @@ impl ReaderHandle {
         let published = Arc::new(Mutex::new(Published::default()));
         let out = Arc::clone(&published);
         let thread = thread::Builder::new()
-            .name("sillon-lecteur".into())
+            .name("sillage-lecteur".into())
             .spawn(move || run(build(), rx, out))
             .expect("fil du lecteur");
         Self { tx, published, thread: Some(thread) }

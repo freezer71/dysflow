@@ -1,5 +1,5 @@
 import XCTest
-@testable import Sillon
+@testable import Sillage
 
 @MainActor
 final class ReadFlowTests: XCTestCase {
@@ -14,7 +14,7 @@ final class ReadFlowTests: XCTestCase {
             readClipboard: { self.log.append("presse-papiers"); return clipboard },
             openImage: { data in
                 self.log.append("image:\(String(decoding: data, as: UTF8.self))")
-                if !imageOpens { throw SillonError.Failed(message: "illisible") }
+                if !imageOpens { throw SillageError.Failed(message: "illisible") }
             },
             say: { self.log.append("dit:\($0)") },
             show: { self.log.append("montre") })
@@ -62,7 +62,7 @@ final class ReadFlowTests: XCTestCase {
     func testOwnAppVetoReadsNothingAndSaysWhy() async {
         await flow(capture: .veto(.ownApp), clipboard: .text("x")).run()
         XCTAssertEqual(log, ["voix", "capture",
-                             "dit:sillon est au premier plan : sélectionnez dans une autre application",
+                             "dit:sillage est au premier plan : sélectionnez dans une autre application",
                              "montre"])
     }
 
@@ -207,10 +207,10 @@ final class ReadWithoutModelTests: XCTestCase {
 
 final class LoginItemTests: XCTestCase {
     func testOnlyAnInstalledReleaseIsEnabledAtFirstLaunch() {
-        XCTAssertTrue(LoginItem.eligible(bundlePath: "/Applications/Sillon.app", debug: false))
-        XCTAssertFalse(LoginItem.eligible(bundlePath: "/Applications/Sillon.app", debug: true))
+        XCTAssertTrue(LoginItem.eligible(bundlePath: "/Applications/Sillage.app", debug: false))
+        XCTAssertFalse(LoginItem.eligible(bundlePath: "/Applications/Sillage.app", debug: true))
         XCTAssertFalse(LoginItem.eligible(
-            bundlePath: "/Users/x/Library/Developer/Xcode/DerivedData/B/Debug/Sillon.app", debug: false))
-        XCTAssertFalse(LoginItem.eligible(bundlePath: "/ApplicationsX/Sillon.app", debug: false))
+            bundlePath: "/Users/x/Library/Developer/Xcode/DerivedData/B/Debug/Sillage.app", debug: false))
+        XCTAssertFalse(LoginItem.eligible(bundlePath: "/ApplicationsX/Sillage.app", debug: false))
     }
 }

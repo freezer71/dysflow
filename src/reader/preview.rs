@@ -133,7 +133,7 @@ impl Reader {
     /// hors de ce fil, comme `App::reload_engine`.
     pub(super) fn drop_lone_preview(&mut self) {
         if let Some(LonePreview { previewer, player }) = self.lone_preview.take() {
-            crate::sync::spawn_named("sillon-liberation", move || drop(previewer));
+            crate::sync::spawn_named("sillage-liberation", move || drop(previewer));
             drop(player);
         }
     }

@@ -1,5 +1,5 @@
 import XCTest
-@testable import Sillon
+@testable import Sillage
 
 final class ModelTableTests: XCTestCase {
     func row(_ id: String = "kokoro_82m_mlx", installed: Bool = false, active: Bool = false,

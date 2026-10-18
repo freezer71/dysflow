@@ -2,7 +2,7 @@ import XCTest
 
 /// La ligne d'état de la voix : rien quand elle va bien ; l'échec et
 /// « Réessayer » dans le lecteur et en bas des réglages. Lancé à la main,
-/// avec l'accord de l'utilisateur : `-only-testing:SillonUITests/VoiceStatusUITests`.
+/// avec l'accord de l'utilisateur : `-only-testing:SillageUITests/VoiceStatusUITests`.
 @MainActor
 final class VoiceStatusUITests: XCTestCase {
     override func setUp() {

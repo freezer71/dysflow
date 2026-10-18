@@ -1,6 +1,6 @@
-name: Sillon
+name: Sillage
 options:
-  bundleIdPrefix: fr.sillon
+  bundleIdPrefix: fr.sillage
   deploymentTarget:
     macOS: "14.0"
 packages:
@@ -23,7 +23,7 @@ settings:
     MACOSX_DEPLOYMENT_TARGET: "14.0"
     # CFBundleShortVersionString et CFBundleVersion (clé de la préparation
     # des noyaux Metal, une fois par version) : à monter à chaque version.
-    MARKETING_VERSION: 0.2.1
+    MARKETING_VERSION: 0.3.0
     CURRENT_PROJECT_VERSION: 1
     CODE_SIGN_IDENTITY: "-"
     ENABLE_HARDENED_RUNTIME: NO
@@ -37,7 +37,7 @@ targets:
     platform: macOS
     sources:
       - path: Vendor/KokoroMLX
-        # La licence part dans Contents/Resources/licences (script de Sillon).
+        # La licence part dans Contents/Resources/licences (script de Sillage).
         excludes: [ORIGINE.md, LICENSE]
       # La voix française fixe de Qwen3 0.6B (Tâche 3 du lot 3).
       - path: ../assets/voices/qwen3-06b-siwis.safetensors
@@ -53,17 +53,17 @@ targets:
         product: MLXFFT
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: fr.sillon.kokoromlx
+        PRODUCT_BUNDLE_IDENTIFIER: fr.sillage.kokoromlx
         GENERATE_INFOPLIST_FILE: YES
         SWIFT_VERSION: "5.0"
         # Link.xcconfig lie le moteur Rust : rien à faire ici.
         OTHER_LDFLAGS: ""
-  Sillon:
+  Sillage:
     type: application
     platform: macOS
     sources:
       - path: Sources
-      - path: Generated/sillon_ffi.swift
+      - path: Generated/sillage_ffi.swift
       - path: Resources/Fonts
         type: folder
         buildPhase: resources
@@ -77,33 +77,33 @@ targets:
       - sdk: MediaPlayer.framework
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: fr.sillon.app
-        PRODUCT_NAME: Sillon
+        PRODUCT_BUNDLE_IDENTIFIER: fr.sillage.app
+        PRODUCT_NAME: Sillage
         SWIFT_INCLUDE_PATHS: $(SRCROOT)/Generated
         LD_RUNPATH_SEARCH_PATHS: "@executable_path/../Frameworks"
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_LSUIElement: YES
-        INFOPLIST_KEY_CFBundleDisplayName: sillon
+        INFOPLIST_KEY_CFBundleDisplayName: sillage
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         INFOPLIST_KEY_NSHumanReadableCopyright: ""
         # La dictée : le micro, transcrit sur le Mac (SpeechAnalyzer).
-        INFOPLIST_KEY_NSMicrophoneUsageDescription: "sillon écoute le micro pendant la dictée, pour écrire ce que vous dites. Rien ne quitte votre Mac."
-        INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: "sillon transcrit votre voix sur votre Mac pendant la dictée."
-        # `scripts/build-macos.sh --mesure` y met SILLON_MESURE : le code de
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: "sillage écoute le micro pendant la dictée, pour écrire ce que vous dites. Rien ne quitte votre Mac."
+        INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: "sillage transcrit votre voix sur votre Mac pendant la dictée."
+        # `scripts/build-macos.sh --mesure` y met SILLAGE_MESURE : le code de
         # mesure (`--measure`) n'entre que dans cette copie, jamais dans
         # l'app livrée. DEBUG (tests) l'a aussi.
-        SILLON_CONDITIONS: ""
-        SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) $(SILLON_CONDITIONS)
+        SILLAGE_CONDITIONS: ""
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) $(SILLAGE_CONDITIONS)
     preBuildScripts:
       - name: Vérifier que le moteur Rust est à jour
         basedOnDependencyAnalysis: false
         script: |
-          # Xcode lie macos/Libraries/libsillon_ffi.a telle quelle : une
+          # Xcode lie macos/Libraries/libsillage_ffi.a telle quelle : une
           # bibliothèque plus ancienne que les sources Rust donnerait une app
           # qui ne fait pas ce que dit le code (ou une liaison qui ne
-          # correspond plus à Generated/sillon_ffi.swift).
+          # correspond plus à Generated/sillage_ffi.swift).
           ROOT="$SRCROOT/.."
-          LIB="$SRCROOT/Libraries/libsillon_ffi.a"
+          LIB="$SRCROOT/Libraries/libsillage_ffi.a"
           if [ ! -f "$LIB" ]; then
             echo "error: moteur Rust absent ($LIB) : lancer ./scripts/build-ffi.sh"
             exit 1
@@ -111,28 +111,28 @@ targets:
           NEWER=$(find "$ROOT/src" "$ROOT/ffi/src" "$ROOT/Cargo.toml" "$ROOT/Cargo.lock" \
                        "$ROOT/ffi/Cargo.toml" -type f -newer "$LIB" 2>/dev/null | head -5)
           if [ -n "$NEWER" ]; then
-            echo "error: moteur Rust périmé : des sources sont plus récentes que libsillon_ffi.a — lancer ./scripts/build-ffi.sh"
+            echo "error: moteur Rust périmé : des sources sont plus récentes que libsillage_ffi.a — lancer ./scripts/build-ffi.sh"
             echo "$NEWER" | sed 's/^/note: plus récent : /'
             exit 1
           fi
     postBuildScripts:
-      - name: Joindre sillon-espeak (GPL-3.0, programme séparé)
+      - name: Joindre sillage-espeak (GPL-3.0, programme séparé)
         basedOnDependencyAnalysis: false
         script: |
           ESPEAK="$SRCROOT/../target/espeak"
-          if [ -x "$ESPEAK/bin/sillon-espeak" ]; then
+          if [ -x "$ESPEAK/bin/sillage-espeak" ]; then
             HELPERS="$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Helpers"
             RES="$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH"
             mkdir -p "$HELPERS" "$RES/espeak-ng"
-            cp "$ESPEAK/bin/sillon-espeak" "$HELPERS/"
+            cp "$ESPEAK/bin/sillage-espeak" "$HELPERS/"
             rm -rf "$RES/espeak-ng-data"
             cp -R "$ESPEAK/share/espeak-ng-data" "$RES/"
-            # La GPL : licence, adresse des sources et sources de sillon-espeak.
-            cp "$ESPEAK/COPYING" "$ESPEAK/SOURCE.txt" "$ESPEAK/sillon-espeak.c" \
+            # La GPL : licence, adresse des sources et sources de sillage-espeak.
+            cp "$ESPEAK/COPYING" "$ESPEAK/SOURCE.txt" "$ESPEAK/sillage-espeak.c" \
                "$SRCROOT/../scripts/build-espeak.sh" "$RES/espeak-ng/"
-            codesign --force --sign - "$HELPERS/sillon-espeak"
+            codesign --force --sign - "$HELPERS/sillage-espeak"
           else
-            echo "warning: sillon-espeak absent (./scripts/build-espeak.sh) : Kokoro se repliera"
+            echo "warning: sillage-espeak absent (./scripts/build-espeak.sh) : Kokoro se repliera"
           fi
       - name: Joindre NOTICE et les licences des bibliothèques
         basedOnDependencyAnalysis: false
@@ -167,39 +167,39 @@ targets:
           joindre "$CMLX/json/LICENSE.MIT" nlohmann-json-LICENSE
           joindre "$CMLX/fmt/LICENSE" fmt-LICENSE
           joindre "$CHECKOUTS/KeyboardShortcuts/license" KeyboardShortcuts-LICENSE
-          # Le moteur Rust (libsillon_ffi.a) : ses crates, et Tesseract et
+          # Le moteur Rust (libsillage_ffi.a) : ses crates, et Tesseract et
           # Leptonica que la crate tesseract-rs compile dedans (feature ocr).
           joindre "$SRCROOT/../THIRD-PARTY-RUST.txt" THIRD-PARTY-RUST.txt
           joindre "$SRCROOT/../third_party/licences/tesseract-LICENSE" tesseract-LICENSE
           joindre "$SRCROOT/../third_party/licences/leptonica-LICENSE" leptonica-LICENSE
-  SillonTests:
+  SillageTests:
     type: bundle.unit-test
     platform: macOS
     sources: [Tests]
     dependencies:
-      - target: Sillon
+      - target: Sillage
     settings:
       base:
         SWIFT_INCLUDE_PATHS: $(SRCROOT)/Generated
-        TEST_HOST: $(BUILT_PRODUCTS_DIR)/Sillon.app/Contents/MacOS/Sillon
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/Sillage.app/Contents/MacOS/Sillage
         BUNDLE_LOADER: $(TEST_HOST)
         GENERATE_INFOPLIST_FILE: YES
-  SillonUITests:
+  SillageUITests:
     type: bundle.ui-testing
     platform: macOS
     sources: [UITests]
     dependencies:
-      - target: Sillon
+      - target: Sillage
     settings:
       base:
-        TEST_TARGET_NAME: Sillon
+        TEST_TARGET_NAME: Sillage
         # Le test d'interface pilote l'app de l'extérieur : aucune liaison au moteur.
         OTHER_LDFLAGS: ""
         GENERATE_INFOPLIST_FILE: YES
 schemes:
-  Sillon:
+  Sillage:
     build:
       targets:
-        Sillon: all
+        Sillage: all
     test:
-      targets: [SillonTests, SillonUITests]
+      targets: [SillageTests, SillageUITests]

@@ -1,0 +1,29 @@
+#!/bin/sh
+# La commande `sillage` du Mac : ouvre l'app, pas le terminal.
+#
+#   sillage                 # le lecteur
+#   sillage document.pdf    # le panneau, sur ce document (texte, PDF, image)
+#
+# Installée par ./scripts/install-app-command.sh dans ~/.local/bin/sillage.
+set -eu
+
+# Le chemin, pas l'identifiant : `open -b` peut choisir une copie de
+# développement (macos/build/…) au lieu de l'app installée.
+APP="${SILLAGE_APP:-/Applications/Sillage.app}"
+if [ ! -d "$APP" ]; then
+    echo "sillage : $APP introuvable (./scripts/build-macos.sh, puis copie dans /Applications)" >&2
+    exit 1
+fi
+
+if [ $# -eq 0 ]; then
+    exec open -a "$APP"
+fi
+
+for file in "$@"; do
+    if [ ! -e "$file" ]; then
+        echo "sillage : « $file » introuvable" >&2
+        exit 1
+    fi
+done
+# Un seul document à la fois : l'app lit le dernier donné.
+exec open -a "$APP" -- "$@"

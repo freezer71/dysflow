@@ -2,14 +2,14 @@ import XCTest
 import KokoroMLX
 
 /// Fumée de Qwen3-TTS copié dans le framework : le vrai modèle (MLX, Metal),
-/// seulement avec `SILLON_TTS_MODELS` (dossier contenant
+/// seulement avec `SILLAGE_TTS_MODELS` (dossier contenant
 /// `qwen3_tts_06b_base_8bit/` et `qwen3_tts_17b_customvoice_8bit/`, copie
-/// de ~/Library/Application Support/sillon/models ;
-/// `TEST_RUNNER_SILLON_TTS_MODELS` pour xcodebuild). Sans lui : ignoré.
+/// de ~/Library/Application Support/sillage/models ;
+/// `TEST_RUNNER_SILLAGE_TTS_MODELS` pour xcodebuild). Sans lui : ignoré.
 final class Qwen3TTSSmokeTests: XCTestCase {
     func runner(_ id: String) throws -> Qwen3TTSRunner {
-        guard let root = ProcessInfo.processInfo.environment["SILLON_TTS_MODELS"] else {
-            throw XCTSkip("SILLON_TTS_MODELS absent")
+        guard let root = ProcessInfo.processInfo.environment["SILLAGE_TTS_MODELS"] else {
+            throw XCTSkip("SILLAGE_TTS_MODELS absent")
         }
         let dir = URL(fileURLWithPath: root).appendingPathComponent(id)
         guard FileManager.default.fileExists(atPath: dir.path) else { throw XCTSkip("\(id) absent") }

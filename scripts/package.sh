@@ -1,6 +1,6 @@
 #!/bin/sh
 # Assemble un dossier distribuable : le binaire et les bibliothèques et
-# programmes qu'il charge (pour Kokoro, ONNX Runtime et sillon-espeak avec ses
+# programmes qu'il charge (pour Kokoro, ONNX Runtime et sillage-espeak avec ses
 # données et ses sources GPL).
 set -eu
 cd "$(dirname "$0")/.."
@@ -38,22 +38,22 @@ cargo build --release --features "$FEATURES"
 
 rm -rf "$OUT"
 mkdir -p "$OUT"
-cp target/release/sillon "$OUT/"
+cp target/release/sillage "$OUT/"
 
 # Kokoro au terminal : ONNX Runtime 1.31 à côté du binaire, et la
-# phonétisation sillon-espeak (GPL-3.0, programme séparé que Sillon lance) avec
+# phonétisation sillage-espeak (GPL-3.0, programme séparé que Sillage lance) avec
 # ses données, sa licence et ses sources correspondantes.
 case ",$FEATURES," in
 *,kokoro-onnx,*)
-    if [ ! -x target/espeak/bin/sillon-espeak ] || [ -n "$(find scripts/sillon-espeak.c -newer target/espeak/bin/sillon-espeak)" ]; then
+    if [ ! -x target/espeak/bin/sillage-espeak ] || [ -n "$(find scripts/sillage-espeak.c -newer target/espeak/bin/sillage-espeak)" ]; then
         ./scripts/build-espeak.sh
     fi
-    cp target/espeak/bin/sillon-espeak "$OUT/"
+    cp target/espeak/bin/sillage-espeak "$OUT/"
     cp -R target/espeak/share/espeak-ng-data "$OUT/"
-    mkdir -p "$OUT/sillon-espeak-source"
-    cp target/espeak/COPYING target/espeak/SOURCE.txt target/espeak/sillon-espeak.c \
-        scripts/build-espeak.sh "$OUT/sillon-espeak-source/"
-    echo "Joint : sillon-espeak, espeak-ng-data et ses sources (sillon-espeak-source/)"
+    mkdir -p "$OUT/sillage-espeak-source"
+    cp target/espeak/COPYING target/espeak/SOURCE.txt target/espeak/sillage-espeak.c \
+        scripts/build-espeak.sh "$OUT/sillage-espeak-source/"
+    echo "Joint : sillage-espeak, espeak-ng-data et ses sources (sillage-espeak-source/)"
 
     ORT_VERSION=1.31.0
     case "$(uname -s)-$(uname -m)" in
@@ -111,7 +111,7 @@ case ",$FEATURES," in
         cp "target/ort/$ORT_ARCHIVE/ThirdPartyNotices.txt" "$OUT/ThirdPartyNotices-onnxruntime.txt"
         echo "Joint : ONNX Runtime $ORT_VERSION"
     else
-        echo "ONNX Runtime non joint sur cette plateforme : SILLON_ORT_LIB=<libonnxruntime> au lancement." >&2
+        echo "ONNX Runtime non joint sur cette plateforme : SILLAGE_ORT_LIB=<libonnxruntime> au lancement." >&2
     fi
     ;;
 esac
@@ -119,7 +119,7 @@ esac
 # Les avis : NOTICE, les crates Rust, Sonic, et Tesseract et Leptonica
 # (feature ocr). ONNX
 # Runtime (LICENSE-onnxruntime, ThirdPartyNotices-onnxruntime.txt) et
-# sillon-espeak (sillon-espeak-source/) ont été joints plus haut.
+# sillage-espeak (sillage-espeak-source/) ont été joints plus haut.
 cp NOTICE THIRD-PARTY-RUST.txt "$OUT/"
 mkdir -p "$OUT/licences"
 cp third_party/sonic/LICENSE "$OUT/licences/sonic-LICENSE"
@@ -130,6 +130,6 @@ esac
 echo "Joint : NOTICE, THIRD-PARTY-RUST.txt et licences/"
 
 echo "Vérification hors de l'arbre de compilation…"
-( cd "$OUT" && ./sillon --show-config >/dev/null )
+( cd "$OUT" && ./sillage --show-config >/dev/null )
 echo "Prêt : $OUT/"
 ls -lh "$OUT"

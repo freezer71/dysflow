@@ -2,7 +2,7 @@ import AppKit
 import XCTest
 
 /// ⌘V dans le lecteur lit le presse-papiers. Lancé à la main, avec l'accord
-/// de l'utilisateur : `-only-testing:SillonUITests/PasteUITests`. Le
+/// de l'utilisateur : `-only-testing:SillageUITests/PasteUITests`. Le
 /// presse-papiers de l'utilisateur est sauvé, puis rendu.
 @MainActor
 final class PasteUITests: XCTestCase {

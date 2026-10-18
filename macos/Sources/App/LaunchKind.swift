@@ -23,7 +23,7 @@ enum LaunchKind {
         return uptime < 120
     }
 
-    /// Lancé pour ouvrir des fichiers (`sillon fichier.pdf`, « Ouvrir
+    /// Lancé pour ouvrir des fichiers (`sillage fichier.pdf`, « Ouvrir
     /// avec ») : le lecteur les montre à leur arrivée, par
     /// `application(_:open:)`, parfois après la fin du lancement.
     @MainActor

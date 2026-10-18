@@ -1,5 +1,5 @@
 import XCTest
-@testable import Sillon
+@testable import Sillage
 
 /// La mesure de cadence ne tourne jamais sous les tests (elle charge un
 /// modèle de plusieurs Go) ; on vérifie la règle qui en tire la vitesse tenue

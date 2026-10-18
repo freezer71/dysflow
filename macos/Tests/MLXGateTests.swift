@@ -1,6 +1,6 @@
 import os
 import XCTest
-@testable import Sillon
+@testable import Sillage
 
 final class MLXGateTests: XCTestCase {
     /// Kokoro et la dictée passent par le même verrou : jamais deux calculs

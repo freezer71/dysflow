@@ -28,7 +28,7 @@ export const lecture: Modele[] = [
     nom: "Kokoro 82M · MLX",
     famille: "Kokoro",
     description:
-      "La voix de sillon. Naturelle, légère, calculée par la puce graphique du Mac. Installée toute seule au premier lancement.",
+      "La voix de sillage. Naturelle, légère, calculée par la puce graphique du Mac. Installée toute seule au premier lancement.",
     taille: "342 Mo",
     precision: "bf16",
     langues: "Français, anglais",

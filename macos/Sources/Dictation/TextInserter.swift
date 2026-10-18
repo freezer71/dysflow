@@ -38,7 +38,7 @@ enum CopyReason: Equatable {
     case noAccessibility
     /// Saisie sécurisée (mot de passe) : macOS ne laisse rien passer.
     case secureInput
-    /// Le clavier est chez sillon (le lecteur) : ⌘V y lirait le texte.
+    /// Le clavier est chez sillage (le lecteur) : ⌘V y lirait le texte.
     case ownWindow
 
     var message: String {
@@ -60,7 +60,7 @@ struct TextInserter {
     /// demander : sans eux, macOS ouvrirait sa demande au moment du ⌘V.
     var trusted: () -> Bool = { AXIsProcessTrusted() && CGPreflightPostEventAccess() }
     var secureInput: () -> Bool = { IsSecureEventInputEnabled() }
-    /// Une fenêtre de sillon a le clavier, ou sillon est au premier plan.
+    /// Une fenêtre de sillage a le clavier, ou sillage est au premier plan.
     var ownAppHasKeyboard: () -> Bool = {
         NSApp.keyWindow != nil || NSWorkspace.shared.frontmostApplication?.processIdentifier == getpid()
     }

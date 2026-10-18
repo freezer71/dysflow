@@ -1,5 +1,5 @@
 import XCTest
-@testable import Sillon
+@testable import Sillage
 
 /// La relecture à 4 Hz de la fenêtre des réglages suit sa visibilité.
 @MainActor
