@@ -1,0 +1,91 @@
+# Publication du lecteur au terminal pour Linux (x86_64 et ARM64) : à chaque
+# tag `v*`, install.sh assemble le paquet (ocr, kokoro-onnx), l'installe et le
+# vérifie depuis / ; le dossier dist/ part en archive, avec son empreinte, dans
+# la publication GitHub du tag.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag existant à publier (v0.2.0…)"
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  TAG: ${{ inputs.tag || github.ref_name }}
+
+jobs:
+  linux:
+    name: Linux (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            arch: x86_64
+          - os: ubuntu-24.04-arm
+            arch: aarch64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+      - name: Dépendances système
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libasound2-dev pkg-config cmake clang
+      - name: Chaîne Rust stable
+        run: |
+          rustup update stable --no-self-update
+          rustup default stable
+      - name: Version du tag et de Cargo.toml
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          if [ "v$version" != "$TAG" ]; then
+            echo "Le tag $TAG ne correspond pas à la version $version de Cargo.toml" >&2
+            exit 1
+          fi
+      - name: Paquet, installation et vérification
+        run: PREFIX="$RUNNER_TEMP/prefix" ./scripts/install.sh
+      - name: Archive
+        id: archive
+        run: |
+          name="sillon-${TAG#v}-linux-${{ matrix.arch }}"
+          mv dist "$name"
+          tar -czf "$name.tar.gz" "$name"
+          sha256sum "$name.tar.gz" > "$name.tar.gz.sha256"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.archive.outputs.name }}
+          path: |
+            ${{ steps.archive.outputs.name }}.tar.gz
+            ${{ steps.archive.outputs.name }}.tar.gz.sha256
+
+  publish:
+    name: Publication
+    needs: linux
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+      - uses: actions/download-artifact@v4
+        with:
+          path: paquets
+          merge-multiple: true
+      - name: Publication GitHub
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" paquets/* --clobber
+          else
+            gh release create "$TAG" paquets/* --title "sillon ${TAG#v}" --notes-file .github/release-notes.md
+          fi
