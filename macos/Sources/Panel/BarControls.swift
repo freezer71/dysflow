@@ -139,6 +139,7 @@ struct SeekableTimeline: View {
                     guard enabled else { return }
                     seek(Self.fraction(x: location.x, width: geo.size.width))
                 }
+                .pointingHandCursor(enabled)
         }
         // Une cible plus haute que le trait : facile à viser.
         .frame(height: 20)
@@ -178,6 +179,7 @@ struct SpeedMenu: View {
                 .contentShape(Rectangle())
         }
         .menuStyle(.borderlessButton)
+        .pointingHandCursor()
         .menuIndicator(.hidden)
         .fixedSize()
         .focusable(false)
@@ -214,6 +216,7 @@ struct OutputMenu: View {
                 .contentShape(Rectangle())
         }
         .menuStyle(.borderlessButton)
+        .pointingHandCursor()
         .menuIndicator(.hidden)
         .fixedSize()
         .focusable(false)

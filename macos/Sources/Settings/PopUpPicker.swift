@@ -16,7 +16,7 @@ struct PopUpPicker<Value: Hashable>: NSViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
     func makeNSView(context: Context) -> NSPopUpButton {
-        let button = NSPopUpButton(frame: .zero, pullsDown: false)
+        let button = PointingPopUpButton(frame: .zero, pullsDown: false)
         button.font = .systemFont(ofSize: 13)
         button.target = context.coordinator
         button.action = #selector(Coordinator.changed(_:))
@@ -51,5 +51,17 @@ struct PopUpPicker<Value: Hashable>: NSViewRepresentable {
             guard parent.options.indices.contains(index) else { return }
             parent.selection = parent.options[index].value
         }
+    }
+}
+
+/// Un menu local avec la main au survol, comme les autres contrôles
+/// (`PointingHandCursor`) ; désactivé, la flèche.
+final class PointingPopUpButton: NSPopUpButton {
+    override func resetCursorRects() {
+        if isEnabled { addCursorRect(bounds, cursor: .pointingHand) } else { super.resetCursorRects() }
+    }
+
+    override var isEnabled: Bool {
+        didSet { window?.invalidateCursorRects(for: self) }
     }
 }

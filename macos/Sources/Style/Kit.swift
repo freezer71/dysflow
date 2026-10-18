@@ -246,6 +246,38 @@ struct Keycap: View {
     }
 }
 
+// MARK: - Curseur
+
+/// La main au survol de ce qui se clique (boutons, interrupteurs, menus,
+/// lignes à choisir) : on voit avant de cliquer que la zone répond. Rien
+/// sur un contrôle désactivé.
+struct PointingHandCursor: ViewModifier {
+    var active = true
+    @Environment(\.isEnabled) private var enabled
+
+    func body(content: Content) -> some View {
+        let on = active && enabled
+        if #available(macOS 15, *) {
+            content.pointerStyle(on ? .link : nil)
+        } else {
+            // `set()` à chaque mouvement : le curseur de la fenêtre ne le reprend pas.
+            content.onContinuousHover { phase in
+                switch phase {
+                case .active where on: NSCursor.pointingHand.set()
+                case .active, .ended: NSCursor.arrow.set()
+                }
+            }
+        }
+    }
+}
+
+extension View {
+    /// La main au survol (voir `PointingHandCursor`).
+    func pointingHandCursor(_ active: Bool = true) -> some View {
+        modifier(PointingHandCursor(active: active))
+    }
+}
+
 // MARK: - Boutons
 
 /// Les boutons de l'interface : petits, pleins, à coins de 10 pt.
@@ -296,6 +328,7 @@ private struct NotionButtonBody: View {
             .contentShape(RoundedRectangle(cornerRadius: 10))
             .opacity(enabled ? 1 : 0.45)
             .onHover { hovering = $0 }
+            .pointingHandCursor()
     }
 
     private var foreground: Color {
@@ -329,12 +362,12 @@ extension View {
     /// Un interrupteur à la taille des contrôles, sans son titre à l'écran
     /// (VoiceOver le garde).
     func notionSwitch() -> some View {
-        toggleStyle(.switch).controlSize(.small).labelsHidden().tint(Palette.accent)
+        toggleStyle(.switch).controlSize(.small).labelsHidden().tint(Palette.accent).pointingHandCursor()
     }
 
     /// Un curseur de largeur fixe, à la taille des contrôles.
     func notionSlider(width: CGFloat = 180) -> some View {
-        controlSize(.small).labelsHidden().tint(Palette.accent).frame(width: width)
+        controlSize(.small).labelsHidden().tint(Palette.accent).frame(width: width).pointingHandCursor()
     }
 }
 

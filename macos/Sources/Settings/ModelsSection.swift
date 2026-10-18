@@ -100,19 +100,34 @@ struct ModelsTable: View {
 
     private func columns(_ row: VoiceModel, _ state: ModelRowState) -> some View {
         HStack(spacing: 12) {
+            // Le rond, le nom et la taille : un seul bouton, toute la zone choisit
+            // le modèle. Les actions (Télécharger, Supprimer…) restent à part.
             Button {
                 act {
                     if let use { try await use(row) } else { try await model.useModel(row.id) }
                 }
             } label: {
-                Image(systemName: row.active ? "largecircle.fill.circle" : "circle")
-                    .foregroundStyle(row.active ? Palette.accent : Palette.muted)
-                    .frame(width: Self.choiceWidth)
+                choice(row)
             }
-            .buttonStyle(.plain)
-            .disabled(!(row.installed || row.system) || row.active)
+            .buttonStyle(ModelRowButtonStyle())
+            .disabled(!ModelTable.canUse(row))
             .accessibilityLabel(row.active ? "\(row.name), \(ModelTable.used(row))" : "Utiliser \(row.name)")
             .accessibilityIdentifier("utiliser-\(row.id)")
+            HStack(spacing: 8) {
+                action(row, state)
+                if state != .installed, ModelTable.canRemove(row, state) {
+                    removeButton(row)
+                }
+            }
+            .frame(width: Self.actionWidth, alignment: .leading)
+        }
+    }
+
+    private func choice(_ row: VoiceModel) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: row.active ? "largecircle.fill.circle" : "circle")
+                .foregroundStyle(row.active ? Palette.accent : Palette.muted)
+                .frame(width: Self.choiceWidth)
             VStack(alignment: .leading, spacing: 2) {
                 Text(row.name)
                     .font(Typo.rowTitle)
@@ -132,13 +147,6 @@ struct ModelsTable: View {
                 .foregroundStyle(Palette.ink)
                 .frame(width: Self.sizeWidth, alignment: .trailing)
                 .accessibilityHidden(true)
-            HStack(spacing: 8) {
-                action(row, state)
-                if state != .installed, ModelTable.canRemove(row, state) {
-                    removeButton(row)
-                }
-            }
-            .frame(width: Self.actionWidth, alignment: .leading)
         }
     }
 
@@ -225,4 +233,32 @@ struct ModelsTable: View {
 final class ModelsTableState {
     let error = ErrorNote()
     var confirming: VoiceModel?
+}
+
+/// La zone de choix d'une ligne de modèle : un fond au survol et la main
+/// quand on peut la choisir ; sinon (pas installé, ou déjà utilisé), rien —
+/// et le texte garde sa couleur (désactivé ne veut pas dire pâle ici).
+struct ModelRowButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        ModelRowButtonBody(configuration: configuration)
+    }
+}
+
+private struct ModelRowButtonBody: View {
+    let configuration: ButtonStyleConfiguration
+    @State private var hovering = false
+    @Environment(\.isEnabled) private var enabled
+
+    var body: some View {
+        configuration.label
+            .padding(.vertical, 4)
+            .padding(.horizontal, 6)
+            .background(RoundedRectangle(cornerRadius: 8).fill(
+                enabled && configuration.isPressed ? Palette.selected
+                    : (enabled && hovering ? Palette.hover : .clear)))
+            .padding(.horizontal, -6)
+            .contentShape(Rectangle())
+            .onHover { hovering = $0 }
+            .pointingHandCursor()
+    }
 }
