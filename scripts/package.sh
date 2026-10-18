@@ -79,7 +79,12 @@ case ",$FEATURES," in
         mkdir -p target/ort
         # Extraite à part, mise en place seulement une fois complète : une
         # extraction interrompue est refaite au lancement suivant.
-        if [ ! -d "target/ort/$ORT_ARCHIVE" ]; then
+        # Le fichier, pas le dossier : le cache de la CI (rust-cache) rend
+        # target/ort vidé de ses fichiers, et un dossier présent mais vide
+        # faisait échouer la copie plus bas.
+        if [ ! -f "target/ort/$ORT_ARCHIVE/lib/$ORT_LIB" ] \
+            || [ ! -f "target/ort/$ORT_ARCHIVE/LICENSE" ] \
+            || [ ! -f "target/ort/$ORT_ARCHIVE/ThirdPartyNotices.txt" ]; then
             # L'archive : téléchargée sous un nom provisoire, gardée seulement
             # si son empreinte est la bonne.
             tarball="target/ort/$ORT_ARCHIVE.tgz"
@@ -97,6 +102,7 @@ case ",$FEATURES," in
             rm -rf target/ort/extraction
             mkdir -p target/ort/extraction
             tar -xzf "$tarball" -C target/ort/extraction
+            rm -rf "target/ort/$ORT_ARCHIVE"
             mv "target/ort/extraction/$ORT_ARCHIVE" "target/ort/$ORT_ARCHIVE"
             rm -rf target/ort/extraction
         fi
