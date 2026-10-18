@@ -175,9 +175,10 @@ final class BarMotion {
 
 // MARK: - Texte
 
-/// Les derniers mots entendus, sur deux lignes centrées (le début s'efface
-/// par l'avant) ; ou un message. Les lettres nouvelles s'écrivent une à une
-/// (`TypingReveal`) au lieu d'arriver d'un bloc à chaque relecture.
+/// Les derniers mots entendus, sur deux lignes alignées à gauche (quand
+/// elles sont pleines, le texte monte d'une ligne) ; ou un message, centré.
+/// Les lettres nouvelles s'écrivent une à une (`TypingReveal`) au lieu
+/// d'arriver d'un bloc à chaque relecture.
 struct DictationLine: View {
     let controller: DictationController
     let theme: Theme
@@ -211,7 +212,10 @@ struct DictationLine: View {
                                         paused: !reveal.isTyping(transcript.text))) { context in
                     let shown = reveal.visible(transcript.text, at: context.date.timeIntervalSinceReferenceDate,
                                                animated: !reduceMotion)
-                    Text(Self.styled(transcript, theme: theme, from: reveal.cut(shown), upTo: shown.count))
+                    Text(Self.styled(transcript, theme: theme, from: reveal.start(of: shown), upTo: shown.count))
+                        // À gauche : une lettre ajoutée ne déplace pas celles déjà écrites.
+                        .multilineTextAlignment(.leading)
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
             }
         }
@@ -223,6 +227,10 @@ struct DictationLine: View {
         .frame(height: DictationMetrics.textHeight)
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("texte-dicte")
+        // Une nouvelle dictée part d'un texte vide : l'écriture repart de zéro.
+        .onChange(of: controller.transcript.isEmpty) { _, empty in
+            if empty { reveal.reset() }
+        }
     }
 
     static let fontSize: CGFloat = 12
@@ -261,6 +269,27 @@ struct DictationLine: View {
         return best
     }
 
+    /// Où commence la deuxième ligne de `text` affiché sur `width` (en
+    /// caractères) ; `nil` s'il tient sur une ligne.
+    static func secondLineStart(_ text: String, width: CGFloat) -> Int? {
+        let style = NSMutableParagraphStyle()
+        style.lineSpacing = lineSpacing
+        let storage = NSTextStorage(string: text, attributes: [
+            .font: NSFont.systemFont(ofSize: fontSize, weight: .medium), .paragraphStyle: style])
+        let layout = NSLayoutManager()
+        let container = NSTextContainer(size: CGSize(width: width, height: .greatestFiniteMagnitude))
+        container.lineFragmentPadding = 0
+        layout.addTextContainer(container)
+        storage.addLayoutManager(layout)
+        var range = NSRange()
+        layout.lineFragmentRect(forGlyphAt: 0, effectiveRange: &range)
+        let next = NSMaxRange(range)
+        guard next < layout.numberOfGlyphs else { return nil }
+        // En caractères Swift (une lettre accentuée peut compter deux unités UTF-16).
+        let utf16 = layout.characterIndexForGlyph(at: next)
+        return String(text.utf16.prefix(utf16))?.count
+    }
+
     /// Le texte arrêté à l'encre ; les mots provisoires plus pâles. `from` :
     /// le début de ce qui s'affiche (en caractères), précédé de « … » ;
     /// `upTo` : sa fin (les lettres pas encore écrites), tout par défaut.
@@ -288,11 +317,16 @@ struct DictationLine: View {
 }
 
 
-/// L'écriture lettre à lettre des mots nouveaux. Ce qui ne change pas reste ;
-/// une relecture qui corrige un mot déjà écrit repart de la première lettre
-/// qui diffère ; le reste s'écrit en `catchUp` au plus (25 lettres par
-/// seconde au moins), pour finir avant la relecture suivante. Sans
-/// animation (Réduire les animations) : tout, tout de suite.
+/// L'écriture lettre à lettre des mots nouveaux : le texte ne fait que
+/// s'allonger.
+///
+/// - Les mots déjà écrits restent écrits : une relecture qui en corrige un
+///   (« Yeah » → « Yes ») le remplace sur place, sans rien réécrire ; seuls
+///   les mots en plus s'écrivent, en `catchUp` au plus (25 lettres par
+///   seconde au moins), pour finir avant la relecture suivante.
+/// - Sur deux lignes pleines, le texte monte d'une ligne entière (comme un
+///   prompteur), au lieu de se redistribuer à chaque mot.
+/// - Sans animation (Réduire les animations) : tout, tout de suite.
 ///
 /// `idle` est observé : il passe à vrai (hors du rendu en cours) quand tout
 /// est écrit, et l'horloge de `DictationLine` se met en pause.
@@ -306,7 +340,18 @@ final class TypingReveal {
     @ObservationIgnored private var shown: Double = 0
     @ObservationIgnored private var rate: Double = minimumRate
     @ObservationIgnored private var last: TimeInterval?
-    @ObservationIgnored private var cutCache: (text: String, start: Int)?
+    /// Le premier mot affiché (les précédents sont montés hors de la carte).
+    @ObservationIgnored private var firstWord = 0
+    @ObservationIgnored private var startCache: (text: String, start: Int)?
+
+    /// Une nouvelle dictée : rien d'écrit.
+    func reset() {
+        target = ""
+        shown = 0
+        last = nil
+        firstWord = 0
+        startCache = nil
+    }
 
     /// Vrai s'il reste des lettres de `text` à écrire.
     func isTyping(_ text: String) -> Bool {
@@ -316,9 +361,8 @@ final class TypingReveal {
     /// Ce qui est écrit de `text` à l'instant `now`.
     func visible(_ text: String, at now: TimeInterval, animated: Bool) -> String {
         if text != target {
-            let common = zip(target, text).prefix { $0 == $1 }.count
+            shown = Double(Self.kept(old: target, shown: Int(shown), new: text))
             target = text
-            shown = min(shown, Double(common))
             rate = max(Self.minimumRate, (Double(text.count) - shown) / Self.catchUp)
         }
         if !animated {
@@ -333,12 +377,61 @@ final class TypingReveal {
         return String(target.prefix(Int(shown)))
     }
 
-    /// `DictationLine.cut` de ce texte, gardé tant qu'il ne change pas (la
-    /// mesure ne se refait pas à chaque image).
-    func cut(_ text: String) -> Int {
-        if let cutCache, cutCache.text == text { return cutCache.start }
-        let start = DictationLine.cut(text, width: DictationLine.width)
-        cutCache = (text, start)
+    /// Ce qui reste écrit de `new` quand il remplace `old`, dont `shown`
+    /// lettres étaient écrites : le début commun, et au moins autant de mots
+    /// entiers qu'il y en avait d'écrits (corrigés sur place).
+    static func kept(old: String, shown: Int, new: String) -> Int {
+        let common = min(shown, zip(old, new).prefix { $0 == $1 }.count)
+        let written = old.prefix(shown)
+        // Les mots écrits en entier : tous si l'écriture était au bout ou à
+        // une espace, sinon tous sauf le dernier, entamé.
+        var words = written.split(separator: " ").count
+        if shown < old.count, !written.isEmpty, !written.hasSuffix(" ") { words -= 1 }
+        return min(new.count, max(common, endOfWords(words, in: new)))
+    }
+
+    /// La fin (en caractères) des `count` premiers mots de `text`.
+    static func endOfWords(_ count: Int, in text: String) -> Int {
+        guard count > 0 else { return 0 }
+        var seen = 0, inWord = false
+        for (i, c) in text.enumerated() {
+            if c == " " {
+                if inWord { seen += 1; if seen == count { return i } }
+                inWord = false
+            } else {
+                inWord = true
+            }
+        }
+        return text.count
+    }
+
+    /// Où commence l'affichage de `text` (en caractères) : au premier mot
+    /// gardé. Sur deux lignes pleines, il avance d'une ligne entière ; il ne
+    /// recule jamais pendant une dictée. Gardé tant que le texte ne change pas
+    /// (la mesure ne se refait pas à chaque image).
+    func start(of text: String, width: CGFloat = DictationLine.width) -> Int {
+        if let startCache, startCache.text == text { return startCache.start }
+        var start = Self.endOfWords(firstWord, in: text)
+        if start > 0, start < text.count { start += 1 } // après l'espace
+        if start >= text.count { start = 0; firstWord = 0 }
+        while DictationLine.cut(String(text.dropFirst(start)), width: width - Self.ellipsisWidth(start)) > 0 {
+            // Deux lignes pleines : la première monte hors de la carte.
+            let shown = (start > 0 ? "…" : "") + String(text.dropFirst(start))
+            guard let next = DictationLine.secondLineStart(shown, width: width) else { break }
+            let advance = next - (start > 0 ? 1 : 0)
+            guard advance > 0 else { break }
+            firstWord += String(text.dropFirst(start).prefix(advance)).split(separator: " ").count
+            start = Self.endOfWords(firstWord, in: text)
+            if start < text.count { start += 1 }
+        }
+        startCache = (text, start)
         return start
+    }
+
+    /// La place de « … » devant un texte coupé.
+    private static func ellipsisWidth(_ start: Int) -> CGFloat {
+        guard start > 0 else { return 0 }
+        return NSAttributedString(string: "…", attributes: [
+            .font: NSFont.systemFont(ofSize: DictationLine.fontSize, weight: .medium)]).size().width
     }
 }

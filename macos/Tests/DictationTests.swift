@@ -396,12 +396,38 @@ final class DictationControllerTests: XCTestCase {
         XCTAssertEqual(frames("Bonjour à tous", from: 0.5, to: 1.1), "Bonjour à tous")
     }
 
-    func testACorrectionRestartsAtTheFirstDifferentLetter() {
+    func testACorrectedWordChangesInPlaceAndNothingIsRetyped() {
         let reveal = TypingReveal()
+        _ = reveal.visible("Yeah.", at: 0, animated: false)
+        XCTAssertEqual(reveal.visible("Yes, I think so", at: 0, animated: true), "Yes,",
+                       "le mot écrit est corrigé sur place, la suite s'écrira")
         _ = reveal.visible("Je dict", at: 0, animated: false)
-        XCTAssertEqual(reveal.visible("Je dicte une phrase", at: 0, animated: true), "Je dict",
-                       "le début commun reste, la suite s'écrit")
-        XCTAssertEqual(reveal.visible("Tu dictes", at: 0, animated: true), "", "un début corrigé repart de zéro")
+        XCTAssertEqual(reveal.visible("Je dicte une phrase", at: 0, animated: true), "Je dicte")
+    }
+
+    func testAWordBeingTypedIsNotCountedAsWritten() {
+        // « Je dict » écrit sur « Je dicte une phrase » : « dicte » était entamé.
+        XCTAssertEqual(TypingReveal.kept(old: "Je dicte une phrase", shown: 7, new: "Tu dictes"), 2)
+        XCTAssertEqual(TypingReveal.kept(old: "Bonjour", shown: 7, new: "Bonjour à tous"), 7)
+        XCTAssertEqual(TypingReveal.kept(old: "un deux", shown: 7, new: "un"), 2, "jamais plus que le nouveau texte")
+    }
+
+    func testTwoFullLinesScrollUpByAWholeLineAndNeverBack() {
+        let reveal = TypingReveal()
+        let words = (1...40).map { "mot\($0)" }
+        var previous = 0
+        for n in 1...words.count {
+            let text = words.prefix(n).joined(separator: " ")
+            let start = reveal.start(of: text)
+            XCTAssertGreaterThanOrEqual(start, previous, "le début ne recule pas")
+            XCTAssertTrue(start == 0 || Array(text)[start - 1] == " ", "on coupe au début d'un mot")
+            XCTAssertEqual(DictationLine.cut(String(text.dropFirst(start)), width: DictationLine.width), 0,
+                           "ce qui reste tient sur deux lignes")
+            previous = start
+        }
+        XCTAssertGreaterThan(previous, 0)
+        reveal.reset()
+        XCTAssertEqual(reveal.start(of: "mot1 mot2"), 0, "une nouvelle dictée repart du début")
     }
 
     func testWithoutAnimationEverythingShowsAtOnce() {
