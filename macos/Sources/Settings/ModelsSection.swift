@@ -24,11 +24,11 @@ struct ModelsTable: View {
 
     private static let choiceWidth: CGFloat = 22
     private static let sizeWidth: CGFloat = 80
-    private static let actionWidth: CGFloat = 190
+    private static let actionWidth: CGFloat = 200
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 12) {
+            HStack(spacing: 14) {
                 Color.clear.frame(width: Self.choiceWidth, height: 1)
                 Text("Modèle").frame(maxWidth: .infinity, alignment: .leading)
                 Text("Taille").frame(width: Self.sizeWidth, alignment: .trailing)
@@ -36,17 +36,21 @@ struct ModelsTable: View {
             }
             .font(Typo.caption)
             .foregroundStyle(Palette.muted)
-            .padding(.vertical, 6)
+            .padding(.horizontal, Space.inset)
+            .padding(.top, 14)
+            .padding(.bottom, 10)
             .accessibilityHidden(true)
-            Rule()
+            Rule().padding(.horizontal, Space.inset)
             ForEach(shown, id: \.id) { row in
                 line(row)
-                Rule()
+                    .padding(.horizontal, Space.inset)
+                Rule().padding(.horizontal, Space.inset)
             }
             ErrorText(state.error.text, identifier: "erreur-modeles")
-                .padding(.top, 6)
+                .padding(.horizontal, Space.inset)
+                .padding(.top, 8)
         }
-        .padding(.vertical, 6)
+        .padding(.bottom, 8)
         .alert(state.confirming.map { ModelTable.confirmation($0, fallback: fallback).title } ?? "",
                isPresented: Binding(get: { state.confirming != nil },
                                     set: { if !$0 { state.confirming = nil } }),
@@ -87,31 +91,43 @@ struct ModelsTable: View {
                     .font(Typo.detail)
                     .foregroundStyle(ErrorStyle.color)
                     .fixedSize(horizontal: false, vertical: true)
-                    .padding(.leading, Self.choiceWidth + 12)
+                    .padding(.leading, Self.choiceWidth + 14)
                     .accessibilityHidden(true)   // déjà dans l'étiquette de la ligne
             }
         }
-        .padding(.vertical, 8)
-        .frame(minHeight: 44)
+        .padding(.vertical, 10)
+        .frame(minHeight: 64)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Self.label(row, state))
         .accessibilityIdentifier("modele-\(row.id)")
     }
 
     private func columns(_ row: VoiceModel, _ state: ModelRowState) -> some View {
-        HStack(spacing: 12) {
-            // Le rond, le nom et la taille : un seul bouton, toute la zone choisit
-            // le modèle. Les actions (Télécharger, Supprimer…) restent à part.
+        // `return` explicite plus bas : des déclarations précèdent la vue.
+        let download = model.snapshot.download
+        let downloads = ModelTable.downloadsOnClick(row, download: download)
+        return HStack(spacing: 14) {
+            // Le rond, le nom et la taille : un seul bouton. Installé, il
+            // choisit le modèle ; pas encore là, il le télécharge. Les
+            // actions (Télécharger, Supprimer…) restent à part.
             Button {
                 act {
-                    if let use { try await use(row) } else { try await model.useModel(row.id) }
+                    if downloads {
+                        try await model.installModel(row.id)
+                    } else if let use {
+                        try await use(row)
+                    } else {
+                        try await model.useModel(row.id)
+                    }
                 }
             } label: {
                 choice(row)
             }
             .buttonStyle(ModelRowButtonStyle())
-            .disabled(!ModelTable.canUse(row))
-            .accessibilityLabel(row.active ? "\(row.name), \(ModelTable.used(row))" : "Utiliser \(row.name)")
+            .disabled(!(ModelTable.canUse(row) || downloads))
+            .help(downloads ? "Télécharger \(row.name)" : "")
+            .accessibilityLabel(row.active ? "\(row.name), \(ModelTable.used(row))"
+                : downloads ? "Télécharger \(row.name)" : "Utiliser \(row.name)")
             .accessibilityIdentifier("utiliser-\(row.id)")
             HStack(spacing: 8) {
                 action(row, state)
@@ -124,7 +140,7 @@ struct ModelsTable: View {
     }
 
     private func choice(_ row: VoiceModel) -> some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 14) {
             Image(systemName: row.active ? "largecircle.fill.circle" : "circle")
                 .foregroundStyle(row.active ? Palette.accent : Palette.muted)
                 .frame(width: Self.choiceWidth)

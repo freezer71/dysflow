@@ -56,8 +56,8 @@ impl Reader {
         models::remove(package)
     }
 
-    /// Demande l'arrêt du téléchargement en cours. Le fichier partiel reste :
-    /// une nouvelle installation reprendra de là.
+    /// Demande l'arrêt du téléchargement en cours : ce qu'il avait posé sur
+    /// le disque est retiré (`Download::start`), rien à supprimer ensuite.
     pub fn cancel_download(&mut self) -> Result<()> {
         match self.download.as_ref() {
             Some(d) if !d.is_finished() => {
