@@ -5,7 +5,14 @@ import Carbon.HIToolbox
 enum DictationModifier: String, CaseIterable {
     case none
     case rightOption
+    case leftOption
     case rightCommand
+    case leftCommand
+    case rightControl
+    case leftControl
+    case rightShift
+    case leftShift
+    case function
 
     static let defaultsKey = "dictationModifier"
 
@@ -13,7 +20,14 @@ enum DictationModifier: String, CaseIterable {
         switch self {
         case .none: "Aucune"
         case .rightOption: "Option droite"
+        case .leftOption: "Option gauche"
         case .rightCommand: "Commande droite"
+        case .leftCommand: "Commande gauche"
+        case .rightControl: "Contrôle droite"
+        case .leftControl: "Contrôle gauche"
+        case .rightShift: "Maj droite"
+        case .leftShift: "Maj gauche"
+        case .function: "Fn"
         }
     }
 
@@ -21,16 +35,32 @@ enum DictationModifier: String, CaseIterable {
         switch self {
         case .none: nil
         case .rightOption: UInt16(kVK_RightOption)
+        case .leftOption: UInt16(kVK_Option)
         case .rightCommand: UInt16(kVK_RightCommand)
+        case .leftCommand: UInt16(kVK_Command)
+        case .rightControl: UInt16(kVK_RightControl)
+        case .leftControl: UInt16(kVK_Control)
+        case .rightShift: UInt16(kVK_RightShift)
+        case .leftShift: UInt16(kVK_Shift)
+        case .function: UInt16(kVK_Function)
         }
     }
 
     var flag: NSEvent.ModifierFlags {
         switch self {
         case .none: []
-        case .rightOption: .option
-        case .rightCommand: .command
+        case .rightOption, .leftOption: .option
+        case .rightCommand, .leftCommand: .command
+        case .rightControl, .leftControl: .control
+        case .rightShift, .leftShift: .shift
+        case .function: .function
         }
+    }
+
+    /// La touche de modification de ce code (gauche ou droite), s'il en est une.
+    init?(keyCode: UInt16) {
+        guard let key = Self.allCases.first(where: { $0.keyCode == keyCode }) else { return nil }
+        self = key
     }
 
     /// Celle des réglages ; Option droite par défaut.
@@ -108,6 +138,8 @@ final class ModifierTapMonitor {
 
     private func handle(_ event: NSEvent) {
         let current = key()
+        // Un raccourci s'enregistre dans les réglages : la touche tapée n'ouvre rien.
+        if DictationTrigger.isRecording { detector = ModifierTapDetector(key: .none); return }
         if detector.key != current { detector = ModifierTapDetector(key: current) }
         switch event.type {
         case .keyDown:

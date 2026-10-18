@@ -29,7 +29,7 @@ final class SettingsUITests: XCTestCase {
         XCTAssertTrue(any["sections-reglages"].exists, "liste des sections absente")
         var sections = present
         if #available(macOS 26, *) {
-            sections.insert(("dictee", ["raccourci-dictee", "touche-dictee", "langue-dictee"]), at: 2)
+            sections.insert(("dictee", ["raccourci-dictee", "langue-dictee"]), at: 2)
         } else {
             XCTAssertFalse(any["section-dictee"].exists, "pas de Dictée avant macOS 26")
         }
