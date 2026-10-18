@@ -23,6 +23,9 @@ struct Sidebar: View {
                     .font(.system(size: 13))
                     .padding(.leading, CGFloat(max(Int(item.level) - 1, 0)) * 12)
                     .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                    .pointingHandCursor()
                     .tag(item.id)
             }
             .listStyle(.sidebar)

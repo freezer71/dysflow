@@ -125,4 +125,14 @@ final class ModelTableTests: XCTestCase {
         XCTAssertTrue(shown[0].system, "la dictée de macOS ne se supprime ni ne se télécharge")
         XCTAssertEqual(ModelTable.used(shown[0]), "utilisée")
     }
+
+    func testARowIsChosenAnywhereOnceItsModelIsThere() {
+        XCTAssertTrue(ModelTable.canUse(.sample(id: "kokoro", kind: "speech", installed: true)))
+        XCTAssertFalse(ModelTable.canUse(.sample(id: "magpie", kind: "speech", installed: false)),
+                       "pas installé : rien à choisir")
+        var used = VoiceModel.sample(id: "qwen", kind: "speech", installed: true)
+        used.active = true
+        XCTAssertFalse(ModelTable.canUse(used), "déjà utilisé")
+    }
+
 }

@@ -33,6 +33,12 @@ enum ModelTable {
     /// Supprimer : un modèle installé, ou les fichiers qu'un téléchargement
     /// annulé ou échoué a laissés. Pas pendant un téléchargement (l'annuler
     /// d'abord), jamais la voix de macOS.
+    /// Une ligne se choisit (clic sur le rond, le nom ou la taille) si son
+    /// modèle est là (installé, ou la voix de macOS) et pas déjà utilisé.
+    static func canUse(_ row: VoiceModel) -> Bool {
+        (row.installed || row.system) && !row.active
+    }
+
     static func canRemove(_ row: VoiceModel, _ state: ModelRowState) -> Bool {
         switch state {
         case .installed: return true

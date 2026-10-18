@@ -116,5 +116,6 @@ private struct BarButtonBody: View {
             .contentShape(Rectangle())
             .opacity(enabled ? 1 : 0.4)
             .onHover { hovering = $0 }
+            .pointingHandCursor()
     }
 }

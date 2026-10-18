@@ -270,6 +270,7 @@ private struct SettingsSidebarRow: View {
         .buttonStyle(.plain)
         .focusable(false)
         .onHover { hovering = $0 }
+        .pointingHandCursor()
         .accessibilityLabel(section.title)
         .accessibilityIdentifier(section.identifier)
         .accessibilityAddTraits(selected ? .isSelected : [])
