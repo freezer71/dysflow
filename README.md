@@ -5,8 +5,172 @@
 
 # sillon
 
-Lecteur audio en terminal : il prend du markdown — pipé ou en fichier —, le
-hiérarchise, et le lit à voix haute avec les contrôles d'un lecteur audio.
+Lecteur à voix haute, fait pour être suivi des yeux : il prend un document —
+texte, markdown, PDF, image —, le hiérarchise, et le lit à voix haute avec les
+contrôles d'un lecteur audio. Il existe sous deux formes :
+
+- **l'app macOS**, avec sa fenêtre, la lecture de la sélection et la dictée ;
+- **le lecteur au terminal**, la version Linux (x86_64, ARM64), qui marche
+  aussi sur Mac.
+
+Les deux partagent le même moteur Rust : même découpage, même mise en mots,
+mêmes voix Kokoro.
+
+## Ce qu'il fait
+
+- **Lit ce qu'on lui donne.** Dans l'app : un fichier ouvert (⌘O), glissé sur
+  le lecteur ou passé à la commande `sillon`, le presse-papiers (⌘V), la
+  sélection d'une autre app par un raccourci global. Au terminal : un fichier,
+  le presse-papiers (`--clip`), ou un flux pipé, lu au fil de l'eau — la
+  lecture démarre avant la fin de l'entrée.
+- **Accepte un PDF** qui porte une couche texte, et le reconstruit : titres
+  rendus au sommaire, mots coupés recollés, en-têtes et pieds de page retirés.
+- **Lit aussi les images**, avec reconnaissance de texte : une capture d'écran,
+  une photo de page, un **PDF photocopié**, ou une image collée. Les pages sont
+  reconnues en parallèle et le résultat mémorisé : la deuxième ouverture est
+  immédiate.
+- **Synthétise en parallèle**, dans une fenêtre glissante autour du curseur —
+  ce qui rend l'avance et le recul immédiats et borne la mémoire.
+- **Montre ce qui est lu** : mot surligné, ligne soulignée, phrase en cours,
+  bloc actif, titre courant.
+- **Montre ce qu'il ne lit pas.** Un bloc de code est annoncé sans être récité,
+  mais il reste affiché tel qu'il est écrit ; un tableau garde ses colonnes.
+- **Ne lit pas le formatage.** Bordures de tableaux, filets, flèches, marqueurs
+  de titres et syntaxe markdown sont retirés ; la hiérarchie passe par la
+  typographie et par la durée des silences, jamais par un « dièse titre ».
+- **Rouvre un document là où on l'a laissé.** La position se retient toute
+  seule, et se retrouve même si le document a été retouché entre-temps.
+- **Dicte**, dans l'app : un raccourci ouvre la fenêtre de dictée, et le texte
+  reconnu s'écrit dans l'app au premier plan.
+
+## L'app macOS
+
+### Installation
+
+Il faut un Mac à puce Apple, Xcode, [XcodeGen](https://github.com/yonaskolb/XcodeGen)
+(`brew install xcodegen`), Rust et le composant Metal Toolchain
+(`xcodebuild -downloadComponent MetalToolchain`).
+
+```bash
+./scripts/build-macos.sh                 # macos/build/Release/Sillon.app
+cp -R macos/build/Release/Sillon.app /Applications/
+./scripts/install-app-command.sh         # la commande `sillon`, dans ~/.local/bin
+```
+
+`build-macos.sh` construit sillon-espeak, le moteur Rust et sa liaison Swift
+(`build-ffi.sh`), puis l'app. La commande `sillon` ouvre l'app :
+`sillon document.pdf` ouvre le lecteur sur le document et le lit (reprise à la
+dernière position), `sillon` seul ouvre le lecteur. Si `sillon` était le
+lecteur au terminal, le script prévient avant de le remplacer (`REMPLACER=1`
+pour ne pas demander). Pour la retirer, `rm ~/.local/bin/sillon`.
+
+### Les voix
+
+**Kokoro s'installe tout seul** au premier lancement : la voix du système lit
+en attendant, et Kokoro prend la suite à la phrase en cours. Un échec — réseau
+coupé — se dit ; le lancement suivant réessaie, en reprenant ce qui était déjà
+reçu. Les modèles se téléchargent, se choisissent et se suppriment dans
+*Réglages › Voix*.
+
+| Modèle | Taille | Langues |
+|---|---|---|
+| Kokoro 82M · MLX (recommandé) | 342 Mo | français, anglais |
+| Qwen3 0.6B · voix française | 2,0 Go | 10 langues, dont français et anglais |
+| MagpieTTS 357M | 302 Mo | 9 langues, dont français et anglais |
+
+Tous calculent sur la puce graphique, en MLX. Kokoro porte 30 voix, dont
+`p-fenrir60` (française, recommandée, livrée avec Sillon) et `af_bella`
+(américaine, recommandée). Sans modèle installé, la voix de macOS lit.
+
+Les modèles vont dans `~/Library/Application Support/sillon/models/<famille>/`.
+
+**La vitesse agit sur le son, à la lecture**, sans changer la hauteur : la
+voix accélère sans monter dans les aigus. La synthèse se fait toujours à 1×,
+et [Sonic](https://github.com/waywardgeek/sonic) étire le son pendant qu'il
+sonne. Changer de vitesse s'entend en quelques millisecondes, au milieu de la
+phrase, sans resynthèse ni coupure. Les pauses entre blocs raccourcissent
+moins vite que la parole (÷ √vitesse).
+
+### La dictée
+
+Les modèles de dictée se téléchargent dans *Réglages › Dictée* ; aucun n'est
+livré avec Sillon. Le raccourci se règle dans *Dictée* ou *Raccourcis* : une
+touche de modification seule, ou une combinaison.
+
+| Modèle | Taille |
+|---|---|
+| Parakeet v3 | 2,5 Go |
+| Phonon-2 | 164 Mo |
+| Whisper tiny · small · large-v3-turbo | 23 Mo · 140 Mo · 464 Mo |
+| Canary 1b-v2 | 1,1 Go |
+| Voxtral Realtime | 3,1 Go |
+
+### Le lecteur
+
+Le lecteur a deux tailles : le lecteur entier, et le mini (⌘M). ⌘W le ferme
+et met la lecture en pause.
+
+| Touche | Effet |
+|---|---|
+| `Espace` | Lecture / pause |
+| `←` `→` | Phrase précédente / suivante |
+| `↑` `↓` | Ligne précédente / suivante |
+| `n` `p` | Titre suivant / précédent |
+| `Début` | Début du document |
+| `/` · ⌘F | Chercher dans le document |
+| `N` · `P` | Résultat suivant · précédent |
+| `+` `-` | Vitesse |
+| `t` | Sommaire |
+| `e` | Modifier le texte |
+| `?` | Aide |
+| ⌘C | Copier la sélection, sinon la phrase en cours |
+| ⌘V | Lire le presse-papiers |
+| ⌘O | Ouvrir un fichier |
+| ⌘, | Réglages |
+| `Échap` | Ferme la recherche, l'aide ou le sommaire ; sinon le lecteur |
+
+**Chercher.** La recherche ignore la casse **et les accents** —
+`specification` trouve « Spécification » — et porte sur ce qui est affiché :
+les chiffres tels qu'ils sont écrits, comme le source des blocs de code.
+
+**Reprendre où l'on s'était arrêté.** Ce qui est retenu n'est pas seulement
+un rang, c'est la phrase elle-même : un paragraphe ajouté en tête décale tout,
+et la reprise tomberait au milieu d'un autre passage. Un document lu jusqu'au
+bout oublie sa position. Un collage n'en garde aucune : il n'est pas le même
+d'une fois sur l'autre.
+
+### Lire en écoutant
+
+Le lecteur est fait pour être suivi des yeux, pas seulement entendu.
+*Réglages › Affichage* gouverne ce que l'écran demande à l'œil : police
+(Literata, OpenDyslexic, Atkinson Hyperlegible), taille, interlignage, et la
+**règle de lecture** — la ligne où se trouve le mot prononcé porte un fond
+discret. La règle et le surlignage ne disent pas la même chose : le mot dit
+**où en est la voix**, la ligne dit **où revenir** quand on relève les yeux.
+
+**Le formatage du fichier se voit.** Le gras est du gras, l'italique de
+l'italique, le barré du barré. Rien de tout cela ne se prononce, et rien n'en
+porte de fond : le mot prononcé reste le seul de l'écran à en avoir un.
+
+**Ce qui n'est pas lu reste montré.** Un bloc de code annoncé — le réglage par
+défaut — se dit « bloc de code rust » et s'affiche pourtant en entier, avec son
+indentation. Un tableau garde ses colonnes, et se dit colonne par colonne :
+une ligne `/users │ GET │ JWT` se dit « Route : slash users. Méthode : GET.
+Auth : JWT. », et non « slash users, GET, JWT » — trois valeurs sans leur
+colonne. Chaque cellule est par ailleurs une phrase : `←` `→` parcourent le
+tableau cellule par cellule.
+
+### Réglages
+
+Les réglages vivent dans l'app (⌘,) : *Voix*, *Affichage*, *Dictée*,
+*Raccourcis*, *Autorisations*, *Démarrage*. Chaque changement s'enregistre
+aussitôt dans `~/Library/Application Support/sillon/config.toml`. Un
+`config.toml` illisible n'est jamais réécrit.
+
+## Le terminal (Linux)
+
+Le lecteur au terminal est la version Linux de sillon. Il marche aussi sur
+Mac, à côté de l'app.
 
 ```bash
 sillon                                      # dit comment lire, puis rend la main
@@ -16,45 +180,11 @@ llm "explique-moi les monades" | sillon     # la lecture démarre avant la fin d
 sillon --config                             # les réglages
 ```
 
-**Lancé sans argument, `sillon` affiche les quatre manières de lire** — un
-fichier, un tube, `--clip`, l'app — et rend la main. `s` ouvre les réglages
-en cours de lecture, `?` l'aide.
+Lancé sans argument, `sillon` affiche les manières de lire et rend la main.
+`s` ouvre les réglages en cours de lecture, `?` l'aide. `--to-markdown` écrit
+le texte extrait d'un PDF ou d'une image sans lancer la lecture.
 
-## Ce qu'il fait
-
-- **Lit un flux au fil de l'eau.** Le texte est mis en voix bloc par bloc ; il
-  n'attend ni la fin de l'entrée, ni la fin de la synthèse.
-- **Accepte un PDF** qui porte une couche texte, et le reconstruit : titres
-  rendus au sommaire, mots coupés recollés, en-têtes et pieds de page retirés.
-  `--to-markdown` écrit le texte extrait sans lancer la lecture.
-  Une page qui n'est qu'une image — une couverture photographiée — ne bloque
-  pas le reste : sans l'option `ocr`, elle le dit et la lecture continue.
-- **Lit aussi les images**, avec reconnaissance de texte : une capture d'écran,
-  une photo de page, un dossier de scans, un **PDF photocopié**, ou une image
-  collée. Les pages sont reconnues en parallèle et le résultat mémorisé : la
-  deuxième ouverture est immédiate. `--no-cache` refait l'extraction. Demande
-  l'option de compilation `ocr`.
-- **Lit le presse-papiers** avec `--clip`, sans rien exiger de plus : coller du
-  texte n'a rien à reconnaître. Seule une image collée demande l'option `ocr`.
-- **Synthétise en parallèle**, sur plusieurs sessions, dans une fenêtre glissante
-  autour du curseur — ce qui rend l'avance et le recul immédiats et borne la
-  mémoire.
-- **Montre ce qui est lu** : mot surligné, ligne soulignée, phrase en cours,
-  bloc actif, titre courant, et la ponctuation prononcée.
-- **Se lit en même temps qu'il se dit.** Interlignage, règle de lecture,
-  largeur de colonne réglable : l'écran est fait pour être suivi des yeux
-  pendant que la voix avance.
-- **Montre ce qu'il ne lit pas.** Un bloc de code est annoncé sans être récité,
-  mais il reste affiché tel qu'il est écrit ; un tableau garde ses colonnes.
-- **Ne lit pas le formatage.** Bordures de tableaux, filets, flèches, marqueurs
-  de titres et syntaxe markdown sont retirés ; la hiérarchie passe par la
-  typographie et par la durée des silences, jamais par un « dièse titre ».
-- **Rouvre un document là où on l'a laissé.** La position se retient toute
-  seule, et se retrouve même si le document a été retouché entre-temps.
-- **Garde la page du fichier.** Les lignes, l'indentation et l'alignement des
-  colonnes sont ceux du document : ce qui est à l'écran se reconnaît.
-
-## Installation
+### Installation
 
 **Sous Linux (x86_64, ARM64)**, le paquet tout prêt est joint à chaque
 publication GitHub (`sillon-<version>-linux-<arch>.tar.gz`, glibc 2.39 ou
@@ -79,16 +209,13 @@ ONNX Runtime et sillon-espeak, sans le modèle), et dit s'il manque le `bin/` au
 `PATH`. Modèles et configuration vivent dans le répertoire de données. Pour
 désinstaller, `rm -r $PREFIX/lib/sillon $PREFIX/bin/sillon`.
 
-Sur Mac, avec l'app dans `/Applications`, `./scripts/install-app-command.sh`
-pose à la place une commande `sillon` qui ouvre l'app : `sillon document.pdf`
-ouvre le panneau sur le document et le lit (reprise à la dernière position),
-`sillon` seul ouvre le lecteur. Le lecteur au terminal n'est alors plus
-la commande `sillon` (`$PREFIX/lib/sillon` reste, à retirer à la main) ; pour
-désinstaller la commande de l'app, `rm $PREFIX/bin/sillon`. Chacun des deux
+Sur Mac, la commande `sillon` est soit le lecteur au terminal, soit celle qui
+ouvre l'app (`install-app-command.sh`, voir *L'app macOS*). Chacun des deux
 scripts prévient avant de remplacer l'autre, et ne le fait qu'après
-confirmation (ou avec `REMPLACER=1`).
+confirmation (ou avec `REMPLACER=1`) ; `$PREFIX/lib/sillon` reste alors, à
+retirer à la main.
 
-### Distribuer le binaire
+#### Distribuer le binaire
 
 `scripts/package.sh` assemble dans `dist/` le binaire et ce qu'il charge —
 ONNX Runtime et sillon-espeak pour Kokoro —, avec les licences, et vérifie que
@@ -110,7 +237,7 @@ premier build ; ensuite rien n'est à installer, les données de langue
 cargo build --release --features ocr
 ```
 
-### La voix
+### La voix au terminal
 
 **Kokoro s'installe tout seul** au premier usage, avec un binaire construit
 avec `kokoro-onnx` (`./scripts/install.sh` le fait) : le téléchargement
@@ -157,80 +284,6 @@ main l'emporte toujours — y compris celui qu'une version antérieure a pu
 écrire dans `config.toml` : retirez la ligne `sessions` (ou mettez `0`) pour
 en profiter.
 
-### Ce qui est dit au moteur
-
-Un modèle de voix devine mal la prononciation d'un signe : « 1 » lui parvient
-comme un caractère, pas comme un nombre. Le lecteur écrit donc en toutes
-lettres, avant la synthèse, tout ce qui se lit autrement qu'il ne s'écrit :
-
-| Écrit | Dit |
-|---|---|
-| `2026-08-29`, `26/08/2029` | vingt-neuf août deux mille vingt-six |
-| `lot 1`, `page 47` | lot un, page quarante-sept |
-| `1 234 567`, `8080` | un million deux cent trente-quatre mille cinq cent soixante-sept, huit mille quatre-vingts |
-| `06 12 34 56 78` | zéro six, douze, trente-quatre, cinquante-six, soixante-dix-huit |
-| `984 733 204 00015` | neuf huit quatre, sept trois trois, deux zéro quatre, zéro zéro zéro un cinq |
-| `00015` | zéro zéro zéro un cinq |
-| `14h30` | quatorze heures trente |
-| `3,14`, `100 %` | trois virgule quatorze, cent pour cent |
-| `le 1er`, `la 21ème` | le premier, la vingt et unième |
-| `-5 degrés` | moins cinq degrés |
-| `55 €`, `1 €`, `30 km`, `25 °C` | cinquante-cinq euros, un euro, trente kilomètres, vingt-cinq degrés |
-| `### 3.5 Tarif de repli` | trois point cinq, Tarif de repli |
-| `HT`, `TTC`, `TVA`, `RCS` | hache té, té té cé, té vé a, erre cé esse |
-| `SIRET`, `SIREN`, `CNIL` | sirette, sirène, knil |
-
-Une date se dit toujours à la française — le jour, le mois en toutes lettres,
-l'année entière — quel que soit l'ordre sous lequel elle est écrite : `2026-08-29`,
-`29/08/2026` et `08/29/2026` se disent tous « vingt-neuf août deux mille
-vingt-six ».
-
-La numérotation d'un titre se dit ; celle d'un item de liste se retire, sa
-structure étant déjà portée par le rang de l'item.
-
-Cette mise en mots ne concerne que la voix : **l'écran garde la colonne
-« Écrit »**. On entend « deux mille vingt-sept » en lisant `2027` — c'est le
-document qu'on suit des yeux, pas sa transcription. Le curseur reste calé pour
-autant : un nombre pèse, dans le surlignage, le temps qu'il faut pour le dire.
-
-Ce qui n'est pas une quantité reste intact : `version 2.1`, `M5`, `F1`, `v3`,
-`3/4`. Un numéro suit la forme sous laquelle il est écrit — groupé par milliers,
-il se dit comme une quantité ; en dix chiffres derrière un `0` ou un `+33`, il
-se dit par paires.
-
-Un **identifiant se dit chiffre par chiffre**, en respirant à chaque groupe
-écrit : c'est en l'écoutant qu'on le recopie, et « neuf cent quatre-vingt-quatre
-milliards » ne se note pas. Deux indices le trahissent, la forme et le libellé :
-un groupement qui n'est pas celui des milliers (`984 733 204 00015`) ou un zéro
-de tête (`00015`) suffisent ; neuf chiffres groupés par trois ne se distinguant
-pas d'un nombre de millions, c’est alors le libellé qui tranche — `SIRET`,
-`SIREN`, `RCS`, `TVA`, `intracommunautaire`, `IBAN`, `BIC`, quand il annonce
-directement le nombre. Un montant cité plus loin dans la même phrase reste une
-quantité.
-
-### Les sigles
-
-Un sigle ne se lit pas comme il s'écrit, et le moteur n'a pas de lexique pour
-en décider : `HT` lui parvient comme deux consonnes qu'aucune bouche française
-n'enchaîne, `SIRET` comme un mot dont le T final tomberait. Le lecteur tranche
-donc avant lui, **pour la voix seule** — l'écran garde le sigle.
-
-La règle est simple : ce qui ne se laisse pas dire s'épelle. Un mot en
-capitales sans voyelle (`HT`, `TTC`, `RCS`, `RGPD`) ou dont les consonnes
-n'ouvrent aucune syllabe française (`TVA`, `CDI`, `SNCF`, `PME`) est rendu avec
-les noms des lettres. Le reste est laissé au moteur, qui le dira comme un mot :
-`RIB`, `NAF`, `SARL`, `IBAN`, `SMIC`.
-
-Restent ceux que seul l'usage décide, et qu'un dictionnaire couvre :
-`SIRET` → sirette, `SIREN` → sirène, `CNIL` → knil, `URSSAF`, `INSEE`, `SEPA`,
-`SAS`, `KBIS` d'un côté ; `SA`, `API`, `IA`, `SAV`, `IP`, `UE`, `URL`, `ONG`,
-`APE`, `RATP` de l'autre, qui s'épellent malgré une graphie prononçable.
-
-Deux garde-fous : un mot d'une seule lettre n'est jamais épelé — `A` est aussi
-bien un article qu'un rang — et un mot de plus de six capitales non plus, un
-titre en capitales étant fait de mots et non de sigles. `MENTIONS LÉGALES` se
-lit donc comme il s'écrit.
-
 ### Choisir une voix
 
 Dans les réglages (`s`), lignes *Voix française* et *Voix anglaise* : `←` `→`
@@ -246,7 +299,7 @@ Sans modèle installé — ou sans la feature — le lecteur se replie sur la vo
 système (`say` sur macOS, `espeak-ng` ailleurs). La ligne d'état montre alors l'installation
 en cours, ou pourquoi elle a échoué.
 
-## Contrôles
+### Contrôles
 
 | Touche | Effet |
 |---|---|
@@ -275,7 +328,7 @@ la vitesse : la lui donner lui faisait avaler des mots à 2× et plus. Les pause
 entre blocs raccourcissent moins vite que la parole (÷ √vitesse).
 
 
-## Lire en écoutant
+### Lire en écoutant au terminal
 
 Le lecteur est fait pour être suivi des yeux, pas seulement entendu. Trois
 réglages, dans les réglages (`s`), gouvernent ce que l'écran demande à
@@ -346,7 +399,7 @@ recherche ignore la casse **et les accents** — `specification` trouve
 « Spécification » — et porte sur ce qui est affiché : les chiffres tels qu'ils
 sont écrits comme le source des blocs de code.
 
-## Configuration
+### Configuration
 
 Les réglages tiennent sur **une page** — `s` en cours de lecture, ou
 `sillon --config` :
@@ -429,29 +482,107 @@ acceptées : `--pitch`, `--language`, `--engine`, `--model`, `--family`,
 `--sessions`, `--prefetch`, `--code-blocks`, `--no-autoplay`,
 `--write-config`, `--show-config`, `--check-kokoro`.
 
+## Ce qui est dit au moteur
+
+Un modèle de voix devine mal la prononciation d'un signe : « 1 » lui parvient
+comme un caractère, pas comme un nombre. Le lecteur écrit donc en toutes
+lettres, avant la synthèse, tout ce qui se lit autrement qu'il ne s'écrit :
+
+| Écrit | Dit |
+|---|---|
+| `2026-08-29`, `26/08/2029` | vingt-neuf août deux mille vingt-six |
+| `lot 1`, `page 47` | lot un, page quarante-sept |
+| `1 234 567`, `8080` | un million deux cent trente-quatre mille cinq cent soixante-sept, huit mille quatre-vingts |
+| `06 12 34 56 78` | zéro six, douze, trente-quatre, cinquante-six, soixante-dix-huit |
+| `984 733 204 00015` | neuf huit quatre, sept trois trois, deux zéro quatre, zéro zéro zéro un cinq |
+| `00015` | zéro zéro zéro un cinq |
+| `14h30` | quatorze heures trente |
+| `3,14`, `100 %` | trois virgule quatorze, cent pour cent |
+| `le 1er`, `la 21ème` | le premier, la vingt et unième |
+| `-5 degrés` | moins cinq degrés |
+| `55 €`, `1 €`, `30 km`, `25 °C` | cinquante-cinq euros, un euro, trente kilomètres, vingt-cinq degrés |
+| `## 3.5 Tarif de repli` | trois point cinq, Tarif de repli |
+| `HT`, `TTC`, `TVA`, `RCS` | hache té, té té cé, té vé a, erre cé esse |
+| `SIRET`, `SIREN`, `CNIL` | sirette, sirène, knil |
+
+Une date se dit toujours à la française — le jour, le mois en toutes lettres,
+l'année entière — quel que soit l'ordre sous lequel elle est écrite : `2026-08-29`,
+`29/08/2026` et `08/29/2026` se disent tous « vingt-neuf août deux mille
+vingt-six ».
+
+La numérotation d'un titre se dit ; celle d'un item de liste se retire, sa
+structure étant déjà portée par le rang de l'item.
+
+Cette mise en mots ne concerne que la voix : **l'écran garde la colonne
+« Écrit »**. On entend « deux mille vingt-sept » en lisant `2027` — c'est le
+document qu'on suit des yeux, pas sa transcription. Le curseur reste calé pour
+autant : un nombre pèse, dans le surlignage, le temps qu'il faut pour le dire.
+
+Ce qui n'est pas une quantité reste intact : `version 2.1`, `M5`, `F1`, `v3`,
+`3/4`. Un numéro suit la forme sous laquelle il est écrit — groupé par milliers,
+il se dit comme une quantité ; en dix chiffres derrière un `0` ou un `+33`, il
+se dit par paires.
+
+Un **identifiant se dit chiffre par chiffre**, en respirant à chaque groupe
+écrit : c'est en l'écoutant qu'on le recopie, et « neuf cent quatre-vingt-quatre
+milliards » ne se note pas. Deux indices le trahissent, la forme et le libellé :
+un groupement qui n'est pas celui des milliers (`984 733 204 00015`) ou un zéro
+de tête (`00015`) suffisent ; neuf chiffres groupés par trois ne se distinguant
+pas d'un nombre de millions, c’est alors le libellé qui tranche — `SIRET`,
+`SIREN`, `RCS`, `TVA`, `intracommunautaire`, `IBAN`, `BIC`, quand il annonce
+directement le nombre. Un montant cité plus loin dans la même phrase reste une
+quantité.
+
+## Les sigles
+
+Un sigle ne se lit pas comme il s'écrit, et le moteur n'a pas de lexique pour
+en décider : `HT` lui parvient comme deux consonnes qu'aucune bouche française
+n'enchaîne, `SIRET` comme un mot dont le T final tomberait. Le lecteur tranche
+donc avant lui, **pour la voix seule** — l'écran garde le sigle.
+
+La règle est simple : ce qui ne se laisse pas dire s'épelle. Un mot en
+capitales sans voyelle (`HT`, `TTC`, `RCS`, `RGPD`) ou dont les consonnes
+n'ouvrent aucune syllabe française (`TVA`, `CDI`, `SNCF`, `PME`) est rendu avec
+les noms des lettres. Le reste est laissé au moteur, qui le dira comme un mot :
+`RIB`, `NAF`, `SARL`, `IBAN`, `SMIC`.
+
+Restent ceux que seul l'usage décide, et qu'un dictionnaire couvre :
+`SIRET` → sirette, `SIREN` → sirène, `CNIL` → knil, `URSSAF`, `INSEE`, `SEPA`,
+`SAS`, `KBIS` d'un côté ; `SA`, `API`, `IA`, `SAV`, `IP`, `UE`, `URL`, `ONG`,
+`APE`, `RATP` de l'autre, qui s'épellent malgré une graphie prononçable.
+
+Deux garde-fous : un mot d'une seule lettre n'est jamais épelé — `A` est aussi
+bien un article qu'un rang — et un mot de plus de six capitales non plus, un
+titre en capitales étant fait de mots et non de sigles. `MENTIONS LÉGALES` se
+lit donc comme il s'écrit.
+
 ## Architecture
 
 ```
-entrée ──▶ doc ──▶ tts ──▶ audio ──▶ app ──▶ tui
-(flux,    (blocs,  (pool    (sortie,  (état,   (rendu,
- blocs)   phrases) parallèle) position) commandes) touches)
+source ──▶ doc ──▶ tts ──▶ audio ──▶ app ──┬──▶ tui     (le terminal)
+(fichier,  (blocs,  (pool    (sortie,  (état,   │   (rendu, touches)
+ flux, OCR) phrases) parallèle) position) commandes)
+                                           └──▶ reader ──▶ ffi ──▶ app macOS (Swift)
 ```
 
-- `input` — lecture non bloquante, regroupement en blocs markdown.
-- `models` — catalogue, installation et suppression des modèles.
-- `tts::lazy` — charge le moteur en arrière-plan pour que l'interface soit immédiate.
-- `tts::preview` — aperçus de voix, sur une session tenue ouverte à part.
-- `logging` — détourne les sorties natives vers `sillon.log`.
+- `input` — lecture non bloquante d'un flux, regroupement en blocs markdown.
+- `source` — fichiers, PDF, images (reconnaissance de texte), presse-papiers.
 - `doc` — hiérarchie append-only : sections, blocs, phrases, mots.
 - `text` — nettoyage du formatage et découpage en phrases (`sanitize`), mise en mots des dates, des nombres et des sigles pour la voix seule (`verbalize`).
-- `tts` — contrat moteur/session, pool parallèle, Kokoro (MLX ou ONNX Runtime), repli système.
+- `models` — catalogue, installation et suppression des modèles.
+- `tts` — contrat moteur/session, pool parallèle, Kokoro (MLX dans l'app, ONNX Runtime au terminal), repli sur la voix du système.
+- `tts::lazy` — charge le moteur en arrière-plan pour que l'interface soit immédiate.
+- `tts::preview` — aperçus de voix, sur une session tenue ouverte à part.
 - `audio` — file de sortie et position déduite du son réellement joué.
 - `app` — le contrôleur : document, lecture, recherche, page des réglages. Il ne connaît aucun écran.
 - `tui` — rendu ratatui du contrôleur, adaptation des touches.
+- `logging` — détourne les sorties natives vers `sillon.log`.
+- `reader` et `ffi/` — le lecteur tel que l'app le voit, lié à Swift par UniFFI.
 
-Les sorties natives (ONNX Runtime, espeak-ng) sont détournées vers
-`~/.local/share/sillon/sillon.log` : en plein écran, elles disloqueraient le
-rendu.
+Au terminal, les sorties natives (ONNX Runtime, espeak-ng) sont détournées
+vers `~/.local/share/sillon/sillon.log` : en plein écran, elles
+disloqueraient le rendu. Dans l'app, le calcul MLX (Kokoro, Qwen3, Magpie,
+dictée) est en Swift, dans `macos/Vendor/KokoroMLX`.
 
 L'ouverture et la fermeture des sessions sont sérialisées par un verrou ; la
 synthèse, elle, n'en prend aucun — chaque session a son propre état.
@@ -467,6 +598,9 @@ La seconde ligne n'est pas un supplément : `tests/image_input.rs` est compilé
 sous `#![cfg(feature = "ocr")]`, comme le test du PDF photocopié de
 `tests/pdf_input.rs`. Sans elle, ces chemins ne sont pas *ignorés* — ils
 n'existent pas dans le binaire de test, et rien ne signale leur absence.
+
+Les tests de l'app (`SillonTests`) tournent sur la CI : en local, `xcodebuild
+test` ouvre l'app et prend la main sur le Mac.
 
 Deux sondes ne tournent qu'à la demande, faute d'être vérifiables par une
 assertion : elles rendent un son ou une mesure, à écouter ou à lire.
