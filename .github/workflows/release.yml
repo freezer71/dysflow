@@ -1,7 +1,9 @@
-# Publication du lecteur au terminal pour Linux (x86_64 et ARM64) : à chaque
-# tag `v*`, install.sh assemble le paquet (ocr, kokoro-onnx), l'installe et le
-# vérifie depuis / ; le dossier dist/ part en archive, avec son empreinte, dans
-# la publication GitHub du tag.
+# Publication, à chaque tag `v*` :
+# - le lecteur au terminal pour Linux (x86_64 et ARM64) : scripts/install.sh
+#   assemble le paquet (ocr, kokoro-onnx), l'installe et le vérifie depuis / ;
+#   le dossier dist/ part en archive, avec son empreinte ;
+# - l'app macOS : construite (signature ad hoc), emballée en .zip (pour
+#   install.sh à la racine, `curl | sh`) et en .dmg, chacun avec son empreinte.
 name: Release
 
 on:
@@ -12,6 +14,10 @@ on:
       tag:
         description: "Tag existant à publier (v0.2.0…)"
         required: true
+      publier:
+        description: "Publier sur GitHub (sinon : construire seulement, artefacts joints au passage)"
+        type: boolean
+        default: true
 
 permissions:
   contents: write
@@ -35,7 +41,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ env.TAG }}
+          # À blanc (publier décoché) : la branche lancée, pas le tag.
+          ref: ${{ inputs.publier == false && github.ref || env.TAG }}
       - name: Dépendances système
         run: |
           sudo apt-get update
@@ -45,6 +52,7 @@ jobs:
           rustup update stable --no-self-update
           rustup default stable
       - name: Version du tag et de Cargo.toml
+        if: ${{ inputs.publier != false }}
         run: |
           version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
           if [ "v$version" != "$TAG" ]; then
@@ -68,18 +76,79 @@ jobs:
             ${{ steps.archive.outputs.name }}.tar.gz
             ${{ steps.archive.outputs.name }}.tar.gz.sha256
 
+  macos:
+    name: App macOS
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # À blanc (publier décoché) : la branche lancée, pas le tag.
+          ref: ${{ inputs.publier == false && github.ref || env.TAG }}
+      - name: Xcode le plus récent
+        run: |
+          xcode=$(find /Applications -maxdepth 1 -name 'Xcode_*.app' | sort -V | tail -1)
+          sudo xcode-select -s "$xcode"
+          xcodebuild -version
+      - name: Outils
+        run: |
+          brew install xcodegen
+          rustup update stable --no-self-update
+          rustup default stable
+      - name: Metal Toolchain (noyaux MLX)
+        run: |
+          if ! xcrun -sdk macosx metal -v >/dev/null 2>&1; then
+            xcodebuild -downloadComponent MetalToolchain
+          fi
+      - name: Version du tag, de Cargo.toml et de l'app
+        if: ${{ inputs.publier != false }}
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          app=$(sed -n 's/^ *MARKETING_VERSION: *//p' macos/project.yml | head -1)
+          if [ "v$version" != "$TAG" ] || [ "$version" != "$app" ]; then
+            echo "Le tag $TAG, Cargo.toml ($version) et macos/project.yml ($app) ne concordent pas" >&2
+            exit 1
+          fi
+      - name: Construction de l'app
+        run: ./scripts/build-macos.sh
+      - name: Emballage (.zip et .dmg)
+        run: ./scripts/package-macos.sh
+      - name: install.sh installe l'archive
+        # Le script de la racine, sur l'archive qu'on vient de faire, servie
+        # comme GitHub la servira : empreinte vérifiée, app posée, commande.
+        run: |
+          srv="$RUNNER_TEMP/srv/releases/download/$TAG"
+          mkdir -p "$srv" "$RUNNER_TEMP/apps"
+          cp dist/*.zip dist/*.zip.sha256 "$srv/"
+          (cd "$RUNNER_TEMP/srv" && python3 -m http.server 8765 >/dev/null 2>&1 &)
+          sleep 1
+          SILLON_DEPOT=http://localhost:8765 SILLON_VERSION="${TAG#v}" \
+            SILLON_APPLICATIONS="$RUNNER_TEMP/apps" PREFIX="$RUNNER_TEMP/prefix" sh install.sh
+          codesign --verify --deep --strict "$RUNNER_TEMP/apps/Sillon.app"
+          test -x "$RUNNER_TEMP/prefix/bin/sillon"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sillon-macos
+          path: |
+            dist/*.zip
+            dist/*.dmg
+            dist/*.sha256
+
   publish:
     name: Publication
-    needs: linux
+    needs: [linux, macos]
+    if: ${{ inputs.publier != false }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ env.TAG }}
+          # À blanc (publier décoché) : la branche lancée, pas le tag.
+          ref: ${{ inputs.publier == false && github.ref || env.TAG }}
       - uses: actions/download-artifact@v4
         with:
           path: paquets
           merge-multiple: true
+      - name: install.sh joint
+        run: cp install.sh paquets/
       - name: Publication GitHub
         env:
           GH_TOKEN: ${{ github.token }}

@@ -16,6 +16,28 @@ contrôles d'un lecteur audio. Il existe sous deux formes :
 Les deux partagent le même moteur Rust : même découpage, même mise en mots,
 mêmes voix Kokoro.
 
+## Installer
+
+Sur un Mac à puce Apple comme sous Linux (x86_64, ARM64), une commande :
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/freezer71/sillon/main/install.sh | sh
+```
+
+Elle prend la dernière publication pour votre système, vérifie son empreinte
+SHA-256 et installe sans `sudo` : sur Mac, l'app dans `/Applications` et la
+commande `sillon` qui l'ouvre ; sous Linux, le lecteur au terminal dans
+`~/.local`. La voix Kokoro s'installe ensuite toute seule. Pour désinstaller,
+la même commande suivie de `-s -- --desinstaller` (modèles et réglages
+restent).
+
+Sur Mac, la [publication](https://github.com/freezer71/sillon/releases/latest)
+porte aussi un `.dmg` : glisser Sillon dans Applications. L'app n'est pas
+encore notariée : au premier lancement, *Réglages Système › Confidentialité et
+sécurité › Ouvrir quand même*.
+
+Pour compiler depuis les sources, voir plus bas.
+
 ## Ce qu'il fait
 
 - **Lit ce qu'on lui donne.** Dans l'app : un fichier ouvert (⌘O), glissé sur

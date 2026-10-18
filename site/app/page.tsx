@@ -1,7 +1,8 @@
 import Link from "next/link";
+import { Commande } from "./_components/Commande";
 import { DemoLecteur } from "./_components/DemoLecteur";
 import { Bouton, IconeTelecharger, Pastille, TitreSection } from "./_components/ui";
-import { depot } from "./_data/liens";
+import { commandeInstallation, depot } from "./_data/liens";
 import { dictee, lecture } from "./_data/modeles";
 
 const chiffres = [
@@ -108,7 +109,7 @@ const faq = [
   },
   {
     q: "Et sous Linux ?",
-    r: "Le lecteur au terminal tourne sous Linux x86_64 et ARM64 (glibc 2.39 ou plus), avec la même voix Kokoro et la reconnaissance de texte intégrée. Un paquet prêt à l'emploi est joint à chaque version.",
+    r: "Le lecteur au terminal tourne sous Linux x86_64 et ARM64 (glibc 2.39 ou plus), avec la même voix Kokoro et la reconnaissance de texte intégrée. La même commande d'installation que sur Mac l'installe.",
   },
   {
     q: "Quelles langues ?",
@@ -140,7 +141,7 @@ export default function Accueil() {
     <>
       {/* Accroche */}
       <section className="mx-auto grid max-w-6xl items-center gap-12 px-4 pb-20 pt-14 sm:px-6 lg:grid-cols-[1.05fr_1fr] lg:pt-24">
-        <div>
+        <div className="min-w-0">
           <div className="flex flex-wrap gap-2">
             <Pastille className="bg-citron text-citron-encre">Gratuit</Pastille>
             <Pastille className="bg-carte-2">Open source</Pastille>
@@ -163,7 +164,10 @@ export default function Accueil() {
               Voir le code sur GitHub
             </Bouton>
           </div>
-          <p className="mt-5 text-[15px] text-encre-pale">macOS (puce Apple) · Linux x86_64 et ARM64</p>
+          <div className="mt-8 max-w-xl">
+            <p className="mb-2 text-[15px] text-encre-pale">Ou en une commande, sur Mac (puce Apple) et Linux :</p>
+            <Commande texte={commandeInstallation} />
+          </div>
         </div>
         <DemoLecteur />
       </section>
@@ -311,7 +315,7 @@ export default function Accueil() {
             Votre prochain document, écoutez-le.
           </h2>
           <p className="mx-auto mt-4 max-w-xl text-lg opacity-75">
-            Gratuit, libre, et prêt en quelques minutes.
+            Gratuit, libre, et installé en une commande.
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-3">
             <Link
