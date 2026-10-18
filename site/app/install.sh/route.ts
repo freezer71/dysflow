@@ -1,15 +1,16 @@
 import { cacheLife } from "next/cache";
-import { depot } from "../_data/liens";
 
-// `curl -fsSL https://sillage.koumalabs.org/install.sh | sh` : le script de
-// la dernière publication (joint par release.yml), pas celui de main — il
-// va avec les archives publiées. Prérendu, puis relu sur GitHub au plus une
-// fois par heure : aucune fonction ne tourne à chaque installation.
-const source = `${depot}/releases/latest/download/install.sh`;
+// `curl -fsSL https://sillage.koumalabs.org/install.sh | sh` : le script tel
+// qu'il est sur la branche main du dépôt. Relu sur GitHub au plus une fois
+// par minute (cacheLife « minutes ») : un changement poussé sur main est
+// servi dans la minute — plus les quelques minutes du cache de
+// raw.githubusercontent.com —, sans qu'une fonction tourne à chaque
+// installation. Le script, lui, va chercher la dernière publication.
+const source = "https://raw.githubusercontent.com/freezer71/sillage/main/install.sh";
 
 async function script(): Promise<string | null> {
   "use cache";
-  cacheLife("hours");
+  cacheLife("minutes");
   try {
     const reponse = await fetch(source);
     if (!reponse.ok) return null;
