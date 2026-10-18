@@ -85,6 +85,7 @@ final class PanelController {
         closeGuard = guardian
         window.delegate = guardian
         observeSettingsWindow()
+        observeOcclusion()
     }
 
     /// Les préférences du processus, lues une fois : sous les tests, chaque
@@ -154,9 +155,10 @@ final class PanelController {
             updateIdentifier()
         }
         window.makeKeyAndOrderFront(nil)
-        // La cadence de relecture suit ce qui est montré : le texte (à
-        // chaque image en lecture), ou le mini (4 Hz en lecture, rien en pause).
-        model.presence = target == .mini ? .bar : .full
+        // Remise devant : visible jusqu'à ce que l'occultation dise le
+        // contraire (elle arrive en différé).
+        occluded = false
+        updatePresence()
         // L'annonceur ne voit rien fenêtre masquée : on repart de l'état
         // courant pour ne rien annoncer de ce qui s'est passé entre-temps.
         model.refresh()
@@ -174,8 +176,36 @@ final class PanelController {
         helpVisible = false
         mode = .hidden
         if window.isVisible { window.orderOut(nil) }
-        model.presence = .hidden
+        updatePresence()
         keys.remove()
+    }
+
+    /// La fenêtre entièrement cachée (autres fenêtres, écran verrouillé ou
+    /// éteint, autre bureau) : su par la notification d'occultation.
+    @ObservationIgnored private var occluded = false
+    @ObservationIgnored private var occlusionObserver: NSObjectProtocol?
+
+    /// La cadence de relecture suit ce qui est montré : le texte (à chaque
+    /// image en lecture), le mini (4 Hz en lecture, rien en pause), rien
+    /// fenêtre masquée ou cachée tout entière (à la seconde en lecture,
+    /// pour « À l'écoute »).
+    private func updatePresence() {
+        model.presence = mode == .hidden || occluded ? .hidden : mode == .mini ? .bar : .full
+    }
+
+    private func observeOcclusion() {
+        occlusionObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didChangeOcclusionStateNotification, object: window, queue: .main
+        ) { [weak self] note in
+            let window = note.object as? NSWindow
+            MainActor.assumeIsolated {
+                guard let self, let w = window else { return }
+                let occluded = !w.occlusionState.contains(.visible)
+                guard occluded != self.occluded else { return }
+                self.occluded = occluded
+                self.updatePresence()
+            }
+        }
     }
 
     // MARK: - Réglages
@@ -357,7 +387,7 @@ final class PanelController {
     private func moveLine(_ delta: Int) {
         let s = model.snapshot
         guard s.hasDocument else { return }
-        guard let target = lines.target(word: s.word, sentence: s.sentence, delta: delta) else {
+        guard let target = lines.target(word: model.word, sentence: s.sentence, delta: delta) else {
             flash("Aucune ligne de ce côté")
             return
         }

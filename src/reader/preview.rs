@@ -124,6 +124,9 @@ impl Reader {
             Some(Err(err)) => self.preview_error = Some(format!("aperçu impossible : {err}")),
             None => {}
         }
+        // Le lecteur de l'aperçu ferme sa sortie audio, une fois l'aperçu
+        // dit, comme celui de la lecture.
+        let _ = lone.player.reconcile();
     }
 
     /// Relâche l'aperçu sans texte. Son arrêt attend la synthèse en cours :

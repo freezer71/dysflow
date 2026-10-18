@@ -15,12 +15,12 @@ final class RollingTranscriptionTests: XCTestCase {
 
 final class RollingRhythmTests: XCTestCase {
     func testTheRhythmFollowsTheModelSpeed() {
-        var r = RollingTranscription(interval: RollingTranscription.slowest)
+        var r = RollingTranscription(interval: RollingTranscription.initial)
         r.adapt(lastRead: .milliseconds(100))
         XCTAssertEqual(r.interval, RollingTranscription.fastest, "un modèle rapide relit toutes les 0,4 s")
         r.adapt(lastRead: .milliseconds(300))
         XCTAssertEqual(r.interval, .milliseconds(900), "trois fois la lecture : un tiers du temps occupé")
         r.adapt(lastRead: .seconds(2))
-        XCTAssertEqual(r.interval, RollingTranscription.slowest, "jamais plus de 1,5 s")
+        XCTAssertEqual(r.interval, .seconds(6), "une lecture lente : toujours trois fois, sans plafond")
     }
 }

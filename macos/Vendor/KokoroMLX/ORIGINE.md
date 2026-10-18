@@ -95,6 +95,16 @@ Changements :
 - `Canary/CanaryModel.swift` : `import HuggingFace` et `import MLXAudioCore`
   retirés ; `fromPretrained` supprimé ; `fromModelDirectory(_:)` rendu
   synchrone (`throws` au lieu de `async throws` : il n'attendait rien).
+  Décodage pas à pas : l'amont repassait toute la suite dans le décodeur à
+  chaque jeton ; `generate` passe l'invite une fois puis un jeton à la fois,
+  avec un `KVCacheSimple` (`TTS/KVCache.swift`) par bloc pour
+  l'auto-attention, et les clés, valeurs et masque de l'attention croisée
+  calculés une fois par lecture (`CanaryDecoder.makeState`,
+  `callAsFunction(_:state:)`, `CanaryAttention.keysValues`/`attend`). Mêmes
+  opérations, dont la dernière position répétée au-delà de la table de
+  1 024 ; seul l'ordre des additions diffère (logits égaux à 1e-4 près en
+  Float32 : `CanaryDecoderCacheTests`). Le décodeur de l'amont
+  (`callAsFunction(_:encoderOutput:encoderMask:startPosition:)`) reste.
 - `STT/BaseConfiguration.swift` : `BaseConfiguration`, `Quantization` et
   `PerLayerQuantization` passent `public` (comme dans MLXLMCommon), parce que
   `CanaryConfig`, public, a des champs de ces types. Leurs membres restent
@@ -154,7 +164,11 @@ Changements :
   `fromDirectory` fabrique un modèle, toujours avec son vocabulaire (le
   `fatalError` de `transcribeChunk` devient inatteignable). En flux, le texte
   partiel est décodé avec `dropIncompleteTail` (pas de U+FFFD transitoire au
-  milieu d'un caractère réparti sur deux jetons).
+  milieu d'un caractère réparti sur deux jetons). Dans `transcribeChunk`, les
+  masques des jetons interdits (`suppressLogits`, `suppressFromIndex`)
+  sont construits une fois avant la boucle (`suppressMask`,
+  `suppressFromIndexMask`) au lieu d'à chaque jeton, et ajoutés dans le
+  même ordre : mêmes logits au bit près.
 - `WhisperTokenizer.swift` : réécrit, sans swift-transformers. Même API pour
   `WhisperModel` (`buildPromptTokens`, `resolveLanguage`, `decode(tokens:)`) ;
   la lecture de `tokenizer_config.json` / `added_tokens_decoder` est retirée.
@@ -288,7 +302,11 @@ Changements, fichier par fichier :
     `shouldStop: (() -> Bool)?`. Les trois `try Task.checkCancellation()`
     deviennent : dans la boucle, toutes les 12 trames (≈ 1 s de son),
     `shouldStop` ; après la boucle, une fois avant le décodage. S'il dit
-    vrai : `Qwen3TTSError.stopped`.
+    vrai : `Qwen3TTSError.stopped`. Le `Memory.clearCache()` tous les 50
+    pas est retiré (le cache de MLX est plafonné par `MLXBudget` dans
+    l'app : le vider rendait puis réallouait les mêmes tampons) ;
+  - `Qwen3TTSSpeechTokenizer.swift`, `streamingDecode` : même raison, plus
+    de `Memory.clearCache()` après chaque paquet.
 
 Ajouts de Sillon, hors des fichiers repris : `TTS/Qwen3TTS/Qwen2BPETokenizer.swift`
 (Tâche 4 ; ici, `encode(text:allowSpecial:)`), `TTS/StableSeed.swift` (une
@@ -401,7 +419,21 @@ chargement, au lieu d'un anglais lu lettre à lettre en silence
 
 **Mémoire :** les poids 8 bits sont déquantifiés en FP32 au chargement
 (`WeightLoader.swift`), ≈ 1,6 Go en RAM pour 357 M de paramètres (doc de
-speech-swift).
+speech-swift). Dans `loadAndDequantize`, le dictionnaire lu est vidé dès
+les triplets formés, et chaque triplet lâché sitôt sa version FP32 faite :
+le pic n'additionne plus tout le fichier 8 bits à tout le FP32. Précision
+inchangée.
+
+**Une lecture GPU par trame** (`MagpieTTS.swift`) : dans
+`sampleLocalTransformer`, les jetons des huit livres de codes restent des
+`MLXArray` (le jeton tiré sert directement à l'embedding du livre suivant)
+et sont lus ensemble à la fin (`concatenated(…).asArray`), au lieu d'un
+`eval` + `asArray` par livre ; l'`eval(hLast)` après chaque pas du décodeur
+est retiré (il est calculé avec la trame suivante). Mêmes opérations, même
+ordre des tirages : mêmes codes.
+
+Chaque fichier modifié porte en tête la mention exigée par l'Apache-2.0
+(§4(b)) : « Modifié par Sillon … — voir ORIGINE.md ».
 
 Le détail exact : `patches/magpie-mlx.patch` (`diff -ruN`, de l'amont vers
 `TTS/Magpie/`). Pour le refaire : télécharger

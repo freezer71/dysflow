@@ -54,6 +54,27 @@ final class SpeechModelRunnerTests: XCTestCase {
         do { _ = try await runner.transcribe([], language: "fr"); XCTFail("libéré") } catch {}
     }
 
+    /// Une dictée en cours note son usage entre deux relectures
+    /// (`keepAlive`) : le modèle reste tant qu'elle dure, si espacées que
+    /// soient ses lectures, puis part le délai écoulé.
+    func testKeepAliveHoldsTheModelThenItGoes() async throws {
+        let clears = Clears()
+        let runner = SpeechModelRunner(load: { _ in Echo() }, releaseAfter: .milliseconds(150),
+                                       clearCache: clears.clear)
+        try await runner.prepare(directory: URL(fileURLWithPath: "/x"))
+        for _ in 0..<10 {
+            try await Task.sleep(for: .milliseconds(50))
+            runner.keepAlive()
+        }
+        XCTAssertEqual(clears.count, 0, "libéré pendant la dictée")
+        XCTAssertNotNil(runner.loadedDirectory)
+        for _ in 0..<100 where clears.count == 0 {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertEqual(clears.count, 1)
+        XCTAssertNil(runner.loadedDirectory)
+    }
+
     /// `keep_voice_minutes`, comme la voix : négatif, jamais ; 0, peu après
     /// (jamais entre deux relectures) ; sinon ces minutes.
     func testTheDelayFollowsKeepVoiceMinutes() {

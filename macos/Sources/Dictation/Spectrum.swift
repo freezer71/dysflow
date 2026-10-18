@@ -18,6 +18,14 @@ final class SpectrumAnalyzer {
     private let window: [Float]
     private let edges: [Int]
     private var pending: [Float] = []
+    /// Les tableaux de travail d'une tranche, alloués une fois : `column`
+    /// tourne sur le fil audio, 40 fois par seconde.
+    private var frame = [Float](repeating: 0, count: SpectrumAnalyzer.size)
+    private var windowed = [Float](repeating: 0, count: SpectrumAnalyzer.size)
+    private var real = [Float](repeating: 0, count: SpectrumAnalyzer.size / 2)
+    private var imaginary = [Float](repeating: 0, count: SpectrumAnalyzer.size / 2)
+    private var power = [Float](repeating: 0, count: SpectrumAnalyzer.size / 2)
+    private var decibels: [Float]
     /// Le haut de l'échelle, en dB : monte d'un coup, redescend doucement.
     private var peak: Float = -60
     /// L'étendue affichée sous le crête.
@@ -33,6 +41,7 @@ final class SpectrumAnalyzer {
         window = vDSP.window(ofType: Float.self, usingSequence: .hanningDenormalized,
                              count: Self.size, isHalfWindow: false)
         edges = Self.bandEdges(bands: bands, sampleRate: sampleRate, size: Self.size)
+        decibels = [Float](repeating: -120, count: bands)
     }
 
     /// Les limites des bandes, en indices de raies de la FFT.
@@ -51,7 +60,10 @@ final class SpectrumAnalyzer {
         pending.append(contentsOf: samples)
         var columns: [[Float]] = []
         while pending.count >= Self.size {
-            columns.append(column(Array(pending.prefix(Self.size))))
+            frame.withUnsafeMutableBufferPointer { out in
+                pending.withUnsafeBufferPointer { out.baseAddress!.update(from: $0.baseAddress!, count: Self.size) }
+            }
+            columns.append(column())
             pending.removeFirst(min(hop, pending.count))
         }
         // Le retard ne s'accumule jamais : au plus une fenêtre en attente.
@@ -59,12 +71,10 @@ final class SpectrumAnalyzer {
         return columns
     }
 
-    private func column(_ frame: [Float]) -> [Float] {
+    /// La tranche de `frame`.
+    private func column() -> [Float] {
         let half = Self.size / 2
-        let windowed = vDSP.multiply(frame, window)
-        var real = [Float](repeating: 0, count: half)
-        var imaginary = [Float](repeating: 0, count: half)
-        var power = [Float](repeating: 0, count: half)
+        vDSP.multiply(frame, window, result: &windowed)
         real.withUnsafeMutableBufferPointer { re in
             imaginary.withUnsafeMutableBufferPointer { im in
                 var split = DSPSplitComplex(realp: re.baseAddress!, imagp: im.baseAddress!)
@@ -79,7 +89,6 @@ final class SpectrumAnalyzer {
         }
         // L'énergie moyenne de chaque bande, en dB.
         let scale = 1 / Float(Self.size * Self.size)
-        var decibels = [Float](repeating: -120, count: bands)
         for b in 0..<bands {
             let lo = edges[b], hi = max(edges[b] + 1, edges[b + 1])
             let mean = power[lo..<hi].reduce(0, +) / Float(hi - lo) * scale

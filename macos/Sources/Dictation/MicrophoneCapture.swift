@@ -139,6 +139,10 @@ private final class MicrophoneTap: @unchecked Sendable {
     private let analyzer: SpectrumAnalyzer
     private let spectrum: @Sendable ([[Float]]) -> Void
     private let append: (UnsafeBufferPointer<Float>) -> Void
+    /// La sortie de la conversion, réutilisée d'un cycle à l'autre (son
+    /// contenu est copié par `append`) : pas d'allocation sur le fil audio,
+    /// sauf si un paquet plus long que tous les précédents arrive.
+    private var converted: AVAudioPCMBuffer?
 
     init?(from natural: AVAudioFormat, spectrum: @escaping @Sendable ([[Float]]) -> Void,
           append: @escaping (UnsafeBufferPointer<Float>) -> Void) {
@@ -171,7 +175,11 @@ private final class MicrophoneTap: @unchecked Sendable {
         let output = MicrophoneCapture.format
         let ratio = output.sampleRate / buffer.format.sampleRate
         let capacity = AVAudioFrameCount((Double(buffer.frameLength) * ratio).rounded(.up)) + 32
-        guard let converted = AVAudioPCMBuffer(pcmFormat: output, frameCapacity: capacity) else { return }
+        if (self.converted?.frameCapacity ?? 0) < capacity {
+            self.converted = AVAudioPCMBuffer(pcmFormat: output, frameCapacity: capacity)
+        }
+        guard let converted = self.converted else { return }
+        converted.frameLength = 0
         var fed = false
         var error: NSError?
         let status = converter.convert(to: converted, error: &error) { _, inputStatus in

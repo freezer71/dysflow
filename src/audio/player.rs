@@ -12,8 +12,15 @@ use std::collections::VecDeque;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use super::pcm::{fade_edge, Edge};
 use super::tempo::{SpeedControl, Tempo};
 use super::PcmBuffer;
+
+/// Silence au bout duquel la sortie se ferme : en pause, ou sans rien à
+/// jouer (fin du document). Ouverte, elle joue du silence en continu et
+/// réveille la carte son une centaine de fois par seconde ; fermée, la
+/// machine peut se mettre en veille et le casque Bluetooth se reposer.
+const SLEEP_AFTER: Duration = Duration::from_secs(15);
 
 /// Une phrase présente dans la file de sortie.
 #[derive(Debug, Clone)]
@@ -27,6 +34,12 @@ struct Queued {
     /// Parole déjà passée au moment où la phrase entre en file : un saut au
     /// mot la fait commencer en son milieu.
     offset: Duration,
+    /// Le son de la partie, gardé pour la remettre en file au réveil.
+    audio: Arc<PcmBuffer>,
+    /// Parole des parties précédentes de la phrase.
+    base: Duration,
+    /// Parole de cette partie seule.
+    part_speech: Duration,
 }
 
 /// La phrase qui sonne actuellement.
@@ -91,6 +104,47 @@ pub struct PlaybackPosition {
     pub speech: Duration,
 }
 
+/// La sortie à ouvrir au premier son, et à rouvrir après une mise en
+/// sommeil.
+enum Output {
+    /// Celle du système, relue à chaque ouverture : elle suit ses changements.
+    System,
+    Named(String),
+    /// Une file sans carte son, remise à l'essai à chaque ouverture.
+    #[cfg(test)]
+    Idle(u32, std::sync::mpsc::Sender<rodio::queue::SourcesQueueOutput<f32>>),
+}
+
+/// Une sortie ouverte.
+struct Opened {
+    stream: Option<OutputStream>,
+    handle: Option<OutputStreamHandle>,
+    sink: Sink,
+    rate: Option<u32>,
+}
+
+fn open_output(output: &Output) -> Result<Opened, String> {
+    let ((stream, handle), rate) = match output {
+        Output::System => {
+            let stream = OutputStream::try_default().map_err(|e| e.to_string())?;
+            (stream, default_output_rate())
+        }
+        Output::Named(name) => {
+            let device = find_output(name).ok_or_else(|| missing_output(name))?;
+            let rate = device_rate(&device);
+            (OutputStream::try_from_device(&device).map_err(|e| e.to_string())?, rate)
+        }
+        #[cfg(test)]
+        Output::Idle(rate, tx) => {
+            let (sink, output) = Sink::new_idle();
+            let _ = tx.send(output);
+            return Ok(Opened { stream: None, handle: None, sink, rate: Some(*rate) });
+        }
+    };
+    let sink = Sink::try_new(&handle).map_err(|e| e.to_string())?;
+    Ok(Opened { stream: Some(stream), handle: Some(handle), sink, rate })
+}
+
 pub struct Player {
     // Le flux doit rester vivant tant qu'on joue.
     _stream: Option<OutputStream>,
@@ -115,6 +169,11 @@ pub struct Player {
     error: Option<String>,
     /// Dernier numéro de partie donné.
     next_seq: u64,
+    /// La sortie à (r)ouvrir. `None` : rien à ouvrir (lecteur muet, sortie
+    /// absente), le lecteur ne s'endort ni ne se réveille.
+    output: Option<Output>,
+    /// Depuis quand rien ne sonne, sortie ouverte.
+    idle_since: Option<Instant>,
 }
 
 /// Fréquence que rodio choisira pour la sortie par défaut : celle de la
@@ -178,8 +237,14 @@ impl Default for Player {
 impl Player {
     /// La sortie du système : celle que macOS choisit, et qui suit ses
     /// changements (des écouteurs retirés, et le son passe aux haut-parleurs).
+    ///
+    /// Rien ne s'ouvre avant le premier son : la sortie fermée ne coûte rien.
     pub fn new() -> Self {
-        Self::open(OutputStream::try_default().map_err(|e| e.to_string()), default_output_rate)
+        use rodio::cpal::traits::HostTrait;
+        match rodio::cpal::default_host().default_output_device() {
+            Some(_) => Self::with(Some(Output::System), None),
+            None => Self::with(None, Some("aucune sortie audio".to_string())),
+        }
     }
 
     /// Une sortie choisie par son nom, ou celle du système pour un nom vide.
@@ -190,57 +255,19 @@ impl Player {
         if name.is_empty() {
             return Self::new();
         }
-        match find_output(name) {
-            Some(device) => {
-                let rate = device_rate(&device);
-                Self::open(OutputStream::try_from_device(&device).map_err(|e| e.to_string()), || rate)
-            }
-            None => Self::open(Err(missing_output(name)), || None),
+        if find_output(name).is_some() {
+            Self::with(Some(Output::Named(name.to_string())), None)
+        } else {
+            Self::with(None, Some(missing_output(name)))
         }
     }
 
-    fn open(
-        stream: Result<(OutputStream, OutputStreamHandle), String>,
-        rate: impl FnOnce() -> Option<u32>,
-    ) -> Self {
-        let (stream, handle, sink, error) = match stream {
-            Ok((stream, handle)) => match Sink::try_new(&handle) {
-                Ok(sink) => (Some(stream), Some(handle), Some(sink), None),
-                Err(err) => (Some(stream), None, None, Some(err.to_string())),
-            },
-            Err(err) => (None, None, None, Some(err)),
-        };
-        // La file démarre en pause : rien ne doit sortir avant le premier
-        // buffer, sans quoi la position partirait avant le son.
-        if let Some(sink) = &sink {
-            sink.pause();
+    fn with(output: Option<Output>, error: Option<String>) -> Self {
+        if output.is_some() {
+            // Le fil qui libère les phrases finies naît ici, pas dans le fil
+            // audio.
+            super::tempo::prepare();
         }
-        let output_rate = stream.as_ref().and_then(|_| rate());
-        // Le fil qui libère les phrases finies naît ici, pas dans le fil audio.
-        super::tempo::prepare();
-        Self {
-            _stream: stream,
-            handle,
-            sink,
-            preview: None,
-            queued: VecDeque::new(),
-            active: None,
-            playing: false,
-            volume: 1.0,
-            muted: false,
-            speed: SpeedControl::default(),
-            output_rate,
-            error,
-            next_seq: 0,
-        }
-    }
-
-    /// Lecteur sans sortie audio, pour les essais.
-    ///
-    /// Ouvrir un vrai flux dans chaque test bloque la suite dès que deux
-    /// s'ouvrent de front : la carte son n'est pas partageable ainsi. Sert
-    /// aussi au mode de test de l'app.
-    pub fn silent() -> Self {
         Self {
             _stream: None,
             handle: None,
@@ -253,9 +280,100 @@ impl Player {
             muted: false,
             speed: SpeedControl::default(),
             output_rate: None,
-            error: Some("sortie audio désactivée".to_string()),
+            error,
             next_seq: 0,
+            output,
+            idle_since: None,
         }
+    }
+
+    /// Lecteur sans sortie audio, pour les essais.
+    ///
+    /// Ouvrir un vrai flux dans chaque test bloque la suite dès que deux
+    /// s'ouvrent de front : la carte son n'est pas partageable ainsi. Sert
+    /// aussi au mode de test de l'app.
+    pub fn silent() -> Self {
+        Self::with(None, Some("sortie audio désactivée".to_string()))
+    }
+
+    /// Ouvre la sortie et y remet la file, là où elle s'était tue. Sans
+    /// effet si elle est ouverte, ou s'il n'y a rien à ouvrir.
+    fn wake(&mut self) {
+        if self.sink.is_some() {
+            return;
+        }
+        let Some(output) = &self.output else { return };
+        let opened = match open_output(output) {
+            Ok(opened) => opened,
+            Err(err) => {
+                self.error = Some(err);
+                return;
+            }
+        };
+        self._stream = opened.stream;
+        self.handle = opened.handle;
+        self.output_rate = opened.rate;
+        self.error = None;
+        let sink = opened.sink;
+        sink.set_volume(self.effective_volume());
+        // La file reste en pause jusqu'à ce qu'elle soit remplie.
+        sink.pause();
+        // La partie qui sonnait reprend au point entendu, pas à son début.
+        let heard = self.active.as_ref().map(|a| (a.seq, a.elapsed_at(Instant::now())));
+        for part in &self.queued {
+            let from = match heard {
+                Some((seq, at)) if seq == part.seq && at > part.offset => at,
+                _ => part.offset,
+            };
+            sink.append(self.source(part, from, from > part.offset));
+        }
+        if self.playing {
+            sink.play();
+        }
+        self.sink = Some(sink);
+        self.idle_since = None;
+    }
+
+    /// Ferme la sortie et garde la file : le réveil la remet en place.
+    fn sleep(&mut self) {
+        if self.output.is_none() || self.sink.is_none() {
+            return;
+        }
+        // La file d'abord, le flux ensuite : les sources s'arrêtent avec elle.
+        self.preview = None;
+        self.sink = None;
+        self.handle = None;
+        self._stream = None;
+        self.idle_since = None;
+    }
+
+    /// Ferme la sortie quand rien n'y a sonné depuis `SLEEP_AFTER`.
+    fn sleep_when_idle(&mut self, now: Instant) {
+        let idle = (!self.playing || self.queued.is_empty()) && self.preview.is_none();
+        if !idle || self.sink.is_none() || self.output.is_none() {
+            self.idle_since = None;
+            return;
+        }
+        let since = *self.idle_since.get_or_insert(now);
+        if now.saturating_duration_since(since) >= SLEEP_AFTER {
+            self.sleep();
+        }
+    }
+
+    /// La source d'une partie, jouée à partir de `from` (parole de la
+    /// phrase). `fade` adoucit un départ en plein mot.
+    fn source(&self, part: &Queued, from: Duration, fade: bool) -> Tempo {
+        let audio = &part.audio;
+        let skip = from.saturating_sub(part.base).min(part.part_speech);
+        let rate = self.output_rate.unwrap_or(audio.sample_rate);
+        let start = audio.sample_index(skip);
+        let speech_end = audio.sample_index(part.part_speech);
+        if fade && start > 0 {
+            let rest = PcmBuffer::new(audio.samples[start..].to_vec(), audio.sample_rate, audio.channels);
+            let rest = fade_edge(rest, Edge::Start);
+            return Tempo::new(rest.samples, rest.channels, rest.sample_rate, rate, 0, speech_end - start, self.speed.clone());
+        }
+        Tempo::new(Arc::clone(&audio.samples), audio.channels, audio.sample_rate, rate, start, speech_end, self.speed.clone())
     }
 
     /// Fait comme si une phrase sonnait déjà depuis un moment.
@@ -292,8 +410,9 @@ impl Player {
         self.error.as_deref()
     }
 
+    /// Une sortie est ouverte, ou s'ouvrira au premier son.
     pub fn is_available(&self) -> bool {
-        self.sink.is_some()
+        self.sink.is_some() || self.output.is_some()
     }
 
     /// Nombre de phrases encore dans la file de sortie.
@@ -341,29 +460,38 @@ impl Player {
         base: Duration,
         skip: Duration,
     ) {
-        let Some(sink) = &self.sink else { return };
+        if !self.is_available() {
+            return;
+        }
         let skip = skip.min(part_speech);
-        // Le son reste celui de la synthèse, à 1× ; la vitesse s'applique en
-        // le jouant, et peut changer en route.
-        sink.append(Tempo::new(
-            Arc::clone(&audio.samples),
-            audio.channels,
-            audio.sample_rate,
-            self.output_rate.unwrap_or(audio.sample_rate),
-            audio.sample_index(skip),
-            audio.sample_index(part_speech),
-            self.speed.clone(),
-        ));
         self.next_seq += 1;
-        self.queued.push_back(Queued {
+        let part = Queued {
             sentence_id,
             seq: self.next_seq,
             total: base + audio.duration,
             speech: base + part_speech,
             offset: base + skip,
-        });
+            audio: Arc::clone(audio),
+            base,
+            part_speech,
+        };
+        // Le son reste celui de la synthèse, à 1× ; la vitesse s'applique en
+        // le jouant, et peut changer en route.
+        if let Some(sink) = &self.sink {
+            sink.append(self.source(&part, part.offset, false));
+            if self.playing {
+                sink.play();
+            }
+        }
+        self.queued.push_back(part);
+        // Sortie endormie en pleine lecture (fin de flux) : le son revient.
+        // Si elle ne se rouvre pas (`error`), la lecture s'arrête au lieu de
+        // paraître avancer sans un son.
         if self.playing {
-            sink.play();
+            self.wake();
+            if self.sink.is_none() && self.output.is_some() {
+                self.pause();
+            }
         }
     }
 
@@ -371,10 +499,18 @@ impl Player {
     ///
     /// Renvoie les phrases dont la lecture vient de se terminer. Une tête
     /// suivie de sa suite en file ne termine pas sa phrase.
+    ///
+    /// C'est aussi là que la sortie s'endort après `SLEEP_AFTER` de silence.
     pub fn reconcile(&mut self) -> Vec<usize> {
         if self.preview.as_ref().is_some_and(|p| p.empty()) {
             self.preview = None;
         }
+        let finished = self.sync_queue();
+        self.sleep_when_idle(Instant::now());
+        finished
+    }
+
+    fn sync_queue(&mut self) -> Vec<usize> {
         let Some(sink) = &self.sink else {
             return Vec::new();
         };
@@ -422,6 +558,12 @@ impl Player {
     }
 
     pub fn play(&mut self) {
+        self.wake();
+        if self.sink.is_none() && self.output.is_some() {
+            // La sortie n'a pu s'ouvrir (`error`) : rien ne sonne, le
+            // chronomètre ne part pas.
+            return;
+        }
         self.playing = true;
         if let Some(sink) = &self.sink {
             sink.play();
@@ -458,7 +600,13 @@ impl Player {
     pub fn flush(&mut self) {
         self.queued.clear();
         self.active = None;
-        let Some(handle) = &self.handle else { return };
+        let Some(handle) = &self.handle else {
+            // Sans flux, la file se rouvrira au prochain son.
+            if self.output.is_some() {
+                self.sink = None;
+            }
+            return;
+        };
         // L'ancienne file arrête ses sources en étant libérée.
         match Sink::try_new(handle) {
             Ok(sink) => {
@@ -482,6 +630,7 @@ impl Player {
     /// Remplace l'aperçu précédent : enchaîner deux essais fait entendre le
     /// second, pas les deux à la fois.
     pub fn play_preview(&mut self, audio: &PcmBuffer) {
+        self.wake();
         let Some(handle) = &self.handle else { return };
         match Sink::try_new(handle) {
             Ok(sink) => {
@@ -748,6 +897,87 @@ mod tests {
         let (cut_near, cut) = join_jump(Some(2427));
         assert!(whole_near <= 1.1 * whole, "{whole_near} / {whole}");
         assert!(cut_near <= 1.5 * cut, "claquement à la jonction : {cut_near} contre {cut} ailleurs");
+    }
+
+    /// Lecteur dont la sortie s'ouvre à la demande, sur une file sans carte
+    /// son : chaque ouverture rend sa file à l'essai.
+    fn sleepy(rate: u32) -> (Player, std::sync::mpsc::Receiver<rodio::queue::SourcesQueueOutput<f32>>) {
+        let (tx, rx) = std::sync::mpsc::channel();
+        (Player::with(Some(Output::Idle(rate, tx)), None), rx)
+    }
+
+    #[test]
+    fn the_output_opens_at_the_first_sound_only() {
+        let (mut player, opened) = sleepy(1000);
+        assert!(player.is_available());
+        let audio = Arc::new(PcmBuffer::new(vec![0.1; 1000], 1000, 1));
+        player.enqueue(0, &audio, audio.duration);
+        assert!(opened.try_recv().is_err(), "ouverte avant le premier son");
+        player.play();
+        assert!(opened.try_recv().is_ok());
+        assert!(player.is_playing());
+    }
+
+    #[test]
+    fn a_long_pause_closes_the_output_and_play_resumes_where_it_stopped() {
+        const RATE: u32 = 1000;
+        let (mut player, opened) = sleepy(RATE);
+        let ramp: Vec<f32> = (0..2000).map(|i| 0.1 + i as f32 * 1e-4).collect();
+        let audio = Arc::new(PcmBuffer::new(ramp.clone(), RATE, 1));
+        player.enqueue(0, &audio, audio.duration);
+        player.play();
+        let _first = opened.try_recv().expect("ouverte au premier son");
+        player.reconcile();
+        player.pause();
+        // 600 ms entendues avant la pause.
+        player.active.as_mut().unwrap().accumulated = MS(600);
+
+        let t0 = Instant::now();
+        player.sleep_when_idle(t0);
+        player.sleep_when_idle(t0 + SLEEP_AFTER - MS(1));
+        assert!(player.sink.is_some(), "endormie trop tôt");
+        player.sleep_when_idle(t0 + SLEEP_AFTER);
+        assert!(player.sink.is_none(), "la sortie reste ouverte en pause");
+        assert!(player.is_available());
+        assert_eq!(player.queue_len(), 1, "la file survit au sommeil");
+        assert_eq!(player.position().unwrap().elapsed, MS(600));
+
+        player.play();
+        let mut output = opened.try_recv().expect("rouverte à la reprise");
+        assert_eq!(player.reconcile(), Vec::<usize>::new());
+        assert_eq!(player.position().unwrap().sentence_id, 0);
+        // Après le fondu de 5 ms, le son reprend à 600 ms, pas au début.
+        let heard: Vec<f32> = output.by_ref().take(20).collect();
+        assert!((heard[10] - ramp[610]).abs() < 1e-3, "{} au lieu de {}", heard[10], ramp[610]);
+    }
+
+    #[test]
+    fn the_output_stays_open_while_it_plays() {
+        let (mut player, _opened) = sleepy(1000);
+        let audio = Arc::new(PcmBuffer::new(vec![0.1; 1000], 1000, 1));
+        player.enqueue(0, &audio, audio.duration);
+        player.play();
+        let t0 = Instant::now();
+        player.sleep_when_idle(t0);
+        player.sleep_when_idle(t0 + SLEEP_AFTER * 2);
+        assert!(player.sink.is_some());
+    }
+
+    #[test]
+    fn an_idle_output_wakes_when_new_speech_arrives_during_playback() {
+        // Fin d'un flux : la lecture tourne, file vide, la sortie s'endort ;
+        // la phrase suivante la rouvre d'elle-même.
+        let (mut player, opened) = sleepy(1000);
+        player.play();
+        let _ = opened.try_recv();
+        let t0 = Instant::now();
+        player.sleep_when_idle(t0);
+        player.sleep_when_idle(t0 + SLEEP_AFTER);
+        assert!(player.sink.is_none());
+        let audio = Arc::new(PcmBuffer::new(vec![0.1; 1000], 1000, 1));
+        player.enqueue(0, &audio, audio.duration);
+        assert!(player.sink.is_some());
+        assert!(opened.try_recv().is_ok());
     }
 
     #[test]

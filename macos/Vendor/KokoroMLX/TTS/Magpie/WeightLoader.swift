@@ -1,3 +1,4 @@
+// Modifié par Sillon (Apache-2.0 §4(b)) : tenseurs 8 bits lâchés au fil de la déquantification — voir ORIGINE.md.
 import Foundation
 import MLX
 import MLXNN
@@ -85,7 +86,7 @@ public enum MagpieWeightLoader {
         guard FileManager.default.fileExists(atPath: url.path) else {
             throw MagpieTTSError.missingFile(url.lastPathComponent)
         }
-        let raw: [String: MLXArray]
+        var raw: [String: MLXArray]
         do {
             raw = try MLX.loadArrays(url: url)
         } catch {
@@ -117,7 +118,12 @@ public enum MagpieWeightLoader {
                 out[k] = v.asType(.float32)
             }
         }
-        for (base, t) in triplets {
+        // Sillon : les triplets sont seuls à tenir les tenseurs 8 bits, et
+        // chacun est lâché dès sa version Float32 faite : le pic du
+        // chargement n'additionne plus tout le fichier 8 bits à tout le
+        // Float32.
+        raw = [:]
+        while let (base, t) = triplets.popFirst() {
             guard let q = t.q, let s = t.s, let b = t.b else {
                 throw MagpieTTSError.weightLoadFailed(
                     "incomplete quantised triplet for \(base)")

@@ -101,8 +101,8 @@ final class PanelControllerTests: XCTestCase {
         let expected = docWords[next].index
 
         c.perform(.line(delta: 1))
-        XCTAssertTrue(waitUntil { c.model.refresh(); return c.model.snapshot.word == expected },
-                      "mot visé : \(expected), lu : \(String(describing: c.model.snapshot.word))")
+        XCTAssertTrue(waitUntil { c.model.refresh(); return c.model.word == expected },
+                      "mot visé : \(expected), lu : \(String(describing: c.model.word))")
         XCTAssertEqual(c.model.snapshot.sentence, 0)
     }
 
@@ -386,15 +386,15 @@ final class PanelControllerTests: XCTestCase {
         XCTAssertTrue(waitUntil { self.textView(c).map { $0 !== text } ?? false },
                       "la copie cachée de la vue de lecture manque")
         c.perform(.line(delta: 1))
-        XCTAssertTrue(waitUntil { c.model.refresh(); return c.model.snapshot.word == expected },
-                      "mot visé : \(expected), lu : \(String(describing: c.model.snapshot.word))")
+        XCTAssertTrue(waitUntil { c.model.refresh(); return c.model.word == expected },
+                      "mot visé : \(expected), lu : \(String(describing: c.model.word))")
     }
 
     /// La barre en pause ne coûte rien : ni coup d'œil lent, ni lien
     /// d'affichage. Elle suit la cadence « lit sans être affiché ».
     func testAPausedSmallBarCostsNothing() {
         let c = shownPanel("Un. Deux.")
-        XCTAssertEqual(c.model.cadence, .glance, "lecteur, en pause : le coup d'œil lent")
+        XCTAssertEqual(c.model.cadence, .second, "lecteur, en pause : à la seconde")
         c.perform(.toggleSize)
         settle(c)
         XCTAssertEqual(c.model.presence, .bar)
@@ -441,7 +441,7 @@ final class PanelControllerTests: XCTestCase {
     func testAHiddenWindowKeepsNothingDisplayed() throws {
         let c = shownPanel("Un. Deux.")
         let text = try XCTUnwrap(textView(c))
-        XCTAssertEqual(c.model.cadence, .glance)
+        XCTAssertEqual(c.model.cadence, .second)
         c.close()
         XCTAssertEqual(c.model.presence, .hidden)
         XCTAssertFalse(c.window.isVisible)

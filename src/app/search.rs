@@ -98,6 +98,12 @@ impl Search {
         self.target()
     }
 
+    /// Vrai si la phrase porte un résultat : un mot ne répond que dans une
+    /// phrase qui répond elle-même.
+    pub fn contains_sentence(&self, id: usize) -> bool {
+        self.matches.binary_search(&id).is_ok()
+    }
+
     /// Vrai si le mot fait partie de ce qui est recherché.
     ///
     /// Un nombre répond aussi à sa forme parlée : cherché comme on l'a

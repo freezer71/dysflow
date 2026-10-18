@@ -4,8 +4,13 @@
 //! reconstruction ont besoin de savoir où une page finit.
 
 use anyhow::{bail, Context, Result};
-use pdf_extract::{output_doc_page, Document, ObjectId, PlainTextOutput};
+use pdf_extract::{
+    output_doc, output_doc_page, ConvertToFmt, Document, MediaBox, ObjectId, OutputDev,
+    OutputError, PlainTextOutput, Transform,
+};
+use std::cell::RefCell;
 use std::path::Path;
+use std::rc::Rc;
 
 /// Une page telle que le PDF la livre, avant toute reconstruction.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -23,28 +28,32 @@ pub fn pages(path: &Path) -> Result<Vec<Page>> {
     if doc.is_encrypted() && doc.decrypt("").is_err() {
         bail!("{} est protégé par un mot de passe", path.display());
     }
-    if doc.get_pages().is_empty() {
+    let numbered: Vec<(u32, ObjectId)> = doc.get_pages().into_iter().collect();
+    if numbered.is_empty() {
         bail!("{} ne contient aucune page lisible", path.display());
     }
-    let numbered: Vec<(u32, ObjectId)> = doc.get_pages().into_iter().collect();
     let numbers: Vec<ObjectId> = numbered.iter().map(|(_, id)| *id).collect();
-    let mut out = Vec::new();
+    // D'un seul passage, les polices ne se lisent qu'une fois pour tout le
+    // document. Une page au flux invalide fait échouer ce passage : on
+    // reprend alors page par page, où elle seule reste vide.
     let mut failures = Vec::new();
-    for (number, _) in &numbered {
-        let mut text = String::new();
-        {
-            let mut sink = PlainTextOutput::new(&mut text);
-            // Une page au flux invalide ne condamne pas les autres : elle
-            // reste vide, et l'erreur n'est rendue que si rien ne se lit.
-            if let Err(err) = output_doc_page(&doc, &mut sink, *number) {
-                failures.push(format!("page {number} : {err}"));
-                text.clear();
-            }
-        }
-        out.push(Page {
-            lines: text.lines().map(|line| line.trim_end().to_string()).collect(),
-        });
-    }
+    let mut out = match whole_document(&doc, numbered.len()) {
+        Some(pages) => pages,
+        None => numbered
+            .iter()
+            .map(|(number, _)| {
+                let mut text = String::new();
+                {
+                    let mut sink = PlainTextOutput::new(&mut text);
+                    if let Err(err) = output_doc_page(&doc, &mut sink, *number) {
+                        failures.push(format!("page {number} : {err}"));
+                        text.clear();
+                    }
+                }
+                page_of(&text)
+            })
+            .collect(),
+    };
     if failures.len() == out.len() {
         bail!("{} : aucune page ne se lit ({})", path.display(), failures.join(" ; "));
     }
@@ -60,6 +69,96 @@ pub fn pages(path: &Path) -> Result<Vec<Page>> {
         recognise_scanned(&doc, &numbers, &blank, &mut out, path)?;
     }
     Ok(out)
+}
+
+fn page_of(text: &str) -> Page {
+    Page {
+        lines: text.lines().map(|line| line.trim_end().to_string()).collect(),
+    }
+}
+
+/// Toutes les pages d'un seul passage, ou `None` si une page échoue.
+///
+/// Chaque page repart d'une sortie neuve, comme rendue seule : le texte est
+/// le même qu'en page par page, sans relire polices et arbre des pages à
+/// chaque fois.
+fn whole_document(doc: &Document, count: usize) -> Option<Vec<Page>> {
+    let mut split = PageSplitter { pages: Vec::with_capacity(count), current: None };
+    output_doc(doc, &mut split).ok()?;
+    (split.pages.len() == count).then_some(split.pages)
+}
+
+/// Texte d'une page en cours d'écriture, partagé avec la sortie qui l'écrit.
+#[derive(Clone, Default)]
+struct PageText(Rc<RefCell<String>>);
+
+impl std::fmt::Write for PageText {
+    fn write_str(&mut self, s: &str) -> std::fmt::Result {
+        self.0.borrow_mut().push_str(s);
+        Ok(())
+    }
+}
+
+impl ConvertToFmt for PageText {
+    type Writer = PageText;
+    fn convert(self) -> PageText {
+        self
+    }
+}
+
+struct PageSplitter {
+    pages: Vec<Page>,
+    current: Option<(PageText, PlainTextOutput<PageText>)>,
+}
+
+impl PageSplitter {
+    fn sink(&mut self) -> Result<&mut PlainTextOutput<PageText>, OutputError> {
+        match self.current.as_mut() {
+            Some((_, sink)) => Ok(sink),
+            None => Err(OutputError::FormatError(std::fmt::Error)),
+        }
+    }
+}
+
+impl OutputDev for PageSplitter {
+    fn begin_page(
+        &mut self,
+        page_num: u32,
+        media_box: &MediaBox,
+        art_box: Option<(f64, f64, f64, f64)>,
+    ) -> Result<(), OutputError> {
+        let text = PageText::default();
+        let mut sink = PlainTextOutput::new(text.clone());
+        sink.begin_page(page_num, media_box, art_box)?;
+        self.current = Some((text, sink));
+        Ok(())
+    }
+    fn end_page(&mut self) -> Result<(), OutputError> {
+        self.sink()?.end_page()?;
+        if let Some((text, _)) = self.current.take() {
+            self.pages.push(page_of(&text.0.borrow()));
+        }
+        Ok(())
+    }
+    fn output_character(
+        &mut self,
+        trm: &Transform,
+        width: f64,
+        spacing: f64,
+        font_size: f64,
+        char: &str,
+    ) -> Result<(), OutputError> {
+        self.sink()?.output_character(trm, width, spacing, font_size, char)
+    }
+    fn begin_word(&mut self) -> Result<(), OutputError> {
+        self.sink()?.begin_word()
+    }
+    fn end_word(&mut self) -> Result<(), OutputError> {
+        self.sink()?.end_word()
+    }
+    fn end_line(&mut self) -> Result<(), OutputError> {
+        self.sink()?.end_line()
+    }
 }
 
 /// Caractères imprimables en deçà desquels une page est réputée scannée.
@@ -95,23 +194,25 @@ fn recognise_scanned(
     use std::sync::Mutex;
 
     // Une image par page suffit : un scan n'en porte qu'une, et deux
-    // reconnaissances sur la même page se recouvriraient.
-    let work: Vec<(usize, Vec<u8>)> = blank
+    // reconnaissances sur la même page se recouvriraient. Les octets restent
+    // ceux du document, sans copie : un livre scanné en pèse des centaines
+    // de mégaoctets.
+    let work: Vec<(usize, &[u8])> = blank
         .iter()
-        .filter_map(|&i| {
-            let image = page_images(doc, *numbers.get(i)?).into_iter().next()?;
-            Some((i, image))
-        })
+        .filter_map(|&i| Some((i, page_image(doc, *numbers.get(i)?)?)))
         .collect();
     if work.is_empty() {
         return Ok(());
     }
 
-    // Autant de fils que de cœurs, sans dépasser le nombre de pages : ouvrir un
-    // moteur coûte moins que de lire une page, mais pas moins que rien.
+    // Un fil par cœur, moins un laissé à la lecture et à l'écran, et pas plus
+    // de quatre : chaque fil tient un Tesseract et une page décodée (des
+    // dizaines de mégaoctets), et une petite machine n'a pas la mémoire de
+    // huit. Jamais plus que de pages.
     let threads = std::thread::available_parallelism()
-        .map(|n| n.get())
+        .map(|n| n.get().saturating_sub(1))
         .unwrap_or(1)
+        .clamp(1, 4)
         .min(work.len());
     let next = AtomicUsize::new(0);
     let done: Mutex<Vec<(usize, Page)>> = Mutex::new(Vec::new());
@@ -169,7 +270,7 @@ fn recognise_scanned(
     let scanned: Vec<usize> = blank
         .iter()
         .copied()
-        .filter(|&i| numbers.get(i).is_some_and(|id| !page_images(doc, *id).is_empty()))
+        .filter(|&i| numbers.get(i).is_some_and(|id| page_image(doc, *id).is_some()))
         .collect();
     if scanned.is_empty() {
         return Ok(());
@@ -189,15 +290,14 @@ fn recognise_scanned(
     Ok(())
 }
 
-/// Images embarquées d'une page, dans leur forme d'origine.
+/// Première image embarquée d'une page, dans sa forme d'origine, empruntée
+/// au document.
 ///
 /// Seul `/DCTDecode` est rendu : ses octets sont un JPEG complet. Les
 /// télécopies en CCITT ou JBIG2 demanderaient un décodeur que le pur Rust
 /// n'offre pas — mieux vaut une page vide qu'un texte inventé.
-fn page_images(doc: &Document, page: ObjectId) -> Vec<Vec<u8>> {
-    let Ok((own, inherited)) = doc.get_page_resources(page) else {
-        return Vec::new();
-    };
+fn page_image(doc: &Document, page: ObjectId) -> Option<&[u8]> {
+    let (own, inherited) = doc.get_page_resources(page).ok()?;
     let mut tables = Vec::new();
     if let Some(dict) = own {
         if let Ok(x) = dict.get(b"XObject") {
@@ -212,7 +312,6 @@ fn page_images(doc: &Document, page: ObjectId) -> Vec<Vec<u8>> {
         }
     }
 
-    let mut images = Vec::new();
     for table in tables {
         let Ok((_, object)) = doc.dereference(&table) else {
             continue;
@@ -221,10 +320,17 @@ fn page_images(doc: &Document, page: ObjectId) -> Vec<Vec<u8>> {
             continue;
         };
         for (_, value) in entries.iter() {
-            let Ok((_, object)) = doc.dereference(value) else {
+            // Un flux est toujours un objet indirect : le lire par son
+            // numéro le rattache au document, pas à la table copiée.
+            let Ok(id) = value.as_reference() else {
                 continue;
             };
-            let Ok(stream) = object.as_stream() else {
+            let Some(stream) = doc
+                .get_object(id)
+                .and_then(|object| doc.dereference(object))
+                .ok()
+                .and_then(|(_, object)| object.as_stream().ok())
+            else {
                 continue;
             };
             let named = |key: &[u8], expected: &[u8]| {
@@ -236,11 +342,11 @@ fn page_images(doc: &Document, page: ObjectId) -> Vec<Vec<u8>> {
                     .is_some_and(|name| name == expected)
             };
             if named(b"Subtype", b"Image") && named(b"Filter", b"DCTDecode") {
-                images.push(stream.content.clone());
+                return Some(&stream.content);
             }
         }
     }
-    images
+    None
 }
 
 #[cfg(test)]
@@ -278,16 +384,15 @@ mod tests {
     fn a_scanned_page_yields_its_embedded_image() {
         let doc = Document::load(fixture("scanne.pdf")).expect("la fixture doit se lire");
         let (_, page) = doc.get_pages().into_iter().next().expect("une page");
-        let images = page_images(&doc, page);
-        assert_eq!(images.len(), 1, "la page porte une image");
-        assert_eq!(&images[0][..2], &[0xFF, 0xD8], "ce doit être un JPEG");
+        let image = page_image(&doc, page).expect("la page porte une image");
+        assert_eq!(&image[..2], &[0xFF, 0xD8], "ce doit être un JPEG");
     }
 
     #[test]
     fn a_text_page_yields_no_image() {
         let doc = Document::load(fixture("spec.pdf")).expect("la fixture doit se lire");
         let (_, page) = doc.get_pages().into_iter().next().expect("une page");
-        assert!(page_images(&doc, page).is_empty());
+        assert!(page_image(&doc, page).is_none());
     }
 
     #[test]

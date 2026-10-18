@@ -1,3 +1,4 @@
+// Modifié par Sillon (Apache-2.0 §4(b)) : chargement d'un dossier, arrêt `shouldStop`, bornes de longueur, une lecture GPU par trame — voir ORIGINE.md.
 import Foundation
 import MLX
 import MLXNN
@@ -183,7 +184,8 @@ public final class MagpieTTS {
                 position: position)
             hLast = h
             position += 1
-            eval(hLast)
+            // Sillon : pas d'`eval(hLast)` ici ; le pas du décodeur est
+            // calculé avec la trame suivante, à son unique lecture.
         }
         return frames
     }
@@ -201,8 +203,11 @@ public final class MagpieTTS {
                                         topK: Int) -> [Int32] {
         let cache = MagpieKVCache()
         var x = localTransformer.inProjection(hLast)
-        var codes = [Int32]()
-        codes.reserveCapacity(MagpieNumCodebooks)
+        // Sillon : les jetons restent sur le GPU d'un livre de codes au
+        // suivant (mêmes opérations, même tirage), lus une seule fois par
+        // trame au lieu de huit.
+        var tokens = [MLXArray]()
+        tokens.reserveCapacity(MagpieNumCodebooks)
         for k in 0..<MagpieNumCodebooks {
             let h = localTransformer(x, position: k, cache: cache)
             // The last position's hidden produces the codebook-k logits.
@@ -212,15 +217,13 @@ public final class MagpieTTS {
             if forbidEos { forbid.append(Int(MagpieAudioEosId)) }
             logits = forbidIds(logits, ids: forbid)
             let tok = sampleTopK(logits, temperature: temperature, k: topK)
-            eval(tok)
-            let value = Int32(tok.asArray(Int32.self)[0])
-            codes.append(value)
+            tokens.append(tok)
             if k < MagpieNumCodebooks - 1 {
-                let idArr = MLXArray([value], [1, 1])  // int32
+                let idArr = tok.reshaped([1, 1])  // int32
                 let emb = decoder.audioEmbeddings[k](idArr)  // (1, 1, d_dec)
                 x = localTransformer.inProjection(emb)
             }
         }
-        return codes
+        return concatenated(tokens).asArray(Int32.self)
     }
 }

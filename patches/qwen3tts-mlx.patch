@@ -1,6 +1,6 @@
 diff -ruN a/Qwen2BPETokenizer.swift b/Qwen2BPETokenizer.swift
 --- a/Qwen2BPETokenizer.swift	1970-01-01 01:00:00
-+++ b/Qwen2BPETokenizer.swift	2026-10-17 21:36:35
++++ b/Qwen2BPETokenizer.swift	2026-10-18 03:53:33
 @@ -0,0 +1,151 @@
 +import Foundation
 +
@@ -154,8 +154,8 @@ diff -ruN a/Qwen2BPETokenizer.swift b/Qwen2BPETokenizer.swift
 +    }
 +}
 diff -ruN a/Qwen3TTS.swift b/Qwen3TTS.swift
---- a/Qwen3TTS.swift	2026-10-17 21:36:35
-+++ b/Qwen3TTS.swift	2026-10-17 21:36:35
+--- a/Qwen3TTS.swift	2026-10-18 03:45:55
++++ b/Qwen3TTS.swift	2026-10-18 03:53:33
 @@ -1,41 +1,38 @@
  import Foundation
 -import HuggingFace
@@ -606,7 +606,7 @@ diff -ruN a/Qwen3TTS.swift b/Qwen3TTS.swift
              // Forward pass through talker
              let (logits, hidden) = talker(inputEmbeds, cache: cache)
  
-@@ -483,89 +203,26 @@
+@@ -483,89 +203,25 @@
              eval(inputEmbeds, isEOS)
  
              let tokenId = Int(nextToken[0, 0].item(Int32.self))
@@ -616,7 +616,7 @@ diff -ruN a/Qwen3TTS.swift b/Qwen3TTS.swift
              }
              generatedCodebookTokens.append(tokenId)
              generatedCodes.append(allCodes)
- 
+-
 -            // Streaming: decode and yield audio chunks during generation
 -            if let onAudioChunk {
 -                let newTokens = generatedCodes.count - decodedTokens
@@ -633,9 +633,12 @@ diff -ruN a/Qwen3TTS.swift b/Qwen3TTS.swift
 -                }
 -            }
 -
-             if step > 0, step % 50 == 0 {
-                 Memory.clearCache()
-             }
+-            if step > 0, step % 50 == 0 {
+-                Memory.clearCache()
+-            }
++            // Sillon : plus de `Memory.clearCache()` tous les 50 pas : le
++            // cache de MLX est plafonné (`MLXBudget` dans l'app), le vider
++            // ne faisait que rendre puis réallouer les mêmes tampons.
          }
  
 -        try Task.checkCancellation()
@@ -699,7 +702,7 @@ diff -ruN a/Qwen3TTS.swift b/Qwen3TTS.swift
          eval(audio)
          return audio
      }
-@@ -594,307 +251,36 @@
+@@ -594,307 +250,36 @@
          )
      }
  
@@ -1026,7 +1029,7 @@ diff -ruN a/Qwen3TTS.swift b/Qwen3TTS.swift
  
          // Get text embeddings
          let textEmbed = talker.textProjection(talker.getTextEmbeddings()(inputIds))
-@@ -908,34 +294,32 @@
+@@ -908,34 +293,32 @@
          let ttsEosEmbed = ttsEmbeds[0..., 1 ..< 2, 0...]
          let ttsPadEmbed = ttsEmbeds[0..., 2 ..< 3, 0...]
  
@@ -1077,7 +1080,7 @@ diff -ruN a/Qwen3TTS.swift b/Qwen3TTS.swift
          // Build codec prefix
          let codecPrefill: [Int32] = if let langId = languageId {
              [
-@@ -953,12 +337,17 @@
+@@ -953,12 +336,17 @@
          }
  
          var codecEmbed = talker.getInputEmbeddings()(MLXArray(codecPrefill).reshaped(1, -1))
@@ -1096,7 +1099,7 @@ diff -ruN a/Qwen3TTS.swift b/Qwen3TTS.swift
          } else {
              codecEmbed = concatenated([codecEmbed, codecEmbedSuffix], axis: 1)
          }
-@@ -1119,255 +508,100 @@
+@@ -1119,255 +507,100 @@
          return token.reshaped(1, 1)
      }
  
@@ -1418,8 +1421,8 @@ diff -ruN a/Qwen3TTS.swift b/Qwen3TTS.swift
      }
  }
 diff -ruN a/Qwen3TTSCodePredictor.swift b/Qwen3TTSCodePredictor.swift
---- a/Qwen3TTSCodePredictor.swift	2026-10-17 21:36:35
-+++ b/Qwen3TTSCodePredictor.swift	2026-10-17 21:36:35
+--- a/Qwen3TTSCodePredictor.swift	2026-10-18 03:45:55
++++ b/Qwen3TTSCodePredictor.swift	2026-10-18 03:53:33
 @@ -1,6 +1,5 @@
  import Foundation
  @preconcurrency import MLX
@@ -1428,8 +1431,8 @@ diff -ruN a/Qwen3TTSCodePredictor.swift b/Qwen3TTSCodePredictor.swift
  
  // MARK: - Code Predictor Attention
 diff -ruN a/Qwen3TTSConfig.swift b/Qwen3TTSConfig.swift
---- a/Qwen3TTSConfig.swift	2026-10-17 21:36:35
-+++ b/Qwen3TTSConfig.swift	2026-10-17 21:36:35
+--- a/Qwen3TTSConfig.swift	2026-10-18 03:45:55
++++ b/Qwen3TTSConfig.swift	2026-10-18 03:53:33
 @@ -1,5 +1,4 @@
  import Foundation
 -import MLXLMCommon
@@ -1502,8 +1505,8 @@ diff -ruN a/Qwen3TTSConfig.swift b/Qwen3TTSConfig.swift
 +    enum CodingKeys: String, CodingKey { case mropeSection = "mrope_section" }
 +}
 diff -ruN a/Qwen3TTSSpeechTokenizer.swift b/Qwen3TTSSpeechTokenizer.swift
---- a/Qwen3TTSSpeechTokenizer.swift	2026-10-17 21:36:35
-+++ b/Qwen3TTSSpeechTokenizer.swift	2026-10-17 21:36:35
+--- a/Qwen3TTSSpeechTokenizer.swift	2026-10-18 03:45:55
++++ b/Qwen3TTSSpeechTokenizer.swift	2026-10-18 03:53:33
 @@ -1,7 +1,5 @@
  import Foundation
  @preconcurrency import MLX
@@ -1653,7 +1656,17 @@ diff -ruN a/Qwen3TTSSpeechTokenizer.swift b/Qwen3TTSSpeechTokenizer.swift
      func decode(_ audioCodes: MLXArray) -> (MLXArray, MLXArray) {
          // audioCodes: [batch, time, num_quantizers]
          let codes = audioCodes.transposed(0, 2, 1) // [batch, num_quantizers, time]
-@@ -1227,7 +1116,10 @@
+@@ -1091,7 +980,8 @@
+             wavChunk = wavChunk.squeezed(axis: 1)
+             eval(wavChunk)
+             chunks.append(wavChunk)
+-            Memory.clearCache()
++            // Sillon : pas de `Memory.clearCache()` par paquet (cache plafonné
++            // par `MLXBudget` dans l'app).
+             startIndex = endIndex
+         }
+ 
+@@ -1227,7 +1117,10 @@
              }
  
              // Skip speaker encoder weights now handled separately
@@ -1666,8 +1679,8 @@ diff -ruN a/Qwen3TTSSpeechTokenizer.swift b/Qwen3TTSSpeechTokenizer.swift
              }
  
 diff -ruN a/Qwen3TTSTalker.swift b/Qwen3TTSTalker.swift
---- a/Qwen3TTSTalker.swift	2026-10-17 21:36:35
-+++ b/Qwen3TTSTalker.swift	2026-10-17 21:36:35
+--- a/Qwen3TTSTalker.swift	2026-10-18 03:45:55
++++ b/Qwen3TTSTalker.swift	2026-10-18 03:53:33
 @@ -1,6 +1,5 @@
  import Foundation
  @preconcurrency import MLX

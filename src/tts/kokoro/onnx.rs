@@ -10,7 +10,7 @@ use std::ffi::{c_char, c_void, CStr};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use ort::session::Session;
+use ort::session::{RunOptions, Session};
 use ort::value::Tensor;
 
 use super::{KokoroBackend, KokoroRaw};
@@ -18,6 +18,8 @@ use crate::tts::Cancel;
 
 pub const ONNX_FILE: &str = "model_quantized.onnx";
 const MINIMUM: (u32, u32) = (1, 31);
+/// Intervalle de la garde d'abandon pendant un passage.
+const CANCEL_POLL: std::time::Duration = std::time::Duration::from_millis(25);
 
 #[cfg(target_os = "macos")]
 const LIBRARY: &str = "libonnxruntime.dylib";
@@ -157,6 +159,12 @@ impl KokoroBackend for OrtBackend {
             .map_err(|e| anyhow!("ONNX Runtime : {e}"))?
             .with_memory_pattern(false)
             .map_err(|e| anyhow!("ONNX Runtime : {e}"))?
+            // Entre deux phrases, les fils dorment au lieu de tourner à vide :
+            // sans quoi chaque passage laisse les cœurs occupés un moment.
+            .with_intra_op_spinning(false)
+            .map_err(|e| anyhow!("ONNX Runtime : {e}"))?
+            .with_inter_op_spinning(false)
+            .map_err(|e| anyhow!("ONNX Runtime : {e}"))?
             .commit_from_file(model_dir.join(ONNX_FILE))
             .map_err(|e| anyhow!("modèle Kokoro int8 ({}) : {e}", ONNX_FILE))?;
         *self.session.lock().unwrap_or_else(|e| e.into_inner()) = Some(session);
@@ -167,22 +175,47 @@ impl KokoroBackend for OrtBackend {
         self.infer(&[0, 43, 0], &[0.0; 256], &Cancel::never()).map(|_| ())
     }
 
-    /// L'abandon n'est vérifié qu'avant l'appel (avant et après l'attente
-    /// de la session) : un passage ORT ne s'interrompt pas (pas de point
-    /// d'arrêt interne).
+    /// L'abandon est vérifié avant l'appel (avant et après l'attente de la
+    /// session), puis pendant : un fil de garde lève le drapeau d'arrêt
+    /// d'ORT, qui interrompt le passage entre deux opérations.
     fn infer(&self, ids: &[i64], style: &[f32], cancel: &Cancel) -> Result<KokoroRaw> {
         cancel.check()?;
         let mut guard = self.session.lock().unwrap_or_else(|e| e.into_inner());
         cancel.check()?;
         let session = guard.as_mut().context("modèle Kokoro non chargé")?;
-        let outputs = session.run(ort::inputs![
+        let options = RunOptions::new()?;
+        let inputs = ort::inputs![
             "input_ids" => Tensor::from_array(([1usize, ids.len()], ids.to_vec()))?,
             "style" => Tensor::from_array(([1usize, style.len()], style.to_vec()))?,
             "speed" => Tensor::from_array(([1usize], vec![1.0f32]))?,
-        ])?;
+        ];
+        let outputs = std::thread::scope(|scope| {
+            // Fermé à la fin du passage : la garde s'arrête aussitôt.
+            let (done, finished) = std::sync::mpsc::channel::<()>();
+            if cancel.may_cancel() {
+                let options = &options;
+                scope.spawn(move || {
+                    while let Err(std::sync::mpsc::RecvTimeoutError::Timeout) = finished.recv_timeout(CANCEL_POLL) {
+                        if cancel.is_cancelled() {
+                            let _ = options.terminate();
+                            return;
+                        }
+                    }
+                });
+            }
+            let outputs = session.run_with_options(inputs, &options);
+            drop(done);
+            outputs
+        });
+        let outputs = match outputs {
+            Ok(outputs) => outputs,
+            Err(_) if cancel.is_cancelled() => return Err(crate::tts::Cancelled.into()),
+            Err(err) => return Err(err.into()),
+        };
         let (_, waveform) = outputs["waveform"].try_extract_tensor::<f32>()?;
         let (_, durations) = outputs["durations"].try_extract_tensor::<f32>()?;
         Ok(KokoroRaw {
+            // La seule copie : la mémoire d'ORT part avec `outputs`.
             samples: waveform.to_vec(),
             durations: durations.iter().map(|d| d.round().max(0.0) as u32).collect(),
         })
@@ -242,6 +275,39 @@ mod tests {
         backend.load(&dir).unwrap();
         let raw = backend.infer(&[0, 44, 43, 54, 43, 4, 0], &[0.0; 256], &Cancel::never()).unwrap();
         crate::tts::kokoro::check(&raw, 7).unwrap();
+        backend.release();
+    }
+
+    /// Un passage long abandonné en route s'arrête sans attendre sa fin.
+    /// Mêmes variables que l'essai précédent.
+    #[test]
+    #[ignore]
+    fn an_abandoned_pass_stops_midway() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::Arc;
+        use std::time::{Duration, Instant};
+        let dir = std::path::PathBuf::from(std::env::var("SILLON_KOKORO_DIR").expect("SILLON_KOKORO_DIR"));
+        let backend = OrtBackend::new(1);
+        backend.load(&dir).unwrap();
+        let ids: Vec<i64> = std::iter::once(0).chain((0..500).map(|i| [44, 43, 54][i % 3])).chain([0]).collect();
+        let started = Instant::now();
+        backend.infer(&ids, &[0.0; 256], &Cancel::never()).unwrap();
+        let whole = started.elapsed();
+
+        let stop = Arc::new(AtomicBool::new(false));
+        let flag = Arc::clone(&stop);
+        let cancel = Cancel::when(move || flag.load(Ordering::SeqCst));
+        let setter = std::thread::spawn(move || {
+            std::thread::sleep(whole / 5);
+            stop.store(true, Ordering::SeqCst);
+        });
+        let started = Instant::now();
+        let err = backend.infer(&ids, &[0.0; 256], &cancel).unwrap_err();
+        let stopped = started.elapsed();
+        setter.join().unwrap();
+        eprintln!("passage entier {whole:?}, abandonné après {stopped:?}");
+        assert!(crate::tts::is_cancelled(&err), "{err}");
+        assert!(stopped < whole / 2 + Duration::from_millis(50), "{stopped:?} sur {whole:?}");
         backend.release();
     }
 }

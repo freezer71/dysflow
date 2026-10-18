@@ -9,7 +9,7 @@ use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
 
 use super::{Block, BlockKind, Document, Emphasis, Punctuation, Section, Sentence, Word};
 use crate::text::numerals::{section_number, verbalize_section_number};
-use crate::text::{sanitize, sanitize_layout, split_sentences, verbalize};
+use crate::text::{collapse_layout, sanitize, sanitize_layout, split_sentences, verbalize};
 
 /// Traitement réservé aux blocs de code.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -557,14 +557,15 @@ impl DocumentBuilder {
         // son indentation, l'alignement de ses colonnes. Le balisage seul est
         // parti, le terminal le rendant autrement.
         let mut display_lines = display_lines;
-        if display_lines.is_empty() {
-            let layout = numbered(is_heading(&kind), raw_text, sanitize_layout(raw_text));
-            display_lines = source_lines(&layout);
-        }
+        let layout = sanitize_layout(raw_text);
         // Ce que l'œil lit : le texte nettoyé, chiffres et dates tels qu'ils
         // sont écrits. La mise en mots ne concerne que la voix, et se fait
-        // phrase par phrase, plus bas.
-        let body = sanitize(raw_text);
+        // phrase par phrase, plus bas. Tiré de la version composée, comme le
+        // fait `sanitize`, sans refaire le nettoyage.
+        let body = collapse_layout(&layout);
+        if display_lines.is_empty() {
+            display_lines = source_lines(&numbered(is_heading(&kind), raw_text, layout));
+        }
         if body.is_empty() {
             return;
         }
@@ -667,7 +668,12 @@ impl DocumentBuilder {
             // Un nombre se dit bien plus longtemps qu'il ne s'écrit : garder
             // sa forme parlée laisse le curseur suivre la voix. Le contexte
             // manque à l'échelle du mot, mais un poids n'a pas à être exact.
-            let said = if self.french() { verbalize(token) } else { token.to_string() };
+            // Sans chiffre ni majuscule, rien n'est à dire autrement (dates et
+            // nombres ont des chiffres, les sigles des majuscules) : la mise
+            // en mots, trois expressions régulières, est épargnée à la
+            // plupart des mots.
+            let plain = !token.chars().any(|c| c.is_numeric() || c.is_uppercase());
+            let said = if self.french() && !plain { verbalize(token) } else { token.to_string() };
             words.push(Word {
                 text: token.to_string(),
                 index: self.word_counter,

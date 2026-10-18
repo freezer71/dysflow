@@ -208,10 +208,9 @@ public final class Qwen3TTSModel: Module, @unchecked Sendable {
             }
             generatedCodebookTokens.append(tokenId)
             generatedCodes.append(allCodes)
-
-            if step > 0, step % 50 == 0 {
-                Memory.clearCache()
-            }
+            // Sillon : plus de `Memory.clearCache()` tous les 50 pas : le
+            // cache de MLX est plafonné (`MLXBudget` dans l'app), le vider
+            // ne faisait que rendre puis réallouer les mêmes tampons.
         }
 
         if shouldStop?() == true { throw Qwen3TTSError.stopped }

@@ -9,8 +9,9 @@ use std::path::{Path, PathBuf};
 use std::io::Read;
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Mutex;
-use std::time::{Duration, Instant};
+use std::sync::mpsc::RecvTimeoutError;
+use std::sync::{Mutex, OnceLock};
+use std::time::Duration;
 
 use crate::sync::LockExt;
 
@@ -54,14 +55,19 @@ pub struct SystemEngine {
 }
 
 impl SystemEngine {
+    /// La synthèse du système est cherchée une fois par processus : chaque
+    /// moteur (et chaque repli) en construit un.
     pub fn new() -> Self {
-        let backend = if cfg!(target_os = "macos") && which("say") {
-            Some(Backend::MacosSay)
-        } else if which("espeak-ng") {
-            Some(Backend::EspeakNg)
-        } else {
-            None
-        };
+        static BACKEND: OnceLock<Option<Backend>> = OnceLock::new();
+        let backend = *BACKEND.get_or_init(|| {
+            if cfg!(target_os = "macos") && which("say") {
+                Some(Backend::MacosSay)
+            } else if which("espeak-ng") {
+                Some(Backend::EspeakNg)
+            } else {
+                None
+            }
+        });
         Self { backend }
     }
 }
@@ -208,38 +214,44 @@ fn say_command(text: &str, params: &TtsParams, out: &Path) -> Command {
 /// Lance `cmd` et attend sa fin, au plus `deadline`. `Ok(Some(_))` : raté
 /// passager — bloqué, donc tué et ramassé. Un code de sortie non nul est
 /// une vraie erreur, avec ce que le programme a dit sur stderr.
+///
+/// L'attente ne sonde pas : stderr se ferme quand le programme se termine,
+/// un fil le lit jusqu'au bout et le rend ; le fil appelant dort jusque-là,
+/// ou jusqu'à l'échéance.
 fn run_with_deadline(mut cmd: Command, deadline: Duration) -> Result<Option<String>> {
     cmd.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::piped());
     let program = cmd.get_program().to_string_lossy().into_owned();
     let mut child = cmd
         .spawn()
         .with_context(|| format!("échec du lancement de `{program}`"))?;
-    let until = Instant::now() + deadline;
-    let status = loop {
-        match child.try_wait() {
-            Ok(Some(status)) => break status,
-            Ok(None) => {}
-            Err(err) => {
-                let _ = child.kill();
-                let _ = child.wait();
-                return Err(err).with_context(|| format!("attente de `{program}`"));
-            }
-        }
-        if Instant::now() >= until {
+    let (tx, rx) = std::sync::mpsc::channel();
+    if let Some(mut pipe) = child.stderr.take() {
+        crate::sync::spawn_named("sillon-stderr", move || {
+            let mut stderr = String::new();
+            let _ = pipe.read_to_string(&mut stderr);
+            let _ = tx.send(stderr);
+        });
+    }
+    let stderr = match rx.recv_timeout(deadline) {
+        Ok(stderr) => stderr,
+        Err(RecvTimeoutError::Disconnected) => String::new(),
+        Err(RecvTimeoutError::Timeout) => {
             let _ = child.kill();
             let _ = child.wait();
             return Ok(Some(format!("bloqué plus de {deadline:?}")));
         }
-        std::thread::sleep(Duration::from_millis(10));
     };
+    let status = child.wait().with_context(|| format!("attente de `{program}`"))?;
     if !status.success() {
-        let mut stderr = String::new();
-        if let Some(mut pipe) = child.stderr.take() {
-            let _ = pipe.read_to_string(&mut stderr);
-        }
         return Err(anyhow!("`{program}` a échoué : {}", stderr.trim()));
     }
     Ok(None)
+}
+
+/// Délai au-delà duquel `espeak-ng` est tenu pour bloqué : il synthétise
+/// bien plus vite que le temps réel.
+fn espeak_deadline(text: &str) -> Duration {
+    Duration::from_secs(10) + Duration::from_millis(30) * text.chars().count() as u32
 }
 
 fn run_espeak(text: &str, params: &TtsParams, out: &Path) -> Result<()> {
@@ -257,14 +269,10 @@ fn run_espeak(text: &str, params: &TtsParams, out: &Path) -> Result<()> {
     cmd.arg("-w").arg(out);
     cmd.arg("--").arg(text);
 
-    let output = cmd.output().context("échec du lancement de `espeak-ng`")?;
-    if !output.status.success() {
-        return Err(anyhow!(
-            "`espeak-ng` a échoué : {}",
-            String::from_utf8_lossy(&output.stderr).trim()
-        ));
+    match run_with_deadline(cmd, espeak_deadline(text))? {
+        Some(blocked) => Err(anyhow!("`espeak-ng` {blocked}")),
+        None => Ok(()),
     }
-    Ok(())
 }
 
 /// Décode un WAV en échantillons flottants, quel que soit son format source.
@@ -306,6 +314,7 @@ fn which(program: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Instant;
 
     #[test]
     fn temp_files_are_unique_and_removed() {

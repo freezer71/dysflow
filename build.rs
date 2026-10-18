@@ -16,10 +16,12 @@ fn build_sonic() {
     println!("cargo:rerun-if-changed=third_party/sonic/sonic.h");
     println!("cargo:rerun-if-changed=native/sonic_build.c");
     // sonic.c passe par native/sonic_build.c, qui compte ses allocations.
-    cc::Build::new()
-        .file("native/sonic_build.c")
-        .include("third_party/sonic")
-        .opt_level(2)
-        .warnings(false)
-        .compile("sonic");
+    let mut build = cc::Build::new();
+    build.file("native/sonic_build.c").include("third_party/sonic").warnings(false);
+    // Le niveau du profil (3 en release) ; en debug, au moins 2 : Sonic
+    // tourne dans le fil audio, et un -O0 y ferait des trous.
+    if matches!(std::env::var("OPT_LEVEL").as_deref(), Ok("0" | "1")) {
+        build.opt_level(2);
+    }
+    build.compile("sonic");
 }

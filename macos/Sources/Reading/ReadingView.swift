@@ -63,13 +63,16 @@ struct ReadingView: NSViewRepresentable {
             if c.commandCount != nil { text.resumeFollowing() }
             c.commandCount = model.commandCount
         }
-        guard let layout = c.layout else { return }
+        // La copie cachée ne sert qu'à ↑ ↓, qui lisent la mise en page à la
+        // touche : rien à suivre, et le mot lu n'y est pas observé.
+        guard !shadow, let layout = c.layout else { return }
+        let shownWord = model.word
         let sentence = layout.sentenceRanges[snapshot.sentence]
-        let word = snapshot.word.flatMap { layout.wordRanges[$0] }
-        // La part du mot dite, relue par la vue à chaque image. Si la voix
-        // est déjà au mot suivant sans que la vue le sache encore, le mot
-        // montré est dit en entier.
-        let shownWord = snapshot.word
+        let word = shownWord.flatMap { layout.wordRanges[$0] }
+        // La part du mot dite, relue par la vue à chaque image dans le
+        // dernier instantané lu par le modèle. Si la voix est déjà au mot
+        // suivant sans que la vue le sache encore, le mot montré est dit en
+        // entier.
         text.liveProgress = { [weak model] in
             guard let live = model?.liveSnapshot() else { return 0 }
             return live.word == shownWord ? live.wordProgress : 1

@@ -1,7 +1,8 @@
 diff -ruN a/Configuration.swift b/Configuration.swift
---- a/Configuration.swift	2026-10-17 22:15:33
-+++ b/Configuration.swift	2026-10-17 22:15:33
-@@ -1,24 +1,5 @@
+--- a/Configuration.swift	2026-10-18 03:45:48
++++ b/Configuration.swift	2026-10-18 03:53:33
+@@ -1,24 +1,6 @@
++// Modifié par Sillon (Apache-2.0 §4(b)) : `MagpieTTSVariant` supprimé, `MagpieTTSError.stopped` ajouté — voir ORIGINE.md.
  import Foundation
  
 -/// Magpie-TTS Multilingual 357M variant. Weights are dequantised to FP at load
@@ -26,7 +27,7 @@ diff -ruN a/Configuration.swift b/Configuration.swift
  /// Baked speaker identity. The model checkpoint embeds five speaker contexts
  /// (110 frames × 768 dim) used as the prefix of every AR decode.
  public enum MagpieSpeaker: Int, Sendable, CaseIterable {
-@@ -246,6 +227,8 @@
+@@ -246,6 +228,8 @@
      case unsupportedSpeaker(Int)
      case textEncodingFailed(String)
      case invalidConfig(String)
@@ -35,7 +36,7 @@ diff -ruN a/Configuration.swift b/Configuration.swift
  
      public var errorDescription: String? {
          switch self {
-@@ -256,6 +239,7 @@
+@@ -256,6 +240,7 @@
          case .unsupportedSpeaker(let s): return "Magpie: invalid baked speaker index \(s) (valid: 0..4)"
          case .textEncodingFailed(let m): return "Magpie: text encoding failed: \(m)"
          case .invalidConfig(let m):     return "Magpie: invalid config: \(m)"
@@ -44,9 +45,14 @@ diff -ruN a/Configuration.swift b/Configuration.swift
      }
  }
 diff -ruN a/EnglishG2P.swift b/EnglishG2P.swift
---- a/EnglishG2P.swift	2026-10-17 22:15:33
-+++ b/EnglishG2P.swift	2026-10-17 22:15:33
-@@ -20,11 +20,9 @@
+--- a/EnglishG2P.swift	2026-10-18 03:45:48
++++ b/EnglishG2P.swift	2026-10-18 03:53:33
+@@ -1,3 +1,4 @@
++// Modifié par Sillon (Apache-2.0 §4(b)) : dictionnaire lu dans le framework, espagnol et allemand retirés, `@unchecked Sendable` — voir ORIGINE.md.
+ import Foundation
+ 
+ /// Dict-based IPA grapheme-to-phoneme converter.
+@@ -20,11 +21,9 @@
  ///
  /// The result is an IPA + punctuation string ready for char-level lookup
  /// against the Magpie shared vocab.
@@ -59,7 +65,7 @@ diff -ruN a/EnglishG2P.swift b/EnglishG2P.swift
  
      private let resource: String
      private var dict: [String: String] = [:]
-@@ -39,8 +37,8 @@
+@@ -39,8 +38,8 @@
          loadLock.lock()
          defer { loadLock.unlock() }
          if loaded { return }
@@ -71,9 +77,10 @@ diff -ruN a/EnglishG2P.swift b/EnglishG2P.swift
          let text = try String(contentsOf: url, encoding: .utf8)
          dict.reserveCapacity(150_000)
 diff -ruN a/MagpieTTS.swift b/MagpieTTS.swift
---- a/MagpieTTS.swift	2026-10-17 22:15:33
-+++ b/MagpieTTS.swift	2026-10-17 22:15:33
-@@ -1,8 +1,6 @@
+--- a/MagpieTTS.swift	2026-10-18 03:45:48
++++ b/MagpieTTS.swift	2026-10-18 03:53:33
+@@ -1,8 +1,7 @@
++// Modifié par Sillon (Apache-2.0 §4(b)) : chargement d'un dossier, arrêt `shouldStop`, bornes de longueur, une lecture GPU par trame — voir ORIGINE.md.
  import Foundation
  import MLX
  import MLXNN
@@ -82,7 +89,7 @@ diff -ruN a/MagpieTTS.swift b/MagpieTTS.swift
  
  /// Magpie-TTS Multilingual 357M (NVIDIA) — MLX port for Apple Silicon.
  ///
-@@ -51,37 +49,35 @@
+@@ -51,37 +50,35 @@
  
      // MARK: - Loading
  
@@ -135,7 +142,7 @@ diff -ruN a/MagpieTTS.swift b/MagpieTTS.swift
      }
  
      private static func decode<T: Decodable>(_ type: T.Type, from url: URL) throws -> T {
-@@ -113,7 +109,8 @@
+@@ -113,7 +110,8 @@
                             speaker: MagpieSpeaker = .sofia,
                             language: MagpieLanguage = .english,
                             prephonemized: Bool = false,
@@ -145,7 +152,7 @@ diff -ruN a/MagpieTTS.swift b/MagpieTTS.swift
          if let seed = params.seed { MLXRandom.seed(seed) }
          let tok = try tokenizer(for: language)
          let ids = tok.tokenize(text, prephonemized: prephonemized)
-@@ -121,7 +118,8 @@
+@@ -121,7 +119,8 @@
              throw MagpieTTSError.textEncodingFailed("empty token sequence after tokenisation")
          }
          let codes = try sampleCodeSequence(
@@ -155,7 +162,7 @@ diff -ruN a/MagpieTTS.swift b/MagpieTTS.swift
          if codes.isEmpty { return [] }
          let codeMatrix = MLXArray(codes.flatMap { $0 }, [codes.count, MagpieNumCodebooks])
              .reshaped([1, codes.count, MagpieNumCodebooks])
-@@ -130,50 +128,24 @@
+@@ -130,50 +129,24 @@
          return audio[0].asArray(Float.self)
      }
  
@@ -219,7 +226,7 @@ diff -ruN a/MagpieTTS.swift b/MagpieTTS.swift
          let textIdsArr = MLXArray(textIds.map(Int32.init), [textIds.count])
              .reshaped([1, textIds.count])
          let memMask = MLXArray.ones(textIdsArr.shape, dtype: .float32)
-@@ -188,15 +160,13 @@
+@@ -188,15 +161,13 @@
  
          var frames: [[Int32]] = []
          var position = decoderConfig.bakedT
@@ -237,12 +244,17 @@ diff -ruN a/MagpieTTS.swift b/MagpieTTS.swift
              if step >= params.minFrames, codes.contains(MagpieAudioEosId) {
                  break
              }
-@@ -216,94 +186,6 @@
-             eval(hLast)
+@@ -213,99 +184,12 @@
+                 position: position)
+             hLast = h
+             position += 1
+-            eval(hLast)
++            // Sillon : pas d'`eval(hLast)` ici ; le pas du décodeur est
++            // calculé avec la trame suivante, à son unique lecture.
          }
          return frames
--    }
--
+     }
+ 
 -    /// Streaming variant of ``sampleCodeSequence``: emits codec output
 -    /// every ``framesPerChunk`` frames (with ``firstChunkFrames`` for the
 -    /// very first chunk). Internally re-runs the codec on the *full*
@@ -329,12 +341,47 @@ diff -ruN a/MagpieTTS.swift b/MagpieTTS.swift
 -            eval(hLast)
 -        }
 -        emit(isFinal: true)
-     }
- 
+-    }
+-
      // MARK: - LocalTransformer per-frame sampling
+ 
+     /// Sample the 8 codebooks for one frame autoregressively.
+@@ -319,8 +203,11 @@
+                                         topK: Int) -> [Int32] {
+         let cache = MagpieKVCache()
+         var x = localTransformer.inProjection(hLast)
+-        var codes = [Int32]()
+-        codes.reserveCapacity(MagpieNumCodebooks)
++        // Sillon : les jetons restent sur le GPU d'un livre de codes au
++        // suivant (mêmes opérations, même tirage), lus une seule fois par
++        // trame au lieu de huit.
++        var tokens = [MLXArray]()
++        tokens.reserveCapacity(MagpieNumCodebooks)
+         for k in 0..<MagpieNumCodebooks {
+             let h = localTransformer(x, position: k, cache: cache)
+             // The last position's hidden produces the codebook-k logits.
+@@ -330,15 +217,13 @@
+             if forbidEos { forbid.append(Int(MagpieAudioEosId)) }
+             logits = forbidIds(logits, ids: forbid)
+             let tok = sampleTopK(logits, temperature: temperature, k: topK)
+-            eval(tok)
+-            let value = Int32(tok.asArray(Int32.self)[0])
+-            codes.append(value)
++            tokens.append(tok)
+             if k < MagpieNumCodebooks - 1 {
+-                let idArr = MLXArray([value], [1, 1])  // int32
++                let idArr = tok.reshaped([1, 1])  // int32
+                 let emb = decoder.audioEmbeddings[k](idArr)  // (1, 1, d_dec)
+                 x = localTransformer.inProjection(emb)
+             }
+         }
+-        return codes
++        return concatenated(tokens).asArray(Int32.self)
+     }
+ }
 diff -ruN a/Sampling.swift b/Sampling.swift
---- a/Sampling.swift	2026-10-17 22:15:33
-+++ b/Sampling.swift	2026-10-17 22:15:38
+--- a/Sampling.swift	2026-10-18 03:45:48
++++ b/Sampling.swift	2026-10-18 03:53:33
 @@ -1,11 +1,11 @@
 +// Modifié par Sillon (Apache-2.0 §4(b)) : `import MLXRandom` retiré, fonctions passées en `internal` — voir ORIGINE.md.
  import Foundation
@@ -368,15 +415,16 @@ diff -ruN a/Sampling.swift b/Sampling.swift
          return argMax(logits, axis: -1).asType(Int32.self)
      }
 diff -ruN a/Tokenizer.swift b/Tokenizer.swift
---- a/Tokenizer.swift	2026-10-17 22:15:33
-+++ b/Tokenizer.swift	2026-10-17 22:15:33
-@@ -1,5 +1,4 @@
+--- a/Tokenizer.swift	2026-10-18 03:45:48
++++ b/Tokenizer.swift	2026-10-18 03:53:33
+@@ -1,5 +1,5 @@
++// Modifié par Sillon (Apache-2.0 §4(b)) : français en NFC, langues sans dictionnaire lues lettre à lettre, chinois et japonais retirés — voir ORIGINE.md.
  import Foundation
 -import NaturalLanguage
  
  /// Per-language tokenizer config dumped from NeMo's MagpieTTS multilingual
  /// vocabulary. Each language's JSON ships the SAME shared 2360-entry vocab
-@@ -52,9 +51,9 @@
+@@ -52,9 +52,9 @@
  ///   dropped if `<oov>` is absent — older bundles).
  /// * `pad_with_space` handling per the per-language NeMo config (Mandarin and
  ///   Hindi prepend / append a space).
@@ -389,7 +437,7 @@ diff -ruN a/Tokenizer.swift b/Tokenizer.swift
  ///
  /// **What is intentionally simplified.** Each language ships a NeMo G2P /
  /// transliteration model on the Python side (eSpeak-style rule sets for
-@@ -158,27 +157,19 @@
+@@ -158,27 +158,19 @@
      private func encodePerLanguage(_ text: String) -> [Int] {
          switch language {
          case .english:
@@ -425,7 +473,7 @@ diff -ruN a/Tokenizer.swift b/Tokenizer.swift
  
          case .italian:
              return MagpieByT5Encoder.encode(text.lowercased(), language: .italian)
-@@ -186,84 +177,12 @@
+@@ -186,84 +178,12 @@
          case .vietnamese:
              return MagpieByT5Encoder.encode(text.lowercased(), language: .vietnamese)
  
@@ -514,3 +562,34 @@ diff -ruN a/Tokenizer.swift b/Tokenizer.swift
      }
  
      /// Codepoint-by-codepoint vocab lookup for IPA / Devanagari / Latin
+diff -ruN a/WeightLoader.swift b/WeightLoader.swift
+--- a/WeightLoader.swift	2026-10-18 03:45:48
++++ b/WeightLoader.swift	2026-10-18 03:53:33
+@@ -1,3 +1,4 @@
++// Modifié par Sillon (Apache-2.0 §4(b)) : tenseurs 8 bits lâchés au fil de la déquantification — voir ORIGINE.md.
+ import Foundation
+ import MLX
+ import MLXNN
+@@ -85,7 +86,7 @@
+         guard FileManager.default.fileExists(atPath: url.path) else {
+             throw MagpieTTSError.missingFile(url.lastPathComponent)
+         }
+-        let raw: [String: MLXArray]
++        var raw: [String: MLXArray]
+         do {
+             raw = try MLX.loadArrays(url: url)
+         } catch {
+@@ -117,7 +118,12 @@
+                 out[k] = v.asType(.float32)
+             }
+         }
+-        for (base, t) in triplets {
++        // Sillon : les triplets sont seuls à tenir les tenseurs 8 bits, et
++        // chacun est lâché dès sa version Float32 faite : le pic du
++        // chargement n'additionne plus tout le fichier 8 bits à tout le
++        // Float32.
++        raw = [:]
++        while let (base, t) = triplets.popFirst() {
+             guard let q = t.q, let s = t.s, let b = t.b else {
+                 throw MagpieTTSError.weightLoadFailed(
+                     "incomplete quantised triplet for \(base)")

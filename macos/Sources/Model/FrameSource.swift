@@ -39,8 +39,19 @@ final class DisplayLinkFrames: NSObject, FrameSource {
     /// et vit sur le fil principal, il n'a jamais à le quitter (CADisplayLink
     /// n'est pas Sendable).
     private let makeLink: @MainActor (AnyObject, Selector) -> CADisplayLink?
+    /// La cadence demandée à l'écran : un écran à 120 Hz n'impose pas 120
+    /// relectures par seconde à qui n'en a pas besoin.
+    private let rate: CAFrameRateRange
 
-    init(makeLink: (@MainActor (AnyObject, Selector) -> CADisplayLink?)? = nil) {
+    /// Le suivi du modèle : Rust publie à 60 Hz, le mot change 3 à 5 fois
+    /// par seconde ; 30 images suffisent.
+    static let modelRate = CAFrameRateRange(minimum: 15, maximum: 30, preferred: 30)
+    /// Le trait qui suit la voix : jamais plus de 60 images par seconde.
+    static let lineRate = CAFrameRateRange(minimum: 30, maximum: 60, preferred: 60)
+
+    init(rate: CAFrameRateRange = DisplayLinkFrames.modelRate,
+         makeLink: (@MainActor (AnyObject, Selector) -> CADisplayLink?)? = nil) {
+        self.rate = rate
         self.makeLink = makeLink ?? { target, selector in
             NSScreen.main?.displayLink(target: target, selector: selector)
         }
@@ -57,6 +68,7 @@ final class DisplayLinkFrames: NSObject, FrameSource {
         let relay = Relay()
         relay.frames = self
         guard let link = makeLink(relay, #selector(Relay.step)) else { return }
+        link.preferredFrameRateRange = rate
         link.add(to: .main, forMode: .common)
         self.link = link
     }

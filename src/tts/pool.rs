@@ -29,8 +29,9 @@ struct Job {
     /// Formes parlées des mots affichés, pour le minutage.
     words: Vec<String>,
     /// Formes écrites des mêmes mots (« 18 » là où `words` dit
-    /// « dix-huit ») : la coupe sans ponctuation se décide dessus.
-    written: Vec<String>,
+    /// « dix-huit ») : la coupe sans ponctuation se décide dessus. `None` :
+    /// les mêmes que `words`, le cas courant, gardées une fois.
+    written: Option<Vec<String>>,
     pause_ms: u64,
 }
 
@@ -39,7 +40,7 @@ struct Picked {
     id: usize,
     text: String,
     words: Vec<String>,
-    written: Vec<String>,
+    written: Option<Vec<String>>,
     params: TtsParams,
     generation: u64,
     pause_ms: u64,
@@ -383,15 +384,17 @@ impl Synthesizer {
 
     /// Ajoute une phrase et les formes parlées de ses mots affichés.
     pub fn push_with_words(&self, text: String, words: Vec<String>, pause_ms: u64) {
-        let written = words.clone();
-        self.push_sentence(text, words, written, pause_ms);
+        let mut state = self.shared.state.locked();
+        state.jobs.push(Job { text, words, written: None, pause_ms });
+        drop(state);
+        self.shared.wake.notify_all();
     }
 
     /// Ajoute une phrase, les formes parlées de ses mots et leurs formes
     /// écrites, sur lesquelles se décide la coupe sans ponctuation : un
     /// nombre en chiffres y reste reconnaissable.
     pub fn push_sentence(&self, text: String, words: Vec<String>, written: Vec<String>, pause_ms: u64) {
-        let written = if written.len() == words.len() { written } else { words.clone() };
+        let written = (written.len() == words.len() && written != words).then_some(written);
         let mut state = self.shared.state.locked();
         state.jobs.push(Job { text, words, written, pause_ms });
         drop(state);
@@ -615,7 +618,7 @@ fn worker_loop(shared: Arc<Shared>) {
 
         let session = session.as_mut().expect("session ouverte juste au-dessus");
         let cancel = cancel_for(&shared, job.id, job.generation);
-        let split = if job.split { split_sentence(&job.text, &job.words, &job.written) } else { None };
+        let split = if job.split { split_sentence(&job.text, &job.words, job.written.as_deref().unwrap_or(&job.words)) } else { None };
         let Some(split) = split else {
             match synthesize(&shared, session.as_mut(), &job.text, &job.words, &job.params, &cancel) {
                 Err(Stop::Cancelled) => abandon(&shared, job.id, job.generation),
@@ -750,11 +753,11 @@ fn with_trailing_silence(synthesis: Synthesis, expected_words: usize, pause_ms: 
         return Rendered { audio: Arc::new(speech), speech: speech_duration, words, part: Part::Whole };
     }
     let frames = (speech.sample_rate as u64 * pause_ms / 1000) as usize;
-    let mut samples = Vec::with_capacity(speech.samples.len() + frames * speech.channels as usize);
-    samples.extend_from_slice(&speech.samples);
-    samples.resize(samples.len() + frames * speech.channels as usize, 0.0);
+    // Une seule copie : parole et silence vont droit dans le tampon partagé.
+    let pad = frames * speech.channels as usize;
+    let samples: Arc<[f32]> = speech.samples.iter().copied().chain(std::iter::repeat_n(0.0, pad)).collect();
     Rendered {
-        audio: Arc::new(PcmBuffer::new(samples, speech.sample_rate, speech.channels)),
+        audio: Arc::new(PcmBuffer::from_shared(samples, speech.sample_rate, speech.channels)),
         speech: speech_duration,
         words,
         part: Part::Whole,

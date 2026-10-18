@@ -29,6 +29,9 @@ pub const FRAME: usize = 600;
 pub const MAX_PHONEMES: usize = 510;
 /// Échecs du calcul d'affilée avant que la voix passe en repli.
 const MAX_COMPUTE_FAILURES: usize = 3;
+/// Voix gardées en mémoire (un demi-mégaoctet chacune) : la voix lue, et
+/// celle d'un aperçu ou d'une autre langue.
+const VOICES_KEPT: usize = 2;
 
 /// Le vocabulaire des phonèmes, tiré de `config.json` : un symbole (point de
 /// code) par identifiant. Un symbole inconnu est écarté.
@@ -92,7 +95,8 @@ struct Inner {
     phonemizer: Mutex<Box<dyn Phonemizer>>,
     vocab: Vocab,
     model_dir: PathBuf,
-    voices: Mutex<HashMap<String, Arc<VoicePack>>>,
+    /// Les dernières voix servies, la plus récente en tête (`VOICES_KEPT`).
+    voices: Mutex<Vec<(String, Arc<VoicePack>)>>,
     /// Pourquoi la voix est passée en repli, si elle l'est.
     broken: Mutex<Option<String>>,
     fallback: Arc<dyn TtsEngine>,
@@ -105,11 +109,15 @@ struct Inner {
 impl Inner {
     fn voice(&self, name: &str) -> Result<Arc<VoicePack>> {
         let mut voices = self.voices.locked();
-        if let Some(voice) = voices.get(name) {
-            return Ok(Arc::clone(voice));
+        if let Some(at) = voices.iter().position(|(n, _)| n == name) {
+            let entry = voices.remove(at);
+            let voice = Arc::clone(&entry.1);
+            voices.insert(0, entry);
+            return Ok(voice);
         }
         let voice = Arc::new(load_voice(&self.model_dir, name)?);
-        voices.insert(name.to_string(), Arc::clone(&voice));
+        voices.insert(0, (name.to_string(), Arc::clone(&voice)));
+        voices.truncate(VOICES_KEPT);
         Ok(voice)
     }
 
@@ -182,7 +190,7 @@ impl KokoroEngine {
                 phonemizer: Mutex::new(phonemizer),
                 vocab,
                 model_dir,
-                voices: Mutex::new(HashMap::new()),
+                voices: Mutex::new(Vec::new()),
                 broken: Mutex::new(None),
                 fallback,
                 failures: AtomicUsize::new(0),
@@ -303,7 +311,12 @@ impl TtsSession for KokoroSession {
                     return Err(err);
                 }
             };
-            samples.extend_from_slice(&raw.samples);
+            // Un seul morceau, le cas courant : son audio est pris tel quel.
+            if samples.is_empty() {
+                samples = raw.samples;
+            } else {
+                samples.extend_from_slice(&raw.samples);
+            }
             chunks.push((kept, raw.durations));
         }
         if samples.is_empty() {

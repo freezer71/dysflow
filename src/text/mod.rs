@@ -8,5 +8,5 @@ pub mod numerals;
 pub mod sanitizer;
 pub mod sentence;
 
-pub use sanitizer::{sanitize, sanitize_layout, verbalize};
+pub use sanitizer::{collapse_layout, sanitize, sanitize_layout, verbalize};
 pub use sentence::split_sentences;
