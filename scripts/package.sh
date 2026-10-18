@@ -45,7 +45,7 @@ cp target/release/sillon "$OUT/"
 # ses données, sa licence et ses sources correspondantes.
 case ",$FEATURES," in
 *,kokoro-onnx,*)
-    if [ ! -x target/espeak/bin/sillon-espeak ] || [ scripts/sillon-espeak.c -nt target/espeak/bin/sillon-espeak ]; then
+    if [ ! -x target/espeak/bin/sillon-espeak ] || [ -n "$(find scripts/sillon-espeak.c -newer target/espeak/bin/sillon-espeak)" ]; then
         ./scripts/build-espeak.sh
     fi
     cp target/espeak/bin/sillon-espeak "$OUT/"

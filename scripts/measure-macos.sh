@@ -22,7 +22,7 @@ while [ $# -gt 0 ]; do
     --sans-construire) CONSTRUIRE=0 ;;
     --second-lancement) SECOND=1 ;;
     --rtf)
-        [ $# -ge 2 ] && [ -n "$2" ] || usage
+        if [ $# -lt 2 ] || [ -z "$2" ]; then usage; fi
         RTF=$2
         shift
         ;;

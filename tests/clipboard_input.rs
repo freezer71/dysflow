@@ -11,9 +11,12 @@ fn pasting_text_asks_for_no_recognition() {
         .output()
         .expect("le binaire doit se lancer");
 
+    // Un presse-papiers vide (machine de CI) reste une erreur, qui rappelle
+    // qu'une image demande l'option `ocr` : seul le refus de `--clip` en
+    // tant que tel serait la régression.
     let err = String::from_utf8_lossy(&out.stderr);
     assert!(
-        !err.contains("option `ocr`"),
+        !err.contains("--clip exige"),
         "coller du texte ne demande pas de reconnaissance : {err}"
     );
 }

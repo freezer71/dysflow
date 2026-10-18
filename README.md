@@ -56,6 +56,13 @@ en cours de lecture, `?` l'aide.
 
 ## Installation
 
+**Sous Linux (x86_64, ARM64)**, le paquet tout prêt est joint à chaque
+publication GitHub (`sillon-<version>-linux-<arch>.tar.gz`, glibc 2.39 ou
+plus) ; la marche à suivre est dans les notes de la publication. Un tag `v*`
+le construit et le publie (`.github/workflows/release.yml`).
+
+Depuis les sources :
+
 ```bash
 ./scripts/install.sh            # Kokoro + reconnaissance de texte, dans ~/.local
 cargo install --path .          # voix du système seule, build en quelques secondes
