@@ -50,6 +50,10 @@ final class ReadingTextView: NSTextView {
         didSet { oldValue.stop(); wireFrames() }
     }
     private var dimmedUpTo = 0
+    /// La mise en page est faite du début du texte jusque-là (en caractères) :
+    /// `rect(for:)` ne la redemande pas à chaque mot. Remise à zéro à chaque
+    /// document et à chaque largeur.
+    private var laidOutUpTo = 0
     private var colored: NSRange?
     private var spoken: NSRange?
     private var lastLineY: CGFloat?
@@ -81,7 +85,7 @@ final class ReadingTextView: NSTextView {
         self.init(usingTextLayoutManager: true)
         // Le lien de la vue suit sa fenêtre d'un écran à l'autre (cadence et
         // écran changent avec elle), ce que ne fait pas l'écran principal.
-        frames = DisplayLinkFrames { [weak self] target, selector in
+        frames = DisplayLinkFrames(rate: DisplayLinkFrames.lineRate) { [weak self] target, selector in
             self?.displayLink(target: target, selector: selector)
         }
         underlay.apply(theme)
@@ -121,6 +125,7 @@ final class ReadingTextView: NSTextView {
             tlm.removeRenderingAttribute(.foregroundColor, for: tlm.documentRange)
         }
         wordRect = nil; lineBand = nil; dimmedUpTo = 0; spoken = nil; colored = nil; announced = nil
+        laidOutUpTo = 0
         setTargets(band: nil, pill: nil, animated: false)
         lastLineY = nil; last = nil
         updateCursorLine()
@@ -139,6 +144,7 @@ final class ReadingTextView: NSTextView {
         let length = textStorage?.length ?? 0
         if length > 4000 { return .greatestFiniteMagnitude }
         tlm.ensureLayout(for: tlm.documentRange)
+        laidOutUpTo = length
         return tlm.usageBoundsForTextContainer.height + textContainerInset.height * 2
     }
 
@@ -258,6 +264,9 @@ final class ReadingTextView: NSTextView {
         let oldWidth = frame.width
         super.setFrameSize(newSize)
         underlay.frame = frame
+        // Toute largeur nouvelle refait les lignes : la mise en page assurée
+        // ne vaut plus.
+        if newSize.width != oldWidth { laidOutUpTo = 0 }
         guard abs(newSize.width - oldWidth) > 0.5 else { return }
         if var last {
             last.width = bounds.width
@@ -404,10 +413,20 @@ final class ReadingTextView: NSTextView {
         return window.isVisible && !occluded
     }
 
+    /// Un autre facteur d'échelle (écran changé) remet la mise en page en
+    /// cause : elle se refait à la demande.
+    override func viewDidChangeBackingProperties() {
+        super.viewDidChangeBackingProperties()
+        laidOutUpTo = 0
+    }
+
     /// Hors fenêtre, le lien s'arrête (le lien retient sa cible) ; de retour, il
     /// reprend si la lecture avance. La fenêtre retirée ou cachée, de même.
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        // Une autre fenêtre (aller-retour par le mini) peut avoir défait la
+        // mise en page déjà assurée : elle se refait à la demande.
+        laidOutUpTo = 0
         if let occlusionObserver { NotificationCenter.default.removeObserver(occlusionObserver) }
         occlusionObserver = nil
         visibilityObservation = nil
@@ -432,9 +451,20 @@ final class ReadingTextView: NSTextView {
 
     // MARK: - Attributs de rendu
 
+    /// Quand la lecture avance, seul ce qui vient d'être lu change de
+    /// couleur ; en arrière (ou au premier appel d'un document), tout est
+    /// refait.
     private func applyPast(upTo location: Int) {
-        guard location != dimmedUpTo, let tlm = textLayoutManager,
-              let all = textRange(NSRange(location: 0, length: textStorage?.length ?? 0)) else { return }
+        guard location != dimmedUpTo, let tlm = textLayoutManager else { return }
+        if location > dimmedUpTo,
+           let gained = textRange(NSRange(location: dimmedUpTo, length: location - dimmedUpTo)) {
+            // Le mot lu, s'il est dans ce qui vient d'être lu, y passe aussi :
+            // `applyWordColor` le laissera au déjà-lu.
+            tlm.addRenderingAttribute(.foregroundColor, value: theme.past, for: gained)
+            dimmedUpTo = location
+            return
+        }
+        guard let all = textRange(NSRange(location: 0, length: textStorage?.length ?? 0)) else { return }
         tlm.removeRenderingAttribute(.foregroundColor, for: all)
         if location > 0, let past = textRange(NSRange(location: 0, length: location)) {
             tlm.addRenderingAttribute(.foregroundColor, value: theme.past, for: past)
@@ -482,6 +512,9 @@ final class ReadingTextView: NSTextView {
     /// la touche, jamais à chaque image.
     func adjacentLine(from location: Int, direction: Int,
                       where accept: (NSRange) -> Bool) -> NSRange? {
+        // La copie cachée du mini ne suit pas la lecture : sa mise en page
+        // peut s'arrêter avant le mot lu.
+        ensureLayout(upTo: location)
         guard let tlm = textLayoutManager, let here = textRange(NSRange(location: location, length: 0)),
               let fragment = tlm.textLayoutFragment(for: here.location) else { return nil }
         let current = lineRanges(of: fragment).first { NSLocationInRange(location, $0) }?.location ?? location
@@ -541,13 +574,20 @@ final class ReadingTextView: NSTextView {
         return start
     }
 
+    /// Met en page depuis le début jusqu'à `end` : la hauteur de ce qui
+    /// précède serait sinon estimée, et la bande tomberait entre deux lignes
+    /// (vu après un aller-retour par le mini, en pause). Une fois par plage :
+    /// ce qui est déjà fait ne se redemande pas.
+    private func ensureLayout(upTo end: Int) {
+        guard end > laidOutUpTo, let tlm = textLayoutManager,
+              let span = textRange(NSRange(location: 0, length: end)) else { return }
+        tlm.ensureLayout(for: span)
+        laidOutUpTo = end
+    }
+
     private func rect(for range: NSRange) -> CGRect? {
         guard let tlm = textLayoutManager, let tr = textRange(range) else { return nil }
-        // Depuis le début : la hauteur de ce qui précède serait sinon estimée,
-        // et la bande tomberait entre deux lignes (vu après un aller-retour
-        // par le mini, en pause).
-        let upTo = NSTextRange(location: tlm.documentRange.location, end: tr.endLocation) ?? tr
-        tlm.ensureLayout(for: upTo)
+        ensureLayout(upTo: NSMaxRange(range))
         var result: CGRect?
         tlm.enumerateTextSegments(in: tr, type: .standard, options: []) { _, frame, _, _ in
             result = result.map { $0.union(frame) } ?? frame

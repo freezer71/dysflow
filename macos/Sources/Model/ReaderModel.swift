@@ -14,7 +14,14 @@ final class ReaderModel {
     @ObservationIgnored private let schedule: RefreshSchedule
     static let gracePeriod = RefreshSchedule.gracePeriod
 
+    /// L'état publié, sans le mot lu (voir `published`) : la barre, le
+    /// sommaire et le mini ne se réévaluent pas à chaque mot.
     private(set) var snapshot: Snapshot
+    /// Le mot lu, observé à part : seule la vue de lecture le lit.
+    private(set) var word: UInt32?
+    /// L'instantané tel que Rust l'a donné à la dernière relecture, part du
+    /// mot comprise ; rien ne l'observe.
+    @ObservationIgnored private var live: Snapshot
     private(set) var document: DocView {
         didSet { outline() }
     }
@@ -66,7 +73,10 @@ final class ReaderModel {
         self.reader = reader
         schedule = RefreshSchedule(frames: frames ?? DisplayLinkFrames(), now: now)
         audioOutputs = AudioOutputs(list: { reader.audioOutputs() })
-        snapshot = Self.published(reader.snapshot())
+        let first = reader.snapshot()
+        live = first
+        word = first.word
+        snapshot = Self.published(first)
         document = reader.document()
         outline()
         schedule.refresh = { [weak self] in self?.refresh() }
@@ -117,11 +127,13 @@ final class ReaderModel {
 
     /// L'instantané tel que l'écran le montre : temps à la seconde,
     /// avancement au millième. Le reste de ce que Rust donne à chaque image
-    /// ne republie rien, et SwiftUI ne réévalue pas toute l'interface. La
-    /// part du mot dite n'en fait pas partie : le trait sous la ligne la
-    /// relit avec son propre lien d'affichage (voir `liveSnapshot`).
+    /// ne republie rien, et SwiftUI ne réévalue pas toute l'interface. Le
+    /// mot lu n'en fait pas partie (il est publié à part, dans `word`), ni
+    /// la part du mot dite : le trait sous la ligne la relit avec son propre
+    /// lien d'affichage (voir `liveSnapshot`).
     static func published(_ s: Snapshot) -> Snapshot {
         var s = s
+        s.word = nil
         s.wordProgress = 0
         s.elapsed = s.elapsed.map { $0.isFinite ? $0.rounded(.down) : $0 }
         s.total = s.total.map { $0.isFinite ? $0.rounded() : $0 }
@@ -129,10 +141,12 @@ final class ReaderModel {
         return s
     }
 
-    /// L'instantané tel que Rust le donne à l'instant, sans rien publier :
-    /// pour ce qui change à chaque image et que SwiftUI ne doit pas voir.
+    /// L'instantané tel que Rust l'a donné à la dernière relecture, sans
+    /// rien publier : pour ce qui change à chaque image et que SwiftUI ne
+    /// doit pas voir. Pas de nouvel appel au moteur : la relecture suit déjà
+    /// l'écran pendant la lecture.
     func liveSnapshot() -> Snapshot {
-        reader.snapshot()
+        live
     }
 
     /// Relance le suivi et relit tout de suite l'état.
@@ -144,7 +158,10 @@ final class ReaderModel {
     }
 
     func refresh() {
-        let next = Self.published(reader.snapshot())
+        let raw = reader.snapshot()
+        live = raw
+        if raw.word != word { word = raw.word }
+        let next = Self.published(raw)
         let changed = next != snapshot
         let newDocument = next.revision != snapshot.revision
         let newSection = next.section != snapshot.section

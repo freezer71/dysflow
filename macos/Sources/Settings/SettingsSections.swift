@@ -489,6 +489,8 @@ struct DictationSection: View {
 /// que la fenêtre est ouverte.
 struct PermissionsSection: View {
     @State private var states: [Permission: Permission.State] = [:]
+    /// La fenêtre des réglages se voit (ni fermée, ni couverte).
+    @State private var visible = false
 
     var body: some View {
         SettingsGroup(title: "Autorisations") {
@@ -511,8 +513,14 @@ struct PermissionsSection: View {
                 }
             }
         }
-        // S'arrête avec la fenêtre (la tâche est annulée à sa disparition).
-        .task {
+        // Relu à la seconde tant que la fenêtre se voit : la scène Settings
+        // garde sa vue en vie fenêtre fermée, la tâche n'y serait pas annulée.
+        // (Posé après la mise à jour de la vue : la fenêtre le dit pendant.)
+        .background(WindowVisibility(onVisible: { shown in
+            DispatchQueue.main.async { if shown != visible { visible = shown } }
+        }, onClose: {}))
+        .task(id: visible) {
+            guard visible else { return }
             while !Task.isCancelled {
                 reload()
                 try? await Task.sleep(for: .seconds(1))

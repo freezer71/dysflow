@@ -13,6 +13,11 @@ final class PanelPlacement {
     /// l'utilisateur est retenu.
     private var placing = false
     private var observers: [NSObjectProtocol] = []
+    /// Le dernier geste à retenir, écrit une fois le geste fini : glisser ou
+    /// redimensionner envoie une notification par image.
+    private var pendingSave: (() -> Void)?
+    private var saveTimer: Timer?
+    static let saveDelay: TimeInterval = 0.3
 
     init(window: NSWindow, store: DisplayModeStore, mode: @escaping () -> DisplayMode) {
         self.window = window
@@ -52,6 +57,9 @@ final class PanelPlacement {
     /// Animé, le cadre glisse d'une forme à l'autre (sauf « Réduire les
     /// animations »).
     func place(_ frame: CGRect, animated: Bool) {
+        // Un geste encore en attente est retenu avant que le code ne bouge
+        // la fenêtre.
+        flushSave()
         placing = true
         defer { placing = false }
         if animated, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
@@ -72,6 +80,11 @@ final class PanelPlacement {
                 MainActor.assumeIsolated { self?.windowChanged() }
             })
         }
+        observers.append(NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification, object: nil, queue: nil
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.flushSave() }
+        })
     }
 
     /// Un geste de l'utilisateur : la place du mini (à sa taille seulement,
@@ -81,11 +94,36 @@ final class PanelPlacement {
         guard !placing else { return }
         switch mode() {
         case .mini:
-            if window.frame.size == MiniPlacement.size { store.miniOrigin = window.frame.origin }
+            guard window.frame.size == MiniPlacement.size else { return }
+            let origin = window.frame.origin
+            scheduleSave { [store] in store.miniOrigin = origin }
         case .reader:
-            store.readerFrame = window.frame
+            let frame = window.frame
+            scheduleSave { [store] in store.readerFrame = frame }
         case .hidden:
             break
         }
+    }
+
+    /// Retient la valeur du geste tout de suite, l'écrit après un temps
+    /// calme : une seule écriture par geste.
+    private func scheduleSave(_ save: @escaping () -> Void) {
+        pendingSave = save
+        saveTimer?.invalidate()
+        let timer = Timer(timeInterval: Self.saveDelay, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated { self?.flushSave() }
+        }
+        timer.tolerance = 0.1
+        RunLoop.main.add(timer, forMode: .common)
+        saveTimer = timer
+    }
+
+    /// Écrit le geste en attente, s'il y en a un.
+    func flushSave() {
+        saveTimer?.invalidate()
+        saveTimer = nil
+        let save = pendingSave
+        pendingSave = nil
+        save?()
     }
 }

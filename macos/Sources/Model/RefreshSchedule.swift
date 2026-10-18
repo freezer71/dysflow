@@ -15,11 +15,13 @@ final class RefreshSchedule {
         /// Rien : en pause, sans texte affiché.
         case none
         /// Une fois par seconde : la lecture avance en arrière-plan ; seuls
-        /// la phrase et le temps à la seconde comptent (« À l'écoute »).
+        /// la phrase et le temps à la seconde comptent (« À l'écoute »). Ou
+        /// le texte affiché en pause : ce que le moteur change de lui-même
+        /// (la voix mise au repos, un statut) se voit dans la seconde ; les
+        /// commandes, elles, relisent tout de suite (`wake`).
         case second
-        /// Un coup d'œil, 4 fois par seconde : texte affiché en pause (un
-        /// message s'efface, la voix change d'état), ou barre du mode petit
-        /// pendant la lecture (temps à la seconde, avancement au millième).
+        /// Un coup d'œil, 4 fois par seconde : barre du mode petit pendant la
+        /// lecture (temps à la seconde, avancement au millième).
         case glance
         /// À chaque image : le texte est affiché et la lecture avance, une
         /// commande vient de partir, la voix se charge ou un téléchargement
@@ -36,8 +38,9 @@ final class RefreshSchedule {
     /// La décision de suivi, sans état : testable. Quelque chose avance
     /// (lecture, commande récente, voix qui se charge, téléchargement) : à
     /// chaque image si le texte est affiché, au coup d'œil pour la barre,
-    /// à la seconde en arrière-plan. En pause, seul le texte affiché garde un
-    /// coup d'œil — le panneau flotte, il peut rester visible des heures.
+    /// à la seconde en arrière-plan. En pause, seul le texte affiché garde une
+    /// relecture, à la seconde — le panneau flotte, il peut rester visible
+    /// des heures.
     static func cadence(presence: Presence, playing: Bool, grace: Bool, loading: Bool,
                         download: DownloadView?) -> Cadence {
         if playing || grace || loading || ReaderModel.isDownloading(download) {
@@ -47,7 +50,7 @@ final class RefreshSchedule {
             case .hidden: return .second
             }
         }
-        return presence == .full ? .glance : .none
+        return presence == .full ? .second : .none
     }
 
     /// L'intervalle de la minuterie de relecture pour une cadence. À la

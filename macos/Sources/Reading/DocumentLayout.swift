@@ -30,17 +30,25 @@ struct DocumentLayout {
     /// Les mots suivis, dans l'ordre du texte.
     let words: [WordPlace]
 
+    /// Le texte s'écrit d'un bloc, puis ses attributs se posent par plage :
+    /// ceux du bloc d'abord, puis ceux d'un mot seulement là où il diffère
+    /// (gras, italique, code, lien, barré). Les polices sont créées une fois
+    /// par taille et par style, pas une fois par mot.
     static func build(_ doc: DocView, style: ReadingStyle) -> DocumentLayout {
-        let out = NSMutableAttributedString()
+        let text = NSMutableString()
+        var runs: [(range: NSRange, attrs: [NSAttributedString.Key: Any], replace: Bool)] = []
         var words: [UInt32: NSRange] = [:]
         var sentences: [UInt32: NSRange] = [:]
         var places: [WordPlace] = []
         let mono = NSFont.monospacedSystemFont(ofSize: style.size * 0.85, weight: .regular)
+        var fonts = FontCache(font: style.font)
 
         for (i, block) in doc.blocks.enumerated() {
-            if i > 0 { out.append(NSAttributedString(string: "\n")) }
+            // Le retour à la ligne entre deux blocs reste sans attribut.
+            if i > 0 { text.append("\n") }
+            let blockStart = text.length
             let paragraph = paragraphStyle(for: block.kind, style: style)
-            let base = baseFont(for: block.kind, style: style)
+            let base = baseFont(for: block.kind, style: style, fonts: &fonts)
             var attrs: [NSAttributedString.Key: Any] = [
                 .font: base, .foregroundColor: color(for: block.kind, style: style),
                 .paragraphStyle: paragraph,
@@ -48,71 +56,102 @@ struct DocumentLayout {
 
             if isVerbatim(block.kind), !block.displayLines.isEmpty {
                 attrs[.font] = mono
-                let start = out.length
-                out.append(NSAttributedString(string: block.displayLines.joined(separator: "\n"),
-                                              attributes: attrs))
+                text.append(block.displayLines.joined(separator: "\n"))
                 // Ses mots ne se suivent pas, mais sa phrase — l'annonce —
                 // couvre le bloc entier : pendant qu'on l'annonce, la vue
                 // sait où il est.
-                let whole = NSRange(location: start, length: out.length - start)
+                let whole = NSRange(location: blockStart, length: text.length - blockStart)
+                runs.append((whole, attrs, true))
                 for sentence in block.sentences { sentences[sentence.id] = whole }
                 continue
             }
-            if let prefix = prefix(for: block.kind) {
-                out.append(NSAttributedString(string: prefix, attributes: attrs))
-            }
+            if let prefix = prefix(for: block.kind) { text.append(prefix) }
+            var wordRuns: [(range: NSRange, attrs: [NSAttributedString.Key: Any], replace: Bool)] = []
             for (s, sentence) in block.sentences.enumerated() {
-                if s > 0 { out.append(NSAttributedString(string: " ", attributes: attrs)) }
-                let start = out.length
+                if s > 0 { text.append(" ") }
+                let start = text.length
                 for (w, word) in sentence.words.enumerated() {
-                    if w > 0 { out.append(NSAttributedString(string: " ", attributes: attrs)) }
-                    var wordAttrs = attrs
-                    wordAttrs[.font] = word.code ? mono
-                        : style.font.font(size: base.pointSize,
-                                          bold: word.strong || isHeading(block.kind),
-                                          italic: word.italic)
-                    if word.link {
-                        wordAttrs[.underlineStyle] = NSUnderlineStyle.single.rawValue
-                        wordAttrs[.underlineColor] = style.theme.line
-                    }
-                    if word.struck {
-                        wordAttrs[.strikethroughStyle] = NSUnderlineStyle.single.rawValue
-                    }
-                    let range = NSRange(location: out.length, length: (word.text as NSString).length)
+                    if w > 0 { text.append(" ") }
+                    let range = NSRange(location: text.length, length: (word.text as NSString).length)
+                    text.append(word.text)
                     words[word.index] = range
                     places.append(WordPlace(range: range, sentence: sentence.id,
                                             word: UInt32(w), index: word.index))
-                    out.append(NSAttributedString(string: word.text, attributes: wordAttrs))
+                    var own: [NSAttributedString.Key: Any] = [:]
+                    let font = word.code ? mono
+                        : fonts.font(size: base.pointSize, bold: word.strong || isHeading(block.kind),
+                                     italic: word.italic)
+                    if font != base { own[.font] = font }
+                    if word.link {
+                        own[.underlineStyle] = NSUnderlineStyle.single.rawValue
+                        own[.underlineColor] = style.theme.line
+                    }
+                    if word.struck {
+                        own[.strikethroughStyle] = NSUnderlineStyle.single.rawValue
+                    }
+                    if !own.isEmpty { wordRuns.append((range, own, false)) }
                 }
-                sentences[sentence.id] = NSRange(location: start, length: out.length - start)
+                sentences[sentence.id] = NSRange(location: start, length: text.length - start)
+            }
+            runs.append((NSRange(location: blockStart, length: text.length - blockStart), attrs, true))
+            runs.append(contentsOf: wordRuns)
+        }
+
+        let out = NSMutableAttributedString(string: text as String)
+        out.beginEditing()
+        for run in runs where run.range.length > 0 {
+            if run.replace {
+                out.setAttributes(run.attrs, range: run.range)
+            } else {
+                out.addAttributes(run.attrs, range: run.range)
             }
         }
+        out.endEditing()
         return DocumentLayout(text: out, wordRanges: words, sentenceRanges: sentences,
                               words: places)
+    }
+
+    /// Les polices d'une mise en page, par taille, graisse et italique :
+    /// `NSFontManager` cherche la famille à chaque appel.
+    struct FontCache {
+        let font: ReadingFont
+        private struct Key: Hashable { let size: CGFloat; let bold: Bool; let italic: Bool }
+        private var fonts: [Key: NSFont] = [:]
+
+        init(font: ReadingFont) { self.font = font }
+
+        mutating func font(size: CGFloat, bold: Bool = false, italic: Bool = false) -> NSFont {
+            let key = Key(size: size, bold: bold, italic: italic)
+            if let cached = fonts[key] { return cached }
+            let made = font.font(size: size, bold: bold, italic: italic)
+            fonts[key] = made
+            return made
+        }
     }
 
     /// Comme au terminal : seuls le code et les tableaux se montrent tels
     /// quels. Rust remplit `displayLines` pour tous les blocs (les lignes du
     /// fichier source), la prose se compose ici à partir de ses mots.
-    private static func isVerbatim(_ kind: BlockKindView) -> Bool {
+    static func isVerbatim(_ kind: BlockKindView) -> Bool {
         switch kind {
         case .code, .tableRow: return true
         default: return false
         }
     }
 
-    private static func isHeading(_ kind: BlockKindView) -> Bool {
+    static func isHeading(_ kind: BlockKindView) -> Bool {
         if case .heading = kind { return true }
         return false
     }
 
-    private static func baseFont(for kind: BlockKindView, style: ReadingStyle) -> NSFont {
+    private static func baseFont(for kind: BlockKindView, style: ReadingStyle,
+                                 fonts: inout FontCache) -> NSFont {
         switch kind {
         case .heading(let level):
             let scale: CGFloat = level == 1 ? 1.6 : level == 2 ? 1.35 : 1.15
-            return style.font.font(size: style.size * scale, bold: true)
+            return fonts.font(size: style.size * scale, bold: true)
         default:
-            return style.font.font(size: style.size)
+            return fonts.font(size: style.size)
         }
     }
 
@@ -123,14 +162,14 @@ struct DocumentLayout {
         style.theme.text
     }
 
-    private static func prefix(for kind: BlockKindView) -> String? {
+    static func prefix(for kind: BlockKindView) -> String? {
         if case .listItem(_, let ordinal) = kind {
             return ordinal.map { "\($0). " } ?? "• "
         }
         return nil
     }
 
-    private static func paragraphStyle(for kind: BlockKindView, style: ReadingStyle) -> NSParagraphStyle {
+    static func paragraphStyle(for kind: BlockKindView, style: ReadingStyle) -> NSParagraphStyle {
         let p = NSMutableParagraphStyle()
         // `line_spacing` compte des lignes vides en terminal ; ici, une fraction
         // de ligne par cran.

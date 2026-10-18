@@ -72,4 +72,79 @@ final class DocumentLayoutTests: XCTestCase {
         let color = layout.text.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor
         XCTAssertEqual(color?.hex, Theme.paper.text.hex)
     }
+
+    /// La mise en page par plages rend exactement le texte d'avant, mot par
+    /// mot : mêmes caractères, mêmes attributs partout.
+    func testBuildMatchesTheWordByWordReference() {
+        let d = doc("""
+        # Titre *penché*
+
+        Un **deux** *trois* `code` [lien](https://a.b) ~~barré~~ fin. Encore une.
+
+        - premier **point**
+        1. numéro
+
+        > Une citation.
+
+        ```rust
+        fn main() {}
+        ```
+
+        ## Sous-titre
+        """)
+        for font in ReadingFont.allCases {
+            let s = ReadingStyle(font: font, size: 18, lineSpacing: 2, ruler: true, theme: .paper)
+            let built = DocumentLayout.build(d, style: s)
+            XCTAssertTrue(built.text.isEqual(to: Self.reference(d, style: s)), "police \(font)")
+        }
+    }
+
+    /// L'ancienne construction, un NSAttributedString par mot et par espace.
+    private static func reference(_ doc: DocView, style: ReadingStyle) -> NSAttributedString {
+        let out = NSMutableAttributedString()
+        let mono = NSFont.monospacedSystemFont(ofSize: style.size * 0.85, weight: .regular)
+        for (i, block) in doc.blocks.enumerated() {
+            if i > 0 { out.append(NSAttributedString(string: "\n")) }
+            let heading = DocumentLayout.isHeading(block.kind)
+            let base: NSFont
+            if case .heading(let level) = block.kind {
+                let scale: CGFloat = level == 1 ? 1.6 : level == 2 ? 1.35 : 1.15
+                base = style.font.font(size: style.size * scale, bold: true)
+            } else {
+                base = style.font.font(size: style.size)
+            }
+            var attrs: [NSAttributedString.Key: Any] = [
+                .font: base, .foregroundColor: style.theme.text,
+                .paragraphStyle: DocumentLayout.paragraphStyle(for: block.kind, style: style),
+            ]
+            if DocumentLayout.isVerbatim(block.kind), !block.displayLines.isEmpty {
+                attrs[.font] = mono
+                out.append(NSAttributedString(string: block.displayLines.joined(separator: "\n"),
+                                              attributes: attrs))
+                continue
+            }
+            if let prefix = DocumentLayout.prefix(for: block.kind) {
+                out.append(NSAttributedString(string: prefix, attributes: attrs))
+            }
+            for (s, sentence) in block.sentences.enumerated() {
+                if s > 0 { out.append(NSAttributedString(string: " ", attributes: attrs)) }
+                for (w, word) in sentence.words.enumerated() {
+                    if w > 0 { out.append(NSAttributedString(string: " ", attributes: attrs)) }
+                    var wordAttrs = attrs
+                    wordAttrs[.font] = word.code ? mono
+                        : style.font.font(size: base.pointSize, bold: word.strong || heading,
+                                          italic: word.italic)
+                    if word.link {
+                        wordAttrs[.underlineStyle] = NSUnderlineStyle.single.rawValue
+                        wordAttrs[.underlineColor] = style.theme.line
+                    }
+                    if word.struck {
+                        wordAttrs[.strikethroughStyle] = NSUnderlineStyle.single.rawValue
+                    }
+                    out.append(NSAttributedString(string: word.text, attributes: wordAttrs))
+                }
+            }
+        }
+        return out
+    }
 }

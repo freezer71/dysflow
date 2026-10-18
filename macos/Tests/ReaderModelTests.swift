@@ -41,9 +41,10 @@ final class ReaderModelTests: XCTestCase {
         XCTAssertNotEqual(ReaderModel.published(a), ReaderModel.published(b))
     }
 
-    /// La part du mot dite change à chaque image : elle ne publie rien. La
-    /// vue de lecture la relit elle-même pendant la lecture.
-    func testPublishedSnapshotIgnoresTheWordProgress() {
+    /// La part du mot dite change à chaque image, le mot lu 3 à 5 fois par
+    /// seconde : ni l'un ni l'autre ne republie l'instantané. Le mot est
+    /// publié à part (`word`), pour la seule vue de lecture.
+    func testPublishedSnapshotIgnoresTheWordAndItsProgress() {
         var a = SillonReader.silent().snapshot()
         a.wordProgress = 0.2
         var b = a
@@ -51,13 +52,17 @@ final class ReaderModelTests: XCTestCase {
         XCTAssertEqual(ReaderModel.published(a), ReaderModel.published(b))
         XCTAssertEqual(ReaderModel.published(b).wordProgress, 0)
         b.word = (a.word ?? 0) + 1
-        XCTAssertNotEqual(ReaderModel.published(a), ReaderModel.published(b))
+        XCTAssertEqual(ReaderModel.published(a), ReaderModel.published(b))
+        XCTAssertNil(ReaderModel.published(b).word)
     }
 
-    func testLiveSnapshotReadsTheReaderWithoutPublishing() {
+    /// L'instantané vivant est celui de la dernière relecture : pas de
+    /// second appel au moteur à chaque image.
+    func testLiveSnapshotIsTheLastReadWithoutPublishing() {
         let m = model("Un deux trois.")
         let published = m.snapshot
         XCTAssertEqual(m.liveSnapshot().revision, published.revision)
+        XCTAssertEqual(m.liveSnapshot().word, m.word)
         XCTAssertEqual(m.snapshot, published)
     }
 
@@ -126,13 +131,13 @@ final class ReaderModelTickingTests: XCTestCase {
     }
 
     /// Panneau affiché mais en pause : pas de suivi à la cadence de l'écran,
-    /// seulement un coup d'œil lent (les messages s'effacent, la voix change
-    /// d'état). Masqué : plus rien.
-    func testDisplayedButIdleOnlyGlancesThenStopsWhenHidden() {
+    /// seulement une relecture à la seconde (la voix mise au repos, un
+    /// statut). Masqué : plus rien.
+    func testDisplayedButIdleOnlyReadsEachSecondThenStopsWhenHidden() {
         let m = hiddenModel()
         m.presence = .full
         XCTAssertFalse(m.isTicking)
-        XCTAssertEqual(m.cadence, .glance)
+        XCTAssertEqual(m.cadence, .second)
         m.presence = .hidden
         m.refresh()
         XCTAssertFalse(m.isTicking)
@@ -150,7 +155,7 @@ final class ReaderModelTickingTests: XCTestCase {
         clock += ReaderModel.gracePeriod + 0.1
         m.refresh()
         XCTAssertFalse(m.isTicking)
-        XCTAssertEqual(m.cadence, .glance)
+        XCTAssertEqual(m.cadence, .second)
     }
 
     /// Toutes les combinaisons : quelque chose avance (lecture, grâce, voix
@@ -159,7 +164,7 @@ final class ReaderModelTickingTests: XCTestCase {
         let running = DownloadView(id: "v", received: 1, total: 10, failed: nil)
         let failed = DownloadView(id: "v", received: 1, total: 10, failed: "réseau")
         let active: [ReaderModel.Cadence] = [.second, .glance, .screen]
-        let idle: [ReaderModel.Cadence] = [.none, .none, .glance]
+        let idle: [ReaderModel.Cadence] = [.none, .none, .second]
         let presences: [ReaderModel.Presence] = [.hidden, .bar, .full]
         for (i, presence) in presences.enumerated() {
             for playing in [false, true] {
@@ -200,7 +205,7 @@ final class ReaderModelTickingTests: XCTestCase {
         // Moins de 0,8 s : la minuterie de fin de grâce (0,51 s), pas le
         // filet de la seconde (1 s au plus tôt — la tolérance ne fait que
         // retarder une minuterie).
-        XCTAssertTrue(waitUntil(0.8) { m.cadence == .glance }, "cadence : \(m.cadence)")
+        XCTAssertTrue(waitUntil(0.8) { m.cadence == .second }, "cadence : \(m.cadence)")
         XCTAssertFalse(silentFrames.isRunning)
     }
 
@@ -231,8 +236,8 @@ final class ReaderModelTickingTests: XCTestCase {
             RefreshSchedule.cadence(presence: .full, playing: false, grace: false, loading: false, download: d)
         }
         XCTAssertEqual(cadence(running), .screen)
-        XCTAssertEqual(cadence(failed), .glance)
-        XCTAssertEqual(cadence(nil), .glance)
+        XCTAssertEqual(cadence(failed), .second)
+        XCTAssertEqual(cadence(nil), .second)
     }
 
     func testHiddenModelWithoutDownloadDoesNotTick() {
