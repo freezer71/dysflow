@@ -2,7 +2,8 @@ import SwiftUI
 
 /// La fenêtre de dictée : une petite carte sobre en bas de l'écran. En
 /// haut, l'icône de l'application où le texte ira, au centre huit barres
-/// fines qui suivent la voix, à droite le délai du dernier texte ; dessous,
+/// fines qui suivent la voix, à droite le délai du dernier texte et la
+/// mémoire occupée ; dessous,
 /// les derniers mots entendus sur deux lignes (les provisoires plus pâles),
 /// qui s'écrivent lettre à lettre. Le fond de la carte, son
 /// filet et son ouverture sont dessinés par `DictationWindow` (Core Animation). Aucun bouton : le raccourci
@@ -34,7 +35,7 @@ struct DictationView: View {
                 }
                 TargetIcon(target: controller.target)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                LatencyLabel(latency: controller.latency, theme: theme)
+                DictationStats(latency: controller.latency, memory: controller.memory, theme: theme)
                     .frame(maxWidth: .infinity, alignment: .trailing)
             }
             .frame(height: VoiceBars.tallest)
@@ -71,21 +72,34 @@ struct TargetIcon: View {
     }
 }
 
-/// Le délai du dernier texte, discret, à droite des barres : rien tant
-/// qu'il n'est pas connu.
-struct LatencyLabel: View {
+/// Le délai du dernier texte et la mémoire que MLX occupe, discrets, à
+/// droite des barres (« 120 ms · 506 Mo ») : chacun absent tant qu'il n'est
+/// pas connu.
+struct DictationStats: View {
     let latency: Duration?
+    let memory: Int?
     let theme: Theme
 
     var body: some View {
-        if let latency {
-            Text(Self.format(latency))
+        if let text = Self.text(latency: latency, memory: memory) {
+            Text(text)
                 .font(.system(size: 10, weight: .medium).monospacedDigit())
                 .foregroundStyle(Color(nsColor: theme.chrome).opacity(0.8))
-                .help("Délai : de la fin de ce qui a été dit au texte affiché")
-                .accessibilityLabel("Délai : \(Self.format(latency))")
-                .accessibilityIdentifier("delai-dictee")
+                .help(Self.help(latency: latency, memory: memory))
+                .accessibilityLabel(Self.help(latency: latency, memory: memory))
+                .accessibilityIdentifier("mesures-dictee")
         }
+    }
+
+    static func text(latency: Duration?, memory: Int?) -> String? {
+        let parts = [latency.map(format), memory.map(size)].compactMap { $0 }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    static func help(latency: Duration?, memory: Int?) -> String {
+        [latency.map { "Délai : \(format($0)), de la fin de ce qui a été dit au texte affiché" },
+         memory.map { "Mémoire : \(size($0)), occupée par le modèle et ses calculs" }]
+            .compactMap { $0 }.joined(separator: ". ")
     }
 
     /// « 120 ms » sous la seconde, « 1,4 s » au-delà.
@@ -93,6 +107,11 @@ struct LatencyLabel: View {
         let ms = Double(latency.components.seconds) * 1000 + Double(latency.components.attoseconds) / 1e15
         if ms < 1000 { return "\(Int(ms.rounded())) ms" }
         return (ms / 1000).formatted(.number.precision(.fractionLength(1)).locale(Locale(identifier: "fr_FR"))) + " s"
+    }
+
+    /// Comme le reste des réglages (« 506 Mo »).
+    static func size(_ bytes: Int) -> String {
+        SizeFormat.bytes(UInt64(max(0, bytes)))
     }
 }
 

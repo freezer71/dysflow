@@ -120,6 +120,10 @@ final class MLXDictationEngine: DictationEngine {
                         rolling.adapt(lastRead: read)
                         events(.latency(read))
                         events(.text(text, isFinal: false))
+                        // Sous `MLXGate`, hors du fil principal : jamais pendant un calcul.
+                        let active = await Task.detached { MLXGate.shared.run { DictationMLX.counters().active } }.value
+                        guard !Task.isCancelled, self?.generation == id else { return }
+                        events(.memory(active))
                     }
                 }
                 try? await Task.sleep(for: Self.tick)

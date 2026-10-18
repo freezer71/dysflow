@@ -374,8 +374,22 @@ final class DictationControllerTests: XCTestCase {
     }
 
     func testTheLatencyReadsInMillisecondsThenSeconds() {
-        XCTAssertEqual(LatencyLabel.format(.milliseconds(118)), "118 ms")
-        XCTAssertEqual(LatencyLabel.format(.milliseconds(1440)), "1,4 s")
+        XCTAssertEqual(DictationStats.format(.milliseconds(118)), "118 ms")
+        XCTAssertEqual(DictationStats.format(.milliseconds(1440)), "1,4 s")
+    }
+
+    func testTheMemoryShowsNextToTheLatency() async {
+        XCTAssertNil(DictationStats.text(latency: nil, memory: nil), "rien tant que rien n'est mesuré")
+        XCTAssertEqual(DictationStats.text(latency: .milliseconds(120), memory: 506_000_000), "120 ms · 506 Mo")
+        XCTAssertEqual(DictationStats.text(latency: nil, memory: 506_000_000), "506 Mo")
+        let c = makeController()
+        c.toggle()
+        _ = await eventuallyTrue { c.phase == .listening }
+        engine.send(.memory(506_000_000))
+        XCTAssertEqual(c.memory, 506_000_000)
+        c.cancel()
+        c.toggle()
+        XCTAssertNil(c.memory, "une nouvelle dictée repart sans mesure")
     }
 
     func testNewLettersAreTypedOneByOne() {

@@ -50,6 +50,9 @@ final class DictationController {
     /// Le délai du dernier texte (`DictationEvent.latency`) ; `nil` tant
     /// qu'il n'est pas connu, ou pour un moteur qui ne le dit pas.
     private(set) var latency: Duration?
+    /// La mémoire de MLX (`DictationEvent.memory`) ; `nil` tant qu'elle
+    /// n'est pas relevée, ou sans modèle MLX.
+    private(set) var memory: Int?
     /// Depuis quand le micro écoute (le chronomètre de la fenêtre).
     private(set) var listeningSince: Date?
     /// Le spectrogramme : lu par le dessin à chaque image, hors observation.
@@ -152,6 +155,7 @@ final class DictationController {
         willStart()
         transcript = Transcript()
         latency = nil
+        memory = nil
         listeningSince = nil
         spectrum.reset()
         language = currentLanguage()
@@ -192,6 +196,8 @@ final class DictationController {
             spectrum.push(columns)
         case .latency(let delay):
             latency = delay
+        case .memory(let bytes):
+            memory = bytes
         }
     }
 
