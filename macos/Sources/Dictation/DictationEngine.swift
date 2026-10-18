@@ -14,6 +14,10 @@ enum DictationEvent: Equatable, Sendable {
     /// arrivée (le temps de calcul d'une relecture). Seuls les modèles qui
     /// relisent l'audio le disent.
     case latency(Duration)
+    /// La mémoire que MLX occupe (octets actifs : le modèle chargé et ses
+    /// calculs, la voix aussi si elle est chargée), relevée après chaque
+    /// relecture. Seuls les modèles MLX la disent.
+    case memory(Int)
 }
 
 enum DictationError: Error, Equatable {
