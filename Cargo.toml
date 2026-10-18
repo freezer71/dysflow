@@ -3,7 +3,7 @@ members = [".", "ffi"]
 
 [package]
 name = "sillon"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 # Le plus haut `rust-version` des crates que sillon compile (Cargo.lock,
 # toutes features : image 0.25.10, darling 0.24…) ; vérifié par la CI (job

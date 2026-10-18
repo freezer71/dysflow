@@ -1,0 +1,36 @@
+"use client";
+
+import { useState } from "react";
+
+/** Une commande à copier d'un clic. */
+export function Commande({ texte, grande }: { texte: string; grande?: boolean }) {
+  const [copie, setCopie] = useState(false);
+
+  async function copier() {
+    try {
+      await navigator.clipboard.writeText(texte);
+      setCopie(true);
+      window.setTimeout(() => setCopie(false), 1800);
+    } catch {
+      // Presse-papiers refusé : la commande reste sélectionnable à la main.
+    }
+  }
+
+  return (
+    <div className={`flex min-w-0 items-center gap-2 rounded-2xl bg-[#191919] text-white ring-1 ring-white/10 ${grande ? "p-2 pl-5" : "p-1.5 pl-4"}`}>
+      <span className="select-none font-mono text-citron" aria-hidden="true">$</span>
+      <code className={`min-w-0 flex-1 overflow-x-auto whitespace-nowrap font-mono ${grande ? "py-2 text-[15px] sm:text-base" : "py-1.5 text-sm"}`}>
+        {texte}
+      </code>
+      <button
+        type="button"
+        onClick={copier}
+        className={`shrink-0 rounded-xl font-bold transition ${grande ? "px-4 py-2.5" : "px-3 py-2 text-sm"} ${
+          copie ? "bg-citron text-citron-encre" : "bg-white/10 hover:bg-white/20"
+        }`}
+      >
+        {copie ? "Copié ✓" : "Copier"}
+      </button>
+    </div>
+  );
+}

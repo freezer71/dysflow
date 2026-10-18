@@ -1,33 +1,38 @@
-Lecteur audio en terminal pour **Linux x86_64 et ARM64** : markdown, PDF et
-images (reconnaissance de texte), lus à voix haute par Kokoro.
+Lecteur à voix haute fait pour être suivi des yeux : markdown, PDF et images
+(reconnaissance de texte), lus par Kokoro, sur votre machine.
 
 ## Installer
 
+**Mac (puce Apple) et Linux (x86_64, ARM64)**, une seule commande :
+
 ```bash
-arch=$(uname -m)          # x86_64 ou aarch64
-tar -xzf sillon-*-linux-$arch.tar.gz
-mkdir -p ~/.local/lib ~/.local/bin
-rm -rf ~/.local/lib/sillon
-mv sillon-*-linux-$arch ~/.local/lib/sillon
-ln -sfn ../lib/sillon/sillon ~/.local/bin/sillon
-sillon --check-kokoro
+curl -fsSL https://raw.githubusercontent.com/freezer71/sillon/main/install.sh | sh
 ```
 
-`~/.local/bin` doit être dans le `PATH`. Le binaire suit son lien pour trouver
-ONNX Runtime et `sillon-espeak`, posés à côté de lui.
+Elle choisit l'archive de votre système, vérifie son empreinte SHA-256 et
+installe sans `sudo` : l'app dans `/Applications` et la commande `sillon` sur
+Mac, le lecteur au terminal dans `~/.local` sous Linux.
 
-**La voix Kokoro (108 Mo) se télécharge toute seule** à la première lecture.
+**Ou, sur Mac, le `.dmg`** ci-dessous : l'ouvrir, glisser Sillon dans
+Applications. L'app n'est pas encore notariée par Apple : au premier
+lancement, macOS la bloque. Ouvrez *Réglages Système › Confidentialité et
+sécurité* et cliquez sur *Ouvrir quand même* (la commande ci-dessus évite ce
+détour).
+
+**La voix Kokoro se télécharge toute seule** au premier lancement ; la voix du
+système lit en attendant.
 
 ## Prérequis
 
-- glibc 2.39 ou plus (Ubuntu 24.04, Debian 13, Fedora 40 ou plus récents) ;
-- ALSA (`libasound2`), présent sur tout bureau Linux.
+- Mac : puce Apple (M1 et suivants), macOS 14 ou plus ; la dictée demande
+  macOS 26 ;
+- Linux : glibc 2.39 ou plus (Ubuntu 24.04, Debian 13, Fedora 40 ou plus
+  récents), ALSA (`libasound2`).
 
 ## Désinstaller
 
 ```bash
-rm -r ~/.local/lib/sillon ~/.local/bin/sillon
+curl -fsSL https://raw.githubusercontent.com/freezer71/sillon/main/install.sh | sh -s -- --desinstaller
 ```
 
-L'app macOS n'est pas dans cette publication. Chaque archive a son empreinte
-SHA-256 (`.sha256`).
+Chaque archive a son empreinte SHA-256 (`.sha256`).
