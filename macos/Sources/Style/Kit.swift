@@ -92,6 +92,15 @@ struct SettingsPage<Content: View>: View {
 
 /// Un groupe de réglages : un titre, puis ses lignes sur une carte,
 /// séparées par un filet.
+/// Les espacements des cartes de réglages : une seule marge intérieure,
+/// partagée par les lignes, la table des modèles et les blocs.
+enum Space {
+    /// La marge gauche et droite du contenu d'une carte.
+    static let inset: CGFloat = 20
+    /// La hauteur minimale d'une ligne.
+    static let row: CGFloat = 56
+}
+
 struct SettingsGroup<Content: View>: View {
     let title: String
     @ViewBuilder let content: Content
@@ -135,7 +144,7 @@ struct SettingRow<Control: View>: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: 20) {
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 4) {
                 Text(title)
                     .font(Typo.rowTitle)
                     .foregroundStyle(Palette.ink)
@@ -152,10 +161,10 @@ struct SettingRow<Control: View>: View {
             Spacer(minLength: 12)
             control
         }
-        .padding(.vertical, 10)
-        .padding(.horizontal, 16)
-        .frame(minHeight: 48)
-        .overlay(alignment: .top) { Rule().padding(.horizontal, 16) }
+        .padding(.vertical, 14)
+        .padding(.horizontal, Space.inset)
+        .frame(minHeight: Space.row)
+        .overlay(alignment: .top) { Rule().padding(.horizontal, Space.inset) }
     }
 }
 
@@ -311,8 +320,9 @@ private struct NotionButtonBody: View {
             // Un bouton garde son intitulé entier : c'est le texte voisin qui passe à la ligne.
             .fixedSize(horizontal: true, vertical: false)
             .foregroundStyle(foreground)
-            .padding(.horizontal, 12)
-            .frame(minHeight: 30)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 6)
+            .frame(minHeight: 32)
             .background {
                 let shape = RoundedRectangle(cornerRadius: 10)
                 switch kind {

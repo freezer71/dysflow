@@ -858,14 +858,22 @@ pub struct Download {
 
 impl Download {
     /// Lance le téléchargement dans un thread dédié : fichier principal puis
-    /// compagnons, en reprenant ce qui est déjà là.
+    /// compagnons, en reprenant ce qui est déjà là (un transfert coupé par
+    /// le réseau ou la fermeture de l'app). Annulé, il ne laisse rien.
     pub fn start(package: &'static ModelPackage) -> Result<Self> {
         let root = models_dir().context("répertoire de données introuvable")?;
-        Self::start_in(package, planned_files_in(&root, package))
+        Self::start_in(package, planned_files_in(&root, package), Some(root))
     }
 
     /// Télécharge ces fichiers (adresse, destination, taille) pour ce paquet.
-    pub(crate) fn start_in(package: &'static ModelPackage, files: Vec<(String, PathBuf, u64)>) -> Result<Self> {
+    /// `root` : le dossier des modèles ; une annulation y retire alors tout
+    /// ce que le paquet avait posé (`remove_in` : fichiers, `.part`, dossier
+    /// de famille vide ; les compagnons partagés avec un frère restent).
+    pub(crate) fn start_in(
+        package: &'static ModelPackage,
+        files: Vec<(String, PathBuf, u64)>,
+        root: Option<PathBuf>,
+    ) -> Result<Self> {
         let received = Arc::new(AtomicU64::new(0));
         let total = Arc::new(AtomicU64::new(package.total_bytes()));
         let outcome = Arc::new(Mutex::new(None));
@@ -889,7 +897,13 @@ impl Download {
                 base += bytes;
             }
             let state = match result {
-                Ok(()) if cancel.load(Ordering::Relaxed) => Progress::Cancelled,
+                Ok(()) if cancel.load(Ordering::Relaxed) => {
+                    // Annuler, c'est renoncer : rien ne reste sur le disque.
+                    if let Some(root) = &root {
+                        let _ = remove_in(root, package);
+                    }
+                    Progress::Cancelled
+                }
                 Ok(()) => Progress::Done,
                 Err(err) => Progress::Failed(err.to_string()),
             };
@@ -1922,7 +1936,7 @@ mod tests {
         std::fs::write(&one, b"abc").unwrap();
         // Le premier est déjà là : son adresse ne répond pas et n'est pas appelée.
         let files = files_for(&[("http://127.0.0.1:1/jamais".into(), &one, 3), (serve_once(b"defgh"), &two, 5)]);
-        let download = Download::start_in(&CATALOG[0], files).unwrap();
+        let download = Download::start_in(&CATALOG[0], files, None).unwrap();
         assert_eq!(wait(&download), Progress::Done);
         assert_eq!(std::fs::read(&two).unwrap(), b"defgh");
         std::fs::remove_dir_all(&root).ok();
@@ -1938,7 +1952,7 @@ mod tests {
             (serve_once(b"de"), &two, 5),
             ("http://127.0.0.1:1/jamais".into(), &three, 1),
         ]);
-        let download = Download::start_in(&CATALOG[0], files).unwrap();
+        let download = Download::start_in(&CATALOG[0], files, None).unwrap();
         assert!(matches!(wait(&download), Progress::Failed(_)));
         assert!(one.exists() && !two.exists() && !three.exists());
         std::fs::remove_dir_all(&root).ok();
@@ -1984,7 +1998,7 @@ mod tests {
             (serve_in_two_parts(b"d", b"efgh", sent_tx, release_rx), &two, 5),
             ("http://127.0.0.1:1/jamais".into(), &three, 1),
         ]);
-        let download = Download::start_in(&CATALOG[0], files).unwrap();
+        let download = Download::start_in(&CATALOG[0], files, None).unwrap();
         sent_rx.recv_timeout(std::time::Duration::from_secs(10)).unwrap();
         let started = std::time::Instant::now();
         loop {
@@ -2001,6 +2015,32 @@ mod tests {
         assert!(!two.exists(), "le fichier annulé n'est pas installé");
         assert!(two.with_extension("part").exists(), "le .part reste pour la reprise");
         assert!(!three.exists() && !three.with_extension("part").exists());
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    /// Avec le dossier des modèles, annuler ne laisse rien : ni `.part`, ni
+    /// dossier de famille. Un nouveau téléchargement repart de zéro.
+    #[test]
+    fn a_cancelled_download_leaves_nothing_behind() {
+        let root = scratch("annulation-complete");
+        let package = package("phonon_2");
+        let main = main_path_in(&root, package);
+        let (sent_tx, sent_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let files = files_for(&[(serve_in_two_parts(b"d", b"efgh", sent_tx, release_rx), &main, 5)]);
+        let download = Download::start_in(package, files, Some(root.clone())).unwrap();
+        sent_rx.recv_timeout(std::time::Duration::from_secs(10)).unwrap();
+        let started = std::time::Instant::now();
+        while !main.with_extension("part").exists() {
+            assert!(started.elapsed().as_secs() < 10, "le .part n'arrive pas");
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        download.cancel();
+        release_tx.send(()).unwrap();
+        assert_eq!(wait(&download), Progress::Cancelled);
+        assert!(!main.exists() && !main.with_extension("part").exists(), "rien ne reste");
+        assert!(!root.join(package.family).exists(), "le dossier de famille part aussi");
+        assert!(!has_files_in(&root, package), "plus rien à supprimer");
         std::fs::remove_dir_all(&root).ok();
     }
 

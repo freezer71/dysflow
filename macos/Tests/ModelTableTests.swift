@@ -126,6 +126,17 @@ final class ModelTableTests: XCTestCase {
         XCTAssertEqual(ModelTable.used(shown[0]), "utilisée")
     }
 
+    func testAClickOnAMissingModelDownloadsIt() {
+        let missing = VoiceModel.sample(id: "parakeet", kind: "dictation", installed: false)
+        XCTAssertTrue(ModelTable.downloadsOnClick(missing, download: nil))
+        XCTAssertFalse(ModelTable.downloadsOnClick(.sample(id: "kokoro", installed: true), download: nil),
+                       "installé : le clic choisit")
+        let running = DownloadView(id: "whisper", received: 1, total: 10, failed: nil)
+        XCTAssertFalse(ModelTable.downloadsOnClick(missing, download: running), "un seul téléchargement à la fois")
+        let cancelled = DownloadView(id: "parakeet", received: 0, total: 10, failed: ModelTable.cancelled)
+        XCTAssertTrue(ModelTable.downloadsOnClick(missing, download: cancelled), "après une annulation, on peut relancer")
+    }
+
     func testARowIsChosenAnywhereOnceItsModelIsThere() {
         XCTAssertTrue(ModelTable.canUse(.sample(id: "kokoro", kind: "speech", installed: true)))
         XCTAssertFalse(ModelTable.canUse(.sample(id: "magpie", kind: "speech", installed: false)),

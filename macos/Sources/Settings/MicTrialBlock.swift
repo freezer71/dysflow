@@ -80,8 +80,9 @@ struct MicTrialBlock: View {
             }
             MicTrialHistory(results: trial.results, options: options)
         }
-        .padding(16)
-        .overlay(alignment: .top) { Rule().padding(.horizontal, 16) }
+        .padding(.horizontal, Space.inset)
+        .padding(.vertical, 20)
+        .overlay(alignment: .top) { Rule().padding(.horizontal, Space.inset) }
         .onAppear { trial.refreshLanguage() }
         .onChange(of: language) { _, _ in trial.refreshLanguage() }
         // La section change ou la fenêtre se ferme : le micro se ferme.
@@ -128,7 +129,7 @@ struct MicTrialBlock: View {
                     .accessibilityIdentifier("essai-autre-phrase")
             }
         }
-        .padding(16)
+        .padding(Space.inset)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 12).fill(Palette.control))
     }
@@ -277,7 +278,7 @@ struct MicTrialResultCard: View {
                            : result.memoryMeasured ? "occupée par le modèle chargé" : "estimée : le poids du modèle")
             }
         }
-        .padding(16)
+        .padding(Space.inset)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 12).fill(Palette.control))
         .accessibilityElement(children: .combine)

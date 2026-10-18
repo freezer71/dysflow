@@ -61,14 +61,15 @@ struct VoiceSection: View {
                             .disabled(!(model.snapshot.preview.pending || model.snapshot.preview.playing))
                             .accessibilityLabel("Arrêter l'écoute")
                     }
-                    .padding(.vertical, 6)
-                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .padding(.horizontal, Space.inset)
                 }
                 if store.capabilities.family == "system" {
                     Link("Ajouter des voix dans Réglages Système…",
                          destination: URL(string: "x-apple.systempreferences:com.apple.preference.universalaccess")!)
                         .font(Typo.detail)
-                        .padding(.bottom, 4)
+                        .padding(.horizontal, Space.inset)
+                        .padding(.bottom, 8)
                 }
             }
             SettingRow(title: "Bibliothèque des voix",
@@ -80,7 +81,8 @@ struct VoiceSection: View {
             Text(ModelTable.footer(used: used, free: free))
                 .font(Typo.detail)
                 .foregroundStyle(Palette.muted)
-                .padding(.vertical, 4)
+                .padding(.horizontal, Space.inset)
+                .padding(.vertical, 10)
                 .accessibilityIdentifier("place-modeles")
             SettingRow(title: "Vitesse", detail: "Dans le lecteur : + et −, ou la vitesse de la barre") {
                 Slider(value: Binding(get: { store.values.speed },
@@ -433,8 +435,8 @@ struct DictationSection: View {
                     .font(Typo.body)
                     .foregroundStyle(Palette.muted)
                     .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 4)
+                    .padding(.horizontal, Space.inset)
+                    .padding(.vertical, 8)
                     .accessibilityIdentifier("dictee-table-verrouillee")
             }
             // Le modèle choisi n'a pas pu servir : la dictée de macOS l'a
@@ -444,7 +446,8 @@ struct DictationSection: View {
                     .font(Typo.detail)
                     .foregroundStyle(ErrorStyle.color)
                     .fixedSize(horizontal: false, vertical: true)
-                    .padding(.vertical, 4)
+                    .padding(.horizontal, Space.inset)
+                    .padding(.vertical, 8)
                     .accessibilityIdentifier("dictee-repli")
             }
             // L'essai du micro : un modèle essayé sans changer celui de la dictée.
