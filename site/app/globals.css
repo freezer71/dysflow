@@ -1,0 +1,75 @@
+@import "tailwindcss";
+
+/* Style « Felt » de l'app : gris neutres, cartes très arrondies sans bordure,
+   action principale à l'encre, vert citron pour ce qui est choisi. */
+:root {
+  --fond: #f4f4f2;
+  --carte: #ffffff;
+  --carte-2: #ebebe8;
+  --encre: #191919;
+  --encre-douce: #5c5c58;
+  --encre-pale: #8d8d88;
+  --filet: #e3e2de;
+  --citron: #c6f36b;
+  --citron-encre: #191919;
+  --bande: #eef9d6;
+  --sur-encre: #ffffff;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fond: #121212;
+    --carte: #1d1d1c;
+    --carte-2: #262625;
+    --encre: #f2f2ef;
+    --encre-douce: #b4b4ae;
+    --encre-pale: #85857f;
+    --filet: #2e2e2c;
+    --citron: #c6f36b;
+    --citron-encre: #191919;
+    --bande: #2a3319;
+    --sur-encre: #121212;
+  }
+}
+
+@theme inline {
+  --color-fond: var(--fond);
+  --color-carte: var(--carte);
+  --color-carte-2: var(--carte-2);
+  --color-encre: var(--encre);
+  --color-encre-douce: var(--encre-douce);
+  --color-encre-pale: var(--encre-pale);
+  --color-filet: var(--filet);
+  --color-citron: var(--citron);
+  --color-citron-encre: var(--citron-encre);
+  --color-bande: var(--bande);
+  --color-sur-encre: var(--sur-encre);
+  --font-sans: var(--font-atkinson);
+  --font-mono: var(--font-atkinson-mono);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--fond);
+  color: var(--encre);
+}
+
+::selection {
+  background: var(--citron);
+  color: var(--citron-encre);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
