@@ -24,3 +24,4 @@ pub mod sync;
 pub mod text;
 pub mod tts;
 pub mod tui;
+pub mod update;

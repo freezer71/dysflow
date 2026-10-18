@@ -93,6 +93,10 @@ pub struct Args {
     /// Ouvre directement l'écran de configuration.
     #[arg(long)]
     pub config: bool,
+
+    /// Met sillage à jour : installe la dernière version publiée.
+    #[arg(long)]
+    pub update: bool,
 }
 
 /// Ce que `sillage` lancé seul dans un terminal affiche, avant de rendre la
@@ -106,7 +110,8 @@ Quatre manières de lire :
   sillage --clip             le presse-papiers
   l'app sillage (macOS)      ⌃⌥Espace lit la sélection
 
-Réglages : sillage --config · toutes les options : sillage --help
+Réglages : sillage --config · mise à jour : sillage --update
+Toutes les options : sillage --help
 ";
 
 /// Vrai quand `sillage` est lancé seul dans un terminal : ni fichier, ni
@@ -132,6 +137,12 @@ pub struct Prepared {
 }
 
 pub fn prepare(args: &Args) -> Result<Launch> {
+    // Avant la configuration : une configuration illisible ne doit pas
+    // empêcher de se mettre à jour.
+    if args.update {
+        crate::update::run()?;
+        return Ok(Launch::Done);
+    }
     let (mut config, config_notice) = Config::load();
     // Une configuration illisible n'est jamais réécrite.
     let config_notice_is_none = config_notice.is_none();
@@ -651,7 +662,7 @@ mod tests {
     fn help_shows_only_the_everyday_options() {
         use clap::CommandFactory;
         let help = Args::command().render_help().to_string();
-        for shown in ["[FILE]", "--clip", "--speed", "--voice", "--to-markdown", "--no-cache", "--config"] {
+        for shown in ["[FILE]", "--clip", "--speed", "--voice", "--to-markdown", "--no-cache", "--config", "--update"] {
             assert!(help.contains(shown), "{shown} manque :\n{help}");
         }
         for hidden in [

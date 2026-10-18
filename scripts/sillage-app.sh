@@ -3,6 +3,7 @@
 #
 #   sillage                 # le lecteur
 #   sillage document.pdf    # le panneau, sur ce document (texte, PDF, image)
+#   sillage --update        # installe la dernière version publiée
 #
 # Installée par ./scripts/install-app-command.sh dans ~/.local/bin/sillage.
 set -eu
@@ -10,6 +11,11 @@ set -eu
 # Le chemin, pas l'identifiant : `open -b` peut choisir une copie de
 # développement (macos/build/…) au lieu de l'app installée.
 APP="${SILLAGE_APP:-/Applications/Sillage.app}"
+# sillage --update : la dernière version publiée, par l'installateur officiel.
+if [ "${1:-}" = --update ]; then
+    curl -fsSL https://sillage.koumalabs.org/install.sh | sh
+    exit
+fi
 if [ ! -d "$APP" ]; then
     echo "sillage : $APP introuvable (./scripts/build-macos.sh, puis copie dans /Applications)" >&2
     exit 1

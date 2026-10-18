@@ -104,6 +104,17 @@ export default async function Telecharger() {
       </div>
 
       <section className="mt-4 rounded-[28px] bg-carte p-6 sm:p-8">
+        <h2 className="text-xl font-extrabold">Mettre à jour</h2>
+        <p className="mt-2 text-encre-douce">
+          Une commande, et la dernière version remplace la vôtre. Vos modèles et vos réglages restent. Déjà à
+          jour ? Elle vous le dit, sans rien retélécharger.
+        </p>
+        <div className="mt-4">
+          <Commande texte="sillage --update" />
+        </div>
+      </section>
+
+      <section className="mt-4 rounded-[28px] bg-carte p-6 sm:p-8">
         <h2 className="text-xl font-extrabold">Désinstaller</h2>
         <p className="mt-2 text-encre-douce">La même commande, avec une option. Vos modèles et vos réglages restent.</p>
         <div className="mt-4">

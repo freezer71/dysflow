@@ -31,7 +31,12 @@ curl -fsSL https://sillage.koumalabs.org/install.sh | sh
 Elle prend la dernière publication pour votre système, vérifie son empreinte
 SHA-256 et installe sans `sudo` : sur Mac, l'app dans `/Applications` et la
 commande `sillage` qui l'ouvre ; sous Linux, le lecteur au terminal dans
-`~/.local`. La voix Kokoro s'installe ensuite toute seule. Pour désinstaller,
+`~/.local`. La voix Kokoro s'installe ensuite toute seule.
+
+**Mettre à jour** : `sillage --update`, ou la même commande relancée. La
+dernière version remplace l'installée — modèles et réglages restent — ou le
+script dit qu'elle est déjà là (`sh -s -- --force` pour réinstaller quand
+même). Pour désinstaller,
 la même commande suivie de `-s -- --desinstaller` (modèles et réglages
 restent).
 

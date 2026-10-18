@@ -8,6 +8,13 @@
 # terminal dans ~/.local/lib/sillage, et la commande `sillage`. L'empreinte
 # SHA-256 de chaque archive est vérifiée avant d'installer quoi que ce soit.
 #
+# Relancé, il met à jour : la dernière version remplace l'installée (modèles et
+# réglages restent), ou il dit qu'elle est déjà là. `sillage --update` le
+# relance.
+#
+#   … | sh -s -- --force         réinstalle même si la version est déjà là
+#   … | sh -s -- --desinstaller  retire sillage
+#
 # SILLAGE_VERSION=0.3.0 : une version précise plutôt que la dernière (0.3.0 ou
 # plus : avant, le lecteur s'appelait sillon).
 # PREFIX=/usr/local    : où poser la commande (défaut ~/.local).
@@ -54,7 +61,17 @@ retirer_sillon() {
 
 # --desinstaller : retire ce que ce script a posé, et rien d'autre (les
 # modèles téléchargés et les réglages restent, pour une réinstallation).
-if [ "${1:-}" = --desinstaller ]; then
+FORCER=""
+DESINSTALLER=""
+for option in "$@"; do
+    case "$option" in
+    --force) FORCER=1 ;;
+    --desinstaller) DESINSTALLER=1 ;;
+    *) echec "option inconnue : $option (--force, --desinstaller)" ;;
+    esac
+done
+
+if [ -n "$DESINSTALLER" ]; then
     if [ "$(uname -s)" = Darwin ]; then
         osascript -e 'quit app "Sillage"' >/dev/null 2>&1 || true
         rm -rf /Applications/Sillage.app "$HOME/Applications/Sillage.app"
@@ -99,6 +116,28 @@ Linux/x86_64 | Linux/amd64) archive="sillage-linux-x86_64.tar.gz" ;;
 Linux/aarch64 | Linux/arm64) archive="sillage-linux-aarch64.tar.gz" ;;
 *) echec "$systeme $arch n'est pas pris en charge (macOS à puce Apple, Linux x86_64 ou ARM64)" ;;
 esac
+
+# Déjà à jour ? La version de l'app (Info.plist) ou du binaire installé.
+installee=""
+if [ "$systeme" = Darwin ]; then
+    for dossier in ${SILLAGE_APPLICATIONS:+"$SILLAGE_APPLICATIONS"} /Applications "$HOME/Applications"; do
+        plist="$dossier/Sillage.app/Contents/Info.plist"
+        if [ -f "$plist" ]; then
+            installee=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$plist" 2>/dev/null || true)
+            break
+        fi
+    done
+elif [ -x "$PREFIX/lib/sillage/sillage" ]; then
+    installee=$("$PREFIX/lib/sillage/sillage" --version 2>/dev/null | cut -d' ' -f2 || true)
+fi
+if [ -n "$installee" ] && [ "$installee" = "$version" ] && [ -z "$FORCER" ]; then
+    printf '%s✓ sillage %s est déjà à jour.%s\n' "$vert$gras" "$version" "$fin" >&2
+    printf 'Pour réinstaller quand même : %scurl -fsSL https://sillage.koumalabs.org/install.sh | sh -s -- --force%s\n' "$gras" "$fin" >&2
+    exit 0
+fi
+if [ -n "$installee" ] && [ "$installee" != "$version" ]; then
+    etape "Mise à jour : $installee → $version"
+fi
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT INT TERM
@@ -153,6 +192,10 @@ if [ "$systeme" = Darwin ]; then
 # La commande \`sillage\` du Mac : ouvre l'app, pas le terminal.
 # Installée par install.sh. Pour la retirer : rm "$commande"
 APP="\${SILLAGE_APP:-$apps/Sillage.app}"
+if [ "\${1:-}" = --update ]; then
+    curl -fsSL https://sillage.koumalabs.org/install.sh | PREFIX="$PREFIX" sh
+    exit
+fi
 [ -d "\$APP" ] || { echo "sillage : \$APP introuvable" >&2; exit 1; }
 [ \$# -eq 0 ] && exec open -a "\$APP"
 exec open -a "\$APP" -- "\$@"
