@@ -341,14 +341,28 @@ struct ShortcutsSection: View {
             SettingsGroup(title: "Raccourcis") {
                 ForEach(Self.rows, id: \.identifier) { row in
                     SettingRow(title: row.title, detail: row.detail) {
-                        KeyboardShortcuts.Recorder(for: row.name)
-                            .frame(width: 150)
-                            .accessibilityLabel(row.title)
-                            .accessibilityIdentifier(row.identifier)
+                        ShortcutRecorder(target: .shortcut(row.name), title: row.title, identifier: row.identifier)
                     }
+                }
+                if Dictation.isSupported {
+                    DictationShortcutRow(identifier: "raccourci-dictee-general")
                 }
             }
             Callout(symbol: "info.circle", text: Self.voiceOverNote, identifier: "raccourcis-note-voiceover")
+        }
+    }
+}
+
+/// Le raccourci de la dictée, dans la section Dictée et dans Raccourcis :
+/// une touche de modification seule (un appui bref) ou une combinaison.
+struct DictationShortcutRow: View {
+    let identifier: String
+
+    var body: some View {
+        SettingRow(title: "Dicter",
+                   detail: "Un appui ouvre la dictée, un second saisit le texte là où vous écrivez ; Échap annule. "
+                       + "Une touche seule (Option droite…) demande l'Accessibilité") {
+            ShortcutRecorder(target: .dictation, title: "Raccourci de la dictée", identifier: identifier)
         }
     }
 }
@@ -363,7 +377,6 @@ struct DictationSection: View {
     /// L'erreur et la suppression en attente de la table, gardées par la fenêtre.
     let table: ModelsTableState
     @AppStorage(DictationLanguage.defaultsKey) private var language = DictationLanguage.stored().rawValue
-    @AppStorage(DictationModifier.defaultsKey) private var modifier = DictationModifier.stored().rawValue
     @AppStorage(DictationModel.defaultsKey) private var chosen = DictationModel.stored()
     @AppStorage(DictationStats.defaultsKey) private var showStats = DictationStats.shown()
 
@@ -400,7 +413,6 @@ struct DictationSection: View {
     }
 
     static let options = DictationLanguage.allCases.map { (title: $0.label, value: $0.rawValue) }
-    static let modifierOptions = DictationModifier.allCases.map { (title: $0.label, value: $0.rawValue) }
 
     /// Pendant un essai du micro, la table ne change rien : le modèle essayé
     /// ne doit pas être libéré ni supprimé sous ses pieds.
@@ -455,19 +467,7 @@ struct DictationSection: View {
                 MicTrialBlock(trial: trial, rows: rows, chosen: chosen,
                               dictating: AppDelegate.shared?.dictation?.holdsMicrophone ?? false)
             }
-            SettingRow(title: "Dicter",
-                       detail: "Un appui ouvre la dictée, un second saisit le texte là où vous écrivez ; Échap annule") {
-                KeyboardShortcuts.Recorder(for: .dictate)
-                    .frame(width: 150)
-                    .accessibilityLabel("Dicter")
-                    .accessibilityIdentifier("raccourci-dictee")
-            }
-            SettingRow(title: "Touche seule",
-                       detail: "Un appui bref, sans autre touche : comme le raccourci (il faut l'Accessibilité)") {
-                PopUpPicker(label: "Touche seule pour dicter", identifier: "touche-dictee",
-                            options: Self.modifierOptions, selection: $modifier)
-                    .fixedSize()
-            }
+            DictationShortcutRow(identifier: "raccourci-dictee")
             SettingRow(title: "Langue",
                        detail: "Reconnue sur votre Mac : rien n'en sort. Parakeet et Voxtral la reconnaissent seuls") {
                 PopUpPicker(label: "Langue de la dictée", identifier: "langue-dictee",
