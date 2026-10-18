@@ -378,6 +378,15 @@ final class DictationControllerTests: XCTestCase {
         XCTAssertEqual(DictationStats.format(.milliseconds(1440)), "1,4 s")
     }
 
+    func testTheLatencyAndMemoryShowUnlessTurnedOff() {
+        let defaults = UserDefaults(suiteName: "DictationStatsTests")!
+        defaults.removePersistentDomain(forName: "DictationStatsTests")
+        XCTAssertTrue(DictationStats.shown(defaults), "affichés par défaut")
+        defaults.set(false, forKey: DictationStats.defaultsKey)
+        XCTAssertFalse(DictationStats.shown(defaults))
+        defaults.removePersistentDomain(forName: "DictationStatsTests")
+    }
+
     func testTheMemoryShowsNextToTheLatency() async {
         XCTAssertNil(DictationStats.text(latency: nil, memory: nil), "rien tant que rien n'est mesuré")
         XCTAssertEqual(DictationStats.text(latency: .milliseconds(120), memory: 506_000_000), "120 ms · 506 Mo")

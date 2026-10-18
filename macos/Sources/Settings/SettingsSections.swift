@@ -363,6 +363,7 @@ struct DictationSection: View {
     @AppStorage(DictationLanguage.defaultsKey) private var language = DictationLanguage.stored().rawValue
     @AppStorage(DictationModifier.defaultsKey) private var modifier = DictationModifier.stored().rawValue
     @AppStorage(DictationModel.defaultsKey) private var chosen = DictationModel.stored()
+    @AppStorage(DictationStats.defaultsKey) private var showStats = DictationStats.shown()
 
     /// La ligne de la dictée de macOS : jamais téléchargée ni supprimée.
     static let systemID = "system-dictation"
@@ -469,6 +470,12 @@ struct DictationSection: View {
                 PopUpPicker(label: "Langue de la dictée", identifier: "langue-dictee",
                             options: Self.options, selection: $language)
                     .fixedSize()
+            }
+            SettingRow(title: "Délai et mémoire",
+                       detail: "Dans la fenêtre de dictée : le délai du texte et la mémoire occupée par le modèle") {
+                Toggle("Délai et mémoire", isOn: $showStats)
+                    .notionSwitch()
+                    .accessibilityIdentifier("mesures-dictee-reglage")
             }
         }
     }
