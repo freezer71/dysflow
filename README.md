@@ -25,7 +25,7 @@ sillon ; `install.sh` retire l'ancienne app et l'ancienne commande.
 Sur un Mac à puce Apple comme sous Linux (x86_64, ARM64), une commande :
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/freezer71/sillage/main/install.sh | sh
+curl -fsSL https://sillage.koumalabs.org/install.sh | sh
 ```
 
 Elle prend la dernière publication pour votre système, vérifie son empreinte

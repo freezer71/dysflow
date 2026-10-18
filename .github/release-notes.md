@@ -6,7 +6,7 @@ Lecteur à voix haute fait pour être suivi des yeux : markdown, PDF et images
 **Mac (puce Apple) et Linux (x86_64, ARM64)**, une seule commande :
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/freezer71/sillage/main/install.sh | sh
+curl -fsSL https://sillage.koumalabs.org/install.sh | sh
 ```
 
 Elle choisit l'archive de votre système, vérifie son empreinte SHA-256 et
@@ -32,7 +32,7 @@ système lit en attendant.
 ## Désinstaller
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/freezer71/sillage/main/install.sh | sh -s -- --desinstaller
+curl -fsSL https://sillage.koumalabs.org/install.sh | sh -s -- --desinstaller
 ```
 
 Chaque archive a son empreinte SHA-256 (`.sha256`).

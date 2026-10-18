@@ -1,7 +1,7 @@
 #!/bin/sh
 # Installe sillage en une commande, depuis la dernière publication GitHub :
 #
-#   curl -fsSL https://raw.githubusercontent.com/freezer71/sillage/main/install.sh | sh
+#   curl -fsSL https://sillage.koumalabs.org/install.sh | sh
 #
 # Sur un Mac à puce Apple : l'app dans /Applications (ou ~/Applications), et la
 # commande `sillage` qui l'ouvre. Sous Linux (x86_64, ARM64) : le lecteur au
@@ -190,4 +190,4 @@ else
     printf '\nPour lire un fichier : %ssillage document.md%s   ·   cat notes.md | sillage\n' "$gras" "$fin" >&2
     printf 'La voix Kokoro (108 Mo) se télécharge toute seule à la première lecture.\n' >&2
 fi
-printf 'Pour désinstaller : %scurl -fsSL https://raw.githubusercontent.com/freezer71/sillage/main/install.sh | sh -s -- --desinstaller%s\n' "$gras" "$fin" >&2
+printf 'Pour désinstaller : %scurl -fsSL https://sillage.koumalabs.org/install.sh | sh -s -- --desinstaller%s\n' "$gras" "$fin" >&2
