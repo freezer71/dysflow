@@ -2080,7 +2080,7 @@ mod tests {
     }
 
     fn scratch(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("sillon-models-{}-{name}", std::process::id()));
+        let dir = crate::paths::test_scratch(&format!("models-{name}"));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
@@ -2123,7 +2123,7 @@ mod tests {
 
     #[test]
     fn the_active_path_is_recognised_through_tilde_and_links() {
-        let root = std::env::temp_dir().join(format!("sillon-active-{}", std::process::id()));
+        let root = crate::paths::test_scratch("active");
         let _ = std::fs::remove_dir_all(&root);
         let real = root.join("home/models");
         std::fs::create_dir_all(&real).unwrap();

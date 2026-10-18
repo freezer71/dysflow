@@ -263,7 +263,7 @@ mod tests {
 
     #[test]
     fn choices_round_trip_through_their_file() {
-        let path = std::env::temp_dir().join(format!("sillon-langues-{}.json", std::process::id()));
+        let path = crate::paths::test_scratch("langues").join("langues.json");
         let mut store = LanguageChoices::default();
         store.set("/a.md", Some("en"));
         store.save_to(&path).unwrap();
@@ -297,7 +297,7 @@ mod tests {
 
     #[test]
     fn a_missing_or_corrupt_store_is_empty_and_set_aside() {
-        let dir = std::env::temp_dir().join(format!("sillon-langues-abimes-{}", std::process::id()));
+        let dir = crate::paths::test_scratch("langues-abimes");
         std::fs::create_dir_all(&dir).unwrap();
         assert!(LanguageChoices::load_from(&dir.join("absent.json")).items.is_empty());
         let corrupt = dir.join("abime.json");
@@ -317,7 +317,7 @@ mod tests {
 
     #[test]
     fn a_reader_off_disk_neither_reads_nor_writes_the_choices() {
-        let dir = std::env::temp_dir().join(format!("sillon-langues-hors-{}", std::process::id()));
+        let dir = crate::paths::test_scratch("langues-hors");
         std::fs::create_dir_all(&dir).unwrap();
         let file = dir.join("languages.json");
         let mut seeded = LanguageChoices::default();
@@ -337,7 +337,7 @@ mod tests {
 
     #[test]
     fn a_failed_save_keeps_the_applied_choice_and_says_so() {
-        let dir = std::env::temp_dir().join(format!("sillon-langues-echec-{}", std::process::id()));
+        let dir = crate::paths::test_scratch("langues-echec");
         std::fs::create_dir_all(&dir).unwrap();
         let blocker = dir.join("fichier");
         std::fs::write(&blocker, "x").unwrap();

@@ -392,7 +392,7 @@ mod tests {
     }
 
     fn kokoro_files(name: &str, file: &str) -> std::path::PathBuf {
-        let dir = std::env::temp_dir().join(format!("sillon-build-{}-{name}", std::process::id()));
+        let dir = crate::paths::test_scratch(&format!("build-{name}"));
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("config.json"), "{}").unwrap();
         std::fs::write(dir.join(file), b"x").unwrap();
@@ -470,7 +470,7 @@ mod tests {
     }
 
     fn text_files(name: &str, file: &str) -> std::path::PathBuf {
-        let dir = std::env::temp_dir().join(format!("sillon-texte-{}-{name}", std::process::id()));
+        let dir = crate::paths::test_scratch(&format!("texte-{name}"));
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join(file), b"x").unwrap();
         dir.join(file)

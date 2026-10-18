@@ -1133,7 +1133,7 @@ mod tests {
     fn a_reparsed_file_keeps_remembering_its_place() {
         let (mut r, _) = counting_reader();
         let t0 = Instant::now();
-        let dir = std::env::temp_dir().join(format!("sillon-reparse-{}", std::process::id()));
+        let dir = crate::paths::test_scratch("reparse");
         std::fs::create_dir_all(&dir).unwrap();
         let file = dir.join("doc.md");
         std::fs::write(&file, WITH_CODE).unwrap();
@@ -1208,7 +1208,7 @@ mod tests {
     /// déjà là n'est jamais écrasée : la suivante prend un numéro.
     #[test]
     fn replacing_an_unreadable_config_keeps_a_copy() {
-        let dir = std::env::temp_dir().join(format!("sillon-illisible-{}", std::process::id()));
+        let dir = crate::paths::test_scratch("illisible");
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("config.toml");
@@ -1322,7 +1322,7 @@ mod tests {
 
     #[test]
     fn font_and_size_are_written_to_config_toml() {
-        let dir = std::env::temp_dir().join(format!("sillon-police-{}", std::process::id()));
+        let dir = crate::paths::test_scratch("police");
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("config.toml");

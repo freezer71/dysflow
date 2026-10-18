@@ -291,7 +291,7 @@ mod tests {
 
     #[test]
     fn read_from_gives_the_file_as_written_or_the_defaults_or_an_error() {
-        let dir = std::env::temp_dir().join(format!("sillon-read-from-{}", std::process::id()));
+        let dir = crate::paths::test_scratch("read-from");
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("config.toml");
@@ -419,7 +419,7 @@ mod tests {
 
     #[test]
     fn saving_leaves_no_temporary_file_next_to_the_config() {
-        let dir = std::env::temp_dir().join(format!("sillon-cfg-atomic-{}", std::process::id()));
+        let dir = crate::paths::test_scratch("cfg-atomic");
         let _ = std::fs::remove_dir_all(&dir);
         let path = dir.join("config.toml");
         Config::default().save_to(&path).expect("écriture");

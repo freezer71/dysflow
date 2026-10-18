@@ -121,7 +121,7 @@ mod tests {
 
     #[test]
     fn a_text_file_comes_back_unchanged() {
-        let path = std::env::temp_dir().join("sillon-source-texte.md");
+        let path = crate::paths::test_scratch("source-texte").join("source-texte.md");
         std::fs::write(&path, "# Titre\n\nUn paragraphe.\n").expect("écriture du témoin");
         let out = load(&path);
         let _ = std::fs::remove_file(&path);
@@ -168,7 +168,7 @@ mod tests {
     #[cfg(not(feature = "ocr"))]
     #[test]
     fn an_image_says_the_binary_was_built_without_ocr() {
-        let path = std::env::temp_dir().join("sillon-source-image.png");
+        let path = crate::paths::test_scratch("source-image").join("source-image.png");
         std::fs::write(&path, b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR").expect("écriture du témoin");
         let err = load(&path).unwrap_err();
         let _ = std::fs::remove_file(&path);
@@ -216,7 +216,7 @@ mod tests {
 
     #[test]
     fn a_latin1_text_file_is_read_rather_than_refused() {
-        let path = std::env::temp_dir().join(format!("sillon-latin1-{}.txt", std::process::id()));
+        let path = crate::paths::test_scratch("latin1").join("latin1.txt");
         std::fs::write(&path, b"\xEF\xBB\xBFcaf\xE9 cr\xE8me\n").unwrap();
         let out = load_with_cache(&path, false).expect("un texte mal encodé se lit quand même");
         assert!(out.starts_with("caf"), "BOM ou octet fautif en tête : {out:?}");

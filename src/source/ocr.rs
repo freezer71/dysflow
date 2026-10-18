@@ -231,7 +231,7 @@ mod tests {
 
     #[test]
     fn a_directory_of_captures_is_read_in_order() {
-        let dir = std::env::temp_dir().join("sillon-scans");
+        let dir = crate::paths::test_scratch("scans");
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("création du dossier");
         // La même capture deux fois : l'ordre est vérifiable, le contenu connu.
@@ -247,7 +247,7 @@ mod tests {
 
     #[test]
     fn a_directory_without_images_says_so() {
-        let dir = std::env::temp_dir().join("sillon-vide");
+        let dir = crate::paths::test_scratch("vide");
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("création du dossier");
         let err = directory_pages(&dir);

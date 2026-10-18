@@ -176,7 +176,7 @@ mod tests {
 
     #[test]
     fn the_cache_drops_stale_versions_and_its_oldest_entries() {
-        let dir = std::env::temp_dir().join(format!("sillon-cache-trim-{}", std::process::id()));
+        let dir = crate::paths::test_scratch("cache-trim");
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("v0-ancien.md"), "x").unwrap();
@@ -222,11 +222,7 @@ mod tests {
     }
 
     fn scratch() -> PathBuf {
-        let dir = std::env::temp_dir().join(format!(
-            "sillon-cache-{}-{:?}",
-            std::process::id(),
-            std::thread::current().id()
-        ));
+        let dir = crate::paths::test_scratch(&format!("cache-{:?}", std::thread::current().id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
