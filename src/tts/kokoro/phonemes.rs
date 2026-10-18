@@ -497,7 +497,7 @@ mod tests {
 
     #[test]
     fn the_espeak_data_shipped_beside_the_binary_is_found() {
-        let dir = std::env::temp_dir().join(format!("sillon-espeak-data-{}", std::process::id()));
+        let dir = crate::paths::test_scratch("espeak-data");
         std::fs::create_dir_all(dir.join("espeak-ng-data")).unwrap();
         // La variable d'abord ; sinon le dossier du binaire, s'il porte les
         // données (paquet terminal) ; sinon celles du système.
@@ -679,7 +679,7 @@ mod tests {
 
     /// Un vrai processus, écrit en shell.
     fn script(name: &str, body: &str) -> EspeakProcess {
-        let dir = std::env::temp_dir().join(format!("sillon-espeak-{}-{name}", std::process::id()));
+        let dir = crate::paths::test_scratch(&format!("espeak-{name}"));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("sillon-espeak");
         std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
@@ -770,7 +770,7 @@ mod tests {
 
     #[test]
     fn the_path_search_skips_relative_entries_and_plain_files() {
-        let root = std::env::temp_dir().join(format!("sillon-espeak-{}-path", std::process::id()));
+        let root = crate::paths::test_scratch("espeak-path");
         let (plain, exec) = (root.join("plain"), root.join("exec"));
         for d in [&plain, &exec] {
             std::fs::create_dir_all(d).unwrap();

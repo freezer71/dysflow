@@ -91,7 +91,7 @@ mod tests {
 
     #[test]
     fn the_header_wins_over_the_extension() {
-        let path = std::env::temp_dir().join("sillon-menteur.txt");
+        let path = crate::paths::test_scratch("menteur").join("menteur.txt");
         std::fs::write(&path, b"%PDF-1.4\n1 0 obj\n").expect("écriture du témoin");
         let kind = of_path(&path);
         let _ = std::fs::remove_file(&path);

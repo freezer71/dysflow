@@ -130,7 +130,7 @@ mod tests {
 
     #[test]
     fn an_unreadable_file_is_set_aside_not_overwritten() {
-        let dir = std::env::temp_dir().join(format!("sillon-positions-{}", std::process::id()));
+        let dir = crate::paths::test_scratch("positions");
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("positions.json");
         std::fs::write(&path, "{ pas du json").unwrap();
@@ -195,7 +195,7 @@ mod tests {
 
     #[test]
     fn a_place_written_is_a_place_reread() {
-        let dir = std::env::temp_dir().join(format!("sillon-{}", std::process::id()));
+        let dir = crate::paths::test_scratch("positions-dossier");
         let path = dir.join("positions.json");
         let mut store = PositionStore::default();
         store.record("a.md", 4, "Une phrase.");
@@ -224,7 +224,7 @@ mod tests {
 
     #[test]
     fn saving_leaves_no_temporary_file_next_to_the_positions() {
-        let dir = std::env::temp_dir().join(format!("sillon-pos-atomic-{}", std::process::id()));
+        let dir = crate::paths::test_scratch("pos-atomic");
         let _ = std::fs::remove_dir_all(&dir);
         let path = dir.join("positions.json");
         let mut store = PositionStore::default();

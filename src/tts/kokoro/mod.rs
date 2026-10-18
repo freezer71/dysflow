@@ -441,7 +441,7 @@ mod tests {
 
     /// Un dossier de modèle avec une voix « rampe » : la ligne r vaut r.
     fn model_dir(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("sillon-kokoro-{}-{name}", std::process::id()));
+        let dir = crate::paths::test_scratch(&format!("kokoro-{name}"));
         std::fs::create_dir_all(dir.join("voices")).unwrap();
         let ramp = VoicePack::from_values(
             (0..voices::ROWS * voices::WIDTH).map(|i| (i / voices::WIDTH) as f32).collect(),
@@ -630,7 +630,7 @@ mod tests {
 
     #[test]
     fn the_vocabulary_comes_from_the_configuration() {
-        let dir = std::env::temp_dir().join(format!("sillon-vocab-{}", std::process::id()));
+        let dir = crate::paths::test_scratch("vocab");
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("config.json"), r#"{"vocab": {"ɔ": 76, "̃": 17, " ": 16}, "n_token": 178}"#).unwrap();
         let vocab = Vocab::from_config(&dir.join("config.json")).unwrap();

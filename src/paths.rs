@@ -42,9 +42,61 @@ pub fn cache_dir() -> Option<PathBuf> {
 /// moteur ne peut ainsi lire ni écrire ses signets, positions ou modèles.
 #[cfg(test)]
 fn test_root(kind: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("sillon-tests-{}", std::process::id())).join(kind);
+    test_scratch(kind)
+}
+
+/// Un dossier de travail pour un test, créé vide sous la racine des tests
+/// de ce processus.
+///
+/// Les tests en laissaient des milliers dans le dossier temporaire du
+/// système (8 400 dossiers, 1 Go, relevés le 18 oct. 2026) : tout passe
+/// désormais par une seule racine, retirée à la sortie du processus.
+#[cfg(test)]
+pub(crate) fn test_scratch(name: &str) -> PathBuf {
+    let dir = test_base().join(name);
     let _ = std::fs::create_dir_all(&dir);
     dir
+}
+
+/// `sillon-tests-<pid>` : créée au premier usage, retirée par `atexit` à la
+/// sortie du processus de test. Au même moment, les racines laissées par un
+/// processus mort (test interrompu, plantage) partent aussi.
+#[cfg(test)]
+fn test_base() -> PathBuf {
+    static INIT: std::sync::Once = std::sync::Once::new();
+    let base = std::env::temp_dir().join(format!("{TEST_PREFIX}{}", std::process::id()));
+    INIT.call_once(|| {
+        sweep_dead_test_roots();
+        extern "C" fn remove_test_root() {
+            let base = std::env::temp_dir().join(format!("{TEST_PREFIX}{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(base);
+        }
+        // SAFETY : `remove_test_root` ne prend aucun argument et ne panique pas.
+        unsafe { libc::atexit(remove_test_root) };
+    });
+    base
+}
+
+#[cfg(test)]
+const TEST_PREFIX: &str = "sillon-tests-";
+
+/// Retire les racines de test dont le processus n'existe plus.
+#[cfg(test)]
+fn sweep_dead_test_roots() {
+    let Ok(entries) = std::fs::read_dir(std::env::temp_dir()) else { return };
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let Some(pid) = name.to_str().and_then(|n| n.strip_prefix(TEST_PREFIX)).and_then(|p| p.parse::<i32>().ok())
+        else {
+            continue;
+        };
+        // SAFETY : le signal 0 ne fait que demander si le processus existe.
+        let alive = unsafe { libc::kill(pid, 0) } == 0
+            || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM);
+        if !alive {
+            let _ = std::fs::remove_dir_all(entry.path());
+        }
+    }
 }
 
 /// Le répertoire du lecteur sous `base`, en reprenant celui de l'ancien nom
@@ -159,11 +211,7 @@ mod tests {
     }
 
     fn scratch() -> PathBuf {
-        let dir = std::env::temp_dir().join(format!(
-            "sillon-paths-{}-{:?}",
-            std::process::id(),
-            std::thread::current().id()
-        ));
+        let dir = crate::paths::test_scratch(&format!("paths-{:?}", std::thread::current().id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir

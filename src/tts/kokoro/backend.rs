@@ -180,7 +180,7 @@ mod tests {
     }
 
     fn model_dir(name: &str) -> std::path::PathBuf {
-        let dir = std::env::temp_dir().join(format!("sillon-partage-{}-{name}", std::process::id()));
+        let dir = crate::paths::test_scratch(&format!("partage-{name}"));
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("config.json"), r#"{"vocab": {"a": 43}}"#).unwrap();
         dir

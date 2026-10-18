@@ -375,7 +375,7 @@ mod tests {
     /// Écrit la configuration dans un fichier temporaire et la relit, comme
     /// un nouveau lancement la trouverait.
     fn relaunched(config: &Config) -> Config {
-        let dir = std::env::temp_dir().join(format!("sillon-migration-{}", std::process::id()));
+        let dir = crate::paths::test_scratch("migration");
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("relance.toml");
         std::fs::write(&path, toml::to_string_pretty(config).unwrap()).unwrap();
@@ -613,7 +613,7 @@ mod tests {
         let _guard = models_lock();
         let mlx = by_id("kokoro_82m_mlx");
         install_hollow(mlx);
-        let dir = std::env::temp_dir().join(format!("sillon-temoin-{}", std::process::id()));
+        let dir = crate::paths::test_scratch("temoin");
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("config.toml");
         let witness = b"[voice\nvoice = \"F2\" # \xc3\xa9crit \xc3\xa0 la main".to_vec();
@@ -641,7 +641,7 @@ mod tests {
     /// ci-dessus prouve donc quelque chose).
     #[test]
     fn a_readable_config_is_written_where_it_lives() {
-        let dir = std::env::temp_dir().join(format!("sillon-lisible-{}", std::process::id()));
+        let dir = crate::paths::test_scratch("lisible");
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("config.toml");
         std::fs::write(&path, "ancien").unwrap();

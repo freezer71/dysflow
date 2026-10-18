@@ -214,7 +214,7 @@ mod tests {
 
     #[test]
     fn the_french_voice_ships_with_sillon() {
-        let dir = std::env::temp_dir().join("sillon-sans-voix");
+        let dir = crate::paths::test_scratch("sans-voix");
         let v = load_voice(&dir, "p-fenrir60").expect("livrée dans le binaire");
         assert_eq!(v.values().len(), ROWS * WIDTH);
         assert!(load_voice(&dir, "af_bella").is_err(), "les autres viennent du paquet");

@@ -1057,7 +1057,7 @@ pub(crate) mod tests {
     }
 
     pub(crate) fn autosave_target(name: &str) -> (std::path::PathBuf, std::path::PathBuf) {
-        let dir = std::env::temp_dir().join(format!("sillon-autosave-{name}-{}", std::process::id()));
+        let dir = crate::paths::test_scratch(&format!("autosave-{name}"));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("config.toml");

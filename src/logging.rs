@@ -112,7 +112,7 @@ mod tests {
         // Le crochet de panique restaurait le terminal puis écrivait sur une
         // sortie d'erreur encore détournée vers le journal : l'utilisateur
         // voyait un écran propre et rien d'autre.
-        let path = std::env::temp_dir().join(format!("sillon-log-{}.log", std::process::id()));
+        let path = crate::paths::test_scratch("log").join("log.log");
         let before = inode_of_stderr();
         let guard = redirect_stderr_to(&path).expect("redirection");
         assert_ne!(inode_of_stderr(), before, "stderr devrait viser le journal");
