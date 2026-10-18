@@ -171,6 +171,8 @@ enum SpeechModels {
         switch id {
         case "parakeet_tdt_v3":
             return ParakeetSpeech(try ParakeetModel.fromDirectory(directory))
+        case "phonon_2":
+            return ParakeetSpeech(try ParakeetModel.fromPhonon(directory))
         case "canary_1b_v2_q8":
             return CanarySpeech(try CanaryModel.fromModelDirectory(directory))
         case "voxtral_realtime_4bit":
@@ -195,7 +197,7 @@ enum SpeechModels {
         MLXBudget.shared.applyNow()
     }
 
-    /// Octets des poids (`*.safetensors`) du dossier et de ses sous-dossiers.
+    /// Octets des poids du dossier (`MLXBudget.weightBytes`).
     static func weightBytes(_ directory: URL) -> Int {
         MLXBudget.weightBytes(directory)
     }
@@ -213,7 +215,8 @@ extension STTGenerateParameters {
     }
 }
 
-/// Parakeet v3 reconnaît la langue tout seul : `language` est ignoré.
+/// Parakeet v3 (et Phonon-2, son dérivé) reconnaît la langue tout seul :
+/// `language` est ignoré.
 final class ParakeetSpeech: LoadedSpeechModel {
     private let model: ParakeetModel
     init(_ model: ParakeetModel) {

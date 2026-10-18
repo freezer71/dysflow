@@ -21,6 +21,16 @@ Licensed by NVIDIA Corporation under the NVIDIA Open Model License. Sillon
 ne les livre pas. Ceux de Qwen3-TTS (Alibaba, Apache 2.0) le sont depuis
 mlx-community (révisions dans src/models.rs).
 
+Les poids de dictée sont téléchargés à la demande, jamais livrés avec
+Sillon (dépôts et révisions dans src/models.rs). Parmi eux, Phonon-2
+(FermionResearch/Phonon-2, révision 7e153e4054c0a10db6d47d6fff5c062d4c77c154),
+Copyright 2026 Fermion Research, sous licence Creative Commons Attribution
+4.0 (https://creativecommons.org/licenses/by/4.0/) : dérivé de Parakeet TDT
+0.6B v3 (NVIDIA Corporation, CC-BY-4.0), dont Fermion Research a réentraîné
+et quantifié les poids. Le chargeur de Sillon
+(macos/Vendor/KokoroMLX/STT/Parakeet/PhononLoader.swift) suit le format
+décrit par fermion_container.py du même dépôt (Apache 2.0).
+
 La voix « siwis » de Qwen3-TTS 0.6B Base, livrée avec Sillon
 (assets/voices/qwen3-06b-siwis.safetensors), est un vecteur de locuteur
 dérivé (adaptation) d'un extrait de la SIWIS French Speech Synthesis Database

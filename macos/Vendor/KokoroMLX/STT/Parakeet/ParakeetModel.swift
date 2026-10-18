@@ -75,7 +75,7 @@ public final class ParakeetModel: Module, STTGenerationModel {
         blankTokenId: self.blankTokenId
     )
 
-    private init(
+    init(
         variant: Variant,
         preprocessConfig: ParakeetPreprocessConfig,
         encoderConfig: ParakeetConformerConfig,
