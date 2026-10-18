@@ -980,7 +980,8 @@ final class Qwen3TTSSpeechTokenizer: Module {
             wavChunk = wavChunk.squeezed(axis: 1)
             eval(wavChunk)
             chunks.append(wavChunk)
-            Memory.clearCache()
+            // Sillon : pas de `Memory.clearCache()` par paquet (cache plafonné
+            // par `MLXBudget` dans l'app).
             startIndex = endIndex
         }
 

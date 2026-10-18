@@ -13,17 +13,19 @@ struct RollingTranscription {
         self.interval = interval
     }
 
-    /// Le plus court et le plus long écart entre deux lectures.
+    /// Le plus court écart entre deux lectures (un modèle rapide ne relit
+    /// pas plus souvent), et celui d'avant la première mesure.
     static let fastest: Duration = .milliseconds(400)
-    static let slowest: Duration = .milliseconds(1500)
+    static let initial: Duration = .milliseconds(1500)
 
-    /// Règle le rythme sur la dernière lecture : trois fois sa durée, entre
-    /// `fastest` et `slowest`. Un modèle rapide relit souvent (le texte suit
-    /// la voix), sans jamais occuper la puce plus d'un tiers du temps ; un
-    /// lent, ou une longue dictée (tout est relu depuis le début), espace
-    /// ses lectures.
+    /// Règle le rythme sur la dernière lecture : trois fois sa durée, jamais
+    /// moins de `fastest`, sans plafond. Un modèle rapide relit souvent (le
+    /// texte suit la voix) ; un lent, ou une longue dictée (tout est relu
+    /// depuis le début), espace ses lectures : la puce n'est jamais occupée
+    /// plus d'un tiers du temps (un plafond la ferait tourner sans relâche
+    /// dès qu'une lecture dépasse le tiers de ce plafond).
     mutating func adapt(lastRead: Duration) {
-        interval = min(Self.slowest, max(Self.fastest, lastRead * 3))
+        interval = max(Self.fastest, lastRead * 3)
     }
 
     /// Vrai s'il faut lancer une lecture maintenant : aucune n'est en cours,

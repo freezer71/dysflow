@@ -3,7 +3,8 @@ import KokoroMLX
 
 /// La dictée par un modèle qui lit tout d'un bloc (Parakeet, Whisper,
 /// Canary) : le micro garde tout ce qui est dit, et le modèle relit le tout
-/// toutes les 0,4 à 1,5 s selon sa vitesse (`RollingTranscription`), un
+/// toutes les 0,4 s au moins, à trois fois sa durée de lecture
+/// (`RollingTranscription`), un
 /// texte provisoire qui remplace le précédent, avec son délai ; à la fin,
 /// une dernière lecture donne le texte définitif.
 ///
@@ -14,7 +15,7 @@ import KokoroMLX
 @MainActor
 final class MLXDictationEngine: DictationEngine {
     /// Entre deux relectures, avant la première mesure.
-    static let interval: Duration = RollingTranscription.slowest
+    static let interval: Duration = RollingTranscription.initial
     /// La boucle regarde l'heure à ce pas.
     static let tick: Duration = .milliseconds(100)
     /// Moins d'audio que cela (0,1 s) : rien à lire.
@@ -75,6 +76,9 @@ final class MLXDictationEngine: DictationEngine {
         loop?.cancel()
         await loop?.value
         guard (try? await load?.value) != nil else { return }
+        // Comme Voxtral : les tampons gardés par MLX pendant la dictée sont
+        // rendus, une fois le texte définitif lu.
+        defer { releaseCache() }
         let samples = capture.samples()
         guard samples.count >= Self.minimumSamples else {
             events(.text("", isFinal: true))
@@ -88,9 +92,18 @@ final class MLXDictationEngine: DictationEngine {
     /// ne s'interrompt pas), sans effet.
     func cancel() async {
         generation &+= 1
+        let hadCapture = capture != nil
         capture?.stop()
         loop?.cancel()
         clear()
+        if hadCapture { releaseCache() }
+    }
+
+    /// Vide le cache de MLX (sous `MLXGate`, après la lecture en cours) ;
+    /// le modèle reste chargé.
+    private func releaseCache() {
+        let runner = runner
+        Task { await runner.underGate { DictationMLX.clearCache() } }
     }
 
     private func clear() {
@@ -110,6 +123,9 @@ final class MLXDictationEngine: DictationEngine {
         return Task { @MainActor [weak self] in
             var rolling = RollingTranscription(interval: Self.interval)
             while !Task.isCancelled, self?.generation == id {
+                // Les relectures peuvent s'espacer de plusieurs secondes : le
+                // modèle n'est jamais libéré au milieu d'une dictée.
+                runner.keepAlive()
                 if rolling.shouldRead(now: .now, busy: false) {
                     let samples = capture.samples()
                     let clock = ContinuousClock(), start = clock.now
@@ -121,7 +137,7 @@ final class MLXDictationEngine: DictationEngine {
                         events(.latency(read))
                         events(.text(text, isFinal: false))
                         // Sous `MLXGate`, hors du fil principal : jamais pendant un calcul.
-                        let active = await Task.detached { MLXGate.shared.run { DictationMLX.counters().active } }.value
+                        let active = await runner.underGate { DictationMLX.counters().active }
                         guard !Task.isCancelled, self?.generation == id else { return }
                         events(.memory(active))
                     }
@@ -240,17 +256,70 @@ final class ParakeetSpeech: LoadedSpeechModel {
 }
 
 /// Whisper : la langue est donnée (« fr », « en »), pas devinée.
+///
+/// Whisper lit par fenêtres de 30 s à positions fixes (0, 30 s, 60 s…),
+/// chacune seule, et colle leurs textes. Une relecture glissante ne change
+/// que la dernière : le texte des fenêtres complètes déjà lues est gardé
+/// (avec une empreinte de leur audio) et seule la suite est relue. Même
+/// découpage, même collage que `WhisperModel.generate`, décodage glouton :
+/// le texte est identique à une lecture de tout.
 final class WhisperSpeech: LoadedSpeechModel {
     private let model: WhisperModel
+    /// Le texte des fenêtres complètes déjà lues, par rang.
+    private var read: [Int: ReadWindow] = [:]
+
+    private struct ReadWindow {
+        let fingerprint: Int
+        let language: String
+        let text: String
+    }
+
     init(_ model: WhisperModel) {
         self.model = model
     }
 
     func transcribe(_ samples: [Float], language: String) throws -> String {
         SpeechModels.applyLimits()
+        let window = WhisperAudioConfig.chunkLengthSamples
+        guard samples.count > window else {
+            read = [:]
+            return readWindow(samples, language: language)
+        }
+        var texts: [String] = []
+        var index = 0
+        for start in stride(from: 0, to: samples.count, by: window) {
+            let slice = samples[start..<min(start + window, samples.count)]
+            let text: String
+            if slice.count == window {
+                let fingerprint = Self.fingerprint(slice)
+                if let known = read[index], known.fingerprint == fingerprint, known.language == language {
+                    text = known.text
+                } else {
+                    text = readWindow(Array(slice), language: language)
+                    read[index] = ReadWindow(fingerprint: fingerprint, language: language, text: text)
+                }
+            } else {
+                text = readWindow(Array(slice), language: language)
+            }
+            if !text.isEmpty { texts.append(text) }
+            index += 1
+        }
+        read = read.filter { $0.key < index }
+        return texts.joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// 30 s au plus : une seule fenêtre, son texte sans espaces autour.
+    private func readWindow(_ samples: [Float], language: String) -> String {
         let parameters = model.defaultGenerationParameters.with(language: language)
         return model.generate(samples: samples, generationParameters: parameters)
             .text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// L'empreinte des octets de l'audio (au bit près).
+    static func fingerprint(_ samples: ArraySlice<Float>) -> Int {
+        var hasher = Hasher()
+        samples.withUnsafeBytes { hasher.combine(bytes: $0) }
+        return hasher.finalize()
     }
 }
 

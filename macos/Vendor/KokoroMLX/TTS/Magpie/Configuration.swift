@@ -1,3 +1,4 @@
+// Modifié par Sillon (Apache-2.0 §4(b)) : `MagpieTTSVariant` supprimé, `MagpieTTSError.stopped` ajouté — voir ORIGINE.md.
 import Foundation
 
 /// Baked speaker identity. The model checkpoint embeds five speaker contexts

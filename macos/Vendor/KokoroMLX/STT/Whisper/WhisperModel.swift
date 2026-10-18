@@ -227,15 +227,24 @@ public final class WhisperModel: Module, STTGenerationModel {
             )
         )
 
+        // Sillon : les masques des jetons interdits, construits une fois
+        // (ils ne changent pas d'un pas à l'autre) et ajoutés dans le même
+        // ordre qu'à l'amont : mêmes logits au bit près.
+        let beginMask = beginSuppress.isEmpty ? nil : suppressMask(logits, ids: beginSuppress)
+        let alwaysMask = suppress.isEmpty ? nil : suppressMask(logits, ids: suppress)
+        let timestampMask = suppressFromIndexMask(logits, fromIndex: tokenizer.timestampBeginId)
+
         for step in 0..<maxTokens {
             var stepLogits = logits
-            if step == 0, !beginSuppress.isEmpty {
-                stepLogits = suppressLogits(stepLogits, ids: beginSuppress)
+            if step == 0, let beginMask {
+                stepLogits = stepLogits + beginMask
             }
-            if !suppress.isEmpty {
-                stepLogits = suppressLogits(stepLogits, ids: suppress)
+            if let alwaysMask {
+                stepLogits = stepLogits + alwaysMask
             }
-            stepLogits = suppressFromIndex(stepLogits, fromIndex: tokenizer.timestampBeginId)
+            if let timestampMask {
+                stepLogits = stepLogits + timestampMask
+            }
 
             let nextToken = sample(stepLogits, temperature: generationParameters.temperature)
             if nextToken == tokenizer.endOfTextId { break }
@@ -292,22 +301,25 @@ public final class WhisperModel: Module, STTGenerationModel {
         return categorical(scaled).item(Int.self)
     }
 
-    private func suppressLogits(_ logits: MLXArray, ids: [Int]) -> MLXArray {
-        if ids.isEmpty { return logits }
+    /// Sillon : le masque qu'ajoutait `suppressLogits` (−1e9 sur `ids`),
+    /// au type et à la largeur de `logits`.
+    private func suppressMask(_ logits: MLXArray, ids: [Int]) -> MLXArray {
         let length = logits.dim(-1)
         var mask = [Float](repeating: 0, count: length)
         for id in ids where id >= 0 && id < length {
             mask[id] = -1e9
         }
-        return logits + MLXArray(mask).asType(logits.dtype)
+        return MLXArray(mask).asType(logits.dtype)
     }
 
-    private func suppressFromIndex(_ logits: MLXArray, fromIndex: Int) -> MLXArray {
+    /// Sillon : le masque qu'ajoutait `suppressFromIndex` (−1e9 à partir de
+    /// `fromIndex`) ; `nil` s'il n'y a rien à masquer.
+    private func suppressFromIndexMask(_ logits: MLXArray, fromIndex: Int) -> MLXArray? {
         let length = logits.dim(-1)
-        if fromIndex >= length { return logits }
+        if fromIndex >= length { return nil }
         var mask = [Float](repeating: 0, count: length)
         for i in fromIndex..<length { mask[i] = -1e9 }
-        return logits + MLXArray(mask).asType(logits.dtype)
+        return MLXArray(mask).asType(logits.dtype)
     }
 
     // MARK: - Loading

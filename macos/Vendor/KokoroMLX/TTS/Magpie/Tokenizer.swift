@@ -1,3 +1,4 @@
+// Modifié par Sillon (Apache-2.0 §4(b)) : français en NFC, langues sans dictionnaire lues lettre à lettre, chinois et japonais retirés — voir ORIGINE.md.
 import Foundation
 
 /// Per-language tokenizer config dumped from NeMo's MagpieTTS multilingual

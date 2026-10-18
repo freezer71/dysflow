@@ -1,3 +1,4 @@
+// Modifié par Sillon (Apache-2.0 §4(b)) : dictionnaire lu dans le framework, espagnol et allemand retirés, `@unchecked Sendable` — voir ORIGINE.md.
 import Foundation
 
 /// Dict-based IPA grapheme-to-phoneme converter.
