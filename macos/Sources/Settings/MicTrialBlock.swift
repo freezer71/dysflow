@@ -43,7 +43,8 @@ struct MicTrialBlock: View {
                     .font(Typo.sectionTitle)
                     .foregroundStyle(Palette.ink)
                     .accessibilityAddTraits(.isHeader)
-                Text("Lisez la phrase à voix haute. Le texte reconnu s'affiche ici : il n'est saisi nulle part. "
+                Text("Lisez la phrase à voix haute : l'essai s'arrête seul quand elle est dite, ou quand vous "
+                     + "vous taisez. Le texte reconnu s'affiche ici : il n'est saisi nulle part. "
                      + "Le modèle essayé ne change pas celui de la dictée.")
                     .font(Typo.body)
                     .foregroundStyle(Palette.muted)
@@ -197,7 +198,7 @@ struct MicTrialBlock: View {
         switch trial.phase {
         case .idle: trial.results[trial.modelID ?? ""] == nil ? "Prêt." : "Essai terminé."
         case .preparing(let what): what
-        case .listening: trial.speechHeard ? "Je vous entends. Appuyez sur « Arrêter » à la fin." : "Parlez maintenant."
+        case .listening: trial.speechHeard ? "Je vous entends. L'essai s'arrêtera seul à la fin." : "Parlez maintenant."
         case .finishing: "Le texte final arrive…"
         case .failed(let message): message
         }

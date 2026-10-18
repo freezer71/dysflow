@@ -20,6 +20,10 @@ struct TrialEngine {
 /// niveau du micro, le texte reconnu en direct, puis la précision, les
 /// délais, le débit et la mémoire du modèle essayé.
 ///
+/// L'essai s'arrête seul (`stop()`, comme « Arrêter ») dès que la phrase est
+/// reconnue mot pour mot, ou après 1,5 s de silence qui suivent la parole
+/// (`SpeechEndDetector`), une fois du texte reçu.
+///
 /// Le texte n'est jamais saisi nulle part ; le modèle de la dictée
 /// (`dictationModel`) ne change pas. L'essai et la dictée ne tiennent jamais
 /// le micro ensemble : l'essai refuse de partir pendant une dictée
@@ -72,6 +76,7 @@ final class MicTrialController {
     @ObservationIgnored private var active: TrialEngine?
     @ObservationIgnored private var timeline = TrialTimeline()
     @ObservationIgnored private var onset = SpeechOnsetDetector()
+    @ObservationIgnored private var end = SpeechEndDetector()
     @ObservationIgnored private var memory: TrialMemory?
     @ObservationIgnored private var computeBefore: Double?
     /// Un texte final est arrivé : sans lui, pas de score.
@@ -147,6 +152,7 @@ final class MicTrialController {
         transcript = Transcript()
         timeline = TrialTimeline()
         onset = SpeechOnsetDetector()
+        end = SpeechEndDetector()
         speechHeard = false
         memory = nil
         computeBefore = nil
@@ -238,11 +244,19 @@ final class MicTrialController {
             if timeline.firstText == nil, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 timeline.firstText = clock()
             }
+            // La phrase est dite en entier : inutile d'attendre « Arrêter ».
+            if phase == .listening, !freeText, TrialScore.isComplete(reference: sentence, heard: transcript.text) {
+                stop()
+            }
         case .spectrum(let columns):
             spectrum.push(columns)
             if phase == .listening, onset.push(columns) {
                 timeline.speechOnset = clock()
                 speechHeard = true
+            }
+            // La parole s'est tue, et du texte est arrivé : l'essai s'arrête.
+            if phase == .listening, speechHeard, end.push(columns), !transcript.isEmpty {
+                stop()
             }
         case .latency:
             // L'essai mesure ses délais lui-même (`TrialTimeline`).

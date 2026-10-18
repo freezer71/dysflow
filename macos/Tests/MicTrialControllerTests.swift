@@ -46,6 +46,62 @@ final class MicTrialControllerTests: XCTestCase {
         return Array(repeating: column, count: 4)
     }
 
+    /// `seconds` de silence : des tranches sous le seuil, 40 par seconde.
+    private func quiet(_ seconds: Double) -> [[Float]] {
+        Array(repeating: [Float](repeating: 0.05, count: 12), count: Int(seconds * 40))
+    }
+
+    func testTheTrialStopsByItselfOnceTheSentenceIsSaid() async {
+        let trial = makeTrial()
+        trial.start(model: "parakeet_tdt_v3")
+        _ = await eventuallyTrue { trial.phase == .listening }
+        engine.send(.spectrum(loud()))
+        let sentence = trial.sentence
+        engine.finalText = sentence
+        engine.send(.text(String(sentence.dropLast(8)), isFinal: false))
+        XCTAssertEqual(trial.phase, .listening, "une phrase pas finie ne l'arrête pas")
+        // Sans ponctuation ni majuscules : les mots suffisent.
+        engine.send(.text(sentence.lowercased().replacingOccurrences(of: ".", with: ""), isFinal: false))
+        let done = await eventuallyTrue { trial.phase == .idle }
+        XCTAssertTrue(done)
+        XCTAssertEqual(engine.finished, 1)
+        XCTAssertEqual(trial.results["parakeet_tdt_v3"]?.precision, 100)
+    }
+
+    func testTheTrialStopsByItselfAfterASilenceThatFollowsSpeech() async {
+        let trial = makeTrial()
+        trial.start(model: "parakeet_tdt_v3")
+        _ = await eventuallyTrue { trial.phase == .listening }
+        engine.send(.spectrum(quiet(3)))
+        XCTAssertEqual(trial.phase, .listening, "un silence avant de parler ne compte pas")
+        engine.send(.spectrum(loud()))
+        engine.send(.spectrum(quiet(2)))
+        XCTAssertEqual(trial.phase, .listening, "pas de texte encore : on attend")
+        engine.send(.text("le petit", isFinal: false))
+        engine.send(.spectrum(loud()))
+        engine.send(.spectrum(quiet(1)))
+        XCTAssertEqual(trial.phase, .listening, "une pause d'une seconde n'arrête rien")
+        engine.finalText = "le petit"
+        engine.send(.spectrum(quiet(0.6)))
+        let done = await eventuallyTrue { trial.phase == .idle }
+        XCTAssertTrue(done, "1,6 s de silence après la parole : l'essai s'arrête")
+        XCTAssertEqual(engine.finished, 1)
+    }
+
+    func testFreeTextStopsOnlyOnSilence() async {
+        let trial = makeTrial()
+        trial.freeText = true
+        trial.start(model: "parakeet_tdt_v3")
+        _ = await eventuallyTrue { trial.phase == .listening }
+        engine.send(.spectrum(loud()))
+        engine.send(.text(trial.sentence, isFinal: false))
+        XCTAssertEqual(trial.phase, .listening, "texte libre : pas de phrase à finir")
+        engine.finalText = trial.sentence
+        engine.send(.spectrum(quiet(1.6)))
+        let done = await eventuallyTrue { trial.phase == .idle }
+        XCTAssertTrue(done)
+    }
+
     func testAFullTrialScoresTheSentenceAndKeepsTheResult() async {
         let trial = makeTrial()
         var paused = false
