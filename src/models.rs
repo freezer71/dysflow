@@ -40,6 +40,9 @@ pub enum Runtime {
     KokoroOnnx,
     /// Dictée, dans l'app seulement : calcul MLX côté Swift.
     ParakeetMlx,
+    /// Dictée, dans l'app seulement : Parakeet en MLX côté Swift, poids de
+    /// Phonon (archive `.tar.zst` que l'app lit telle quelle).
+    PhononMlx,
     /// Dictée, dans l'app seulement : calcul MLX côté Swift.
     WhisperMlx,
     /// Dictée, dans l'app seulement : calcul MLX côté Swift.
@@ -302,6 +305,27 @@ pub const CATALOG: &[ModelPackage] = &[
         licenses: "CC-BY-4.0 (poids et code)",
     },
     ModelPackage {
+        id: "phonon_2",
+        family: "phonon_2",
+        display_name: "Phonon-2",
+        description: "Parakeet v3 réentraîné pour l'anglais et réduit à 164 Mo, presque aussi juste. Le français passe, moins sûrement.",
+        precision: "≈ 2 bits",
+        languages: &["en", "fr"],
+        repo: "FermionResearch/Phonon-2",
+        revision: "7e153e4054c0a10db6d47d6fff5c062d4c77c154",
+        // Poids et `config.json` dans une seule archive, lue par l'app.
+        file: "phonon-2.bps.tar.zst",
+        languages_label: "Anglais (français moins sûr)",
+        bytes: 163_515_201,
+        recommended: false,
+        pace: "Relecture toutes les 1,5 s",
+        companions: &[],
+        runtime: Runtime::PhononMlx,
+        kind: Kind::Dictation,
+        voices_label: "",
+        licenses: "Poids CC-BY-4.0 (Fermion Research, d'après NVIDIA)",
+    },
+    ModelPackage {
         id: "whisper_tiny_4bit",
         family: "whisper_tiny_4bit",
         display_name: "Whisper tiny",
@@ -524,6 +548,7 @@ pub fn available_with(mlx: bool) -> Vec<&'static ModelPackage> {
         .filter(|p| match p.runtime {
             Runtime::KokoroMlx
             | Runtime::ParakeetMlx
+            | Runtime::PhononMlx
             | Runtime::WhisperMlx
             | Runtime::CanaryMlx
             | Runtime::VoxtralRealtimeMlx
@@ -1518,7 +1543,7 @@ mod tests {
     #[test]
     fn dictation_packages_each_have_their_own_folder() {
         let dictation: Vec<&ModelPackage> = CATALOG.iter().filter(|p| p.kind == Kind::Dictation).collect();
-        assert_eq!(dictation.len(), 6);
+        assert_eq!(dictation.len(), 7);
         for p in &dictation {
             assert_eq!(p.family, p.id, "{} : un dossier par paquet", p.id);
         }
@@ -1527,7 +1552,7 @@ mod tests {
     #[test]
     fn dictation_is_only_offered_to_the_app() {
         assert!(available_with(false).iter().all(|p| p.kind == Kind::Speech));
-        assert_eq!(available_with(true).iter().filter(|p| p.kind == Kind::Dictation).count(), 6);
+        assert_eq!(available_with(true).iter().filter(|p| p.kind == Kind::Dictation).count(), 7);
     }
 
     #[test]
@@ -1551,8 +1576,22 @@ mod tests {
         for p in CATALOG.iter().filter(|p| p.kind == Kind::Dictation) {
             assert_eq!(p.revision.len(), 40, "{}", p.id);
             assert!(p.companions.iter().all(|c| c.repo == p.repo && c.revision == p.revision), "{}", p.id);
-            assert_eq!(p.file, "model.safetensors", "{}", p.id);
+            let expected = if p.runtime == Runtime::PhononMlx { "phonon-2.bps.tar.zst" } else { "model.safetensors" };
+            assert_eq!(p.file, expected, "{}", p.id);
         }
+    }
+
+    /// Phonon-2 : une seule archive (poids et `config.json`), épinglée, que
+    /// l'app lit sans la décompresser sur le disque.
+    #[test]
+    fn phonon_is_a_single_pinned_archive() {
+        let phonon = package("phonon_2");
+        assert_eq!(phonon.total_bytes(), 163_515_201);
+        assert!(phonon.companions.is_empty());
+        assert!(!phonon.recommended, "Parakeet v3 reste le recommandé : Phonon-2 vise l'anglais");
+        assert!(phonon.speaks("en"));
+        assert!(available_with(true).iter().any(|p| p.id == "phonon_2"));
+        assert!(!available_with(false).iter().any(|p| p.id == "phonon_2"));
     }
 
     #[test]

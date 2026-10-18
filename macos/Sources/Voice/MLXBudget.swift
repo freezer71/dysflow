@@ -58,13 +58,14 @@ final class MLXBudget: @unchecked Sendable {
         apply(t.memory, t.cache)
     }
 
-    /// Octets des poids (`*.safetensors`) du dossier et de ses sous-dossiers
-    /// (le codec de Qwen3 vit dans `speech_tokenizer/`).
+    /// Octets des poids (`*.safetensors`, ou l'archive `.tar.zst` de
+    /// Phonon-2) du dossier et de ses sous-dossiers (le codec de Qwen3 vit
+    /// dans `speech_tokenizer/`).
     static func weightBytes(_ directory: URL) -> Int {
         guard let files = FileManager.default.enumerator(at: directory, includingPropertiesForKeys: [.fileSizeKey])
         else { return 0 }
         var total = 0
-        for case let url as URL in files where url.pathExtension == "safetensors" {
+        for case let url as URL in files where ["safetensors", "zst"].contains(url.pathExtension) {
             total += (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
         }
         return total

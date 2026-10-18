@@ -86,6 +86,7 @@ enum DictationModel {
         switch id {
         case system: "Dictée de macOS"
         case "parakeet_tdt_v3": "Parakeet v3"
+        case "phonon_2": "Phonon-2"
         case "whisper_tiny_4bit": "Whisper tiny"
         case "whisper_small_4bit": "Whisper small"
         case "whisper_large_v3_turbo_4bit": "Whisper large-v3-turbo"
@@ -147,7 +148,7 @@ enum Dictation {
         switch id {
         case "voxtral_realtime_4bit":
             VoxtralDictationEngine(runner: runner, directory: directory)
-        case "parakeet_tdt_v3", "canary_1b_v2_q8", _ where id.hasPrefix("whisper_"):
+        case "parakeet_tdt_v3", "phonon_2", "canary_1b_v2_q8", _ where id.hasPrefix("whisper_"):
             MLXDictationEngine(runner: runner, directory: directory)
         default:
             nil

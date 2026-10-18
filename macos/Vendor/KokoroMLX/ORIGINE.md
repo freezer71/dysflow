@@ -54,7 +54,8 @@ Tous identiques à l'amont, sauf :
   dans ce module) ;
 - `Parakeet/ParakeetModel.swift` : `import MLXAudioCore`, `import MLXLMCommon`
   et `import HuggingFace` retirés ; `fromPretrained` (téléchargement depuis
-  Hugging Face) supprimé. Reste `fromDirectory(_:computeDType:)`, qui lit un
+  Hugging Face) supprimé ; `init` interne au lieu de `private` (pour
+  Phonon-2, plus bas). Reste `fromDirectory(_:computeDType:)`, qui lit un
   dossier local (`config.json` et tous ses `*.safetensors`).
 
 `STT/BaseConfiguration.swift` est un ajout de Sillon : le sous-ensemble de
@@ -65,6 +66,22 @@ aucun site d'appel touché.
 Pour vérifier : `diff -r` entre `Sources/MLXAudioSTT/Models/{Nemo,Parakeet}`
 de l'archive `244458d` et `STT/{Nemo,Parakeet}` ne montre que les lignes
 ci-dessus.
+
+## STT : Phonon-2 (ajout de Sillon)
+
+`STT/Parakeet/PhononLoader.swift` est écrit par Sillon : il charge Phonon-2
+(Fermion Research, https://huggingface.co/FermionResearch/Phonon-2, poids
+sous CC-BY-4.0, dérivés de Parakeet TDT 0.6B v3 de NVIDIA) dans le graphe
+Parakeet ci-dessus. L'archive téléchargée (`phonon-2.bps.tar.zst`) est lue
+par `/usr/bin/tar`, sans rien décompresser sur le disque ; le conteneur
+`model.fermion` est décodé d'après `fermion_container.py` (Apache-2.0) du
+même dépôt, les noms de transformers ramenés à ceux du graphe comme le fait
+`map_weight_name` de mlx-audio (`parakeet/redux.py`). Les couches à cinq
+valeurs de l'encodeur deviennent deux plans 2 bits affines (exacts) sommés,
+les convolutions de noyau 1 des matrices denses.
+
+Seul changement dans les fichiers copiés : l'`init` de `ParakeetModel`
+passe de `private` à interne, pour que ce chargeur construise le modèle.
 
 ## STT : Canary 1b-v2
 
