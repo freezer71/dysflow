@@ -10,6 +10,7 @@ import SwiftUI
 /// saisit, Échap annule ; seul « Autoriser » paraît quand il le faut.
 struct DictationView: View {
     let controller: DictationController
+    @AppStorage(DictationStats.defaultsKey) private var showStats = true
     @Environment(\.colorScheme) private var colorScheme
     @State private var increaseContrast = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
 
@@ -35,8 +36,10 @@ struct DictationView: View {
                 }
                 TargetIcon(target: controller.target)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                DictationStats(latency: controller.latency, memory: controller.memory, theme: theme)
-                    .frame(maxWidth: .infinity, alignment: .trailing)
+                if showStats {
+                    DictationStats(latency: controller.latency, memory: controller.memory, theme: theme)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                }
             }
             .frame(height: VoiceBars.tallest)
             DictationLine(controller: controller, theme: theme)
@@ -74,8 +77,15 @@ struct TargetIcon: View {
 
 /// Le délai du dernier texte et la mémoire que MLX occupe, discrets, à
 /// droite des barres (« 120 ms · 506 Mo ») : chacun absent tant qu'il n'est
-/// pas connu.
+/// pas connu. Le réglage « Délai et mémoire » (section Dictée) les masque.
 struct DictationStats: View {
+    /// Montrer le délai et la mémoire : oui, sauf réglage contraire.
+    static let defaultsKey = "dictationShowStats"
+
+    static func shown(_ defaults: UserDefaults = .standard) -> Bool {
+        defaults.object(forKey: defaultsKey) as? Bool ?? true
+    }
+
     let latency: Duration?
     let memory: Int?
     let theme: Theme
