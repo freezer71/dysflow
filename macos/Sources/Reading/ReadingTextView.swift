@@ -317,7 +317,7 @@ final class ReadingTextView: NSTextView {
 
     /// Pose le mot lu, la bande, le trait et, si demandé, la ligne tenue.
     private func place(word: NSRange?, sentence: NSRange?, animated: Bool, follow: Bool) {
-        let rect = word.flatMap { rect(for: $0) }
+        let rect: CGRect? = word.flatMap { self.rect(for: $0) }
         if word != spoken { progress = 0 }
         spoken = word
         wordRect = rect
@@ -333,12 +333,20 @@ final class ReadingTextView: NSTextView {
             : nil
         // Ce qui est dessiné serre les lettres : la bande et la pastille
         // ne débordent pas dans l'interligne.
-        let box = word.flatMap { w in rect.map { glyphBox($0, at: w.location) } }
-        let pad = Self.pillPadding
-        let band = ruler
-            ? box.map { CGRect(x: 0, y: $0.minY - pad.height - 3, width: bounds.width,
-                               height: $0.height + 2 * (pad.height + 3)) } ?? lineBand
-            : nil
+        // Types écrits et calcul découpé : Xcode 26 ne venait pas à bout de
+        // l'expression d'un seul tenant.
+        var box: CGRect?
+        if let word, let rect { box = glyphBox(rect, at: word.location) }
+        let pad: CGSize = Self.pillPadding
+        var band: CGRect?
+        if ruler {
+            if let box {
+                let marge: CGFloat = pad.height + 3
+                band = CGRect(x: 0, y: box.minY - marge, width: bounds.width, height: box.height + 2 * marge)
+            } else {
+                band = lineBand
+            }
+        }
         setTargets(band: band, pill: box?.insetBy(dx: -pad.width, dy: -pad.height), animated: animated)
         guard follow else { return }
         // Un bloc haut se tient par sa première ligne, pour qu'on le voie
