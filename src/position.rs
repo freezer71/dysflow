@@ -65,7 +65,7 @@ impl PositionStore {
     fn load_from(path: &Path) -> Self {
         let (store, notice) = crate::paths::load_json(path, "positions de lecture");
         if let Some(notice) = notice {
-            eprintln!("sillon : {notice}");
+            eprintln!("sillage : {notice}");
         }
         store
     }

@@ -1,5 +1,5 @@
 import XCTest
-@testable import Sillon
+@testable import Sillage
 
 final class SettingsDiffTests: XCTestCase {
     func testNoChangeMakesAnEmptyPatch() {

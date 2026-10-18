@@ -5,7 +5,7 @@ import { dictee, lecture, type Modele } from "../_data/modeles";
 export const metadata: Metadata = {
   title: "Les modèles",
   description:
-    "Toutes les voix et tous les modèles de dictée de sillon : Kokoro, Qwen3-TTS, MagpieTTS, Parakeet, Phonon-2, Whisper, Canary, Voxtral. Tailles, langues, vitesse, licences.",
+    "Toutes les voix et tous les modèles de dictée de sillage : Kokoro, Qwen3-TTS, MagpieTTS, Parakeet, Phonon-2, Whisper, Canary, Voxtral. Tailles, langues, vitesse, licences.",
 };
 
 function Fiche({ m }: { m: Modele }) {
@@ -114,7 +114,7 @@ export default function Modeles() {
         <div className="rounded-[22px] bg-carte p-8">
           <h2 className="text-2xl font-extrabold">Reconnaissance de texte</h2>
           <p className="mt-2 max-w-3xl leading-relaxed text-encre-douce">
-            Pour les images, les captures et les PDF photocopiés, sillon embarque Tesseract avec
+            Pour les images, les captures et les PDF photocopiés, sillage embarque Tesseract avec
             le français et l&apos;anglais : rien à installer. Les pages sont reconnues en parallèle et le
             résultat est mémorisé, si bien que la deuxième ouverture est immédiate.
           </p>
@@ -126,7 +126,7 @@ export default function Modeles() {
         <div className="mt-10 text-center">
           <Bouton href="/telecharger">
             <IconeTelecharger />
-            Télécharger sillon
+            Télécharger sillage
           </Bouton>
         </div>
       </section>

@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 // Le lecteur, en miniature : la pastille citron suit le mot dit, la bande
 // tient la ligne où revenir. Ce n'est qu'une image animée, sans son.
 const lignes = [
-  ["sillon", "lit", "à", "voix", "haute", "ce", "que"],
+  ["sillage", "lit", "à", "voix", "haute", "ce", "que"],
   ["vous", "lui", "donnez,", "et", "montre", "chaque"],
   ["mot", "au", "moment", "où", "il", "est", "dit."],
 ];

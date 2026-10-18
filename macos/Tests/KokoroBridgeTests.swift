@@ -1,5 +1,5 @@
 import XCTest
-@testable import Sillon
+@testable import Sillage
 
 /// Un calcul Kokoro écrit en Swift, branché sur le pont : jamais MLX dans les
 /// tests unitaires.
@@ -14,7 +14,7 @@ final class FakeKokoroCompute: KokoroCompute, @unchecked Sendable {
 
     func load(modelDir: String) throws {
         lock.withLock { counts.load += 1 }
-        if failLoad { throw SillonError.Failed(message: "Calcul Metal indisponible") }
+        if failLoad { throw SillageError.Failed(message: "Calcul Metal indisponible") }
     }
     func warmUp() throws { lock.withLock { counts.warmUp += 1 } }
     func synthesize(ids: [Int64], style: [Float], cancel: SynthesisCancel) throws -> KokoroOutput {
@@ -56,7 +56,7 @@ final class KokoroBridgeTests: XCTestCase {
     /// Le lecteur muet ne migre ni ne propose rien.
     @MainActor
     func testTheSilentReaderNeitherMigratesNorOffers() async {
-        let m = ReaderModel(reader: SillonReader.silent())
+        let m = ReaderModel(reader: SillageReader.silent())
         let notice = await m.migrateVoice()
         XCTAssertNil(notice)
         XCTAssertNil(m.snapshot.offer)
@@ -81,7 +81,7 @@ final class KokoroBridgeTests: XCTestCase {
     /// du fil principal ; le lecteur muet n'écrit rien et le dit.
     @MainActor
     func testReplacingAnUnreadableConfigIsRefusedBySilentReader() async {
-        let m = ReaderModel(reader: SillonReader.silent())
+        let m = ReaderModel(reader: SillageReader.silent())
         do {
             try await m.replaceUnreadableConfig()
             XCTFail("le lecteur muet n'écrit rien")

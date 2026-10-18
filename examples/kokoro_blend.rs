@@ -2,7 +2,7 @@
 //!
 //!   cargo run --example kokoro_blend -- <dossier contenant voices/> <sortie.safetensors>
 
-use sillon::tts::kokoro::voices::VoicePack;
+use sillage::tts::kokoro::voices::VoicePack;
 
 fn main() -> anyhow::Result<()> {
     let args: Vec<String> = std::env::args().collect();

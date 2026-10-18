@@ -1,6 +1,6 @@
 import Foundation
 
-// Réécrit par Sillon : même API pour WhisperModel que l'amont, sans
+// Réécrit par Sillage : même API pour WhisperModel que l'amont, sans
 // swift-transformers. Le vocabulaire vient de `multilingual.tiktoken`
 // (TiktokenDecoder), les ids spéciaux de WhisperSpecialTokens.
 

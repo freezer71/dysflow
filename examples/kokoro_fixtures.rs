@@ -1,17 +1,17 @@
 //! Phonétise les phrases du spike comme le moteur le fera (par
-//! `sillon-espeak`, `scripts/build-espeak.sh`) : la
+//! `sillage-espeak`, `scripts/build-espeak.sh`) : la
 //! phrase parlée entière, puis chaque mot affiché seul. Écrit les fixtures
 //! d'alignement (le test tourne ensuite sans espeak-ng). En anglais, des
 //! phrases s'ajoutent pour les contractions, « Dr. » et les nombres.
 //!
-//!   SILLON_ESPEAK=target/espeak/bin/sillon-espeak SILLON_ESPEAK_DATA=target/espeak/share \
+//!   SILLAGE_ESPEAK=target/espeak/bin/sillage-espeak SILLAGE_ESPEAK_DATA=target/espeak/share \
 //!     cargo run --example kokoro_fixtures -- tests/fixtures/kokoro/align-fr.json fr
 //!   (idem avec tests/fixtures/kokoro/align-en.json en)
 
 use std::collections::BTreeMap;
 
-use sillon::doc::builder::{parse_document_in, CodePolicy};
-use sillon::tts::kokoro::phonemes::{EspeakProcess, Phonemizer};
+use sillage::doc::builder::{parse_document_in, CodePolicy};
+use sillage::tts::kokoro::phonemes::{EspeakProcess, Phonemizer};
 
 /// Ce que le spike anglais ne couvre pas : contractions, abréviations,
 /// nombres, heures et sommes.

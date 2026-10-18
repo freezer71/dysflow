@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-# Dessine le logo : un « s » tracé d'un seul trait, à la façon d'un sillon de
-# labour — trois rangs, deux demi-tours, comme l'œil qui suit les lignes.
+# Dessine le logo : un « s » tracé d'un seul trait, le sillage que la voix
+# laisse — trois rangs, deux demi-tours, comme l'œil qui suit les lignes.
 # Le point, au bout du trait, est la tête de lecture.
 #
 # Monochrome, à la manière des icônes de Notion : une seule encre, des droites
@@ -24,7 +24,7 @@ POLICE = os.path.join(RACINE, "assets", "fonts", "AtkinsonHyperlegible-Bold.ttf"
 
 # --- La marque ------------------------------------------------------------
 
-def sillon(largeur=26.0, ecart=13.0, trait=5.0, point=3.4, jeu=3.6):
+def sillage(largeur=26.0, ecart=13.0, trait=5.0, point=3.4, jeu=3.6):
     """Le trait en « s » et le point qui le termine.
 
     Trois rangs de `largeur`, espacés de `ecart` ; les demi-tours ont pour
@@ -44,7 +44,7 @@ def sillon(largeur=26.0, ecart=13.0, trait=5.0, point=3.4, jeu=3.6):
 
 
 def marque(encre=ENCRE, indent="", **dessin):
-    chemin, (px, py, pr), trait = sillon(**dessin)
+    chemin, (px, py, pr), trait = sillage(**dessin)
     return (f'{indent}<path d="{chemin}" fill="none" stroke="{encre}"'
             f' stroke-width="{trait}" stroke-linecap="round" stroke-linejoin="round"/>\n'
             f'{indent}<circle cx="{px:.2f}" cy="{py:.2f}" r="{pr}" fill="{encre}"/>')
@@ -58,7 +58,7 @@ PETITE = dict(largeur=24.0, ecart=15.0, trait=7.0, point=4.6, jeu=3.4)
 # --- Le mot ---------------------------------------------------------------
 
 def mot(texte, taille):
-    """« sillon » en Atkinson Hyperlegible, converti en tracés.
+    """« sillage » en Atkinson Hyperlegible, converti en tracés.
 
     Le lockup ne doit rien exiger de la machine qui l'affiche : la police est
     celle que le lecteur emploie déjà, mais elle voyage ici sous forme de
@@ -112,12 +112,12 @@ def icone(plaque=BLANC, encre=ENCRE, filet=FILET, **dessin):
 
 def svg(corps, largeur=64, hauteur=64):
     return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {largeur} {hauteur}"'
-            f' width="{largeur}" height="{hauteur}" role="img" aria-label="sillon">'
+            f' width="{largeur}" height="{hauteur}" role="img" aria-label="sillage">'
             f'\n{corps}\n</svg>\n')
 
 
 def lockup(encre=ENCRE, taille=40, gouttiere=8):
-    d, largeur_mot, limites = mot("sillon", taille)
+    d, largeur_mot, limites = mot("sillage", taille)
     # Le mot est calé sur le centre optique de ses propres contours, pas sur
     # sa ligne de base : c'est ce qui l'aligne vraiment avec la marque.
     ligne_de_base = CY - (limites[1] + limites[3]) / 2
@@ -139,18 +139,18 @@ def main():
     os.makedirs(SORTIE, exist_ok=True)
     print("Logo :")
 
-    ecrire("sillon-mark.svg", svg(marque(ENCRE, indent="  ")))
-    ecrire("sillon-mark-dark.svg", svg(marque(CLAIR, indent="  ")))
-    ecrire("sillon-mark-small.svg", svg(marque(ENCRE, indent="  ", **PETITE)))
-    ecrire("sillon-mark-small-dark.svg", svg(marque(CLAIR, indent="  ", **PETITE)))
+    ecrire("sillage-mark.svg", svg(marque(ENCRE, indent="  ")))
+    ecrire("sillage-mark-dark.svg", svg(marque(CLAIR, indent="  ")))
+    ecrire("sillage-mark-small.svg", svg(marque(ENCRE, indent="  ", **PETITE)))
+    ecrire("sillage-mark-small-dark.svg", svg(marque(CLAIR, indent="  ", **PETITE)))
 
     for suffixe, encre in (("", ENCRE), ("-dark", CLAIR)):
         corps, largeur = lockup(encre)
-        ecrire(f"sillon-lockup{suffixe}.svg", svg(corps, largeur=round(largeur + 4), hauteur=64))
+        ecrire(f"sillage-lockup{suffixe}.svg", svg(corps, largeur=round(largeur + 4), hauteur=64))
 
-    ecrire("sillon-app.svg", svg(icone()))
-    ecrire("sillon-app-small.svg", svg(icone(**PETITE)))
-    ecrire("sillon-app-dark.svg", svg(icone(NUIT, CLAIR, None)))
+    ecrire("sillage-app.svg", svg(icone()))
+    ecrire("sillage-app-small.svg", svg(icone(**PETITE)))
+    ecrire("sillage-app-dark.svg", svg(icone(NUIT, CLAIR, None)))
 
 
 if __name__ == "__main__":

@@ -3,7 +3,7 @@ import XCTest
 
 /// Sélectionner et copier sans entrer en édition ; l'édition seulement par
 /// le bouton Modifier. Lancé à la main, avec l'accord de l'utilisateur :
-/// `-only-testing:SillonUITests/SelectionUITests`. Le presse-papiers de
+/// `-only-testing:SillageUITests/SelectionUITests`. Le presse-papiers de
 /// l'utilisateur est sauvé, puis rendu.
 @MainActor
 final class SelectionUITests: XCTestCase {

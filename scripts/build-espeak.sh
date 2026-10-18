@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# Construit sillon-espeak (GPL-3.0), la phonétisation de Kokoro : un petit
-# programme à nous (scripts/sillon-espeak.c), lié à libespeak-ng construite
-# depuis les sources épinglées d'espeak-ng. Sillon ne s'y lie pas : il le lance
+# Construit sillage-espeak (GPL-3.0), la phonétisation de Kokoro : un petit
+# programme à nous (scripts/sillage-espeak.c), lié à libespeak-ng construite
+# depuis les sources épinglées d'espeak-ng. Sillage ne s'y lie pas : il le lance
 # et lui parle par ses entrées et sorties standard, ce qui fait de l'ensemble
 # un agrégat.
 #
 #   ./scripts/build-espeak.sh
 #
-# Produit target/espeak/bin/sillon-espeak, target/espeak/share/espeak-ng-data
+# Produit target/espeak/bin/sillage-espeak, target/espeak/share/espeak-ng-data
 # (français et anglais seulement), et, pour la GPL : target/espeak/COPYING,
 # SOURCE.txt (l'adresse exacte des sources d'espeak-ng, et l'engagement de
-# garder l'archive disponible) et sillon-espeak.c. L'archive téléchargée reste
+# garder l'archive disponible) et sillage-espeak.c. L'archive téléchargée reste
 # dans target/espeak : c'est elle qu'on fournit si l'adresse disparaît.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -88,24 +88,24 @@ done
 
 rm -rf "${OUT:?}/bin" "${OUT:?}/share"
 mkdir -p "$OUT/bin" "$OUT/share/espeak-ng-data"
-# Le programme : sillon-espeak.c et libespeak-ng, liée statiquement.
+# Le programme : sillage-espeak.c et libespeak-ng, liée statiquement.
 CFLAGS=(-O2 -Wall -I"$SRC/src/include")
 if [ "$(uname -s)" = Darwin ]; then
     CFLAGS+=(-mmacosx-version-min=14.0 -arch arm64)
 fi
-cc "${CFLAGS[@]}" scripts/sillon-espeak.c "$LIB" "$UCD" -lm -o "$OUT/bin/sillon-espeak"
+cc "${CFLAGS[@]}" scripts/sillage-espeak.c "$LIB" "$UCD" -lm -o "$OUT/bin/sillage-espeak"
 for f in phontab phonindex phondata phondata-manifest intonations fr_dict en_dict; do
     [ -f "$DATA/$f" ] && cp "$DATA/$f" "$OUT/share/espeak-ng-data/"
 done
 cp -R "$DATA/lang" "$OUT/share/espeak-ng-data/"
 [ -d "$DATA/voices" ] && cp -R "$DATA/voices" "$OUT/share/espeak-ng-data/"
 cp "$SRC/COPYING" "$OUT/COPYING"
-cp scripts/sillon-espeak.c "$OUT/sillon-espeak.c"
+cp scripts/sillage-espeak.c "$OUT/sillage-espeak.c"
 {
     echo "espeak-ng $VERSION, sources exactes : $URL (SHA-256 $SHA256)"
-    echo "sillon-espeak : sillon-espeak.c, à côté de ce fichier ; construit par build-espeak.sh"
-    echo "(à placer dans scripts/ avec sillon-espeak.c, à la racine des sources de Sillon)"
-    echo "L'archive ci-dessus (même empreinte) est conservée par le distributeur de Sillon et"
+    echo "sillage-espeak : sillage-espeak.c, à côté de ce fichier ; construit par build-espeak.sh"
+    echo "(à placer dans scripts/ avec sillage-espeak.c, à la racine des sources de Sillage)"
+    echo "L'archive ci-dessus (même empreinte) est conservée par le distributeur de Sillage et"
     echo "fournie sur demande, tant que ce programme est distribué, si l'adresse venait à disparaître."
 } > "$OUT/SOURCE.txt"
 
@@ -115,12 +115,12 @@ check() {
     local got
     # Le format porte les octets de la trame (\005, \000…) : voulu.
     # shellcheck disable=SC2059
-    got=$(printf "$1" | "$OUT/bin/sillon-espeak" "$OUT/share" | LC_ALL=C tr -d '\000-\037')
+    got=$(printf "$1" | "$OUT/bin/sillage-espeak" "$OUT/share" | LC_ALL=C tr -d '\000-\037')
     case "$got" in
         *"$2"*) echo "$2" ;;
-        *) echo "Erreur : sillon-espeak ne donne pas $2" >&2; exit 1 ;;
+        *) echo "Erreur : sillage-espeak ne donne pas $2" >&2; exit 1 ;;
     esac
 }
 check '\005\000\000\000fr-fr\001\000\000\000\010\000\000\000Bonjour.' 'bɔ̃ʒˈuʁ'
 check '\005\000\000\000en-us\001\000\000\000\006\000\000\000Hello.' 'həlˈo͡ʊ'
-du -sh "$OUT/bin/sillon-espeak" "$OUT/share/espeak-ng-data"
+du -sh "$OUT/bin/sillage-espeak" "$OUT/share/espeak-ng-data"

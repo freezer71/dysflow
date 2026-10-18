@@ -1,6 +1,6 @@
-//! Phonétisation par espeak-ng, par `sillon-espeak` : un petit programme à
-//! nous (GPL-3.0 comme espeak-ng, `scripts/sillon-espeak.c`), lié à
-//! libespeak-ng et lancé comme processus séparé. Sillon ne se lie pas à
+//! Phonétisation par espeak-ng, par `sillage-espeak` : un petit programme à
+//! nous (GPL-3.0 comme espeak-ng, `scripts/sillage-espeak.c`), lié à
+//! libespeak-ng et lancé comme processus séparé. Sillage ne se lie pas à
 //! espeak-ng : la GPL-3.0 reste de son côté. Le traitement de misaki
 //! (`EspeakG2P` pour le français, `EspeakFallback` pour l'anglais) est porté
 //! tel quel : Kokoro a été entraîné sur ces phonèmes.
@@ -49,34 +49,34 @@ pub(crate) fn voice_of(language: &str) -> &'static str {
     }
 }
 
-/// Le dossier du binaire, liens symboliques résolus : `$PREFIX/bin/sillon`,
-/// lien vers `$PREFIX/lib/sillon/sillon`, trouve ses voisins dans
-/// `lib/sillon/` (ONNX Runtime, `sillon-espeak`, `espeak-ng-data`).
+/// Le dossier du binaire, liens symboliques résolus : `$PREFIX/bin/sillage`,
+/// lien vers `$PREFIX/lib/sillage/sillage`, trouve ses voisins dans
+/// `lib/sillage/` (ONNX Runtime, `sillage-espeak`, `espeak-ng-data`).
 pub fn exe_dir() -> Option<PathBuf> {
     let exe = std::env::current_exe().ok()?;
     let exe = std::fs::canonicalize(&exe).unwrap_or(exe);
     exe.parent().map(Path::to_path_buf)
 }
 
-/// Le programme `sillon-espeak` : `SILLON_ESPEAK` (l'app y met le sien), à
+/// Le programme `sillage-espeak` : `SILLAGE_ESPEAK` (l'app y met le sien), à
 /// côté du binaire, puis le `PATH`.
 pub fn locate_program() -> Option<PathBuf> {
-    if let Some(path) = std::env::var_os("SILLON_ESPEAK").map(PathBuf::from) {
+    if let Some(path) = std::env::var_os("SILLAGE_ESPEAK").map(PathBuf::from) {
         return is_executable(&path).then_some(path);
     }
-    let beside = exe_dir().map(|d| d.join("sillon-espeak"));
+    let beside = exe_dir().map(|d| d.join("sillage-espeak"));
     if let Some(path) = beside.filter(|p| is_executable(p)) {
         return Some(path);
     }
     find_in_path(&std::env::var_os("PATH")?)
 }
 
-/// `sillon-espeak` dans un `PATH`, dont les entrées vides ou relatives (le dossier
+/// `sillage-espeak` dans un `PATH`, dont les entrées vides ou relatives (le dossier
 /// courant, donc n'importe quoi) sont ignorées.
 fn find_in_path(paths: &std::ffi::OsStr) -> Option<PathBuf> {
     std::env::split_paths(paths)
         .filter(|d| d.is_absolute())
-        .map(|d| d.join("sillon-espeak"))
+        .map(|d| d.join("sillage-espeak"))
         .find(|p| is_executable(p))
 }
 
@@ -87,10 +87,10 @@ fn is_executable(path: &std::path::Path) -> bool {
 }
 
 /// Le dossier qui contient `espeak-ng-data`, quand il n'est pas celui du
-/// système : `SILLON_ESPEAK_DATA` (l'app : `Contents/Resources`), sinon le
+/// système : `SILLAGE_ESPEAK_DATA` (l'app : `Contents/Resources`), sinon le
 /// dossier du binaire s'il le porte (paquet terminal de `package.sh`).
 pub fn data_dir() -> Option<PathBuf> {
-    data_dir_from(std::env::var_os("SILLON_ESPEAK_DATA"), exe_dir().as_deref())
+    data_dir_from(std::env::var_os("SILLAGE_ESPEAK_DATA"), exe_dir().as_deref())
 }
 
 fn data_dir_from(variable: Option<std::ffi::OsString>, exe_dir: Option<&Path>) -> Option<PathBuf> {
@@ -239,7 +239,7 @@ pub(crate) fn finish(language: &str, raw: &str) -> String {
     ps.replace('«', "(").replace('»', ")").trim().to_string()
 }
 
-/// Un lien avec `sillon-espeak` : ce qu'on lui écrit, les trames qu'il
+/// Un lien avec `sillage-espeak` : ce qu'on lui écrit, les trames qu'il
 /// renvoie (lues par un fil), et le processus lui-même.
 struct Running {
     writer: Box<dyn Write + Send>,
@@ -262,7 +262,7 @@ impl Running {
         voice: &str,
     ) -> Result<Self> {
         let (tx, frames) = mpsc::channel();
-        let thread = std::thread::Builder::new().name("sillon-espeak".into()).spawn(move || {
+        let thread = std::thread::Builder::new().name("sillage-espeak".into()).spawn(move || {
             let mut reader = BufReader::new(reader);
             loop {
                 let mut size = [0u8; 4];
@@ -283,23 +283,23 @@ impl Running {
         });
         let mut running = Self { writer, frames, child };
         // Désormais, `Running` tue et attend le processus s'il est relâché.
-        thread.context("fil de lecture de sillon-espeak")?;
+        thread.context("fil de lecture de sillage-espeak")?;
         let mut request = Vec::new();
         push_frame(&mut request, voice.as_bytes());
         running.send(&request)?;
         if running.read_frame()? != b"ok" {
-            bail!("sillon-espeak refuse la voix");
+            bail!("sillage-espeak refuse la voix");
         }
         Ok(running)
     }
 
     fn send(&mut self, request: &[u8]) -> Result<()> {
-        self.writer.write_all(request).context("écriture vers sillon-espeak")?;
-        self.writer.flush().context("écriture vers sillon-espeak")
+        self.writer.write_all(request).context("écriture vers sillage-espeak")?;
+        self.writer.flush().context("écriture vers sillage-espeak")
     }
 
     fn read_frame(&self) -> Result<Vec<u8>> {
-        self.frames.recv_timeout(ANSWER_TIMEOUT).map_err(|_| anyhow!("sillon-espeak ne répond plus"))
+        self.frames.recv_timeout(ANSWER_TIMEOUT).map_err(|_| anyhow!("sillage-espeak ne répond plus"))
     }
 
     /// Prêt pour une requête : vivant, et rien d'une requête passée ne reste
@@ -316,7 +316,7 @@ impl Running {
     /// ligne, puis « ok ». Le découpage ne tient qu'aux longueurs.
     fn ask(&mut self, lines: &[String]) -> Result<Vec<String>> {
         if lines.iter().any(|l| l.len() > MAX_LINE) {
-            bail!("entrée trop longue pour sillon-espeak");
+            bail!("entrée trop longue pour sillage-espeak");
         }
         let mut answers = Vec::with_capacity(lines.len());
         let mut start = 0;
@@ -337,7 +337,7 @@ impl Running {
                 answers.push(String::from_utf8_lossy(&self.read_frame()?).into_owned());
             }
             if self.read_frame()? != b"ok" {
-                bail!("réponses de sillon-espeak en trop");
+                bail!("réponses de sillage-espeak en trop");
             }
             start = end;
         }
@@ -354,7 +354,7 @@ impl Drop for Running {
     }
 }
 
-/// Une façon de lancer `sillon-espeak` : le vrai programme, ou, dans les
+/// Une façon de lancer `sillage-espeak` : le vrai programme, ou, dans les
 /// tests, un faux qui tourne dans un fil.
 enum Launcher {
     Program { program: PathBuf, data: Option<PathBuf> },
@@ -362,7 +362,7 @@ enum Launcher {
     Fake(std::sync::Arc<dyn Fn(std::io::PipeReader, std::io::PipeWriter) + Send + Sync>),
 }
 
-/// espeak-ng, par `sillon-espeak`, un processus par langue, lancé à la
+/// espeak-ng, par `sillage-espeak`, un processus par langue, lancé à la
 /// demande.
 pub struct EspeakProcess {
     launcher: Launcher,
@@ -378,7 +378,7 @@ impl EspeakProcess {
     pub fn locate() -> Result<Self> {
         match locate_program() {
             Some(program) => Ok(Self::new(program, data_dir())),
-            None => bail!("Installation de Sillon incomplète (sillon-espeak introuvable)"),
+            None => bail!("Installation de Sillage incomplète (sillage-espeak introuvable)"),
         }
     }
 
@@ -401,7 +401,7 @@ impl EspeakProcess {
                 let (Some(stdin), Some(stdout)) = (child.stdin.take(), child.stdout.take()) else {
                     let _ = child.kill();
                     let _ = child.wait();
-                    bail!("tubes de sillon-espeak absents");
+                    bail!("tubes de sillage-espeak absents");
                 };
                 Running::start(Box::new(stdin), Box::new(stdout), Some(child), voice)
             }
@@ -460,7 +460,7 @@ impl Phonemizer for EspeakProcess {
         };
         if answers.len() != lines.len() {
             self.running.remove(voice);
-            bail!("réponses de sillon-espeak incomplètes");
+            bail!("réponses de sillage-espeak incomplètes");
         }
         let mut answers = answers.into_iter();
         let mut joined = chunked.iter().map(|chunks| {
@@ -539,7 +539,7 @@ mod tests {
     /// trames des réponses puis « ok »), ou `None` pour mourir.
     type Answer = dyn Fn(usize, &[String]) -> Option<Vec<u8>> + Send + Sync;
 
-    /// Un faux `sillon-espeak` dans un fil, qui parle le vrai protocole.
+    /// Un faux `sillage-espeak` dans un fil, qui parle le vrai protocole.
     /// `answer` reçoit le numéro du lot (compté sur toutes les relances) et
     /// ses entrées.
     fn fake(answer: impl Fn(usize, &[String]) -> Option<Vec<u8>> + Send + Sync + 'static) -> EspeakProcess {
@@ -681,7 +681,7 @@ mod tests {
     fn script(name: &str, body: &str) -> EspeakProcess {
         let dir = crate::paths::test_scratch(&format!("espeak-{name}"));
         std::fs::create_dir_all(&dir).unwrap();
-        let path = dir.join("sillon-espeak");
+        let path = dir.join("sillage-espeak");
         std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
         EspeakProcess::new(path, None)
@@ -774,18 +774,18 @@ mod tests {
         let (plain, exec) = (root.join("plain"), root.join("exec"));
         for d in [&plain, &exec] {
             std::fs::create_dir_all(d).unwrap();
-            std::fs::write(d.join("sillon-espeak"), "#!/bin/sh\n").unwrap();
+            std::fs::write(d.join("sillage-espeak"), "#!/bin/sh\n").unwrap();
         }
-        std::fs::set_permissions(plain.join("sillon-espeak"), std::fs::Permissions::from_mode(0o644)).unwrap();
-        std::fs::set_permissions(exec.join("sillon-espeak"), std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::set_permissions(plain.join("sillage-espeak"), std::fs::Permissions::from_mode(0o644)).unwrap();
+        std::fs::set_permissions(exec.join("sillage-espeak"), std::fs::Permissions::from_mode(0o755)).unwrap();
         let path = |dirs: &[&std::path::Path]| std::env::join_paths(dirs).unwrap();
         assert_eq!(find_in_path(&path(&[&plain])), None, "pas exécutable");
-        assert_eq!(find_in_path(&path(&[&plain, &exec])), Some(exec.join("sillon-espeak")));
+        assert_eq!(find_in_path(&path(&[&plain, &exec])), Some(exec.join("sillage-espeak")));
         // Un dossier relatif (ici, le même dossier, atteint depuis le dossier
         // courant) ou une entrée vide ne comptent pas.
         let depth = std::env::current_dir().unwrap().components().count() - 1;
         let relative = std::path::PathBuf::from("../".repeat(depth)).join(exec.strip_prefix("/").unwrap());
-        assert!(relative.join("sillon-espeak").is_file(), "le chemin relatif mène bien au programme");
+        assert!(relative.join("sillage-espeak").is_file(), "le chemin relatif mène bien au programme");
         assert_eq!(find_in_path(&path(&[&relative, std::path::Path::new("")])), None);
     }
 
@@ -799,14 +799,14 @@ mod tests {
         assert!(normal.len() >= 2 && normal.iter().all(|c| c.split(' ').all(|w| w == "mot\u{a0}lié")));
     }
 
-    /// Parité avec misaki : `SILLON_ESPEAK=target/espeak/bin/espeak-ng
-    /// SILLON_ESPEAK_DATA=target/espeak/share cargo test --lib kokoro::phonemes -- --ignored`
+    /// Parité avec misaki : `SILLAGE_ESPEAK=target/espeak/bin/espeak-ng
+    /// SILLAGE_ESPEAK_DATA=target/espeak/share cargo test --lib kokoro::phonemes -- --ignored`
     #[test]
     #[ignore]
     fn french_phonemes_match_misaki() {
         let reference: std::collections::BTreeMap<String, std::collections::BTreeMap<String, String>> =
             serde_json::from_str(include_str!("../../../tests/fixtures/kokoro/misaki-phonemes.json")).unwrap();
-        let mut espeak = EspeakProcess::locate().expect("sillon-espeak construit");
+        let mut espeak = EspeakProcess::locate().expect("sillage-espeak construit");
         let fr = &reference["fr"];
         let texts: Vec<String> = fr.keys().cloned().collect();
         let ours = espeak.phonemize("fr", &texts).unwrap();
@@ -822,7 +822,7 @@ mod tests {
     fn english_phonemes_stay_close_to_misaki() {
         let reference: std::collections::BTreeMap<String, std::collections::BTreeMap<String, String>> =
             serde_json::from_str(include_str!("../../../tests/fixtures/kokoro/misaki-phonemes.json")).unwrap();
-        let mut espeak = EspeakProcess::locate().expect("sillon-espeak construit");
+        let mut espeak = EspeakProcess::locate().expect("sillage-espeak construit");
         let en = &reference["en"];
         let texts: Vec<String> = en.keys().cloned().collect();
         let ours = espeak.phonemize("en", &texts).unwrap();
@@ -854,7 +854,7 @@ mod tests {
     #[test]
     #[ignore]
     fn a_sentence_and_its_words_cost_under_five_milliseconds() {
-        let mut espeak = EspeakProcess::locate().expect("sillon-espeak construit");
+        let mut espeak = EspeakProcess::locate().expect("sillage-espeak construit");
         let sentence = "Le rapport de la SNCF, long de trente-sept pages, est arrivé un mardi.";
         let mut items = vec![sentence.to_string()];
         items.extend(sentence.split_whitespace().map(str::to_string));
@@ -872,12 +872,12 @@ mod tests {
 
     /// Le vrai programme : des textes qui faisaient écrire plusieurs lignes à
     /// espeak-ng, ou qui imitaient ses marques, reçoivent chacun leurs propres
-    /// phonèmes, jamais ceux d'un autre. `SILLON_ESPEAK=target/espeak/bin/sillon-espeak
-    /// SILLON_ESPEAK_DATA=target/espeak/share cargo test --lib kokoro::phonemes -- --ignored`
+    /// phonèmes, jamais ceux d'un autre. `SILLAGE_ESPEAK=target/espeak/bin/sillage-espeak
+    /// SILLAGE_ESPEAK_DATA=target/espeak/share cargo test --lib kokoro::phonemes -- --ignored`
     #[test]
     #[ignore]
     fn the_real_helper_gives_each_item_its_own_phonemes() {
-        let mut espeak = EspeakProcess::locate().expect("sillon-espeak construit");
+        let mut espeak = EspeakProcess::locate().expect("sillage-espeak construit");
         let cases: [(&str, Vec<String>); 2] = [
             (
                 "en",
@@ -907,7 +907,7 @@ mod tests {
     #[test]
     #[ignore]
     fn the_real_helper_stops_on_an_oversized_item() {
-        let program = locate_program().expect("sillon-espeak construit");
+        let program = locate_program().expect("sillage-espeak construit");
         let mut command = Command::new(program);
         if let Some(data) = data_dir() {
             command.arg(data);

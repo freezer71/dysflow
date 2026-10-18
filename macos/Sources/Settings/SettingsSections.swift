@@ -535,21 +535,21 @@ struct PermissionsSection: View {
     }
 }
 
-/// Ouvrir sillon à la connexion.
+/// Ouvrir sillage à la connexion.
 struct StartupSection: View {
     @State private var login = false
 
     var body: some View {
         SettingsGroup(title: "Démarrage") {
-            SettingRow(title: "Ouvrir sillon à la connexion", detail: "Dans la barre des menus, prêt à lire") {
-                Toggle("Ouvrir sillon à la connexion", isOn: $login)
+            SettingRow(title: "Ouvrir sillage à la connexion", detail: "Dans la barre des menus, prêt à lire") {
+                Toggle("Ouvrir sillage à la connexion", isOn: $login)
                     .notionSwitch()
                     .onAppear { login = LoginItem.isEnabled }
                     .onChange(of: login) { _, on in
                         // L'inscription peut être refusée : l'interrupteur dit l'état réel.
                         if LoginItem.isEnabled != on, !LoginItem.set(on) { login = LoginItem.isEnabled }
                     }
-                    .accessibilityLabel("Ouvrir sillon à la connexion")
+                    .accessibilityLabel("Ouvrir sillage à la connexion")
                     .accessibilityIdentifier("ouvrir-connexion")
             }
         }

@@ -1,5 +1,5 @@
 /// Ce que VoiceOver doit dire : les changements d'état, jamais les mots —
-/// la voix de sillon et celle de VoiceOver ne doivent pas se chevaucher.
+/// la voix de sillage et celle de VoiceOver ne doivent pas se chevaucher.
 struct Announcer {
     private var playing: Bool?
     private var section: UInt32??

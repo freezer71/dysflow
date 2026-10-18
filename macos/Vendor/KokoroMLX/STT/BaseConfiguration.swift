@@ -1,7 +1,7 @@
 import Foundation
 import MLX
 
-/// Ajout de Sillon : sous-ensemble de `MLXLMCommon.BaseConfiguration`
+/// Ajout de Sillage : sous-ensemble de `MLXLMCommon.BaseConfiguration`
 /// (mlx-swift-lm 3.32.3, licence MIT, ml-explore), seul symbole de MLXLMCommon
 /// qu'emploient les modèles STT copiés. Seule la quantification est lue ;
 /// le nom et les membres sont gardés pour ne toucher aucun site d'appel.

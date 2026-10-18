@@ -1,5 +1,5 @@
 import XCTest
-@testable import Sillon
+@testable import Sillage
 
 /// Les réglages en liste : six sections dans un ordre fixe, la Dictée
 /// seulement là où elle existe, la dernière section choisie retrouvée.
@@ -7,7 +7,7 @@ import XCTest
 final class SettingsNavigationTests: XCTestCase {
     /// Des préférences à part, vidées : jamais celles de l'utilisateur.
     private func freshDefaults() -> UserDefaults {
-        let name = "sillon.tests.reglages.section"
+        let name = "sillage.tests.reglages.section"
         let defaults = UserDefaults(suiteName: name)!
         defaults.removePersistentDomain(forName: name)
         return defaults

@@ -1,8 +1,9 @@
 # Le logo
 
-Un « s » tracé d'un seul trait, à la façon d'un sillon de labour : trois rangs
-et deux demi-tours, comme l'œil qui passe d'une ligne à la suivante. Le point,
-au bout du trait, est la tête de lecture — le mot en train d'être dit.
+Un « s » tracé d'un seul trait, comme le sillage que la voix laisse derrière
+elle : trois rangs et deux demi-tours, comme l'œil qui passe d'une ligne à la
+suivante. Le point, au bout du trait, est la tête de lecture — le mot en train
+d'être dit, que l'œil suit dans son sillage.
 
 Monochrome, à la manière des icônes de Notion : une seule encre, des droites
 et des demi-cercles. Il a remplacé le disque à l'accent orange le 14 octobre
@@ -19,14 +20,14 @@ changer l'un, c'est changer l'autre.
 
 | Fichier | Quand s'en servir |
 |---|---|
-| `sillon-mark.svg` | la marque seule, au-dessus de 32 pixels |
-| `sillon-mark-small.svg` | la marque au trait gras, de 16 à 32 pixels |
-| `sillon-lockup.svg` | la marque et le mot, pour un en-tête |
-| `sillon-app.svg` | l'icône d'application, plaque blanche comprise |
-| `sillon-app-small.svg` | la même, pour les tuiles de 16 et 32 points |
-| `sillon-app-dark.svg` | l'icône sur plaque sombre |
-| `sillon.icns` | l'icône au format macOS |
-| `sillon.png` | 512 pixels, pour les thèmes d'icônes de Linux |
+| `sillage-mark.svg` | la marque seule, au-dessus de 32 pixels |
+| `sillage-mark-small.svg` | la marque au trait gras, de 16 à 32 pixels |
+| `sillage-lockup.svg` | la marque et le mot, pour un en-tête |
+| `sillage-app.svg` | l'icône d'application, plaque blanche comprise |
+| `sillage-app-small.svg` | la même, pour les tuiles de 16 et 32 points |
+| `sillage-app-dark.svg` | l'icône sur plaque sombre |
+| `sillage.icns` | l'icône au format macOS |
+| `sillage.png` | 512 pixels, pour les thèmes d'icônes de Linux |
 
 Les SVG de marque et de lockup ont leur jumeau `-dark`, à servir sur fond
 sombre : l'encre y devient claire.
@@ -48,6 +49,6 @@ Elles sont définies dans `scripts/logo_gen.py`.
 
 ## Le mot
 
-« sillon » est composé en **Atkinson Hyperlegible Bold** et converti en
+« sillage » est composé en **Atkinson Hyperlegible Bold** et converti en
 contours : le lockup s'affiche partout sans rien exiger de la machine. La
 police est sous licence OFL — voir `assets/fonts/OFL-AtkinsonHyperlegible.txt`.

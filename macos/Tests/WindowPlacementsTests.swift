@@ -1,5 +1,5 @@
 import XCTest
-@testable import Sillon
+@testable import Sillage
 
 final class MiniPlacementTests: XCTestCase {
     private let main = CGRect(x: 0, y: 0, width: 1440, height: 875)
@@ -109,7 +109,7 @@ final class PanelSizeLimitsTests: XCTestCase {
     /// Le lecteur ne se réduit pas sous sa taille minimale (l'en-tête et la
     /// barre se chevaucheraient) ; le mini retrouve la sienne.
     func testTheReaderCannotShrinkBelowItsMinimumAndTheMiniGetsItsOwn() {
-        let name = "sillon.tests.affichage.limites"
+        let name = "sillage.tests.affichage.limites"
         let defaults = UserDefaults(suiteName: name)!
         defaults.removePersistentDomain(forName: name)
         // Jamais montrée : la fenêtre n'existe que pour ses limites.

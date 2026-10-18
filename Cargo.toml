@@ -2,10 +2,10 @@
 members = [".", "ffi"]
 
 [package]
-name = "sillon"
-version = "0.2.1"
+name = "sillage"
+version = "0.3.0"
 edition = "2021"
-# Le plus haut `rust-version` des crates que sillon compile (Cargo.lock,
+# Le plus haut `rust-version` des crates que sillage compile (Cargo.lock,
 # toutes features : image 0.25.10, darling 0.24…) ; vérifié par la CI (job
 # msrv). Le moteur de l'app (ffi/, par uniffi → cargo_metadata →
 # cargo-platform 0.3.3) demande 1.91.
@@ -74,7 +74,7 @@ ocr = ["dep:tesseract-rs", "dep:image", "clipboard"]
 kokoro-onnx = ["dep:ort", "dep:libloading"]
 
 [[bin]]
-name = "sillon"
+name = "sillage"
 path = "src/main.rs"
 
 [profile.release]

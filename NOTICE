@@ -1,4 +1,4 @@
-sillon
+sillage
 Copyright (c) Tharsan Vishnukumar
 
 Ce logiciel contient la bibliothèque Sonic (third_party/sonic : sonic.c et
@@ -12,26 +12,26 @@ téléchargée à la demande depuis mlx-community/Kokoro-82M-bf16 (révision
 a71e4d38b236d968966a2002c4c895dbd12b1c3c) ou
 onnx-community/Kokoro-82M-v1.0-ONNX-timestamped (révision
 dd4401a9add81ac692d20e240d22ec9dda82cc29). La voix p-fenrir60, livrée avec
-Sillon (assets/voices), en est dérivée (Apache 2.0).
+Sillage (assets/voices), en est dérivée (Apache 2.0).
 
 Les poids de MagpieTTS Multilingual 357M (NVIDIA) sont téléchargés à la
 demande depuis aufklarer/Magpie-TTS-Multilingual-357M-MLX-8bit (révision
 260839c0a2c46993735d72082c3fba177710d477), sous NVIDIA Open Model License :
-Licensed by NVIDIA Corporation under the NVIDIA Open Model License. Sillon
+Licensed by NVIDIA Corporation under the NVIDIA Open Model License. Sillage
 ne les livre pas. Ceux de Qwen3-TTS (Alibaba, Apache 2.0) le sont depuis
 mlx-community (révisions dans src/models.rs).
 
 Les poids de dictée sont téléchargés à la demande, jamais livrés avec
-Sillon (dépôts et révisions dans src/models.rs). Parmi eux, Phonon-2
+Sillage (dépôts et révisions dans src/models.rs). Parmi eux, Phonon-2
 (FermionResearch/Phonon-2, révision 7e153e4054c0a10db6d47d6fff5c062d4c77c154),
 Copyright 2026 Fermion Research, sous licence Creative Commons Attribution
 4.0 (https://creativecommons.org/licenses/by/4.0/) : dérivé de Parakeet TDT
 0.6B v3 (NVIDIA Corporation, CC-BY-4.0), dont Fermion Research a réentraîné
-et quantifié les poids. Le chargeur de Sillon
+et quantifié les poids. Le chargeur de Sillage
 (macos/Vendor/KokoroMLX/STT/Parakeet/PhononLoader.swift) suit le format
 décrit par fermion_container.py du même dépôt (Apache 2.0).
 
-La voix « siwis » de Qwen3-TTS 0.6B Base, livrée avec Sillon
+La voix « siwis » de Qwen3-TTS 0.6B Base, livrée avec Sillage
 (assets/voices/qwen3-06b-siwis.safetensors), est un vecteur de locuteur
 dérivé (adaptation) d'un extrait de la SIWIS French Speech Synthesis Database
 (J. Yamagishi, P.-E. Honnet, P. N. Garner, A. Lazaridis, 2017, University
@@ -76,7 +76,7 @@ Contents/Resources/licences (ce fichier compris) :
   (Copyright 2020 Braille Institute of America, Inc. —
   OFL-AtkinsonHyperlegible.txt) ;
 - Sonic, licence Apache 2.0 (voir plus haut) — sonic-LICENSE ;
-- le moteur de Sillon (bibliothèque Rust liée statiquement), et avec lui :
+- le moteur de Sillage (bibliothèque Rust liée statiquement), et avec lui :
   - les crates Rust qu'il lie (licences MIT, Apache 2.0, ISC, BSD,
     Unicode-3.0, Zlib, MPL-2.0, CDLA-Permissive-2.0), avec le texte de la
     licence de chacune — THIRD-PARTY-RUST.txt, généré depuis Cargo.lock par
@@ -90,14 +90,14 @@ Contents/Resources/licences (ce fichier compris) :
     française et anglaise de Tesseract (tesseract-ocr/tessdata_fast, licence
     Apache 2.0).
 
-L'app macOS contient sillon-espeak (Contents/Helpers/sillon-espeak), un petit
-programme de Sillon (scripts/sillon-espeak.c) lié à espeak-ng 1.52.0, avec
+L'app macOS contient sillage-espeak (Contents/Helpers/sillage-espeak), un petit
+programme de Sillage (scripts/sillage-espeak.c) lié à espeak-ng 1.52.0, avec
 les données d'espeak-ng (Contents/Resources/espeak-ng-data), sous licence GNU
-GPL version 3. C'est un programme séparé, que Sillon lance et auquel il parle
-par ses entrées et sorties : Sillon ne s'y lie pas. Le texte de la licence,
+GPL version 3. C'est un programme séparé, que Sillage lance et auquel il parle
+par ses entrées et sorties : Sillage ne s'y lie pas. Le texte de la licence,
 l'adresse exacte des sources d'espeak-ng
 (https://github.com/espeak-ng/espeak-ng/archive/refs/tags/1.52.0.tar.gz) et
-les sources de sillon-espeak (sillon-espeak.c, build-espeak.sh) sont livrés
+les sources de sillage-espeak (sillage-espeak.c, build-espeak.sh) sont livrés
 dans Contents/Resources/espeak-ng (COPYING, SOURCE.txt).
 
 Le terminal (dossier produit par scripts/package.sh) contient ce fichier,
@@ -111,7 +111,7 @@ même texte que tesseract-LICENSE).
 La feature kokoro-onnx charge ONNX Runtime 1.31.0 (licence MIT, Microsoft),
 livré à côté du binaire sous Linux (x86_64, ARM64) et sous macOS (Apple
 Silicon) avec sa licence et ses avis
-(LICENSE-onnxruntime, ThirdPartyNotices-onnxruntime.txt), et sillon-espeak
+(LICENSE-onnxruntime, ThirdPartyNotices-onnxruntime.txt), et sillage-espeak
 (GPL-3.0, programme séparé, comme dans l'app) avec ses données
 (espeak-ng-data), sa licence, l'adresse des sources d'espeak-ng et ses
-propres sources (sillon-espeak-source/).
+propres sources (sillage-espeak-source/).

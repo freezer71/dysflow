@@ -1,4 +1,4 @@
-@testable import Sillon
+@testable import Sillage
 
 extension VoiceModel {
     /// Un paquet de catalogue pour les tests.
@@ -17,7 +17,7 @@ extension Snapshot {
     static func sample(playing: Bool = false, sentence: UInt32 = 0, elapsed: Double? = 56,
                        total: Double? = 176, speed: Float = 1, voice: VoiceState = .ready,
                        hasDocument: Bool = true, revision: UInt64 = 1) -> Snapshot {
-        var s = SillonReader.silent().snapshot()
+        var s = SillageReader.silent().snapshot()
         s.hasDocument = hasDocument
         s.playing = playing
         s.sentence = sentence

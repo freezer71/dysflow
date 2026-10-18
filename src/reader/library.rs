@@ -424,7 +424,7 @@ impl Reader {
     /// hors de ce fil : leur arrêt attend la synthèse en cours (et MLX).
     pub(super) fn drop_library_preview(&mut self) {
         if let Some(LibraryPreview { previewer, player, engine, .. }) = self.library_preview.take() {
-            crate::sync::spawn_named("sillon-liberation", move || {
+            crate::sync::spawn_named("sillage-liberation", move || {
                 drop(previewer);
                 drop(engine);
             });

@@ -33,11 +33,11 @@ struct MenuContent: View {
             }
         }
         Divider()
-        // Pas de `SettingsLink` : il ouvre la fenêtre sans mettre sillon au
+        // Pas de `SettingsLink` : il ouvre la fenêtre sans mettre sillage au
         // premier plan, et elle s'ouvre derrière l'application active.
         Button("Réglages…") { SettingsOpener.shared.open() }
             .keyboardShortcut(",")
-        Button("Quitter sillon") { NSApp.terminate(nil) }
+        Button("Quitter sillage") { NSApp.terminate(nil) }
             .keyboardShortcut("q")
     }
 }

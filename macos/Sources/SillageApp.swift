@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct SillonApp: App {
+struct SillageApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
 
     var body: some Scene {
@@ -12,7 +12,7 @@ struct SillonApp: App {
             // Toujours présente : c'est elle qui donne l'action d'ouverture
             // des réglages, panneau masqué compris.
             Image(nsImage: LogoMark.templateImage())
-                .accessibilityLabel("sillon")
+                .accessibilityLabel("sillage")
                 .providesSettingsOpener()
         }
         Settings {

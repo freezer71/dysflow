@@ -236,7 +236,7 @@ class KokoroGenerator: Module {
                 xs = xs.map { $0 + blockOut } ?? blockOut
             }
             h = xs! / Float(numKernels)
-            // Sillon : point d'arrêt après chaque étage.
+            // Sillage : point d'arrêt après chaque étage.
             if stopsHere(h, shouldStop) { return nil }
         }
 
@@ -308,7 +308,7 @@ class KokoroDecoder: Module {
 
         var x = MLX.concatenated([asr, f0Down, nDown], axis: 1)
         x = encode(x, s)
-        if stopsHere(x, shouldStop) { return nil }   // Sillon
+        if stopsHere(x, shouldStop) { return nil }   // Sillage
 
         let asrResOut = asrRes[0](asr.swappedAxes(2, 1), op: .conv1d).swappedAxes(2, 1)
 
@@ -321,13 +321,13 @@ class KokoroDecoder: Module {
             if block.upsampleType != "none" {
                 res = false
             }
-            if stopsHere(x, shouldStop) { return nil }   // Sillon
+            if stopsHere(x, shouldStop) { return nil }   // Sillage
         }
         return generator(x, s, f0Curve, shouldStop: shouldStop)
     }
 }
 
-// MARK: - Points d'arrêt (ajout de Sillon)
+// MARK: - Points d'arrêt (ajout de Sillage)
 
 /// MLX est paresseux : sans évaluation, rien n'a encore tourné et le test
 /// ne vaudrait rien. Avec un test d'abandon, `x` est évalué (une

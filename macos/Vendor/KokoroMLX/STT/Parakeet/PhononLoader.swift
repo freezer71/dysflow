@@ -1,4 +1,4 @@
-// Ajout de Sillon, hors des fichiers repris de mlx-audio-swift : charge
+// Ajout de Sillage, hors des fichiers repris de mlx-audio-swift : charge
 // Phonon-2 (Fermion Research, poids sous CC-BY-4.0, dérivés de Parakeet TDT
 // 0.6B v3 de NVIDIA) dans le graphe Parakeet copié. Voir ORIGINE.md.
 

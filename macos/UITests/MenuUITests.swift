@@ -1,8 +1,8 @@
 import XCTest
 
 /// Le menu de la barre des menus et ⌃⌥S. Lancé à la main, avec l'accord
-/// de l'utilisateur : `-only-testing:SillonUITests/MenuUITests`. Quitter
-/// d'abord le sillon installé : il tiendrait ⌃⌥S et aurait aussi une icône.
+/// de l'utilisateur : `-only-testing:SillageUITests/MenuUITests`. Quitter
+/// d'abord le sillage installé : il tiendrait ⌃⌥S et aurait aussi une icône.
 @MainActor
 final class MenuUITests: XCTestCase {
     override func setUp() {
@@ -17,7 +17,7 @@ final class MenuUITests: XCTestCase {
         let titles = app.menuItems.allElementsBoundByIndex.map(\.title).filter { !$0.isEmpty }
             .filter { $0 != "Autoriser la lecture de la sélection…" }
         XCTAssertEqual(titles, ["Lire la sélection", "Ouvrir un fichier…", "Afficher le lecteur",
-                                "Réglages…", "Quitter sillon"])
+                                "Réglages…", "Quitter sillage"])
         app.typeKey(.escape, modifierFlags: [])
     }
 

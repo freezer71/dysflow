@@ -1,8 +1,8 @@
 import Foundation
 @preconcurrency import MLX
 
-/// L'entrée de Sillon pour Qwen3-TTS, comme `KokoroRunner` pour Kokoro :
-/// l'app ne lie pas MLX. Ajout de Sillon, hors des fichiers repris. Tout
+/// L'entrée de Sillage pour Qwen3-TTS, comme `KokoroRunner` pour Kokoro :
+/// l'app ne lie pas MLX. Ajout de Sillage, hors des fichiers repris. Tout
 /// s'appelle sous `MLXGate` (dans l'app) : une synthèse à la fois.
 public final class Qwen3TTSRunner: @unchecked Sendable {
     public static let sampleRate = 24_000

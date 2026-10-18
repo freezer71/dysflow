@@ -216,7 +216,7 @@ final class SettingsStore {
 
     /// Le message d'une erreur du moteur, sans l'habillage de l'enum.
     static func message(of error: Error) -> String {
-        if case SillonError.Failed(let message) = error { return message }
+        if case SillageError.Failed(let message) = error { return message }
         return error.localizedDescription
     }
 }

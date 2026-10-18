@@ -42,7 +42,7 @@ enum UITestStaging {
     /// Le lecteur donné, avec la mise en scène demandée par les arguments ;
     /// le même lecteur s'il n'y a rien à poser. Le modèle n'en sait rien :
     /// il lit un lecteur comme un autre.
-    static func reader(_ base: SillonReader, arguments: [String]) -> SillonReader {
+    static func reader(_ base: SillageReader, arguments: [String]) -> SillageReader {
         let stage = staging(for: arguments)
         let capabilities = capabilities(for: arguments)
         guard stage != nil || capabilities != nil else { return base }
@@ -52,11 +52,11 @@ enum UITestStaging {
 
 /// Un lecteur qui partage le moteur d'un autre (même objet Rust) et pose la
 /// mise en scène sur ce qu'il en rend.
-final class StagedReader: SillonReader, @unchecked Sendable {
+final class StagedReader: SillageReader, @unchecked Sendable {
     private let stage: (@Sendable (inout Snapshot) -> Void)?
     private let stagedCapabilities: ModelCapabilities?
 
-    init(_ base: SillonReader, stage: (@Sendable (inout Snapshot) -> Void)?,
+    init(_ base: SillageReader, stage: (@Sendable (inout Snapshot) -> Void)?,
          capabilities: ModelCapabilities?) {
         self.stage = stage
         stagedCapabilities = capabilities

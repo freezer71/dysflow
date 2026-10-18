@@ -11,7 +11,7 @@ fn fixture(name: &str) -> PathBuf {
 
 #[test]
 fn the_binary_writes_the_extracted_markdown_and_stops() {
-    let out = Command::new(env!("CARGO_BIN_EXE_sillon"))
+    let out = Command::new(env!("CARGO_BIN_EXE_sillage"))
         .arg(fixture("spec.pdf"))
         .arg("--to-markdown")
         .output()
@@ -29,8 +29,8 @@ fn the_binary_writes_the_extracted_markdown_and_stops() {
 
 #[test]
 fn a_pdf_becomes_markdown_the_reader_can_navigate() {
-    let markdown = sillon::source::load_with_cache(&fixture("spec.pdf"), false).expect("le PDF doit se lire");
-    let blocks = sillon::doc::blocks::split_blocks(&markdown);
+    let markdown = sillage::source::load_with_cache(&fixture("spec.pdf"), false).expect("le PDF doit se lire");
+    let blocks = sillage::doc::blocks::split_blocks(&markdown);
     assert!(
         blocks.len() >= 2,
         "le document doit se découper en blocs navigables, obtenu {} : {blocks:?}",
@@ -40,9 +40,9 @@ fn a_pdf_becomes_markdown_the_reader_can_navigate() {
 
 #[test]
 fn a_pdf_produces_sentences_to_speak() {
-    use sillon::doc::builder::{parse_document, CodePolicy};
+    use sillage::doc::builder::{parse_document, CodePolicy};
 
-    let markdown = sillon::source::load_with_cache(&fixture("spec.pdf"), false).expect("le PDF doit se lire");
+    let markdown = sillage::source::load_with_cache(&fixture("spec.pdf"), false).expect("le PDF doit se lire");
     let doc = parse_document(&markdown, CodePolicy::Announce);
     assert!(!doc.sentences.is_empty(), "aucune phrase à prononcer");
     let spoken: String = doc.sentences.iter().map(|s| s.text.as_str()).collect();
@@ -54,7 +54,7 @@ fn a_pdf_produces_sentences_to_speak() {
 
 #[test]
 fn a_laid_out_pdf_is_rebuilt_into_readable_markdown() {
-    let markdown = sillon::source::load_with_cache(&fixture("rapport.pdf"), false).expect("le PDF doit se lire");
+    let markdown = sillage::source::load_with_cache(&fixture("rapport.pdf"), false).expect("le PDF doit se lire");
 
     assert!(
         !markdown.contains("Confidentiel"),
@@ -92,9 +92,9 @@ fn a_laid_out_pdf_is_rebuilt_into_readable_markdown() {
 
 #[test]
 fn the_rebuilt_pdf_fills_the_table_of_contents() {
-    use sillon::doc::builder::{parse_document, CodePolicy};
+    use sillage::doc::builder::{parse_document, CodePolicy};
 
-    let markdown = sillon::source::load_with_cache(&fixture("rapport.pdf"), false).expect("le PDF doit se lire");
+    let markdown = sillage::source::load_with_cache(&fixture("rapport.pdf"), false).expect("le PDF doit se lire");
     let doc = parse_document(&markdown, CodePolicy::Announce);
     assert!(
         doc.sections.len() >= 4,
@@ -108,7 +108,7 @@ fn the_rebuilt_pdf_fills_the_table_of_contents() {
 #[test]
 fn a_scanned_pdf_is_recognised_and_rebuilt() {
     // Le cache est écarté : un test doit mesurer la chaîne, pas un souvenir.
-    let markdown = sillon::source::load_with_cache(&fixture("scanne.pdf"), false)
+    let markdown = sillage::source::load_with_cache(&fixture("scanne.pdf"), false)
         .expect("le scan doit se lire");
     assert!(
         markdown.contains("Spécification"),

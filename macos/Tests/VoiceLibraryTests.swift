@@ -1,5 +1,5 @@
 import XCTest
-@testable import Sillon
+@testable import Sillage
 
 /// Un moteur de bibliothèque pour les tests : il note ce qu'on lui demande.
 @MainActor
@@ -11,7 +11,7 @@ final class FakeVoiceLibraryBackend: VoiceLibraryBackend {
     func loadVoiceLibrary() async -> [LibraryVoice] { voices }
     func previewLibraryVoice(model: String, voice: String, text: String, speed: Float) async throws {
         log.append("écoute \(model)/\(voice) « \(text) » \(speed)")
-        if let failPreview { throw SillonError.Failed(message: failPreview) }
+        if let failPreview { throw SillageError.Failed(message: failPreview) }
     }
     func stopPreview() async { log.append("arrêt") }
     func releaseVoicePreview() async { log.append("relâche") }

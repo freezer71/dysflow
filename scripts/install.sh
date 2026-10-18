@@ -1,8 +1,8 @@
 #!/bin/sh
 # Installe le lecteur au terminal : tout ce que package.sh assemble dans dist/
-# (le binaire, ONNX Runtime, sillon-espeak et ses données, les licences) va
-# dans $PREFIX/lib/sillon, et $PREFIX/bin/sillon est un lien vers
-# ../lib/sillon/sillon. Le binaire résout ce lien pour trouver ses voisins.
+# (le binaire, ONNX Runtime, sillage-espeak et ses données, les licences) va
+# dans $PREFIX/lib/sillage, et $PREFIX/bin/sillage est un lien vers
+# ../lib/sillage/sillage. Le binaire résout ce lien pour trouver ses voisins.
 # Les modèles et la configuration vivent dans le répertoire de données.
 #
 #   ./scripts/install.sh                          # ~/.local, sans droits
@@ -10,17 +10,17 @@
 #   FEATURES=kokoro-onnx ./scripts/install.sh     # sans reconnaissance de texte
 #   REMPLACER=1 ./scripts/install.sh              # remplace sans question la commande de l'app
 #
-# Pour désinstaller : rm -r "$PREFIX/lib/sillon" "$PREFIX/bin/sillon"
+# Pour désinstaller : rm -r "$PREFIX/lib/sillage" "$PREFIX/bin/sillage"
 set -eu
 cd "$(dirname "$0")/.."
 
 PREFIX="${PREFIX:-$HOME/.local}"
 FEATURES="${FEATURES:-ocr,kokoro-onnx}"
 export FEATURES
-BIN="$PREFIX/bin/sillon"
-LIB="$PREFIX/lib/sillon"
+BIN="$PREFIX/bin/sillage"
+LIB="$PREFIX/lib/sillage"
 
-# bin/sillon est-il la commande de l'app (install-app-command.sh) ? Elle est
+# bin/sillage est-il la commande de l'app (install-app-command.sh) ? Elle est
 # remplacée seulement après avertissement : le lecteur au terminal prend sa
 # place.
 if [ -f "$BIN" ] && [ ! -L "$BIN" ] && head -c 200 "$BIN" | grep -q "ouvre l'app"; then
@@ -51,23 +51,23 @@ rm -rf "$LIB.nouveau"
 cp -R dist "$LIB.nouveau"
 rm -rf "$LIB"
 mv "$LIB.nouveau" "$LIB"
-ln -sfn ../lib/sillon/sillon "$BIN"
+ln -sfn ../lib/sillage/sillage "$BIN"
 
 # Depuis la racine, sans les variables qui désignent ORT ou espeak ailleurs :
 # le binaire ne dépend que de ce qui est installé.
 echo "Vérification hors de l'arbre de compilation…"
-( cd / && env -u SILLON_ORT_LIB -u SILLON_ESPEAK -u SILLON_ESPEAK_DATA "$BIN" --show-config >/dev/null )
+( cd / && env -u SILLAGE_ORT_LIB -u SILLAGE_ESPEAK -u SILLAGE_ESPEAK_DATA "$BIN" --show-config >/dev/null )
 case ",$FEATURES," in
 *,kokoro-onnx,*)
     if ls "$LIB"/libonnxruntime.* >/dev/null 2>&1; then
-        ( cd / && env -u SILLON_ORT_LIB -u SILLON_ESPEAK -u SILLON_ESPEAK_DATA "$BIN" --check-kokoro )
+        ( cd / && env -u SILLAGE_ORT_LIB -u SILLAGE_ESPEAK -u SILLAGE_ESPEAK_DATA "$BIN" --check-kokoro )
     else
-        echo "ONNX Runtime non joint sur cette plateforme : Kokoro demandera SILLON_ORT_LIB=<libonnxruntime>." >&2
+        echo "ONNX Runtime non joint sur cette plateforme : Kokoro demandera SILLAGE_ORT_LIB=<libonnxruntime>." >&2
     fi
     ;;
 esac
 
-echo "Installé : $BIN → $LIB/sillon"
+echo "Installé : $BIN → $LIB/sillage"
 
 case ":$PATH:" in
     *":$PREFIX/bin:"*) ;;

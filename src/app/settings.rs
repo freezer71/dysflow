@@ -11,7 +11,7 @@ impl App {
     }
 
     /// `q`, `Échap` ou `s` : les réglages se ferment, la lecture reste. Sans
-    /// rien à lire (`sillon --config` seul), il n'y a rien derrière : fermer
+    /// rien à lire (`sillage --config` seul), il n'y a rien derrière : fermer
     /// rend la main au terminal.
     pub fn close_config(&mut self) {
         self.stop_preview();
@@ -250,13 +250,13 @@ impl App {
         self.skipped.clear();
 
         let previous = std::mem::replace(&mut self.synth, synth);
-        crate::sync::spawn_named("sillon-liberation", move || drop(previous));
+        crate::sync::spawn_named("sillage-liberation", move || drop(previous));
 
         // L'aperçu doit parler avec le nouveau moteur, pas avec l'ancien. Son
         // arrêt attend la synthèse en cours : hors du thread d'interface, donc.
         self.stop_preview();
         let previous = std::mem::replace(&mut self.previewer, Previewer::new(self.synth.engine()));
-        crate::sync::spawn_named("sillon-liberation", move || drop(previous));
+        crate::sync::spawn_named("sillage-liberation", move || drop(previous));
 
         self.player.flush();
         self.timings.clear();
@@ -336,7 +336,7 @@ impl App {
         let stats = self.synth.stats();
         (stats.in_flight > 0).then(|| {
             format!(
-                "sillon : une synthèse se termine avant de rendre la main ({})…",
+                "sillage : une synthèse se termine avant de rendre la main ({})…",
                 self.engine_name()
             )
         })

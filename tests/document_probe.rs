@@ -6,8 +6,8 @@
 //! DOC=chemin.md cargo test --test document_probe -- --ignored --nocapture
 //! ```
 
-use sillon::doc::builder::CodePolicy;
-use sillon::doc::DocumentBuilder;
+use sillage::doc::builder::CodePolicy;
+use sillage::doc::DocumentBuilder;
 
 #[test]
 #[ignore = "sonde : demande un document"]
@@ -15,7 +15,7 @@ fn what_reaches_the_engine() {
     let path = std::env::var("DOC").expect("DOC=chemin.md");
     let text = std::fs::read_to_string(&path).expect("lecture");
     let mut builder = DocumentBuilder::new(CodePolicy::Announce);
-    for block in sillon::doc::blocks::split_blocks(&text) {
+    for block in sillage::doc::blocks::split_blocks(&text) {
         builder.push_block(&block);
     }
     builder.finish();

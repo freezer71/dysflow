@@ -10,7 +10,7 @@ pub const WIDTH: usize = 256;
 /// Colonnes 0–127 : le timbre ; 128–255 : la prosodie.
 const TIMBRE: usize = 128;
 
-/// Les voix livrées avec Sillon : nom et contenu.
+/// Les voix livrées avec Sillage : nom et contenu.
 const SHIPPED: &[(&str, &[u8])] = &[(
     "p-fenrir60",
     include_bytes!("../../../assets/voices/p-fenrir60.safetensors"),
@@ -118,7 +118,7 @@ impl VoicePack {
     }
 }
 
-/// Une voix : livrée avec Sillon, sinon dans `model_dir/voices/`.
+/// Une voix : livrée avec Sillage, sinon dans `model_dir/voices/`.
 pub fn load_voice(model_dir: &Path, name: &str) -> Result<VoicePack> {
     if let Some((_, bytes)) = SHIPPED.iter().find(|(shipped, _)| *shipped == name) {
         return VoicePack::from_safetensors(bytes);
@@ -213,19 +213,19 @@ mod tests {
     }
 
     #[test]
-    fn the_french_voice_ships_with_sillon() {
+    fn the_french_voice_ships_with_sillage() {
         let dir = crate::paths::test_scratch("sans-voix");
         let v = load_voice(&dir, "p-fenrir60").expect("livrée dans le binaire");
         assert_eq!(v.values().len(), ROWS * WIDTH);
         assert!(load_voice(&dir, "af_bella").is_err(), "les autres viennent du paquet");
     }
 
-    /// `SILLON_KOKORO_DIR=<dossier avec voices/ff_siwis.safetensors et
+    /// `SILLAGE_KOKORO_DIR=<dossier avec voices/ff_siwis.safetensors et
     /// voices/am_fenrir.safetensors> cargo test --lib kokoro::voices -- --ignored`
     #[test]
     #[ignore]
     fn the_shipped_voice_matches_its_recipe() {
-        let dir = std::path::PathBuf::from(std::env::var("SILLON_KOKORO_DIR").expect("SILLON_KOKORO_DIR"));
+        let dir = std::path::PathBuf::from(std::env::var("SILLAGE_KOKORO_DIR").expect("SILLAGE_KOKORO_DIR"));
         let read = |name: &str| {
             VoicePack::from_safetensors(&std::fs::read(dir.join("voices").join(format!("{name}.safetensors"))).unwrap())
                 .unwrap()

@@ -1,5 +1,5 @@
 import XCTest
-@testable import Sillon
+@testable import Sillage
 
 /// L'essai du micro, de bout en bout, avec un faux moteur : rien n'est saisi,
 /// le modèle de la dictée ne change pas, les résultats restent.

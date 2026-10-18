@@ -1,6 +1,6 @@
 import AppKit
 import XCTest
-@testable import Sillon
+@testable import Sillage
 
 /// Ce que le panneau fait d'une touche, selon le focus et l'édition.
 @MainActor

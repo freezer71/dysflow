@@ -23,14 +23,14 @@ extern "C" {
     fn sonicSamplesAvailable(stream: sonicStream) -> c_int;
     fn sonicSetSpeed(stream: sonicStream, speed: c_float);
     fn sonicSetQuality(stream: sonicStream, quality: c_int);
-    fn sillon_sonic_heap_calls_on_this_thread() -> u64;
+    fn sillage_sonic_heap_calls_on_this_thread() -> u64;
 }
 
 /// Appels de Sonic au tas (calloc, realloc, free) faits par le fil courant.
 ///
 /// Sert à vérifier que le fil audio n'alloue rien une fois la phrase prête.
 pub fn heap_calls_on_this_thread() -> u64 {
-    unsafe { sillon_sonic_heap_calls_on_this_thread() }
+    unsafe { sillage_sonic_heap_calls_on_this_thread() }
 }
 
 /// Marge avant Sonic, qui stocke en 16 bits et déborderait au-delà de ±1 :

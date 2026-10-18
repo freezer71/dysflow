@@ -1,5 +1,5 @@
 import XCTest
-@testable import Sillon
+@testable import Sillage
 
 /// L'hôte des tests unitaires ne touche jamais aux données de l'utilisateur.
 @MainActor

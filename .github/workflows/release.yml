@@ -68,8 +68,8 @@ jobs:
           # Le nom de l'archive ne porte pas la version : l'adresse
           # /releases/latest/download/<nom> reste la même d'une version à
           # l'autre (le site et install.sh y pointent). Le dossier, lui, la porte.
-          dossier="sillon-${TAG#v}-linux-${{ matrix.arch }}"
-          name="sillon-linux-${{ matrix.arch }}"
+          dossier="sillage-${TAG#v}-linux-${{ matrix.arch }}"
+          name="sillage-linux-${{ matrix.arch }}"
           mv dist "$dossier"
           tar -czf "$name.tar.gz" "$dossier"
           sha256sum "$name.tar.gz" > "$name.tar.gz.sha256"
@@ -126,13 +126,13 @@ jobs:
           cp dist/*.zip dist/*.zip.sha256 "$srv/"
           (cd "$RUNNER_TEMP/srv" && python3 -m http.server 8765 >/dev/null 2>&1 &)
           sleep 1
-          SILLON_DEPOT=http://localhost:8765 SILLON_VERSION="${TAG#v}" \
-            SILLON_APPLICATIONS="$RUNNER_TEMP/apps" PREFIX="$RUNNER_TEMP/prefix" sh install.sh
-          codesign --verify --deep --strict "$RUNNER_TEMP/apps/Sillon.app"
-          test -x "$RUNNER_TEMP/prefix/bin/sillon"
+          SILLAGE_DEPOT=http://localhost:8765 SILLAGE_VERSION="${TAG#v}" \
+            SILLAGE_APPLICATIONS="$RUNNER_TEMP/apps" PREFIX="$RUNNER_TEMP/prefix" sh install.sh
+          codesign --verify --deep --strict "$RUNNER_TEMP/apps/Sillage.app"
+          test -x "$RUNNER_TEMP/prefix/bin/sillage"
       - uses: actions/upload-artifact@v4
         with:
-          name: sillon-macos
+          name: sillage-macos
           path: |
             dist/*.zip
             dist/*.dmg
@@ -161,5 +161,5 @@ jobs:
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" paquets/* --clobber
           else
-            gh release create "$TAG" paquets/* --title "sillon ${TAG#v}" --notes-file .github/release-notes.md
+            gh release create "$TAG" paquets/* --title "sillage ${TAG#v}" --notes-file .github/release-notes.md
           fi

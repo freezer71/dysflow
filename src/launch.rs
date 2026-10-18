@@ -13,7 +13,7 @@ use crate::{doc, tts};
 
 #[derive(Parser, Debug, Default)]
 #[command(
-    name = "sillon",
+    name = "sillage",
     version,
     about = "Lit à voix haute du markdown pipé ou un fichier, avec contrôles de lecture complets."
 )]
@@ -73,7 +73,7 @@ pub struct Args {
     #[arg(long, hide = true)]
     pub show_config: bool,
 
-    /// Vérifie que Kokoro se charge (ONNX Runtime, sillon-espeak et ses
+    /// Vérifie que Kokoro se charge (ONNX Runtime, sillage-espeak et ses
     /// données) puis quitte.
     #[arg(long, hide = true)]
     pub check_kokoro: bool,
@@ -95,21 +95,21 @@ pub struct Args {
     pub config: bool,
 }
 
-/// Ce que `sillon` lancé seul dans un terminal affiche, avant de rendre la
+/// Ce que `sillage` lancé seul dans un terminal affiche, avant de rendre la
 /// main : il n'y a rien à lire, mais tout à savoir pour lire.
 pub const SHORT_HELP: &str = "\
-sillon lit un texte à voix haute, en le montrant mot à mot.
+sillage lit un texte à voix haute, en le montrant mot à mot.
 
 Quatre manières de lire :
-  sillon document.md        un fichier : markdown, texte, PDF, image
-  commande | sillon         ce qu'une commande écrit, au fil de l'eau
-  sillon --clip             le presse-papiers
-  l'app sillon (macOS)      ⌃⌥Espace lit la sélection
+  sillage document.md        un fichier : markdown, texte, PDF, image
+  commande | sillage         ce qu'une commande écrit, au fil de l'eau
+  sillage --clip             le presse-papiers
+  l'app sillage (macOS)      ⌃⌥Espace lit la sélection
 
-Réglages : sillon --config · toutes les options : sillon --help
+Réglages : sillage --config · toutes les options : sillage --help
 ";
 
-/// Vrai quand `sillon` est lancé seul dans un terminal : ni fichier, ni
+/// Vrai quand `sillage` est lancé seul dans un terminal : ni fichier, ni
 /// presse-papiers, ni réglages demandés, et rien qui arrive par un tube.
 pub fn nothing_to_read(args: &Args, stdin_is_terminal: bool) -> bool {
     args.file.is_none() && !args.clip && !args.config && stdin_is_terminal
@@ -630,8 +630,8 @@ mod tests {
 
     #[test]
     fn nothing_to_read_only_from_a_bare_terminal() {
-        assert!(nothing_to_read(&Args::default(), true), "sillon seul, dans un terminal");
-        assert!(!nothing_to_read(&Args::default(), false), "cat notes.md | sillon lit le tube");
+        assert!(nothing_to_read(&Args::default(), true), "sillage seul, dans un terminal");
+        assert!(!nothing_to_read(&Args::default(), false), "cat notes.md | sillage lit le tube");
         let file = Args { file: Some("notes.md".into()), ..Args::default() };
         assert!(!nothing_to_read(&file, true));
         let clip = Args { clip: true, ..Args::default() };
@@ -642,7 +642,7 @@ mod tests {
 
     #[test]
     fn the_short_help_names_the_four_ways_to_read() {
-        for way in ["sillon document.md", "| sillon", "sillon --clip", "app", "--config", "--help"] {
+        for way in ["sillage document.md", "| sillage", "sillage --clip", "app", "--config", "--help"] {
             assert!(SHORT_HELP.contains(way), "{way} manque :\n{SHORT_HELP}");
         }
     }
@@ -665,7 +665,7 @@ mod tests {
     #[test]
     fn hidden_options_are_still_accepted() {
         let args = Args::try_parse_from([
-            "sillon", "--pitch", "0.5", "--language", "en", "--engine", "system", "--sessions", "2",
+            "sillage", "--pitch", "0.5", "--language", "en", "--engine", "system", "--sessions", "2",
             "--prefetch", "4", "--code-blocks", "skip", "--no-autoplay", "--show-config",
         ])
         .expect("toujours acceptées");

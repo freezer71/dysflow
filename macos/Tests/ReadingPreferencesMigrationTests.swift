@@ -1,11 +1,11 @@
 import XCTest
-@testable import Sillon
+@testable import Sillage
 
 /// Police et taille : des préférences vers config.toml, une fois.
 @MainActor
 final class ReadingPreferencesMigrationTests: XCTestCase {
     private func freshDefaults() -> UserDefaults {
-        let name = "sillon.tests.reprise-lecture"
+        let name = "sillage.tests.reprise-lecture"
         let defaults = UserDefaults(suiteName: name)!
         defaults.removePersistentDomain(forName: name)
         return defaults

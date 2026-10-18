@@ -47,18 +47,18 @@ jobs:
       - name: Clippy
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - name: Clippy (Kokoro au terminal)
-        run: cargo clippy -p sillon --all-targets --features kokoro-onnx --locked -- -D warnings
+        run: cargo clippy -p sillage --all-targets --features kokoro-onnx --locked -- -D warnings
       - name: Paquet et installation du terminal (ocr, kokoro-onnx)
         if: runner.os == 'Linux'
         # install.sh lance package.sh (build --features ocr,kokoro-onnx,
-        # ONNX Runtime vérifié, sillon-espeak), installe sous PREFIX, puis
+        # ONNX Runtime vérifié, sillage-espeak), installe sous PREFIX, puis
         # vérifie depuis / que le binaire démarre et que Kokoro se charge.
         run: PREFIX="$RUNNER_TEMP/prefix" ./scripts/install.sh
       - name: Paquet joint
         if: runner.os == 'Linux'
         uses: actions/upload-artifact@v4
         with:
-          name: sillon-${{ runner.os }}-${{ runner.arch }}
+          name: sillage-${{ runner.os }}-${{ runner.arch }}
           path: dist/
           retention-days: 7
 
@@ -72,12 +72,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends libasound2-dev pkg-config cmake clang
       - name: Chaînes Rust du MSRV
-        # 1.88 : rust-version de sillon (Cargo.toml). 1.91 : le moteur de
+        # 1.88 : rust-version de sillage (Cargo.toml). 1.91 : le moteur de
         # l'app (ffi/, cargo-platform 0.3.3 par uniffi).
         run: rustup toolchain install 1.88 1.91 --profile minimal --no-self-update
       - uses: Swatinem/rust-cache@v2
-      - name: sillon en 1.88, toutes features
-        run: cargo +1.88 check -p sillon --all-features --all-targets --locked
+      - name: sillage en 1.88, toutes features
+        run: cargo +1.88 check -p sillage --all-features --all-targets --locked
       - name: Espace de travail en 1.91
         run: cargo +1.91 check --workspace --all-targets --locked
 
@@ -114,16 +114,16 @@ jobs:
             xcodebuild -downloadComponent MetalToolchain
           fi
       - uses: Swatinem/rust-cache@v2
-      - name: sillon-espeak
+      - name: sillage-espeak
         run: ./scripts/build-espeak.sh
       - name: Moteur et liaison Swift
         run: ./scripts/build-ffi.sh
       - name: Tests de l'app
-        # Les tests d'interface (SillonUITests) pilotent l'app à l'écran et
+        # Les tests d'interface (SillageUITests) pilotent l'app à l'écran et
         # demandent l'accès Accessibilité : hors CI.
         working-directory: macos
         run: |
           xcodegen generate
-          xcodebuild -project Sillon.xcodeproj -scheme Sillon \
+          xcodebuild -project Sillage.xcodeproj -scheme Sillage \
             -destination 'platform=macOS,arch=arm64' -derivedDataPath build/derived \
-            test -only-testing:SillonTests
+            test -only-testing:SillageTests

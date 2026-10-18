@@ -10,8 +10,8 @@
 use std::sync::Arc;
 use std::time::Instant;
 
-use sillon::audio::sonic::Sonic;
-use sillon::audio::tempo::{SpeedControl, Tempo};
+use sillage::audio::sonic::Sonic;
+use sillage::audio::tempo::{SpeedControl, Tempo};
 
 const RATE: u32 = 24_000;
 const DEVICE: u32 = 48_000;

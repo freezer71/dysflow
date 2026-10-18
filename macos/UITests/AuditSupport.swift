@@ -11,7 +11,7 @@ extension XCUIApplication {
     /// (vérifié le 2026-10-05, macOS 26.6). Quand un champ de texte a le focus,
     /// le système y met ses propres boutons (« emoji & symbols », suggestions
     /// de saisie), eux aussi sans nom ni action pour l'audit (vu le
-    /// 2026-10-08). Sillon ne définit aucune Touch Bar : tout ce qui s'y trouve
+    /// 2026-10-08). Sillage ne définit aucune Touch Bar : tout ce qui s'y trouve
     /// vient du système et est écarté.
     ///
     /// Avec `visibleIn`, un défaut de contraste n'est retenu que pour un

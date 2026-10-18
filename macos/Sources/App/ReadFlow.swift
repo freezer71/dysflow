@@ -25,7 +25,7 @@ struct ReadFlow {
         case .veto(.secure):
             say("Champ sécurisé : rien n'est lu")
         case .veto(.ownApp):
-            say("sillon est au premier plan : sélectionnez dans une autre application")
+            say("sillage est au premier plan : sélectionnez dans une autre application")
         case .noSelection, .unsupported:
             await openClipboard()
         }

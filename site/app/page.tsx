@@ -74,13 +74,13 @@ const publics = [
   },
   {
     titre: "Développeurs",
-    texte: "Documentation, README, réponses d'IA pipées dans le terminal : `llm \"…\" | sillon` démarre la lecture avant la fin du flux.",
+    texte: "Documentation, README, réponses d'IA pipées dans le terminal : `llm \"…\" | sillage` démarre la lecture avant la fin du flux.",
   },
 ];
 
 type Case = "oui" | "non" | "partiel" | string;
 
-const concurrents = ["sillon", "Speechify", "ElevenReader", "NaturalReader", "Contenu énoncé (macOS)"];
+const concurrents = ["sillage", "Speechify", "ElevenReader", "NaturalReader", "Contenu énoncé (macOS)"];
 
 const comparaison: { critere: string; cases: Case[] }[] = [
   { critere: "Gratuit, sans limite d'usage", cases: ["oui", "Gratuit limité, puis abonnement", "Gratuit limité, puis abonnement", "Gratuit limité, puis abonnement", "oui"] },
@@ -97,7 +97,7 @@ const comparaison: { critere: string; cases: Case[] }[] = [
 const faq = [
   {
     q: "C'est vraiment gratuit ?",
-    r: "Oui, et sans contrepartie : pas de compte, pas de publicité, pas de version « Pro ». sillon est un logiciel libre sous licence MIT ; les modèles se téléchargent depuis leurs dépôts publics.",
+    r: "Oui, et sans contrepartie : pas de compte, pas de publicité, pas de version « Pro ». sillage est un logiciel libre sous licence MIT ; les modèles se téléchargent depuis leurs dépôts publics.",
   },
   {
     q: "Mes documents sont-ils envoyés quelque part ?",
@@ -121,10 +121,10 @@ const faq = [
   },
 ];
 
-function Valeur({ v, sillon }: { v: Case; sillon?: boolean }) {
+function Valeur({ v, sillage }: { v: Case; sillage?: boolean }) {
   if (v === "oui")
     return (
-      <span className={`inline-grid size-7 place-items-center rounded-full ${sillon ? "bg-citron text-citron-encre" : "bg-carte-2 text-encre"}`} aria-label="Oui">
+      <span className={`inline-grid size-7 place-items-center rounded-full ${sillage ? "bg-citron text-citron-encre" : "bg-carte-2 text-encre"}`} aria-label="Oui">
         <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="m5 12 5 5 9-10" /></svg>
       </span>
     );
@@ -151,14 +151,14 @@ export default function Accueil() {
             Écoutez vos documents. Suivez chaque mot.
           </h1>
           <p className="mt-6 max-w-xl text-pretty text-xl leading-relaxed text-encre-douce">
-            sillon lit à voix haute vos PDF, vos notes et vos captures d&apos;écran, et surligne
+            sillage lit à voix haute vos PDF, vos notes et vos captures d&apos;écran, et surligne
             chaque mot au moment où il est dit. Des voix naturelles, calculées sur votre machine :
             rien ne part en ligne, et rien n&apos;est à payer.
           </p>
           <div className="mt-9 flex flex-wrap gap-3">
             <Bouton href="/telecharger">
               <IconeTelecharger />
-              Télécharger sillon
+              Télécharger sillage
             </Bouton>
             <Bouton href={depot} variante="doux">
               Voir le code sur GitHub
@@ -187,9 +187,9 @@ export default function Accueil() {
       {/* Avantages */}
       <section id="avantages" className="mx-auto max-w-6xl scroll-mt-20 px-4 pt-28 sm:px-6">
         <TitreSection
-          surtitre="Pourquoi sillon"
+          surtitre="Pourquoi sillage"
           titre="Un lecteur pensé pour être suivi des yeux"
-          texte="La plupart des lecteurs vocaux se contentent de parler. sillon comprend ce qu'il lit, et vous montre où vous en êtes."
+          texte="La plupart des lecteurs vocaux se contentent de parler. sillage comprend ce qu'il lit, et vous montre où vous en êtes."
         />
         <div className="mt-14 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {avantages.map((a) => (
@@ -229,7 +229,7 @@ export default function Accueil() {
         <TitreSection
           surtitre="Comparaison"
           titre="Tout ce que font les grands, sans l'abonnement ni le cloud"
-          texte="Les lecteurs commerciaux envoient vos textes à leurs serveurs et font payer les belles voix. sillon fait le calcul chez vous."
+          texte="Les lecteurs commerciaux envoient vos textes à leurs serveurs et font payer les belles voix. sillage fait le calcul chez vous."
         />
         <div className="mt-14 overflow-x-auto rounded-[22px] bg-carte">
           <table className="w-full min-w-[760px] border-collapse text-left">
@@ -249,7 +249,7 @@ export default function Accueil() {
                   <td className="p-5 font-bold">{ligne.critere}</td>
                   {ligne.cases.map((v, i) => (
                     <td key={i} className={`p-5 text-center ${i === 0 ? "bg-bande" : ""}`}>
-                      <Valeur v={v} sillon={i === 0} />
+                      <Valeur v={v} sillage={i === 0} />
                     </td>
                   ))}
                 </tr>
@@ -323,7 +323,7 @@ export default function Accueil() {
               className="inline-flex items-center gap-2 rounded-full bg-[#191919] px-6 py-3.5 font-bold text-white hover:opacity-90"
             >
               <IconeTelecharger />
-              Télécharger sillon
+              Télécharger sillage
             </Link>
           </div>
         </div>

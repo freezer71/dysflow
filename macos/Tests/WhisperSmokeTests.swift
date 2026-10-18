@@ -6,14 +6,14 @@ import KokoroMLX
 /// dossier local, sans rien télécharger, trouve son vocabulaire dans
 /// `multilingual.tiktoken` et transcrit une seconde de silence en français
 /// sans planter.
-/// Lance le vrai modèle (MLX, Metal) : seulement avec `SILLON_STT_MODELS`
-/// (`TEST_RUNNER_SILLON_STT_MODELS` pour xcodebuild).
+/// Lance le vrai modèle (MLX, Metal) : seulement avec `SILLAGE_STT_MODELS`
+/// (`TEST_RUNNER_SILLAGE_STT_MODELS` pour xcodebuild).
 final class WhisperSmokeTests: XCTestCase {
-    /// `SILLON_STT_MODELS` : dossier contenant `whisper_tiny_4bit/` (copie de
-    /// ~/Library/Application Support/sillon/models). Sans lui : ignoré.
+    /// `SILLAGE_STT_MODELS` : dossier contenant `whisper_tiny_4bit/` (copie de
+    /// ~/Library/Application Support/sillage/models). Sans lui : ignoré.
     func testTranscribesOneSecondOfSilenceInFrenchWithoutCrashing() throws {
-        guard let root = ProcessInfo.processInfo.environment["SILLON_STT_MODELS"] else {
-            throw XCTSkip("SILLON_STT_MODELS absent")
+        guard let root = ProcessInfo.processInfo.environment["SILLAGE_STT_MODELS"] else {
+            throw XCTSkip("SILLAGE_STT_MODELS absent")
         }
         let model = try WhisperModel.fromDirectory(URL(fileURLWithPath: root).appendingPathComponent("whisper_tiny_4bit"))
         let defaults = model.defaultGenerationParameters

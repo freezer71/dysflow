@@ -1,7 +1,7 @@
 //! Kokoro int8 derrière le protocole du banc (`.superpowers/research/eval/`) :
 //! une requête JSON par ligne, l'audio en f32 brut dans un fichier.
 //!
-//!   SILLON_KOKORO_DIR=<models/kokoro> SILLON_ORT_LIB=<libonnxruntime> \
+//!   SILLAGE_KOKORO_DIR=<models/kokoro> SILLAGE_ORT_LIB=<libonnxruntime> \
 //!     cargo run --release --features kokoro-onnx --example kokoro_serve
 //!
 //! stdin : {"text": "…", "lang": "fr", "out": "/tmp/x.f32"}
@@ -12,13 +12,13 @@
 use std::io::{BufRead, Write};
 use std::sync::Arc;
 
-use sillon::tts::kokoro::onnx::OrtBackend;
-use sillon::tts::kokoro::phonemes::EspeakProcess;
-use sillon::tts::kokoro::KokoroEngine;
-use sillon::tts::{silent::SilentEngine, TtsEngine, TtsParams};
+use sillage::tts::kokoro::onnx::OrtBackend;
+use sillage::tts::kokoro::phonemes::EspeakProcess;
+use sillage::tts::kokoro::KokoroEngine;
+use sillage::tts::{silent::SilentEngine, TtsEngine, TtsParams};
 
 fn main() -> anyhow::Result<()> {
-    let dir = std::path::PathBuf::from(std::env::var("SILLON_KOKORO_DIR")?);
+    let dir = std::path::PathBuf::from(std::env::var("SILLAGE_KOKORO_DIR")?);
     let threads: u32 = std::env::var("THREADS").ok().and_then(|t| t.parse().ok()).unwrap_or(4);
     let engine = KokoroEngine::load(
         Arc::new(OrtBackend::new(threads)),

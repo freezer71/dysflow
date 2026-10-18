@@ -1,4 +1,4 @@
-// Modifié par Sillon (Apache-2.0 §4(b)) : dictionnaire lu dans le framework, espagnol et allemand retirés, `@unchecked Sendable` — voir ORIGINE.md.
+// Modifié par Sillage (Apache-2.0 §4(b)) : dictionnaire lu dans le framework, espagnol et allemand retirés, `@unchecked Sendable` — voir ORIGINE.md.
 import Foundation
 
 /// Dict-based IPA grapheme-to-phoneme converter.
@@ -21,7 +21,7 @@ import Foundation
 ///
 /// The result is an IPA + punctuation string ready for char-level lookup
 /// against the Magpie shared vocab.
-public final class MagpieDictG2P: @unchecked Sendable {  // Sillon : dict écrit sous verrou, puis lu seulement
+public final class MagpieDictG2P: @unchecked Sendable {  // Sillage : dict écrit sous verrou, puis lu seulement
 
     public static let english = MagpieDictG2P(resource: "cmudict_ipa_en")
 

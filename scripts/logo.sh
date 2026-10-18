@@ -31,7 +31,7 @@ trap 'rm -rf "$TMP"' EXIT
 
 # Un seul rendu par variante, en 1024 : les tuiles en descendent. Réduire une
 # grande image lisse mieux les traits fins que rastériser droit en 16 pixels.
-for variante in grande:sillon-app petite:sillon-app-small; do
+for variante in grande:sillage-app petite:sillage-app-small; do
     sips -s format png -z 1024 1024 "$LOGO/${variante#*:}.svg" \
         --out "$TMP/${variante%%:*}.png" >/dev/null
 done
@@ -55,8 +55,8 @@ tuile "$TMP/grande.png"  512 icon_256x256@2x.png
 tuile "$TMP/grande.png"  512 icon_512x512.png
 tuile "$TMP/grande.png" 1024 icon_512x512@2x.png
 
-iconutil -c icns "$TMP/icon.iconset" -o "$LOGO/sillon.icns"
-echo "  $LOGO/sillon.icns"
+iconutil -c icns "$TMP/icon.iconset" -o "$LOGO/sillage.icns"
+echo "  $LOGO/sillage.icns"
 
 # L'app macOS : les mêmes tuiles, en catalogue d'actifs (AppIcon).
 SET=macos/Resources/Assets.xcassets/AppIcon.appiconset
@@ -80,6 +80,6 @@ printf '{\n  "info" : { "author" : "xcode", "version" : 1 }\n}\n' \
 echo "  $SET"
 
 # Linux : un seul PNG, à la taille que réclament les thèmes d'icônes.
-cp "$TMP/grande.png" "$LOGO/sillon.png"
-sips -z 512 512 "$LOGO/sillon.png" >/dev/null
-echo "  $LOGO/sillon.png"
+cp "$TMP/grande.png" "$LOGO/sillage.png"
+sips -z 512 512 "$LOGO/sillage.png" >/dev/null
+echo "  $LOGO/sillage.png"

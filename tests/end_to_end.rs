@@ -8,9 +8,9 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
-use sillon::doc::builder::{parse_document, CodePolicy};
-use sillon::doc::BlockKind;
-use sillon::tts::{PcmBuffer, Synthesizer, TtsEngine, TtsParams, TtsSession};
+use sillage::doc::builder::{parse_document, CodePolicy};
+use sillage::doc::BlockKind;
+use sillage::tts::{PcmBuffer, Synthesizer, TtsEngine, TtsParams, TtsSession};
 
 /// Moteur dont la durée produite est proportionnelle au texte.
 struct StubEngine {
@@ -121,8 +121,8 @@ fn full_document_pipeline_preserves_every_kind_of_content() {
 
 #[test]
 fn streamed_input_matches_a_single_pass() {
-    use sillon::doc::DocumentBuilder;
-    use sillon::doc::blocks::BlockAssembler;
+    use sillage::doc::DocumentBuilder;
+    use sillage::doc::blocks::BlockAssembler;
 
     let mut assembler = BlockAssembler::new();
     let mut builder = DocumentBuilder::new(CodePolicy::Announce);
@@ -224,7 +224,7 @@ fn a_speed_change_keeps_previously_rendered_audio() {
         concurrent: Arc::new(AtomicUsize::new(0)),
         peak: Arc::new(AtomicUsize::new(0)),
     });
-    let mut config = sillon::config::Config::default();
+    let mut config = sillage::config::Config::default();
     let synth = Synthesizer::new(engine, config.tts_params(), 2, 4);
     synth.push(doc.sentences[0].text.clone(), 0);
 

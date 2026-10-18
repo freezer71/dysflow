@@ -1,6 +1,6 @@
 import Foundation
 
-// Ajout de Sillon (pas dans mlx-audio-swift) : remplace swift-transformers,
+// Ajout de Sillage (pas dans mlx-audio-swift) : remplace swift-transformers,
 // dont Whisper ne se servait que pour ids → texte.
 
 /// Décodeur tiktoken minimal pour Whisper : lit `multilingual.tiktoken` (une
