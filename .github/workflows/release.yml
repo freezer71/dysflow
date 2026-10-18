@@ -64,9 +64,13 @@ jobs:
       - name: Archive
         id: archive
         run: |
-          name="sillon-${TAG#v}-linux-${{ matrix.arch }}"
-          mv dist "$name"
-          tar -czf "$name.tar.gz" "$name"
+          # Le nom de l'archive ne porte pas la version : l'adresse
+          # /releases/latest/download/<nom> reste la même d'une version à
+          # l'autre (le site et install.sh y pointent). Le dossier, lui, la porte.
+          dossier="sillon-${TAG#v}-linux-${{ matrix.arch }}"
+          name="sillon-linux-${{ matrix.arch }}"
+          mv dist "$dossier"
+          tar -czf "$name.tar.gz" "$dossier"
           sha256sum "$name.tar.gz" > "$name.tar.gz.sha256"
           echo "name=$name" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v4

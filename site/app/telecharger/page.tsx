@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Commande } from "../_components/Commande";
 import { Bouton, IconeTelecharger, Pastille } from "../_components/ui";
-import { commandeDesinstallation, commandeInstallation, depot, telechargements, version } from "../_data/liens";
+import { commandeDesinstallation, commandeInstallation, depot, derniereVersion, telechargements } from "../_data/liens";
 
 export const metadata: Metadata = {
   title: "Télécharger",
@@ -15,11 +15,14 @@ const etapes = [
   "Ouvre sillon — la voix s'installe toute seule",
 ];
 
-export default function Telecharger() {
+export default async function Telecharger() {
+  const version = await derniereVersion();
   return (
     <div className="mx-auto max-w-4xl px-4 pt-16 sm:px-6">
       <div className="text-center">
-        <p className="text-sm font-bold uppercase tracking-[0.14em] text-encre-pale">Version {version}</p>
+        <p className="text-sm font-bold uppercase tracking-[0.14em] text-encre-pale">
+          {version ? `Version ${version}` : "Dernière version"}
+        </p>
         <h1 className="mt-3 text-balance text-4xl font-extrabold tracking-tight sm:text-5xl">
           Installé en une commande.
         </h1>

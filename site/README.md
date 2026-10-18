@@ -11,5 +11,7 @@ npm run build    # compile et prérend les pages
 ```
 
 Les données vivent dans `app/_data/` : `modeles.ts` reprend le catalogue de
-`src/models.rs` et les mesures du README, `liens.ts` la version publiée et
-ses archives. À mettre à jour à chaque nouveau modèle ou nouvelle version.
+`src/models.rs` et les mesures du README (à mettre à jour à chaque nouveau
+modèle). `liens.ts` n'a jamais à changer : les liens pointent vers
+`/releases/latest/download/…`, et le numéro de version est lu sur GitHub
+(gardé une heure).

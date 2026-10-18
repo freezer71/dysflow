@@ -69,18 +69,26 @@ if [ "$systeme" = Darwin ] && [ "$(sysctl -n hw.optional.arm64 2>/dev/null)" = 1
     arch=arm64
 fi
 case "$systeme/$arch" in
-Darwin/arm64) archive="sillon-$version-macos-arm64.zip" ;;
+Darwin/arm64) cible=macos-arm64 ; archive="sillon-macos-arm64.zip" ;;
 Darwin/*) echec "l'app demande un Mac à puce Apple (M1 et suivants)" ;;
-Linux/x86_64 | Linux/amd64) archive="sillon-$version-linux-x86_64.tar.gz" ;;
-Linux/aarch64 | Linux/arm64) archive="sillon-$version-linux-aarch64.tar.gz" ;;
+Linux/x86_64 | Linux/amd64) cible=linux-x86_64 ; archive="sillon-linux-x86_64.tar.gz" ;;
+Linux/aarch64 | Linux/arm64) cible=linux-aarch64 ; archive="sillon-linux-aarch64.tar.gz" ;;
 *) echec "$systeme $arch n'est pas pris en charge (macOS à puce Apple, Linux x86_64 ou ARM64)" ;;
 esac
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT INT TERM
 
-etape "Téléchargement de sillon $version ($archive)"
 url="$DEPOT/releases/download/v$version/$archive"
+if ! curl -fsSLI -o /dev/null "$url" 2>/dev/null; then
+    # Jusqu'à 0.2.0, le nom de l'archive portait la version.
+    case "$cible" in
+    linux-*) archive="sillon-$version-$cible.tar.gz" ;;
+    *) archive="sillon-$version-$cible.zip" ;;
+    esac
+    url="$DEPOT/releases/download/v$version/$archive"
+fi
+etape "Téléchargement de sillon $version ($archive)"
 curl -fL --progress-bar -o "$tmp/$archive" "$url" || echec "téléchargement impossible : $url"
 curl -fsSL -o "$tmp/$archive.sha256" "$url.sha256" || echec "empreinte introuvable : $url.sha256"
 
@@ -136,10 +144,11 @@ EOF
     fi
     [ -n "${SILLON_APPLICATIONS:-}" ] || open "$apps/Sillon.app" 2>/dev/null || true
 else
-    tar -xzf "$tmp/$archive" -C "$tmp"
-    dossier="$tmp/sillon-$version-linux-${archive##*-linux-}"
-    dossier=${dossier%.tar.gz}
-    [ -x "$dossier/sillon" ] || echec "l'archive ne contient pas le binaire sillon"
+    mkdir "$tmp/paquet"
+    tar -xzf "$tmp/$archive" -C "$tmp/paquet"
+    # Un seul dossier dans l'archive (sillon-<version>-linux-<arch>).
+    dossier=$(find "$tmp/paquet" -mindepth 1 -maxdepth 1 -type d | head -1)
+    [ -n "$dossier" ] && [ -x "$dossier/sillon" ] || echec "l'archive ne contient pas le binaire sillon"
     mkdir -p "$PREFIX/lib"
     rm -rf "$PREFIX/lib/sillon"
     mv "$dossier" "$PREFIX/lib/sillon"

@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # Emballe Sillon.app pour la publication, dans dist/ :
 #
-#   sillon-<version>-macos-arm64.zip   pour install.sh (curl | sh)
-#   sillon-<version>.dmg               à télécharger : glisser l'app dans Applications
+#   sillon-macos-arm64.zip   pour install.sh (curl | sh)
+#   sillon-macos.dmg         à télécharger : glisser l'app dans Applications
 #
-# chacun avec son empreinte .sha256. L'app doit être construite avant
-# (./scripts/build-macos.sh).
+# chacun avec son empreinte .sha256. Les noms ne portent pas la version :
+# /releases/latest/download/<nom> reste la même adresse d'une version à
+# l'autre. L'app doit être construite avant (./scripts/build-macos.sh).
 #
 #   ./scripts/package-macos.sh [chemin/Sillon.app]
 set -euo pipefail
@@ -23,8 +24,8 @@ fi
 codesign --verify --deep --strict "$APP"
 
 mkdir -p dist
-zip="dist/sillon-$version-macos-arm64.zip"
-dmg="dist/sillon-$version.dmg"
+zip="dist/sillon-macos-arm64.zip"
+dmg="dist/sillon-macos.dmg"
 rm -f "$zip" "$dmg" "$zip.sha256" "$dmg.sha256"
 
 # ditto garde les liens symboliques et les signatures des frameworks.
