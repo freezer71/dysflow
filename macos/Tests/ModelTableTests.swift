@@ -60,6 +60,20 @@ final class ModelTableTests: XCTestCase {
         XCTAssertTrue(ModelsTable.label(row(), .downloading(0.5)).hasSuffix("téléchargement 50 %"))
     }
 
+    /// Chaque ligne porte le logo de son éditeur ; sans logo, une initiale.
+    func testEachModelShowsItsMaker() {
+        XCTAssertEqual(ModelTable.maker(row(system: true)), .apple)
+        XCTAssertEqual(ModelTable.maker(row("parakeet_tdt_v3")), .nvidia)
+        XCTAssertEqual(ModelTable.maker(row("canary_1b_v2_q8")), .nvidia)
+        XCTAssertEqual(ModelTable.maker(row("magpie_tts_357m_8bit")), .nvidia)
+        XCTAssertEqual(ModelTable.maker(row("whisper_large_v3_turbo_4bit")), .openai)
+        XCTAssertEqual(ModelTable.maker(row("voxtral_realtime_4bit")), .mistral)
+        XCTAssertEqual(ModelTable.maker(row("qwen3_tts_06b_base_8bit")), .qwen)
+        XCTAssertEqual(ModelTable.maker(row("phonon_2")), .initial("F"))
+        XCTAssertEqual(ModelTable.maker(row()), .initial("K"))
+        XCTAssertNil(ModelMaker.initial("K").logo)
+    }
+
     func testOneDownloadAtATime() {
         let running = DownloadView(id: "autre", received: 1, total: 2, failed: nil)
         XCTAssertFalse(ModelTable.canDownload(row(), download: running))

@@ -9,6 +9,25 @@ enum ModelRowState: Equatable {
     case installed
 }
 
+/// Qui a fait un modèle : son logo distingue les lignes de la table d'un
+/// coup d'œil. Sans logo public (hexgrad, Fermion Research), une initiale.
+enum ModelMaker: Equatable {
+    case apple, nvidia, openai, mistral, qwen
+    case initial(String)
+
+    /// Le nom de l'image du catalogue, `nil` pour une initiale.
+    var logo: String? {
+        switch self {
+        case .apple: "logo-apple"
+        case .nvidia: "logo-nvidia"
+        case .openai: "logo-openai"
+        case .mistral: "logo-mistral"
+        case .qwen: "logo-qwen"
+        case .initial: nil
+        }
+    }
+}
+
 /// Ce que la table des modèles montre, sans vue : testable seul.
 enum ModelTable {
     static func state(_ row: VoiceModel, download: DownloadView?) -> ModelRowState {
@@ -51,6 +70,18 @@ enum ModelTable {
         case .notInstalled, .failed: return row.hasFiles
         case .system, .downloading: return false
         }
+    }
+
+    /// L'éditeur d'un modèle, d'après son identifiant (`src/models.rs`).
+    static func maker(_ row: VoiceModel) -> ModelMaker {
+        if row.system { return .apple }
+        let prefixes: [(String, ModelMaker)] = [
+            ("parakeet", .nvidia), ("canary", .nvidia), ("magpie", .nvidia),
+            ("whisper", .openai), ("voxtral", .mistral), ("qwen", .qwen),
+            ("phonon", .initial("F")), ("kokoro", .initial("K")),
+        ]
+        return prefixes.first { row.id.hasPrefix($0.0) }?.1
+            ?? .initial(row.name.first.map { String($0).uppercased() } ?? "?")
     }
 
     /// « Voix de macOS » est féminin, un modèle masculin.
