@@ -485,29 +485,47 @@ final class NemotronSpeech: StreamingSpeechModel {
     func transcribe(_ samples: [Float], language: String) throws -> String {
         SpeechModels.applyLimits()
         let parameters = model.defaultGenerationParameters.with(language: language)
-        return model.generate(samples: samples, generationParameters: parameters)
-            .text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return Self.tidy(model.generate(samples: samples, generationParameters: parameters).text)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     func makeSession(language: String) -> SpeechStreamSession {
         SpeechModels.applyLimits()
         return NemotronSession(model.makeStreamSession(language: language, chunkMs: Self.chunkMs))
     }
+
+    private static let spaces = try! NSRegularExpression(pattern: " {2,}")
+
+    /// Le texte de Nemotron met deux espaces entre deux phrases (mesuré le
+    /// 19 oct. 2026) : une seule. Réduire les suites d'espaces garde un
+    /// préfixe pour préfixe : le texte réduit ne fait que s'allonger, lui
+    /// aussi.
+    static func tidy(_ text: String) -> String {
+        spaces.stringByReplacingMatches(in: text, range: NSRange(text.startIndex..., in: text), withTemplate: " ")
+    }
 }
 
+/// Rend le texte nouveau d'après le texte entier, réduit (`tidy`) : les
+/// morceaux mis bout à bout donnent le texte réduit.
 final class NemotronSession: SpeechStreamSession, @unchecked Sendable {
     private let session: NemotronASRStreamSession
+    /// Le texte réduit déjà rendu.
+    private var shown = ""
 
     init(_ session: NemotronASRStreamSession) {
         self.session = session
     }
 
     func step(_ samples: [Float]) -> String {
-        session.step(samples).text
+        session.step(samples)
+        let text = NemotronSpeech.tidy(session.text)
+        guard text.count > shown.count, text.hasPrefix(shown) else { return "" }
+        defer { shown = text }
+        return String(text.dropFirst(shown.count))
     }
 
     func finish() -> String {
         session.finish()
-        return session.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return NemotronSpeech.tidy(session.text).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
