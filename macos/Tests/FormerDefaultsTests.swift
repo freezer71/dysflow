@@ -3,15 +3,15 @@ import XCTest
 
 final class FormerDefaultsTests: XCTestCase {
     private var defaults: UserDefaults!
-    private let name = "fr.sillage.tests.reprise"
+    private let suiteName = "fr.sillage.tests.reprise"
 
     override func setUp() {
-        defaults = UserDefaults(suiteName: name)
-        defaults.removePersistentDomain(forName: name)
+        defaults = UserDefaults(suiteName: suiteName)
+        defaults.removePersistentDomain(forName: suiteName)
     }
 
     override func tearDown() {
-        defaults.removePersistentDomain(forName: name)
+        defaults.removePersistentDomain(forName: suiteName)
     }
 
     func testLesReglagesDeSillonSontRepris() {
