@@ -23,19 +23,22 @@ cd "$(dirname "$0")/.."
 
 MACOS=$PWD/macos
 CATALOGUE=$MACOS/Resources/Localizable.xcstrings
-DERIVED=$MACOS/build/derived/Build/Intermediates.noindex/Sillage.build
+# La configuration de UIBUILD (Debug) seulement : scripts/build-macos.sh
+# compile Release dans le même build/derived, et le code `#if DEBUG`
+# (Measure.swift…) y manque ; ses clés passeraient pour périmées.
+DERIVED=$MACOS/build/derived/Build/Intermediates.noindex/Sillage.build/Debug/Sillage.build/Objects-normal
 
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 
-# Les .stringsdata de la cible Sillage (Debug, Release) : pour chaque
-# fichier de macos/Sources, le plus récent, qui doit l'être plus que le
-# fichier lui-même.
+# Les .stringsdata Debug de la cible Sillage : pour chaque fichier de
+# macos/Sources, le plus récent, qui doit l'être plus que le fichier
+# lui-même.
 if [ ! -d "$DERIVED" ]; then
     echo "Erreur : $DERIVED absent — compiler l'app d'abord (UIBUILD)" >&2
     exit 2
 fi
-find "$DERIVED" -path '*/Sillage.build/Objects-normal/*' -name '*.stringsdata' >"$TMP/tous"
+find "$DERIVED" -name '*.stringsdata' >"$TMP/tous"
 python3 -I - "$MACOS" "$TMP/tous" "$TMP/compiles" <<'EOF'
 import json, os, sys
 macos, tous, sortie = sys.argv[1:]

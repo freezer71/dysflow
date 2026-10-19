@@ -31,11 +31,13 @@ CATALOGUE = os.path.join(MACOS, "Resources", "Localizable.xcstrings")
 # Une lettre accentuée française, ou des guillemets français.
 ACCENT = re.compile("[àâäçéèêëîïôöùûüÿœæÀÂÄÇÉÈÊËÎÏÔÖÙÛÜŸŒÆ«»]")
 # Des mots outils français, rares en anglais : « Ouvrir un fichier »,
-# « Lire le presse-papiers ». Les identifiants (sans espace) n'en ont pas.
+# « Lire le presse-papiers ». Un trait d'union les coupe d'un mot
+# (`de-DE`, `Sans-serif`, `un-mute`) ; `son`, `est`, `pas` sont aussi
+# anglais (ou des identifiants), donc absents.
 MOTS = re.compile(
-    r"(?i)(?<![\w'’])(le|la|les|un|une|des|du|de|pour|est|sur|avec|dans|sans|"
-    r"au|aux|ou|et|pas|ne|ce|cette|vous|votre|vos|son|sa|ses|par|tout|toute|"
-    r"tous|puis)(?![\w'’])|(?<![\w'’])[ldnsjcq][’']\w"
+    r"(?i)(?<![\w'’-])(le|la|les|un|une|des|du|de|pour|sur|avec|dans|sans|"
+    r"au|aux|ou|et|ne|ce|cette|vous|votre|vos|sa|ses|par|tout|toute|"
+    r"tous|puis)(?![\w'’-])|(?<![\w'’-])[ldnsjcq][’']\w"
 )
 # Un format (`%@`, `%lld`, `%1$u`, `%%`) ou le `%arg` de l'extraction légère.
 FORMAT = re.compile(r"%arg|%(\d+\$)?[-#+ 0]*\d*(\.\d+)?(hh|h|ll|l|q|z|t|j)?[@dDuUxXoOfFeEgGcCsSaAp%]")
