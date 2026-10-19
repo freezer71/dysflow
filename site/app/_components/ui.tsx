@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { chemin, dico, type Lang, type Page } from "../_i18n";
 import { depot } from "../_data/liens";
 
 /** La marque, redessinée à l'encre du thème (le SVG de `assets/logo`). */
@@ -19,29 +20,55 @@ export function Logo({ className = "size-7" }: { className?: string }) {
   );
 }
 
-export function Entete() {
+/** Le sélecteur de langue : un lien vers la même page dans l'autre langue. */
+function SelecteurLangue({ lang, page }: { lang: Lang; page: Page }) {
+  const d = dico(lang).entete;
+  return (
+    <div role="group" aria-label={d.langues} className="flex items-center rounded-full bg-carte-2 p-0.5 text-sm font-bold">
+      {(["en", "fr"] as const).map((l) => {
+        const actif = l === lang;
+        return (
+          <Link
+            key={l}
+            href={chemin(l, page)}
+            hrefLang={l}
+            lang={l}
+            aria-current={actif ? "true" : undefined}
+            className={`rounded-full px-2.5 py-1 uppercase ${actif ? "bg-carte text-encre" : "text-encre-pale hover:text-encre"}`}
+          >
+            {l}
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
+
+export function Entete({ lang, page }: { lang: Lang; page: Page }) {
+  const d = dico(lang).entete;
   return (
     <header className="sticky top-0 z-20 border-b border-filet/70 bg-fond/85 backdrop-blur">
       <nav className="mx-auto flex h-16 max-w-6xl items-center gap-6 px-4 sm:px-6">
-        <Link href="/" className="flex items-center gap-2 text-lg font-extrabold tracking-tight">
+        <Link href={chemin(lang, "accueil")} aria-label={d.accueil} className="flex items-center gap-2 text-lg font-extrabold tracking-tight">
           <Logo />
           sillage
         </Link>
         <div className="ml-auto flex items-center gap-1 text-[15px] text-encre-douce sm:gap-2">
-          <Link href="/#avantages" className="hidden rounded-full px-3 py-1.5 hover:bg-carte-2 hover:text-encre sm:block">
-            Avantages
+          <Link href={chemin(lang, "accueil", "avantages")} className="hidden rounded-full px-3 py-1.5 hover:bg-carte-2 hover:text-encre sm:block">
+            {d.avantages}
           </Link>
-          <Link href="/#comparaison" className="hidden rounded-full px-3 py-1.5 hover:bg-carte-2 hover:text-encre md:block">
-            Comparaison
+          <Link href={chemin(lang, "accueil", "comparaison")} className="hidden rounded-full px-3 py-1.5 hover:bg-carte-2 hover:text-encre md:block">
+            {d.comparaison}
           </Link>
-          <Link href="/modeles" className="rounded-full px-3 py-1.5 hover:bg-carte-2 hover:text-encre">
-            Modèles
+          <Link href={chemin(lang, "modeles")} className="rounded-full px-3 py-1.5 hover:bg-carte-2 hover:text-encre">
+            {d.modeles}
           </Link>
           <a href={depot} className="hidden rounded-full px-3 py-1.5 hover:bg-carte-2 hover:text-encre sm:block">
-            GitHub
+            {d.github}
           </a>
-          <Bouton href="/telecharger" petit>
-            Télécharger
+          <SelecteurLangue lang={lang} page={page} />
+          <Bouton href={chemin(lang, "telecharger")} petit>
+            {d.telecharger}
           </Bouton>
         </div>
       </nav>
@@ -49,7 +76,18 @@ export function Entete() {
   );
 }
 
-export function Pied() {
+/** L'en-tête et le corps d'une page : `page` dit quelle page le sélecteur de langue vise. */
+export function Cadre({ lang, page, children }: { lang: Lang; page: Page; children: ReactNode }) {
+  return (
+    <>
+      <Entete lang={lang} page={page} />
+      <main className="flex-1">{children}</main>
+    </>
+  );
+}
+
+export function Pied({ lang }: { lang: Lang }) {
+  const d = dico(lang).pied;
   return (
     <footer className="mt-24 border-t border-filet">
       <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-10 text-[15px] text-encre-douce sm:flex-row sm:items-center sm:px-6">
@@ -57,11 +95,11 @@ export function Pied() {
           <Logo className="size-6" />
           sillage
         </div>
-        <p>Logiciel libre, sous licence MIT. Fait en France.</p>
+        <p>{d.licence}</p>
         <div className="flex gap-5 sm:ml-auto">
-          <Link href="/modeles" className="hover:text-encre">Modèles</Link>
-          <Link href="/telecharger" className="hover:text-encre">Télécharger</Link>
-          <a href={depot} className="hover:text-encre">Code source</a>
+          <Link href={chemin(lang, "modeles")} className="hover:text-encre">{d.modeles}</Link>
+          <Link href={chemin(lang, "telecharger")} className="hover:text-encre">{d.telecharger}</Link>
+          <a href={depot} className="hover:text-encre">{d.code}</a>
         </div>
       </div>
     </footer>

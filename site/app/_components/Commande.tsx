@@ -3,7 +3,16 @@
 import { useState } from "react";
 
 /** Une commande à copier d'un clic. */
-export function Commande({ texte, grande }: { texte: string; grande?: boolean }) {
+export function Commande({
+  texte,
+  libelles,
+  grande,
+}: {
+  texte: string;
+  /** Les mots du bouton, dans la langue de la page. */
+  libelles: { copier: string; copie: string };
+  grande?: boolean;
+}) {
   const [copie, setCopie] = useState(false);
 
   async function copier() {
@@ -29,7 +38,7 @@ export function Commande({ texte, grande }: { texte: string; grande?: boolean })
           copie ? "bg-citron text-citron-encre" : "bg-white/10 hover:bg-white/20"
         }`}
       >
-        {copie ? "Copié ✓" : "Copier"}
+        {copie ? libelles.copie : libelles.copier}
       </button>
     </div>
   );

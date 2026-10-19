@@ -4,23 +4,26 @@ import { useEffect, useState } from "react";
 
 // Le lecteur, en miniature : la pastille citron suit le mot dit, la bande
 // tient la ligne où revenir. Ce n'est qu'une image animée, sans son.
-const lignes = [
-  ["sillage", "lit", "à", "voix", "haute", "ce", "que"],
-  ["vous", "lui", "donnez,", "et", "montre", "chaque"],
-  ["mot", "au", "moment", "où", "il", "est", "dit."],
-];
 
-const debuts = lignes.map((_, i) => lignes.slice(0, i).reduce((n, l) => n + l.length, 0));
-const total = lignes.reduce((n, l) => n + l.length, 0);
+type Props = {
+  fichier: string;
+  titre: string;
+  /** Trois lignes de texte, les mots séparés par une espace. */
+  lignes: readonly string[];
+  vitesse: string;
+};
 
-export function DemoLecteur() {
+export function DemoLecteur({ fichier, titre, lignes: textes, vitesse }: Props) {
+  const lignes = textes.map((t) => t.split(" "));
+  const debuts = lignes.map((_, i) => lignes.slice(0, i).reduce((n, l) => n + l.length, 0));
+  const total = lignes.reduce((n, l) => n + l.length, 0);
   const [rang, setRang] = useState(0);
 
   useEffect(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     const minuteur = window.setInterval(() => setRang((r) => (r + 1) % (total + 3)), 420);
     return () => window.clearInterval(minuteur);
-  }, []);
+  }, [total]);
 
   return (
     <div className="rounded-[28px] bg-carte p-3 shadow-[0_30px_80px_-30px_rgba(0,0,0,0.25)]">
@@ -28,10 +31,10 @@ export function DemoLecteur() {
         <span className="size-3 rounded-full bg-[#ff5f57]" />
         <span className="size-3 rounded-full bg-[#febc2e]" />
         <span className="size-3 rounded-full bg-[#28c840]" />
-        <span className="ml-3 text-[13px] text-encre-pale">rapport-annuel.pdf</span>
+        <span className="ml-3 text-[13px] text-encre-pale">{fichier}</span>
       </div>
       <div className="rounded-[20px] bg-fond px-6 py-7 sm:px-8">
-        <p className="text-sm font-bold text-encre-pale">Introduction</p>
+        <p className="text-sm font-bold text-encre-pale">{titre}</p>
         <div className="mt-3 space-y-1 text-xl leading-[1.9] sm:text-2xl">
           {lignes.map((mots, i) => {
             const debut = debuts[i];
@@ -74,7 +77,7 @@ export function DemoLecteur() {
             style={{ width: `${Math.min(100, (rang / total) * 100)}%` }}
           />
         </div>
-        <span className="text-[13px] font-bold tabular-nums text-encre-douce">1,25×</span>
+        <span className="text-[13px] font-bold tabular-nums text-encre-douce">{vitesse}</span>
       </div>
     </div>
   );
