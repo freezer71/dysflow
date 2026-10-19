@@ -64,10 +64,13 @@ if perimes:
         print(f"  {p}", file=sys.stderr)
     sys.exit(2)
 with open(sortie, "w", encoding="utf-8") as f:
-    f.write("\n".join(choisis.values()))
+    # Une ligne par fichier, fin de ligne comprise : `read` laisse tomber
+    # une dernière ligne sans fin de ligne, et ce serait le .stringsdata le
+    # plus ancien, au hasard de l'ordre de compilation.
+    f.write("".join(chemin + "\n" for chemin in choisis.values()))
 EOF
 COMPILES=()
-while IFS= read -r f; do COMPILES+=("$f"); done <"$TMP/compiles"
+while IFS= read -r f || [ -n "$f" ]; do COMPILES+=("$f"); done <"$TMP/compiles"
 
 xcrun xcstringstool sync "$CATALOGUE" --stringsdata "${COMPILES[@]}"
 
