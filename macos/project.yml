@@ -160,7 +160,7 @@ targets:
           # MagpieTTS (Vendor/KokoroMLX/TTS/Magpie) vient de speech-swift.
           joindre "$SRCROOT/../third_party/licences/speech-swift-LICENSE" speech-swift-LICENSE
           joindre "$SRCROOT/../third_party/licences/cmudict-LICENSE" cmudict-LICENSE
-          # Les logos de NVIDIA, OpenAI, Mistral et Qwen (Resources/Assets.xcassets).
+          # Les logos de NVIDIA, OpenAI, Mistral, Qwen et Cohere (Resources/Assets.xcassets).
           joindre "$SRCROOT/../third_party/licences/lobe-icons-LICENSE" lobe-icons-LICENSE
           joindre "$CHECKOUTS/mlx-swift/LICENSE" mlx-swift-LICENSE
           joindre "$CMLX/mlx/LICENSE" mlx-LICENSE

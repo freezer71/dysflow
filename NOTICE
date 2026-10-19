@@ -67,9 +67,9 @@ Contents/Resources/licences (ce fichier compris) :
   nlohmann-json-LICENSE) et {fmt} (licence MIT avec exception pour les
   binaires, Victor Zverovich — fmt-LICENSE) ;
 - KeyboardShortcuts, licence MIT, Sindre Sorhus — KeyboardShortcuts-LICENSE ;
-- les logos des éditeurs de modèles, dans la table des réglages
-  (macos/Resources/Assets.xcassets) : NVIDIA, OpenAI, Mistral et Qwen
-  viennent de LobeHub Icons 1.70.0 (licence MIT, Copyright (c) 2023
+- les logos des éditeurs de modèles, dans les réglages
+  (macos/Resources/Assets.xcassets) : NVIDIA, OpenAI, Mistral, Qwen et
+  Cohere viennent de LobeHub Icons 1.70.0 (licence MIT, Copyright (c) 2023
   LobeHub — lobe-icons-LICENSE), Apple de Simple Icons 13.21.0 (CC0 1.0).
   Ces logos sont des marques de leurs titulaires ; ils ne désignent que
   l'origine de chaque modèle ;

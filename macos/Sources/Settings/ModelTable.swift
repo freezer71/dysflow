@@ -12,7 +12,7 @@ enum ModelRowState: Equatable {
 /// Qui a fait un modèle : son logo distingue les lignes de la table d'un
 /// coup d'œil. Sans logo public (hexgrad, Fermion Research), une initiale.
 enum ModelMaker: Equatable {
-    case apple, nvidia, openai, mistral, qwen
+    case apple, nvidia, openai, mistral, qwen, cohere
     case initial(String)
 
     /// Le nom de l'image du catalogue, `nil` pour une initiale.
@@ -23,7 +23,26 @@ enum ModelMaker: Equatable {
         case .openai: "logo-openai"
         case .mistral: "logo-mistral"
         case .qwen: "logo-qwen"
+        case .cohere: "logo-cohere"
         case .initial: nil
+        }
+    }
+
+    /// Le nom de l'éditeur, en clair : le filtre « Éditeur » de la
+    /// bibliothèque et VoiceOver. Les initiales connues ont le leur (K :
+    /// hexgrad, qui fait Kokoro ; F : Fermion Research, Phonon-2) ; une
+    /// autre reste sa lettre.
+    var name: String {
+        switch self {
+        case .apple: "Apple"
+        case .nvidia: "NVIDIA"
+        case .openai: "OpenAI"
+        case .mistral: "Mistral"
+        case .qwen: "Qwen"
+        case .cohere: "Cohere"
+        case .initial("K"): "hexgrad"
+        case .initial("F"): "Fermion Research"
+        case .initial(let letter): letter
         }
     }
 }
@@ -76,8 +95,8 @@ enum ModelTable {
     static func maker(_ row: VoiceModel) -> ModelMaker {
         if row.system { return .apple }
         let prefixes: [(String, ModelMaker)] = [
-            ("parakeet", .nvidia), ("canary", .nvidia), ("magpie", .nvidia),
-            ("whisper", .openai), ("voxtral", .mistral), ("qwen", .qwen),
+            ("parakeet", .nvidia), ("canary", .nvidia), ("magpie", .nvidia), ("nemotron", .nvidia),
+            ("whisper", .openai), ("voxtral", .mistral), ("qwen", .qwen), ("cohere", .cohere),
             ("phonon", .initial("F")), ("kokoro", .initial("K")),
         ]
         return prefixes.first { row.id.hasPrefix($0.0) }?.1

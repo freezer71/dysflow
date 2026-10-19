@@ -72,6 +72,23 @@ final class ModelTableTests: XCTestCase {
         XCTAssertEqual(ModelTable.maker(row("phonon_2")), .initial("F"))
         XCTAssertEqual(ModelTable.maker(row()), .initial("K"))
         XCTAssertNil(ModelMaker.initial("K").logo)
+        // Les modèles de dictée du lot 4.
+        XCTAssertEqual(ModelTable.maker(row("parakeet_tdt_v2")), .nvidia)
+        XCTAssertEqual(ModelTable.maker(row("nemotron_35_asr_streaming_8bit")), .nvidia)
+        XCTAssertEqual(ModelTable.maker(row("qwen3_asr_06b_8bit")), .qwen)
+        XCTAssertEqual(ModelTable.maker(row("qwen3_asr_17b_4bit")), .qwen)
+        XCTAssertEqual(ModelTable.maker(row("cohere_transcribe_8bit")), .cohere)
+        XCTAssertEqual(ModelMaker.cohere.logo, "logo-cohere")
+    }
+
+    /// Le filtre « Éditeur » et VoiceOver disent l'éditeur en clair, même
+    /// quand la pastille n'en montre que l'initiale.
+    func testEachMakerHasAReadableName() {
+        XCTAssertEqual([ModelMaker.apple, .nvidia, .openai, .mistral, .qwen, .cohere].map(\.name),
+                       ["Apple", "NVIDIA", "OpenAI", "Mistral", "Qwen", "Cohere"])
+        XCTAssertEqual(ModelMaker.initial("K").name, "hexgrad")
+        XCTAssertEqual(ModelMaker.initial("F").name, "Fermion Research")
+        XCTAssertEqual(ModelMaker.initial("Z").name, "Z")
     }
 
     func testOneDownloadAtATime() {
