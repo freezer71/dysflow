@@ -34,7 +34,7 @@ export function autreLangue(lang: Lang): Lang {
  * l'anglais sert de repli (`x-default`). La page canonique est la page
  * elle-même, dans la langue où on la lit.
  */
-export function alternates(page: Page, lang: Lang = "en"): Metadata["alternates"] {
+export function alternates(page: Page, lang: Lang): Metadata["alternates"] {
   return {
     canonical: chemin(lang, page),
     languages: {
