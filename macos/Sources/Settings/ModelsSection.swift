@@ -29,7 +29,7 @@ struct ModelsTable: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 14) {
-                Color.clear.frame(width: Self.choiceWidth, height: 1)
+                Color.clear.frame(width: Self.choiceWidth + 14 + MakerBadge.size, height: 1)
                 Text("Modèle").frame(maxWidth: .infinity, alignment: .leading)
                 Text("Taille").frame(width: Self.sizeWidth, alignment: .trailing)
                 Text("État").frame(width: Self.actionWidth, alignment: .leading)
@@ -91,7 +91,7 @@ struct ModelsTable: View {
                     .font(Typo.detail)
                     .foregroundStyle(ErrorStyle.color)
                     .fixedSize(horizontal: false, vertical: true)
-                    .padding(.leading, Self.choiceWidth + 14)
+                    .padding(.leading, Self.choiceWidth + 14 + MakerBadge.size + 14)
                     .accessibilityHidden(true)   // déjà dans l'étiquette de la ligne
             }
         }
@@ -144,6 +144,7 @@ struct ModelsTable: View {
             Image(systemName: row.active ? "largecircle.fill.circle" : "circle")
                 .foregroundStyle(row.active ? Palette.accent : Palette.muted)
                 .frame(width: Self.choiceWidth)
+            MakerBadge(maker: ModelTable.maker(row))
             VStack(alignment: .leading, spacing: 2) {
                 Text(row.name)
                     .font(Typo.rowTitle)
@@ -249,6 +250,32 @@ struct ModelsTable: View {
 final class ModelsTableState {
     let error = ErrorNote()
     var confirming: VoiceModel?
+}
+
+/// Le logo de l'éditeur d'un modèle, dans une pastille : à l'encre, comme
+/// le texte, pour suivre le thème. Décoratif : le nom suit, VoiceOver le dit.
+struct MakerBadge: View {
+    let maker: ModelMaker
+
+    static let size: CGFloat = 28
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 7).fill(Palette.control)
+            if let logo = maker.logo {
+                Image(logo)
+                    .resizable()
+                    .renderingMode(.template)
+                    .scaledToFit()
+                    .frame(width: 16, height: 16)
+            } else if case .initial(let letter) = maker {
+                Text(letter).font(.system(size: 13, weight: .semibold))
+            }
+        }
+        .foregroundStyle(Palette.ink)
+        .frame(width: Self.size, height: Self.size)
+        .accessibilityHidden(true)
+    }
 }
 
 /// La zone de choix d'une ligne de modèle : un fond au survol et la main

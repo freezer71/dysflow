@@ -9,6 +9,44 @@ enum ModelRowState: Equatable {
     case installed
 }
 
+/// Qui a fait un modèle : son logo distingue les lignes de la table d'un
+/// coup d'œil. Sans logo public (hexgrad, Fermion Research), une initiale.
+enum ModelMaker: Equatable {
+    case apple, nvidia, openai, mistral, qwen, cohere
+    case initial(String)
+
+    /// Le nom de l'image du catalogue, `nil` pour une initiale.
+    var logo: String? {
+        switch self {
+        case .apple: "logo-apple"
+        case .nvidia: "logo-nvidia"
+        case .openai: "logo-openai"
+        case .mistral: "logo-mistral"
+        case .qwen: "logo-qwen"
+        case .cohere: "logo-cohere"
+        case .initial: nil
+        }
+    }
+
+    /// Le nom de l'éditeur, en clair : le filtre « Éditeur » de la
+    /// bibliothèque et VoiceOver. Les initiales connues ont le leur (K :
+    /// hexgrad, qui fait Kokoro ; F : Fermion Research, Phonon-2) ; une
+    /// autre reste sa lettre.
+    var name: String {
+        switch self {
+        case .apple: "Apple"
+        case .nvidia: "NVIDIA"
+        case .openai: "OpenAI"
+        case .mistral: "Mistral"
+        case .qwen: "Qwen"
+        case .cohere: "Cohere"
+        case .initial("K"): "hexgrad"
+        case .initial("F"): "Fermion Research"
+        case .initial(let letter): letter
+        }
+    }
+}
+
 /// Ce que la table des modèles montre, sans vue : testable seul.
 enum ModelTable {
     static func state(_ row: VoiceModel, download: DownloadView?) -> ModelRowState {
@@ -50,6 +88,33 @@ enum ModelTable {
         case .installed: return true
         case .notInstalled, .failed: return row.hasFiles
         case .system, .downloading: return false
+        }
+    }
+
+    /// L'éditeur d'un modèle, d'après son identifiant (`src/models.rs`).
+    static func maker(_ row: VoiceModel) -> ModelMaker {
+        if row.system { return .apple }
+        let prefixes: [(String, ModelMaker)] = [
+            ("parakeet", .nvidia), ("canary", .nvidia), ("magpie", .nvidia), ("nemotron", .nvidia),
+            ("whisper", .openai), ("voxtral", .mistral), ("qwen", .qwen), ("cohere", .cohere),
+            ("phonon", .initial("F")), ("kokoro", .initial("K")),
+        ]
+        return prefixes.first { row.id.hasPrefix($0.0) }?.1
+            ?? .initial(row.name.first.map { String($0).uppercased() } ?? "?")
+    }
+
+    /// Les lignes que la table de la dictée garde, dans leur ordre : la
+    /// dictée de macOS, les modèles installés, celui qui est utilisé (même
+    /// s'il n'est plus là : son repli se lit sous la table), et celui qui se
+    /// télécharge ou a échoué (son message reste lisible). Les autres sont
+    /// dans la bibliothèque des modèles : la table reste courte.
+    static func shortlist(_ rows: [VoiceModel], download: DownloadView?) -> [VoiceModel] {
+        rows.filter { row in
+            if row.system || row.installed || row.active { return true }
+            switch state(row, download: download) {
+            case .downloading, .failed: return true
+            case .system, .notInstalled, .installed: return false
+            }
         }
     }
 

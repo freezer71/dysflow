@@ -100,6 +100,11 @@ enum DictationModel {
         case "whisper_large_v3_turbo_4bit": "Whisper large-v3-turbo"
         case "canary_1b_v2_q8": "Canary 1b-v2"
         case "voxtral_realtime_4bit": "Voxtral Realtime"
+        case "parakeet_tdt_v2": "Parakeet v2"
+        case "nemotron_35_asr_streaming_8bit": "Nemotron 3.5 Streaming"
+        case "qwen3_asr_06b_8bit": "Qwen3-ASR 0.6B"
+        case "qwen3_asr_17b_4bit": "Qwen3-ASR 1.7B"
+        case "cohere_transcribe_8bit": "Cohere Transcribe"
         default: id.isEmpty ? "Le modèle de dictée" : id
         }
     }
@@ -149,14 +154,16 @@ enum Dictation {
         return nil
     }
 
-    /// Le moteur d'un modèle : Voxtral au fil de la parole, les autres en
-    /// relecture glissante.
+    /// Le moteur d'un modèle : Voxtral et Nemotron au fil de la parole, les
+    /// autres en relecture glissante.
     @MainActor
     static func makeModelEngine(id: String, directory: URL, runner: SpeechModelRunner) -> DictationEngine? {
         switch id {
-        case "voxtral_realtime_4bit":
-            VoxtralDictationEngine(runner: runner, directory: directory)
-        case "parakeet_tdt_v3", "phonon_2", "canary_1b_v2_q8", _ where id.hasPrefix("whisper_"):
+        case "voxtral_realtime_4bit", "nemotron_35_asr_streaming_8bit":
+            StreamingDictationEngine(runner: runner, directory: directory)
+        case "parakeet_tdt_v3", "parakeet_tdt_v2", "phonon_2", "canary_1b_v2_q8",
+             "qwen3_asr_06b_8bit", "qwen3_asr_17b_4bit", "cohere_transcribe_8bit",
+             _ where id.hasPrefix("whisper_"):
             MLXDictationEngine(runner: runner, directory: directory)
         default:
             nil

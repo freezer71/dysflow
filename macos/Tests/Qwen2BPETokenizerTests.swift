@@ -57,4 +57,22 @@ final class Qwen2BPETokenizerTests: XCTestCase {
     func testEmptyTextGivesNothing() {
         XCTAssertEqual(Self.tokenizer.encode(text: ""), [])
     }
+
+    /// Qwen3-ASR décode ce qu'il écrit : le décodage rend chaque phrase de
+    /// référence telle quelle (NFC), accents répartis sur deux jetons compris.
+    func testDecodingGivesBackEverySentence() throws {
+        let data = try Data(contentsOf: Self.fixture("qwen3-bpe", "json"))
+        let reference = try JSONDecoder().decode(Reference.self, from: data)
+        for c in reference.cases {
+            XCTAssertEqual(Self.tokenizer.decode(tokens: c.ids), c.text.precomposedStringWithCanonicalMapping, c.text)
+        }
+    }
+
+    /// Les jetons ajoutés rendent leur contenu (Qwen3-ASR lit la langue
+    /// avant `<asr_text>`) ; un id inconnu est omis.
+    func testDecodingKeepsAddedTokensAndSkipsUnknownIds() {
+        let ids = Self.tokenizer.encode(text: "<|im_start|>Bonjour<|im_end|>")
+        XCTAssertEqual(Self.tokenizer.decode(tokens: ids), "<|im_start|>Bonjour<|im_end|>")
+        XCTAssertEqual(Self.tokenizer.decode(tokens: [9_999_999] + Self.tokenizer.encode(text: "été")), "été")
+    }
 }

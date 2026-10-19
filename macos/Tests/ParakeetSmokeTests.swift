@@ -17,4 +17,12 @@ final class ParakeetSmokeTests: XCTestCase {
         let output = model.generate(audio: MLXArray.zeros([16_000]), generationParameters: model.defaultGenerationParameters)
         XCTAssertNotNil(output.text)
     }
+
+    /// Parakeet v2 (anglais) : même graphe, même chargeur, son vocabulaire
+    /// dans `config.json`.
+    func testTheEnglishV2LoadsAndTranscribesOneSecondOfSilence() throws {
+        let model = try ParakeetModel.fromDirectory(try SmokeModels.folder("parakeet_tdt_v2"))
+        let output = model.generate(audio: MLXArray.zeros([16_000]), generationParameters: model.defaultGenerationParameters)
+        XCTAssertNotNil(output.text)
+    }
 }

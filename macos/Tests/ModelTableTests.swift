@@ -60,6 +60,37 @@ final class ModelTableTests: XCTestCase {
         XCTAssertTrue(ModelsTable.label(row(), .downloading(0.5)).hasSuffix("téléchargement 50 %"))
     }
 
+    /// Chaque ligne porte le logo de son éditeur ; sans logo, une initiale.
+    func testEachModelShowsItsMaker() {
+        XCTAssertEqual(ModelTable.maker(row(system: true)), .apple)
+        XCTAssertEqual(ModelTable.maker(row("parakeet_tdt_v3")), .nvidia)
+        XCTAssertEqual(ModelTable.maker(row("canary_1b_v2_q8")), .nvidia)
+        XCTAssertEqual(ModelTable.maker(row("magpie_tts_357m_8bit")), .nvidia)
+        XCTAssertEqual(ModelTable.maker(row("whisper_large_v3_turbo_4bit")), .openai)
+        XCTAssertEqual(ModelTable.maker(row("voxtral_realtime_4bit")), .mistral)
+        XCTAssertEqual(ModelTable.maker(row("qwen3_tts_06b_base_8bit")), .qwen)
+        XCTAssertEqual(ModelTable.maker(row("phonon_2")), .initial("F"))
+        XCTAssertEqual(ModelTable.maker(row()), .initial("K"))
+        XCTAssertNil(ModelMaker.initial("K").logo)
+        // Les modèles de dictée du lot 4.
+        XCTAssertEqual(ModelTable.maker(row("parakeet_tdt_v2")), .nvidia)
+        XCTAssertEqual(ModelTable.maker(row("nemotron_35_asr_streaming_8bit")), .nvidia)
+        XCTAssertEqual(ModelTable.maker(row("qwen3_asr_06b_8bit")), .qwen)
+        XCTAssertEqual(ModelTable.maker(row("qwen3_asr_17b_4bit")), .qwen)
+        XCTAssertEqual(ModelTable.maker(row("cohere_transcribe_8bit")), .cohere)
+        XCTAssertEqual(ModelMaker.cohere.logo, "logo-cohere")
+    }
+
+    /// Le filtre « Éditeur » et VoiceOver disent l'éditeur en clair, même
+    /// quand la pastille n'en montre que l'initiale.
+    func testEachMakerHasAReadableName() {
+        XCTAssertEqual([ModelMaker.apple, .nvidia, .openai, .mistral, .qwen, .cohere].map(\.name),
+                       ["Apple", "NVIDIA", "OpenAI", "Mistral", "Qwen", "Cohere"])
+        XCTAssertEqual(ModelMaker.initial("K").name, "hexgrad")
+        XCTAssertEqual(ModelMaker.initial("F").name, "Fermion Research")
+        XCTAssertEqual(ModelMaker.initial("Z").name, "Z")
+    }
+
     func testOneDownloadAtATime() {
         let running = DownloadView(id: "autre", received: 1, total: 2, failed: nil)
         XCTAssertFalse(ModelTable.canDownload(row(), download: running))
