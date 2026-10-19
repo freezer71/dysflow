@@ -189,6 +189,120 @@ Le décodeur HF pouvait retirer l'espace avant la ponctuation
 rien, et nous non plus. Toujours passer `language` (`"fr"`, `"en"`) : aucune
 détection de langue n'est codée.
 
+## STT : Parakeet v2 (lot 4)
+
+Rien de copié : `mlx-community/parakeet-tdt-0.6b-v2` se charge par
+`ParakeetModel.fromDirectory` tel quel (même graphe TDT que v3, vocabulaire
+dans `config.json`, clé `labels`).
+
+## STT : Nemotron 3.5 ASR Streaming (lot 4)
+
+Même dépôt, même commit `244458d` (HEAD le 19 oct. 2026) :
+`STT/NemotronASR/*.swift` ← `Sources/MLXAudioSTT/Models/NemotronASR/` (7
+fichiers, sans le `README.md`). Il s'appuie sur `STT/Nemo/` (réseau de
+prédiction, jointure, `NemoDecodingLogic`, `NemoAlignment`), déjà là pour
+Parakeet.
+
+Tous identiques à l'amont, sauf :
+- `NemotronASRAudio.swift` : `import MLXAudioCore` retiré ;
+- `NemotronASRModel.swift` : `import MLXAudioCore`, `import MLXLMCommon` et
+  `import HuggingFace` retirés ; `fromPretrained` supprimé. Reste
+  `fromDirectory(_:computeDType:)` (`config.json`, qui porte le vocabulaire
+  et les invites de langue, et tous les `*.safetensors` du dossier) ;
+- `NemotronASRStreamSession.swift` : `import MLXAudioCore` retiré ; dans
+  `advance`, en cours de flux, un retour immédiat quand aucune tranche
+  entière de plus n'est gelée (`frozenMelFrames(sampleCount:)`, le même
+  compte que `frozenMelFrames(totalMel:)` déduit du seul nombre
+  d'échantillons, et `chunkMelFrames`, la taille de tranche de
+  `streamEncodeChunks`). L'amont recalculait le mel de tout le tampon à
+  chaque `step` pour ne rien encoder ; même sortie, au bit près.
+
+La session de flux (`makeStreamSession(language:chunkMs:)`, `step`,
+`finish`, `Delta`) sert la dictée au fil de la parole
+(`StreamingDictationEngine`), en tranches de 560 ms. Elle recalcule encore
+le mel de tout l'audio reçu à chaque tranche (≈ 1 % du calcul de
+l'encodeur d'après l'amont) : un mel incrémental reste à faire.
+
+## STT : Qwen3-ASR (lot 4)
+
+Même dépôt, même commit `244458d` : `STT/Qwen3ASR/{Qwen3ASR,Qwen3ASRConfig}.swift`
+← `Sources/MLXAudioSTT/Models/Qwen3ASR/`. `Qwen3ForcedAligner.swift`
+(alignement forcé) et le `README.md` ne sont pas copiés.
+`splitAudioIntoChunks`, public, défini ici, sert aussi à Cohere.
+
+Changements :
+- `Qwen3ASRConfig.swift` : `import MLXLMCommon` retiré (la
+  `BaseConfiguration` locale suffit) ;
+- `Qwen3ASR.swift` :
+  - imports `MLXAudioCore`, `MLXLMCommon`, `HuggingFace`, `Tokenizers`
+    retirés ; `MLXAudioCore.computeMelSpectrogram(` devient
+    `KokoroMLX.computeMelSpectrogram(` (`STT/DSP.swift`) ;
+  - `tokenizer` : `Qwen2BPETokenizer?` (le nôtre, `TTS/Qwen3TTS/`) au lieu
+    de `Tokenizers.Tokenizer?` ; même vocabulaire que Qwen3-TTS (même
+    `vocab.json`, mêmes fusions), et les 62 jetons ajoutés de son
+    `tokenizer_config.json` (`<|audio_pad|>`, `<asr_text>`…) ;
+  - `attentionWithCacheUpdate` (MLXLMCommon) remplacé par une fonction
+    privée du même nom : `cache.update` puis
+    `MLXFast.scaledDotProductAttention`, ce que fait l'original pour un
+    `KVCacheSimple`, le seul cache ici (`TTS/KVCache.swift`) ;
+  - `Qwen3ASRTextModel.attentionMask` : `.causal` dès deux positions,
+    `.none` sinon (le `createAttentionMask` de MLXLMCommon sans fenêtre) ;
+    la branche du cache quantifié (`QuantizedKVCacheProtocol`) est retirée ;
+  - `buildPrompt` : le gabarit est encodé sans ses `<|audio_pad|>`, et
+    `audio_token_id` est inséré autant de fois que de jetons audio après
+    `<|audio_start|>`. Mêmes ids (l'encodeur coupe déjà aux jetons
+    spéciaux) ; l'amont faisait chercher par l'encodeur chacun de ces
+    jetons (13 par seconde d'audio) dans une chaîne qui s'allonge avec la
+    dictée ;
+  - `generateTokenizerJSONIfMissing` (qui **écrivait** un `tokenizer.json`
+    dans le dossier du modèle) et `fromPretrained` supprimés ;
+    `fromModelDirectory(_:)` rendu synchrone, il lit `config.json`, le
+    vocabulaire (`vocab.json`, `merges.txt`, `tokenizer_config.json`) et
+    tous les `*.safetensors` du dossier, et n'écrit rien.
+
+`TTS/Qwen3TTS/Qwen2BPETokenizer.swift` gagne `decode(tokens:)` : les jetons
+ajoutés rendent leur contenu (comme swift-transformers sans
+`skipSpecialTokens` : l'amont lit la langue avant `<asr_text>`), les autres
+leurs octets par la table GPT-2 inversée, décodés en UTF-8 bout à bout ; la
+table id → morceau n'est construite qu'au premier décodage (Qwen3-TTS, qui
+n'encode que, ne la paie pas). Tests : `Qwen2BPETokenizerTests`.
+
+La dictée ne passe jamais de langue : Qwen3-ASR la reconnaît seul.
+
+## STT : Cohere Transcribe (lot 4)
+
+Même dépôt, même commit `244458d` : `STT/CohereTranscribe/*.swift` ←
+`Sources/MLXAudioSTT/Models/CohereTranscribe/` (6 fichiers, sans le
+`README.md`). Le vocabulaire passe par `STT/SentencePieceTokenizer.swift`
+(déjà là pour Canary).
+
+Changements :
+- imports `MLXAudioCore`, `MLXLMCommon`, `HuggingFace`, `MLXAudioVAD`
+  retirés des quatre fichiers qui les avaient ;
+- `CohereTranscribeDecoder.swift` : `DecoderAttention` renommé
+  `CohereDecoderAttention` (le nom est déjà pris, dans ce module, par le
+  décodeur du codec de Qwen3-TTS) ;
+- `CohereTranscribe.swift` : la surcharge `generate(…vad:)` (découpage par
+  Silero, MLXAudioVAD) supprimée, `generate(audio:generationParameters:)`
+  garde le découpage à durée fixe qu'elle prenait sans VAD ; l'extension
+  `streamingDecodeTokenIds` / `streamingDecodeText` (pour
+  `StreamingInferenceSession`, d'après `StreamingConfig` de
+  `Sources/MLXAudioSTT/Streaming`, non copié) supprimée ; `fromPretrained`
+  supprimé. Reste `fromDirectory(_:)` (`config.json`, `tokenizer.model`,
+  `tokenizer_config.json` et tous les `*.safetensors`).
+
+Poids : `beshkenadze/cohere-transcribe-03-2026-mlx-8bit`, la disposition sur
+laquelle ce port a été validé (son `README.md` cite le dépôt fp16 du même
+auteur ; le 8 bits en dérive, et sa fiche donne la parité Swift). Le miroir
+`mlx-community/cohere-transcribe-03-2026-mlx-8bit` ne convient pas : ses
+poids sont en BF16 (4,13 Go, aucun `.scales` malgré la quantification
+annoncée dans sa config), rangés sous `mlx-int8/`, avec les noms et la
+config de mlx-speech (`decoder.layers.*.mlp.fc1`, `proj_out`, `dw_weight_0`…)
+que `normalizeCohereWeightKeys` ne reconnaît pas.
+
+La langue est toujours passée (`"fr"`, `"en"`, celle du réglage de la
+dictée) : le modèle n'en détecte aucune.
+
 ## TTS : Qwen3-TTS
 
 Même dépôt, même commit `244458d` : `TTS/Qwen3TTS/{Qwen3TTS,Qwen3TTSTalker,
