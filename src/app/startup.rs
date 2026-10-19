@@ -25,8 +25,10 @@ pub enum Phase {
 impl Phase {
     pub fn label(self, family: &str) -> String {
         match self {
-            Phase::LoadingModel => format!("chargement du modèle {family}…"),
-            Phase::PreparingFirstSentence => "synthèse de la première phrase…".to_string(),
+            Phase::LoadingModel => crate::tr!(en = "loading the {family} model…", fr = "chargement du modèle {family}…"),
+            Phase::PreparingFirstSentence => {
+                crate::tr!("synthesising the first sentence…", "synthèse de la première phrase…").to_string()
+            }
         }
     }
 }
@@ -46,9 +48,10 @@ pub fn phase(
     if already_playing || stats.total == 0 || stats.ready > 0 || stats.failed > 0 {
         return None;
     }
-    // Le moteur se nomme « … · chargement… » tant qu'il lit son modèle : c'est
-    // la seule chose qui distingue les deux phases, et elle suffit.
-    if engine_name.contains("chargement") {
+    // Le moteur se nomme « … · chargement… » (« … · loading… ») tant qu'il lit
+    // son modèle : c'est la seule chose qui distingue les deux phases, et elle
+    // suffit.
+    if engine_name.contains("chargement") || engine_name.contains("loading") {
         return Some(Phase::LoadingModel);
     }
     Some(Phase::PreparingFirstSentence)

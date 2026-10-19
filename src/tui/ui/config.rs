@@ -25,8 +25,8 @@ fn config_title(app: &App) -> Vec<Line<'static>> {
     vec![
         Line::from(""),
         Line::from(vec![
-            Span::styled("  Réglages", Style::default().fg(ACCENT).add_modifier(Modifier::BOLD)),
-            Span::styled(format!("   moteur : {}", app.engine_name()), Style::default().fg(DIM)),
+            Span::styled(crate::tr!("  Settings", "  Réglages"), Style::default().fg(ACCENT).add_modifier(Modifier::BOLD)),
+            Span::styled(crate::tr!(en = "   engine: {}", fr = "   moteur : {}", app.engine_name()), Style::default().fg(DIM)),
         ]),
     ]
 }
@@ -63,9 +63,16 @@ pub(super) fn config_lines(app: &App, width: usize) -> Vec<Line<'static>> {
 /// Le rappel des touches, puis le message du moment.
 pub(super) fn config_footer(app: &App) -> Vec<Line<'static>> {
     // Sans document derrière, fermer la page quitte : autant le dire.
-    let exit = if app.config_closes_to_quit() { "q quitter" } else { "Échap fermer" };
+    let exit = if app.config_closes_to_quit() {
+        crate::tr!("q quit", "q quitter")
+    } else {
+        crate::tr!("Esc close", "Échap fermer")
+    };
     let mut lines = vec![Line::from(Span::styled(
-        format!(" ↑↓ réglage · ←→ valeur, enregistrée aussitôt · t écouter · {exit}"),
+        crate::tr!(
+            en = " ↑↓ setting · ←→ value, saved at once · t listen · {exit}",
+            fr = " ↑↓ réglage · ←→ valeur, enregistrée aussitôt · t écouter · {exit}",
+        ),
         Style::default().fg(FAINT),
     ))];
     // L'aperçu passe devant : c'est le seul message qui décrit une action en

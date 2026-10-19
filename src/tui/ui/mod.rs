@@ -18,7 +18,7 @@ use ratatui::Frame;
 use crate::doc::{BlockKind, Emphasis};
 use crate::app::{App, Panel, ReadingStyle};
 use crate::app::config::FIELDS;
-use crate::app::keys::{CONFIG_HELP, HELP};
+use crate::app::keys::{config_help, help};
 use crate::app::startup;
 
 mod config;
@@ -53,7 +53,7 @@ pub fn render(frame: &mut Frame, app: &App) {
     if app.show_config {
         render_config(frame, app, area);
         if app.show_help {
-            render_help(frame, area, CONFIG_HELP, "Réglages");
+            render_help(frame, area, config_help(), crate::tr!("Settings", "Réglages"));
         }
         return;
     }
@@ -87,7 +87,7 @@ pub fn render(frame: &mut Frame, app: &App) {
     render_status(frame, app, chunks[3]);
 
     if app.show_help {
-        render_help(frame, area, HELP, "Raccourcis");
+        render_help(frame, area, help(), crate::tr!("Shortcuts", "Raccourcis"));
     }
 }
 
@@ -112,7 +112,7 @@ fn render_header(frame: &mut Frame, app: &App, area: Rect) {
     }
     // Un flux encore ouvert doit se voir : le document n'est pas complet.
     if !app.input_complete() {
-        spans.push(Span::styled("  ⟳ flux", Style::default().fg(DIM)));
+        spans.push(Span::styled(crate::tr!("  ⟳ stream", "  ⟳ flux"), Style::default().fg(DIM)));
     }
 
     frame.render_widget(Paragraph::new(Line::from(spans)), area);
@@ -141,6 +141,47 @@ mod tests {
         assert!(!footer.contains(" w "), "{footer}");
     }
 
+    /// Tout le texte d'une trame dessinée sur un terminal factice.
+    fn screen_text(app: &App) -> String {
+        let backend = ratatui::backend::TestBackend::new(110, 34);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal.draw(|frame| render(frame, app)).unwrap();
+        let buffer = terminal.backend().buffer().clone();
+        let width = buffer.area.width as usize;
+        let cells: Vec<&str> = buffer.content.iter().map(|c| c.symbol()).collect();
+        cells.chunks(width).map(|row| row.concat()).collect::<Vec<_>>().join("\n")
+    }
+
+    #[test]
+    fn in_english_the_screens_hold_no_french() {
+        use crate::i18n::{with_ui_lang, UiLang};
+        with_ui_lang(UiLang::En, || {
+            let mut app = crate::app::tests::app_reading("One sentence.\n");
+            let mut screens = vec![screen_text(&app)];
+            app.show_help = true;
+            screens.push(screen_text(&app));
+            app.show_help = false;
+            app.panel = Panel::Contents;
+            screens.push(screen_text(&app));
+            app.panel = Panel::None;
+            app.show_config = true;
+            for row in 0..FIELDS.len() {
+                app.screen.row = row;
+                screens.push(screen_text(&app));
+            }
+            app.show_help = true;
+            screens.push(screen_text(&app));
+            let all = screens.join("\n");
+            for french in ['é', 'è', 'à', 'ç', 'ê'] {
+                assert!(!all.contains(french), "« {french} » à l'écran :\n{all}");
+            }
+            for word in ["Réglages", "Raccourcis", "Sommaire", "Vitesse", "aide"] {
+                assert!(!all.contains(word), "« {word} » à l'écran :\n{all}");
+            }
+            assert!(all.contains("Settings"), "{all}");
+        });
+    }
+
     #[test]
     fn the_status_line_tells_the_voice_is_installing() {
         let mut app = crate::app::tests::app_reading("Une phrase.\n");
@@ -155,8 +196,8 @@ mod tests {
 
     #[test]
     fn the_reminder_names_the_contents_and_no_bookmark() {
-        assert!(REMINDER.contains("t sommaire"), "{REMINDER}");
-        assert!(!REMINDER.contains("signet"), "{REMINDER}");
+        assert!(REMINDER.get().contains("t sommaire"), "{REMINDER:?}");
+        assert!(!REMINDER.get().contains("signet"), "{REMINDER:?}");
     }
 
     #[test]

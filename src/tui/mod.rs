@@ -32,7 +32,7 @@ const IDLE_FRAME: Duration = Duration::from_millis(250);
 const REFRESH: Duration = Duration::from_millis(500);
 
 pub fn run(mut app: App) -> Result<()> {
-    let mut terminal = setup().context("initialisation du terminal")?;
+    let mut terminal = setup().context(crate::tr!("terminal setup", "initialisation du terminal"))?;
     let result = event_loop(&mut terminal, &mut app);
     // La position se retient même si la boucle a échoué : c'est justement
     // quand quelque chose casse qu'on tient à ne pas tout reprendre.

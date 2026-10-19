@@ -33,7 +33,7 @@ impl App {
         }
         self.output_error = self.player.error().map(str::to_string);
         if let Some(err) = self.output_error.clone() {
-            self.notify(&format!("sortie audio indisponible : {err}"));
+            self.notify(&crate::tr!(en = "audio output unavailable: {err}", fr = "sortie audio indisponible : {err}"));
         }
     }
 
@@ -51,12 +51,12 @@ impl App {
             Some(reason) => {
                 // Appelé à chaque tour : le message ne se refait que si la
                 // raison a changé.
-                if self.status.strip_prefix(VOICE_UNAVAILABLE) != Some(reason.as_str()) {
-                    self.status = format!("{VOICE_UNAVAILABLE}{reason}");
+                if self.status.strip_prefix(voice_unavailable()) != Some(reason.as_str()) {
+                    self.status = format!("{}{reason}", voice_unavailable());
                     self.status_until = None;
                 }
             }
-            None if self.status.starts_with(VOICE_UNAVAILABLE) => self.status.clear(),
+            None if self.status.starts_with(voice_unavailable()) => self.status.clear(),
             None => {}
         }
     }
@@ -77,7 +77,7 @@ impl App {
                     break;
                 }
                 Ok(InputEvent::Error(err)) => {
-                    self.notices.push(format!("lecture de l'entrée : {err}"));
+                    self.notices.push(crate::tr!(en = "reading the input: {err}", fr = "lecture de l'entrée : {err}"));
                     self.input_done = true;
                     self.input = None;
                     break;
@@ -367,7 +367,7 @@ impl App {
         // superposer.
         self.stop_preview();
         let playing = self.player.toggle();
-        self.notify(if playing { "Lecture" } else { "Pause" });
+        self.notify(if playing { crate::tr!("Playing", "Lecture") } else { crate::tr!("Paused", "Pause") });
     }
 
     /// Mot lu dans la phrase courante, saut en attente compris.
@@ -387,7 +387,7 @@ impl App {
         let sentence = self.current_sentence();
         let word = self.reading_word().unwrap_or(0);
         let Some((target, word)) = word_target(self.doc(), sentence, word, delta) else {
-            self.notify("Aucun mot de ce côté");
+            self.notify(crate::tr!("No word on this side", "Aucun mot de ce côté"));
             return;
         };
         self.seek_to_word(target, word);
@@ -451,11 +451,11 @@ impl App {
         let target = current.saturating_add_signed(delta);
         self.seek_to(target);
         let label = if delta.abs() == 1 {
-            if delta > 0 { "Phrase suivante" } else { "Phrase précédente" }
+            if delta > 0 { crate::tr!("Next sentence", "Phrase suivante") } else { crate::tr!("Previous sentence", "Phrase précédente") }
         } else if delta > 0 {
-            "Avance rapide"
+            crate::tr!("Fast forward", "Avance rapide")
         } else {
-            "Retour rapide"
+            crate::tr!("Rewind", "Retour rapide")
         };
         self.notify(label);
     }
@@ -465,9 +465,9 @@ impl App {
         match self.doc().sentence_in_neighbour_block(current, delta) {
             Some(target) => {
                 self.seek_to(target);
-                self.notify(if delta > 0 { "Bloc suivant" } else { "Bloc précédent" });
+                self.notify(if delta > 0 { crate::tr!("Next block", "Bloc suivant") } else { crate::tr!("Previous block", "Bloc précédent") });
             }
-            None => self.notify("Aucun bloc de ce côté"),
+            None => self.notify(crate::tr!("No block on this side", "Aucun bloc de ce côté")),
         }
     }
 
@@ -481,27 +481,27 @@ impl App {
                     .map(|s| s.title.clone())
                     .unwrap_or_default();
                 self.seek_to(target);
-                self.notify(&format!("Titre : {title}"));
+                self.notify(&crate::tr!(en = "Heading: {title}", fr = "Titre : {title}"));
             }
-            None => self.notify("Aucun titre de ce côté"),
+            None => self.notify(crate::tr!("No heading on this side", "Aucun titre de ce côté")),
         }
     }
 
     pub fn seek_start(&mut self) {
         self.seek_to(0);
-        self.notify("Début du document");
+        self.notify(crate::tr!("Start of the document", "Début du document"));
     }
 
     pub fn seek_end(&mut self) {
         let total = self.builder.sentence_count();
         self.seek_to(total.saturating_sub(1));
-        self.notify("Fin du document");
+        self.notify(crate::tr!("End of the document", "Fin du document"));
     }
 
     pub fn restart_sentence(&mut self) {
         let current = self.current_sentence();
         self.seek_to(current);
-        self.notify("Phrase reprise");
+        self.notify(crate::tr!("Sentence restarted", "Phrase reprise"));
     }
 
     /// Change la vitesse de lecture, sur-le-champ.
@@ -520,19 +520,19 @@ impl App {
         // resynthèse, ni file vidée, ni coupure.
         self.config.voice.speed = speed;
         self.player.set_speed(speed);
-        self.notify(&format!("Vitesse {speed:.2}×"));
+        self.notify(&crate::tr!(en = "Speed {speed:.2}×", fr = "Vitesse {speed:.2}×"));
     }
 
     pub fn change_volume(&mut self, delta: f32) {
         let volume = (self.player.volume() + delta).clamp(0.0, 2.0);
         self.player.set_volume(volume);
         self.config.voice.volume = volume;
-        self.notify(&format!("Volume {:.0} %", volume * 100.0));
+        self.notify(&crate::tr!(en = "Volume {:.0}%", fr = "Volume {:.0} %", volume * 100.0));
     }
 
     pub fn toggle_mute(&mut self) {
         let muted = self.player.toggle_mute();
-        self.notify(if muted { "Son coupé" } else { "Son rétabli" });
+        self.notify(if muted { crate::tr!("Sound off", "Son coupé") } else { crate::tr!("Sound on", "Son rétabli") });
     }
 
     /// Paramètres de synthèse, dans la langue du document.

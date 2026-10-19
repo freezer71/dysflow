@@ -22,12 +22,12 @@ impl App {
             .unwrap_or(0);
         let last = self.doc().blocks.len().saturating_sub(1);
         self.view.scroll(delta, current, last);
-        self.notify("Vue figée — f revient à la lecture");
+        self.notify(crate::tr!("View frozen — f goes back to the reading", "Vue figée — f revient à la lecture"));
     }
 
     pub fn follow_reading(&mut self) {
         self.view.follow();
-        self.notify("Retour à la lecture");
+        self.notify(crate::tr!("Back to the reading", "Retour à la lecture"));
     }
 
     pub fn toggle_follow(&mut self) {
@@ -80,7 +80,7 @@ impl App {
         let search = Search::new(self.doc(), &query, from);
         if search.is_empty() {
             self.search = None;
-            self.notify(&format!("Aucun résultat pour « {} »", query.trim()));
+            self.notify(&crate::tr!(en = "No results for “{}”", fr = "Aucun résultat pour « {} »", query.trim()));
             return;
         }
         let target = search.target();
@@ -95,7 +95,7 @@ impl App {
     /// Passe au résultat suivant ou précédent.
     pub fn search_advance(&mut self, delta: isize) {
         let Some(search) = self.search.as_mut() else {
-            self.notify("Aucune recherche en cours — / pour en lancer une");
+            self.notify(crate::tr!("No search in progress — / to start one", "Aucune recherche en cours — / pour en lancer une"));
             return;
         };
         if let Some(target) = search.advance(delta) {
@@ -151,7 +151,7 @@ impl App {
             return;
         };
         self.seek_to(target);
-        self.notify("Reprise là où vous en étiez");
+        self.notify(crate::tr!("Resumed where you left off", "Reprise là où vous en étiez"));
     }
 
     /// Où en est la lecture, si cela vaut d'être retenu.
@@ -239,7 +239,7 @@ impl App {
             .and_then(|s| s.first_sentence);
         if let Some(target) = target {
             self.seek_to(target);
-            self.notify("Saut au titre");
+            self.notify(crate::tr!("Jumped to the heading", "Saut au titre"));
         }
     }
 

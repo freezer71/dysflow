@@ -7,7 +7,7 @@ use crossterm::event::{KeyCode as Ct, KeyEvent, KeyEventKind, KeyModifiers};
 
 use crate::app::keys::{self, Key, KeyCode};
 use crate::app::App;
-pub use crate::app::keys::{CONFIG_HELP, HELP};
+pub use crate::app::keys::{config_help, help};
 
 pub fn handle(app: &mut App, key: KeyEvent) {
     // Sous Windows, chaque touche émet aussi un événement de relâchement.

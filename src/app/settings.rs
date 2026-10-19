@@ -52,10 +52,10 @@ impl App {
         // Le modèle change, ses voix aussi : chaque langue reçoit la sienne.
         self.config.align_voice_with_family();
         self.reload_engine();
-        self.notify(&format!("Voix {} prête", package.display_name.get()));
+        self.notify(&crate::tr!(en = "Voice {} ready", fr = "Voix {} prête", package.display_name.get()));
         // Le choix doit survivre au relancement : il s'écrit tout de suite.
         if let Err(err) = self.save_model_choice() {
-            self.notify(&format!("Modèle choisi, non enregistré : {err:#}"));
+            self.notify(&crate::tr!(en = "Model chosen, not saved: {err:#}", fr = "Modèle choisi, non enregistré : {err:#}"));
         }
     }
 
@@ -105,7 +105,7 @@ impl App {
     /// vitesse.
     pub(super) fn preview_label(&self, language: &str) -> String {
         let voice = self.config.tts_params_in(language).voice;
-        let voice = if voice.is_empty() { "voix du système".to_string() } else { voice };
+        let voice = if voice.is_empty() { crate::tr!("system voice", "voix du système").to_string() } else { voice };
         format!("{voice} · {:.2}×", self.config.voice.speed)
     }
 
@@ -122,18 +122,20 @@ impl App {
         // Le moteur est nommé à l'affichage : pendant un chargement différé, il
         // passe de « chargement… » à son nom réel sous les yeux.
         if let Some(elapsed) = self.previewer.pending_for() {
-            return Some(format!(
-                "♪  {} · {} — synthèse de l'aperçu… {:.1} s",
+            return Some(crate::tr!(
+                en = "♪  {} · {} — synthesising the preview… {:.1} s",
+                fr = "♪  {} · {} — synthèse de l'aperçu… {:.1} s",
                 self.previewer.label(),
                 self.engine_name(),
-                elapsed.as_secs_f32()
+                elapsed.as_secs_f32(),
             ));
         }
         self.player.preview_playing().then(|| {
-            format!(
-                "♪  {} · {} — écoute",
+            crate::tr!(
+                en = "♪  {} · {} — playing",
+                fr = "♪  {} · {} — écoute",
                 self.previewer.label(),
-                self.engine_name()
+                self.engine_name(),
             )
         })
     }
@@ -144,7 +146,7 @@ impl App {
         match outcome {
             Ok(audio) => self.player.play_preview(&audio),
             Err(err) => {
-                let message = format!("aperçu impossible : {err}");
+                let message = crate::tr!(en = "preview failed: {err}", fr = "aperçu impossible : {err}");
                 self.preview_error = Some(message.clone());
                 self.screen.notice = message;
             }
@@ -174,7 +176,10 @@ impl App {
             Ok(None) => {}
             Err(err) => {
                 self.screen.install_error =
-                    Some(format!("Voix non installée : {err:#} — nouvel essai au prochain lancement"));
+                    Some(crate::tr!(
+                        en = "Voice not installed: {err:#} — will retry at next launch",
+                        fr = "Voix non installée : {err:#} — nouvel essai au prochain lancement",
+                    ));
             }
         }
     }
@@ -187,11 +192,12 @@ impl App {
                 models::Progress::Running { received, total } => {
                     format!("{} / {}", models::human_size(received), models::human_size(total))
                 }
-                _ => "fin…".to_string(),
+                _ => crate::tr!("finishing…", "fin…").to_string(),
             };
-            return Some(format!(
-                "Installation de la voix {} : {progress} — la voix du système lit en attendant",
-                download.package.display_name.get()
+            return Some(crate::tr!(
+                en = "Installing the voice {}: {progress} — the system voice reads meanwhile",
+                fr = "Installation de la voix {} : {progress} — la voix du système lit en attendant",
+                download.package.display_name.get(),
             ));
         }
         self.screen.install_error.clone()
@@ -266,7 +272,7 @@ impl App {
         let current = self.current_sentence();
         self.queue_head = current;
         self.synth.set_cursor(current);
-        self.notify(&format!("Moteur : {}", self.synth.engine_name()));
+        self.notify(&crate::tr!(en = "Engine: {}", fr = "Moteur : {}", self.synth.engine_name()));
     }
 
     /// Où l'enregistrement automatique écrit ; `None` : nulle part.
@@ -282,7 +288,7 @@ impl App {
         let path = self
             .config_target
             .clone()
-            .ok_or_else(|| anyhow::anyhow!("répertoire de configuration introuvable"))?;
+            .ok_or_else(|| anyhow::anyhow!(crate::tr!("configuration directory not found", "répertoire de configuration introuvable")))?;
         let mut on_disk = Config::read_from(&path)?;
         field.copy_value(&self.config, &mut on_disk);
         on_disk.save_to(&path)?;
@@ -301,7 +307,7 @@ impl App {
 
     fn report_save(&mut self, field: Field) {
         if let Err(err) = self.save_field(field) {
-            self.notify(&format!("Réglage appliqué, non enregistré : {err:#}"));
+            self.notify(&crate::tr!(en = "Setting applied, not saved: {err:#}", fr = "Réglage appliqué, non enregistré : {err:#}"));
         }
     }
 
@@ -319,7 +325,7 @@ impl App {
         let path = self
             .config_target
             .clone()
-            .ok_or_else(|| anyhow::anyhow!("répertoire de configuration introuvable"))?;
+            .ok_or_else(|| anyhow::anyhow!(crate::tr!("configuration directory not found", "répertoire de configuration introuvable")))?;
         let mut on_disk = Config::read_from(&path)?;
         on_disk.engine.engine = self.config.engine.engine.clone();
         on_disk.engine.model_path = self.config.engine.model_path.clone();
@@ -335,9 +341,10 @@ impl App {
     pub fn closing_notice(&self) -> Option<String> {
         let stats = self.synth.stats();
         (stats.in_flight > 0).then(|| {
-            format!(
-                "sillage : une synthèse se termine avant de rendre la main ({})…",
-                self.engine_name()
+            crate::tr!(
+                en = "sillage: a synthesis is finishing before exiting ({})…",
+                fr = "sillage : une synthèse se termine avant de rendre la main ({})…",
+                self.engine_name(),
             )
         })
     }

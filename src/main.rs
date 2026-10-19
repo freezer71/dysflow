@@ -7,6 +7,8 @@ use sillage::launch::{self, Args, Launch, Prepared};
 use sillage::tui;
 
 fn main() -> Result<()> {
+    // La langue de l'interface se fixe avant tout texte, aide comprise.
+    sillage::i18n::set_ui_lang(sillage::i18n::UiLang::from_env());
     let args = Args::parse();
     let Launch::Ready(prepared) = launch::prepare(&args)? else {
         return Ok(());

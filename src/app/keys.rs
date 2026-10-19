@@ -8,8 +8,23 @@ use super::{App, Panel};
 const VIEW_STEP: isize = 4;
 
 /// Aide de la vue de lecture : toutes les touches qui y agissent, et
-/// seulement elles.
-pub const HELP: &[(&str, &str)] = &[
+/// seulement elles, dans la langue de l'interface.
+pub fn help() -> &'static [(&'static str, &'static str)] {
+    match crate::i18n::ui_lang() {
+        crate::i18n::UiLang::En => HELP_EN,
+        crate::i18n::UiLang::Fr => HELP_FR,
+    }
+}
+
+/// Aide de la page des réglages : toutes les touches qui y agissent.
+pub fn config_help() -> &'static [(&'static str, &'static str)] {
+    match crate::i18n::ui_lang() {
+        crate::i18n::UiLang::En => CONFIG_HELP_EN,
+        crate::i18n::UiLang::Fr => CONFIG_HELP_FR,
+    }
+}
+
+const HELP_FR: &[(&str, &str)] = &[
     ("Espace", "Lecture / pause"),
     ("← →", "Phrase précédente / suivante"),
     ("↑ ↓", "Bloc précédent / suivant"),
@@ -27,13 +42,38 @@ pub const HELP: &[(&str, &str)] = &[
     ("q", "Quitter"),
 ];
 
-/// Aide de la page des réglages : toutes les touches qui y agissent.
-pub const CONFIG_HELP: &[(&str, &str)] = &[
+const HELP_EN: &[(&str, &str)] = &[
+    ("Space", "Play / pause"),
+    ("← →", "Previous / next sentence"),
+    ("↑ ↓", "Previous / next block"),
+    ("n / p", "Next / previous heading"),
+    ("Home", "Start of the document"),
+    ("/", "Search the document"),
+    ("N / P", "Next / previous result"),
+    ("+ / -", "Speed (saved)"),
+    ("t", "Contents: ↑ ↓ then Enter"),
+    ("s", "Settings"),
+    ("Pg↑ Pg↓", "Reread without moving the reading"),
+    ("f", "Follow the reading again"),
+    ("?", "Help"),
+    ("Esc", "Close the contents, else quit"),
+    ("q", "Quit"),
+];
+
+const CONFIG_HELP_FR: &[(&str, &str)] = &[
     ("↑ ↓", "Choisir un réglage"),
     ("← → · Entrée", "Changer sa valeur, enregistrée aussitôt"),
     ("t", "Écouter la voix"),
     ("q · Échap · s", "Fermer les réglages"),
     ("?", "Aide"),
+];
+
+const CONFIG_HELP_EN: &[(&str, &str)] = &[
+    ("↑ ↓", "Choose a setting"),
+    ("← → · Enter", "Change its value, saved at once"),
+    ("t", "Listen to the voice"),
+    ("q · Esc · s", "Close the settings"),
+    ("?", "Help"),
 ];
 
 /// Une touche, sans le vocabulaire d'aucune bibliothèque.
@@ -230,7 +270,7 @@ mod tests {
 
     #[test]
     fn the_settings_help_lists_only_what_acts_there() {
-        let keys: Vec<&str> = CONFIG_HELP.iter().map(|(k, _)| *k).collect();
+        let keys: Vec<&str> = config_help().iter().map(|(k, _)| *k).collect();
         assert_eq!(keys, vec!["↑ ↓", "← → · Entrée", "t", "q · Échap · s", "?"]);
     }
 
@@ -398,7 +438,7 @@ mod tests {
 
     #[test]
     fn the_help_names_every_reading_key_and_no_other() {
-        let keys: Vec<&str> = HELP.iter().map(|(k, _)| *k).collect();
+        let keys: Vec<&str> = help().iter().map(|(k, _)| *k).collect();
         for kept in [
             "Espace", "← →", "↑ ↓", "n / p", "Début", "/", "N / P", "+ / -", "t", "s",
             "Pg↑ Pg↓", "f", "?", "Échap", "q",
