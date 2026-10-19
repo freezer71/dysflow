@@ -2,7 +2,8 @@ import Foundation
 
 /// L'encodeur BPE de Qwen2 (ByteLevel), écrit pour Sillage à la place de
 /// swift-transformers : `vocab.json`, `merges.txt` et les jetons ajoutés de
-/// `tokenizer_config.json`. Seul l'encodage sert (le texte à dire). Ne lit
+/// `tokenizer_config.json`. Qwen3-TTS encode (le texte à dire) ; Qwen3-ASR
+/// encode son gabarit et décode le texte reconnu (`decode(tokens:)`). Ne lit
 /// que : n'écrit jamais dans le dossier du modèle. Parité :
 /// `Qwen2BPETokenizerTests` (ids de `transformers`).
 public final class Qwen2BPETokenizer: @unchecked Sendable {
@@ -12,6 +13,10 @@ public final class Qwen2BPETokenizer: @unchecked Sendable {
     /// Jetons ajoutés, du plus long au plus court (contenu, id).
     private let added: [(String, Int)]
     private let split: NSRegularExpression
+    /// Jetons ajoutés par id, pour `decode`.
+    private let addedByID: [Int: String]
+    /// id → morceau (`reverseVocab`), sous `lock`.
+    private var reverse: [Int: String]?
     private var cache: [String: [Int]] = [:]
     private let lock = NSLock()
 
@@ -63,9 +68,11 @@ public final class Qwen2BPETokenizer: @unchecked Sendable {
             let added_tokens_decoder: [String: Added]?
         }
         let config = try JSONDecoder().decode(Config.self, from: Data(contentsOf: configURL))
-        added = (config.added_tokens_decoder ?? [:])
+        let added = (config.added_tokens_decoder ?? [:])
             .compactMap { key, value in Int(key).map { (value.content, $0) } }
             .sorted { $0.0.count > $1.0.count }
+        self.added = added
+        addedByID = Dictionary(added.map { ($0.1, $0.0) }, uniquingKeysWith: { first, _ in first })
         split = try NSRegularExpression(pattern: Self.pattern)
     }
 
@@ -96,6 +103,54 @@ public final class Qwen2BPETokenizer: @unchecked Sendable {
         }
         return ids
     }
+
+    /// Ids → texte (Qwen3-ASR) : les jetons ajoutés rendent leur contenu
+    /// (`<asr_text>` sépare la langue reconnue du texte), les autres leurs
+    /// octets (table GPT-2 inversée), décodés en UTF-8 une fois mis bout à
+    /// bout (un caractère peut tenir sur deux jetons). Un id inconnu est
+    /// omis. Comme `decode(tokens:)` de swift-transformers sans
+    /// `skipSpecialTokens`.
+    public func decode(tokens: [Int]) -> String {
+        let pieces = reverseVocab()
+        var text = ""
+        var bytes: [UInt8] = []
+        func flush() {
+            text += String(decoding: bytes, as: UTF8.self)
+            bytes.removeAll(keepingCapacity: true)
+        }
+        for id in tokens {
+            if let special = addedByID[id] {
+                flush()
+                text += special
+            } else if let piece = pieces[id] {
+                for scalar in piece.unicodeScalars {
+                    if let byte = Self.byteDecoder[scalar] { bytes.append(byte) }
+                }
+            }
+        }
+        flush()
+        return text
+    }
+
+    /// id → morceau, construit au premier décodage seulement (la lecture,
+    /// qui n'encode que, ne le paie pas).
+    private func reverseVocab() -> [Int: String] {
+        lock.lock()
+        defer { lock.unlock() }
+        if let reverse { return reverse }
+        let built = Dictionary(vocab.map { ($0.value, $0.key) }, uniquingKeysWith: { first, _ in first })
+        reverse = built
+        return built
+    }
+
+    /// L'inverse de `byteEncoder`.
+    static let byteDecoder: [Unicode.Scalar: UInt8] = {
+        var table: [Unicode.Scalar: UInt8] = [:]
+        for (byte, character) in byteEncoder.enumerated() {
+            table[character.unicodeScalars.first!] = UInt8(byte)
+        }
+        return table
+    }()
 
     private func encodeOrdinary(_ text: String) -> [Int] {
         guard !text.isEmpty else { return [] }
