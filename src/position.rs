@@ -57,15 +57,15 @@ impl PositionStore {
     }
 
     pub fn save(&self) -> Result<()> {
-        let path = Self::path().context("répertoire de données introuvable")?;
+        let path = Self::path().context(crate::tr!("data directory not found", "répertoire de données introuvable"))?;
         self.save_to(&path)
     }
 
     /// Séparé du chemin par défaut pour que l'aller-retour se vérifie.
     fn load_from(path: &Path) -> Self {
-        let (store, notice) = crate::paths::load_json(path, "positions de lecture");
+        let (store, notice) = crate::paths::load_json(path, crate::i18n::Tr::new("reading positions", "positions de lecture"));
         if let Some(notice) = notice {
-            eprintln!("sillage : {notice}");
+            eprintln!("{}", crate::tr!(en = "sillage: {notice}", fr = "sillage : {notice}"));
         }
         store
     }

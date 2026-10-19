@@ -140,19 +140,27 @@ pub fn write_atomic(path: &Path, contents: &[u8]) -> std::io::Result<()> {
 /// Absent, il rend la valeur par défaut. Illisible, il est mis de côté en
 /// `.json.bak` avant de repartir à neuf, pour que la sauvegarde suivante ne
 /// l'écrase pas, et l'avertissement rendu dit où il est allé.
-pub fn load_json<T: serde::de::DeserializeOwned + Default>(path: &Path, what: &str) -> (T, Option<String>) {
+/// `what` nomme ces données au pluriel, dans les deux langues de l'interface.
+pub fn load_json<T: serde::de::DeserializeOwned + Default>(path: &Path, what: crate::i18n::Tr) -> (T, Option<String>) {
+    let what = what.get();
     let text = match std::fs::read_to_string(path) {
         Ok(text) => text,
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => return (T::default(), None),
-        Err(err) => return (T::default(), Some(format!("{what} illisibles : {err}"))),
+        Err(err) => {
+            return (T::default(), Some(crate::tr!(en = "unreadable {what}: {err}", fr = "{what} illisibles : {err}")));
+        }
     };
     match serde_json::from_str(&text) {
         Ok(value) => (value, None),
         Err(err) => {
             let backup = path.with_extension("json.bak");
             let notice = match std::fs::rename(path, &backup) {
-                Ok(()) => format!("{what} d'un ancien format mis de côté dans {} ({err})", backup.display()),
-                Err(_) => format!("{what} illisibles, ignorés : {err}"),
+                Ok(()) => crate::tr!(
+                    en = "{what} in an old format set aside in {} ({err})",
+                    fr = "{what} d'un ancien format mis de côté dans {} ({err})",
+                    backup.display(),
+                ),
+                Err(_) => crate::tr!(en = "unreadable {what}, ignored: {err}", fr = "{what} illisibles, ignorés : {err}"),
             };
             (T::default(), Some(notice))
         }
@@ -163,7 +171,7 @@ pub fn load_json<T: serde::de::DeserializeOwned + Default>(path: &Path, what: &s
 pub fn save_json<T: serde::Serialize>(path: &Path, value: &T) -> anyhow::Result<()> {
     use anyhow::Context;
     let text = serde_json::to_string_pretty(value)?;
-    write_atomic(path, text.as_bytes()).with_context(|| format!("écriture de {}", path.display()))
+    write_atomic(path, text.as_bytes()).with_context(|| crate::tr!(en = "writing {}", fr = "écriture de {}", path.display()))
 }
 
 fn adopt(base: &Path) -> PathBuf {

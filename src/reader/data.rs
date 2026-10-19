@@ -12,7 +12,8 @@ use crate::models::{self, ModelPackage};
 use super::Reader;
 
 /// Refus d'un lecteur hors disque.
-pub const TRIAL: &str = "mode d'essai : rien n'est modifié sur le disque";
+pub const TRIAL: crate::i18n::Tr =
+    crate::i18n::Tr::new("trial mode: nothing is changed on disk", "mode d'essai : rien n'est modifié sur le disque");
 
 impl Reader {
     /// Pourquoi ce modèle ne peut pas être supprimé maintenant, s'il ne le
@@ -20,9 +21,10 @@ impl Reader {
     /// de macOS prend alors la main.
     pub fn removal_refusal(&self, package: &ModelPackage) -> Option<String> {
         if self.download.as_ref().is_some_and(|d| d.package.id == package.id && !d.is_finished()) {
-            return Some(format!(
-                "{} se télécharge : annulez d'abord le téléchargement",
-                package.display_name.get()
+            return Some(crate::tr!(
+                en = "{} is downloading: cancel the download first",
+                fr = "{} se télécharge : annulez d'abord le téléchargement",
+                package.display_name.get(),
             ));
         }
         None
@@ -30,7 +32,10 @@ impl Reader {
 
     pub fn remove_model(&mut self, id: &str) -> Result<()> {
         if id == "system" {
-            bail!("Les voix de macOS se gèrent dans Réglages Système");
+            bail!(crate::tr!(
+                "macOS voices are managed in System Settings",
+                "Les voix de macOS se gèrent dans Réglages Système"
+            ));
         }
         let package = self.package(id)?;
         self.remove_package_at(package, std::time::Instant::now())
@@ -45,7 +50,7 @@ impl Reader {
             bail!(reason);
         }
         if !self.persist {
-            bail!(TRIAL);
+            bail!(TRIAL.get());
         }
         let config = self.current_config();
         if config.engine_preference() != crate::tts::EnginePreference::System
@@ -67,13 +72,13 @@ impl Reader {
                 self.abandon_migration(id);
                 Ok(())
             }
-            _ => Err(anyhow!("aucun téléchargement en cours")),
+            _ => Err(anyhow!(crate::tr!("no download in progress", "aucun téléchargement en cours"))),
         }
     }
 
     pub fn clear_document_cache(&self) -> Result<u64> {
         if !self.persist {
-            bail!(TRIAL);
+            bail!(TRIAL.get());
         }
         crate::source::cache::clear()
     }
@@ -117,7 +122,7 @@ mod tests {
     fn a_reader_off_disk_erases_nothing() {
         let mut r = reader_with(quiet());
         r.set_persistent(false);
-        assert_eq!(r.clear_document_cache().unwrap_err().to_string(), TRIAL);
+        assert_eq!(r.clear_document_cache().unwrap_err().to_string(), TRIAL.get());
     }
 
     #[test]

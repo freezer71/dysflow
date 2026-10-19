@@ -42,18 +42,34 @@ const MAX_MEAN_FRAMES: usize = 40;
 /// plausibles, et exactement la somme des durées × 600 échantillons
 /// (vérifié au spike).
 pub fn check(raw: &KokoroRaw, tokens: usize) -> Result<()> {
-    ensure!(raw.durations.len() == tokens, "sortie Kokoro invalide : {} durées pour {tokens} jetons", raw.durations.len());
-    ensure!(raw.samples.iter().all(|s| s.is_finite()), "sortie Kokoro invalide : valeur non finie");
+    ensure!(
+        raw.durations.len() == tokens,
+        crate::tr!(
+            en = "invalid Kokoro output: {} durations for {tokens} tokens",
+            fr = "sortie Kokoro invalide : {} durées pour {tokens} jetons",
+            raw.durations.len(),
+        )
+    );
+    ensure!(
+        raw.samples.iter().all(|s| s.is_finite()),
+        crate::tr!("invalid Kokoro output: non-finite value", "sortie Kokoro invalide : valeur non finie")
+    );
     let frames: usize = raw.durations.iter().map(|&d| d as usize).sum();
     ensure!(
         frames <= tokens.max(1) * MAX_MEAN_FRAMES,
-        "sortie Kokoro invalide : {frames} trames pour {tokens} jetons"
+        crate::tr!(
+            en = "invalid Kokoro output: {frames} frames for {tokens} tokens",
+            fr = "sortie Kokoro invalide : {frames} trames pour {tokens} jetons"
+        )
     );
     let expected = frames * super::FRAME;
     ensure!(
         raw.samples.len() == expected,
-        "sortie Kokoro invalide : {} échantillons au lieu de {expected}",
-        raw.samples.len()
+        crate::tr!(
+            en = "invalid Kokoro output: {} samples instead of {expected}",
+            fr = "sortie Kokoro invalide : {} échantillons au lieu de {expected}",
+            raw.samples.len(),
+        )
     );
     Ok(())
 }

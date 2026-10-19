@@ -24,9 +24,9 @@ pub fn run() -> Result<()> {
     if let Some(prefix) = prefix {
         command.env("PREFIX", prefix);
     }
-    let status = command.status().context("impossible de lancer sh pour la mise à jour")?;
+    let status = command.status().context(crate::tr!("cannot start sh for the update", "impossible de lancer sh pour la mise à jour"))?;
     if !status.success() {
-        bail!("la mise à jour a échoué ({status})");
+        bail!(crate::tr!(en = "the update failed ({status})", fr = "la mise à jour a échoué ({status})"));
     }
     Ok(())
 }

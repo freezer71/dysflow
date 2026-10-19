@@ -916,7 +916,7 @@ pub fn kokoro_dir(model_path: &str) -> Option<PathBuf> {
 }
 
 pub fn remove(package: &ModelPackage) -> Result<()> {
-    let root = models_dir().context("répertoire de données introuvable")?;
+    let root = models_dir().context(crate::tr!("data directory not found", "répertoire de données introuvable"))?;
     remove_in(&root, package)
 }
 
@@ -932,7 +932,9 @@ pub fn remove_in(root: &Path, package: &ModelPackage) -> Result<()> {
             Ok(()) => {}
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
             Err(e) => {
-                first_error.get_or_insert_with(|| anyhow!("suppression de {} : {e}", file.display()));
+                first_error.get_or_insert_with(|| {
+                    anyhow!(crate::tr!(en = "removing {}: {e}", fr = "suppression de {} : {e}", file.display()))
+                });
             }
         }
     }
@@ -1023,7 +1025,7 @@ impl Download {
     /// compagnons, en reprenant ce qui est déjà là (un transfert coupé par
     /// le réseau ou la fermeture de l'app). Annulé, il ne laisse rien.
     pub fn start(package: &'static ModelPackage) -> Result<Self> {
-        let root = models_dir().context("répertoire de données introuvable")?;
+        let root = models_dir().context(crate::tr!("data directory not found", "répertoire de données introuvable"))?;
         Self::start_in(package, planned_files_in(&root, package), Some(root))
     }
 
@@ -1157,7 +1159,7 @@ fn fetch_with(
     let ensure_parent = || -> Result<()> {
         if let Some(parent) = destination.parent() {
             std::fs::create_dir_all(parent)
-                .with_context(|| format!("création de {}", parent.display()))?;
+                .with_context(|| crate::tr!(en = "creating {}", fr = "création de {}", parent.display()))?;
         }
         Ok(())
     };
@@ -1208,11 +1210,11 @@ fn fetch_with(
             // Le `.part` est conservé : une reprise repartira de là.
             return Ok(());
         }
-        let read = reader.read(&mut buffer).context("lecture du flux réseau")?;
+        let read = reader.read(&mut buffer).context(crate::tr!("reading the network stream", "lecture du flux réseau"))?;
         if read == 0 {
             break;
         }
-        file.write_all(&buffer[..read]).context("écriture sur disque")?;
+        file.write_all(&buffer[..read]).context(crate::tr!("writing to disk", "écriture sur disque"))?;
         written += read as u64;
         received.store(base + written, Ordering::Relaxed);
     }
@@ -1261,31 +1263,39 @@ fn resume_from(partial: &Path, expected: u64) -> Resume {
 /// illisible, et le `.part` ne peut plus servir de base : il est retiré.
 fn settle(partial: &Path, destination: &Path, expected: u64) -> Result<()> {
     let len = std::fs::metadata(partial)
-        .with_context(|| format!("lecture de {}", partial.display()))?
+        .with_context(|| crate::tr!(en = "reading {}", fr = "lecture de {}", partial.display()))?
         .len();
     if expected > 0 && len != expected {
         let _ = std::fs::remove_file(partial);
-        anyhow::bail!(
-            "fichier reçu de {} au lieu de {} : le transfert est à refaire",
+        anyhow::bail!(crate::tr!(
+            en = "file received with {} instead of {}: the transfer must be redone",
+            fr = "fichier reçu de {} au lieu de {} : le transfert est à refaire",
             human_size(len),
-            human_size(expected)
-        );
+            human_size(expected),
+        ));
     }
     std::fs::rename(partial, destination)
-        .with_context(|| format!("installation de {}", destination.display()))?;
+        .with_context(|| crate::tr!(en = "installing {}", fr = "installation de {}", destination.display()))?;
     Ok(())
 }
 
-/// Formate un nombre d'octets pour l'affichage.
+/// Formate un nombre d'octets pour l'affichage, dans la langue de
+/// l'interface : « 298,3 Mo » en français, « 298.3 MB » en anglais.
 pub fn human_size(bytes: u64) -> String {
-    const UNITS: [(&str, u64); 3] = [("Go", 1 << 30), ("Mo", 1 << 20), ("Ko", 1 << 10)];
-    for (unit, scale) in UNITS {
+    let french = crate::i18n::ui_lang() == crate::i18n::UiLang::Fr;
+    let units: [(&str, u64); 3] = if french {
+        [("Go", 1 << 30), ("Mo", 1 << 20), ("Ko", 1 << 10)]
+    } else {
+        [("GB", 1 << 30), ("MB", 1 << 20), ("KB", 1 << 10)]
+    };
+    for (unit, scale) in units {
         if bytes >= scale {
-            // Virgule décimale, à la française.
-            return format!("{:.1} {unit}", bytes as f64 / scale as f64).replace('.', ",");
+            let size = format!("{:.1} {unit}", bytes as f64 / scale as f64);
+            // Virgule décimale, à la française ; point en anglais.
+            return if french { size.replace('.', ",") } else { size };
         }
     }
-    format!("{bytes} o")
+    if french { format!("{bytes} o") } else { format!("{bytes} B") }
 }
 
 /// Une voix intégrée, proposée au choix.
@@ -1989,6 +1999,11 @@ mod tests {
         assert_eq!(human_size(2 * 1024), "2,0 Ko");
         assert_eq!(human_size(312_784_196), "298,3 Mo");
         assert_eq!(human_size(3 * (1 << 30)), "3,0 Go");
+        crate::i18n::with_ui_lang(crate::i18n::UiLang::En, || {
+            assert_eq!(human_size(512), "512 B");
+            assert_eq!(human_size(312_784_196), "298.3 MB");
+            assert_eq!(human_size(3 * (1 << 30)), "3.0 GB");
+        });
     }
 
     #[test]

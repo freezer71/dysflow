@@ -72,8 +72,11 @@ pub fn trim_silence(samples: &[f32], sample_rate: u32) -> &[f32] {
 }
 
 fn check(raw: &SpeechRaw) -> Result<()> {
-    ensure!(raw.sample_rate > 0, "sortie invalide : fréquence nulle");
-    ensure!(raw.samples.iter().all(|s| s.is_finite()), "sortie invalide : valeur non finie");
+    ensure!(raw.sample_rate > 0, crate::tr!("invalid output: zero sample rate", "sortie invalide : fréquence nulle"));
+    ensure!(
+        raw.samples.iter().all(|s| s.is_finite()),
+        crate::tr!("invalid output: non-finite value", "sortie invalide : valeur non finie")
+    );
     Ok(())
 }
 
@@ -105,7 +108,8 @@ impl Inner {
         let failures = self.failures.fetch_add(1, Ordering::SeqCst) + 1;
         if failures >= MAX_COMPUTE_FAILURES {
             eprintln!("{} : {failures} échecs du calcul d'affilée, passage en repli", self.package.id);
-            *self.broken.locked() = Some(format!("calcul {} en échec", self.package.display_name.get()));
+            *self.broken.locked() =
+                Some(crate::tr!(en = "{} computing failing", fr = "calcul {} en échec", self.package.display_name.get()));
             self.release_compute();
         }
     }
@@ -133,7 +137,7 @@ impl TextComputeEngine {
         fallback: Arc<dyn TtsEngine>,
     ) -> Result<Self> {
         let Some(runtime) = runtime_name(package.runtime) else {
-            bail!("{} ne lit pas à partir du texte", package.display_name.get());
+            bail!(crate::tr!(en = "{} does not read from text", fr = "{} ne lit pas à partir du texte", package.display_name.get()));
         };
         compute.load(dir, runtime)?;
         if let Err(err) = compute.warm_up(dir) {
@@ -157,7 +161,7 @@ impl TextComputeEngine {
 impl TtsEngine for TextComputeEngine {
     fn name(&self) -> String {
         match self.inner.broken() {
-            Some(_) => format!("{} (repli)", self.inner.fallback.name()),
+            Some(_) => crate::tr!(en = "{} (fallback)", fr = "{} (repli)", self.inner.fallback.name()),
             None => format!("{} · MLX", self.inner.package.display_name.get()),
         }
     }
@@ -239,7 +243,7 @@ impl TtsSession for TextComputeSession {
         let kept = trim_silence(&raw.samples, raw.sample_rate);
         if kept.is_empty() {
             self.inner.compute_failed();
-            bail!("{} n'a rien dit", self.inner.package.display_name.get());
+            bail!(crate::tr!(en = "{} said nothing", fr = "{} n'a rien dit", self.inner.package.display_name.get()));
         }
         self.inner.failures.store(0, Ordering::SeqCst);
         Ok(Synthesis { pcm: PcmBuffer::new(kept.to_vec(), raw.sample_rate, 1), words: None })

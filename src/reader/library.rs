@@ -12,6 +12,7 @@ use std::time::Instant;
 
 use crate::audio::Player;
 use crate::config::Config;
+use crate::i18n::Tr;
 use crate::models::{self, ModelPackage};
 use crate::tts::preview::{Previewer, AUDIO_MISSING};
 use crate::tts::system_voices::SystemVoice;
@@ -22,9 +23,9 @@ use super::Reader;
 /// L'identifiant de la voix de macOS, comme dans `use_voice`.
 pub const SYSTEM: &str = "system";
 /// La voix de macOS quand aucune n'est choisie (`voice` vide).
-pub const MAC_DEFAULT_VOICE: &str = "Voix par défaut de macOS";
+pub const MAC_DEFAULT_VOICE: Tr = Tr::new("macOS default voice", "Voix par défaut de macOS");
 /// Refus d'un texte vide.
-pub const NOTHING_TO_READ: &str = "Rien à lire";
+pub const NOTHING_TO_READ: Tr = Tr::new("Nothing to read", "Rien à lire");
 /// Au-delà, le texte de l'aperçu est coupé : un aperçu reste court.
 pub const MAX_PREVIEW_CHARS: usize = 500;
 /// Les bornes de la vitesse de l'aperçu, celles du lecteur.
@@ -71,16 +72,18 @@ pub(super) struct LibraryPreview {
 
 /// L'accent et le genre d'une voix de Kokoro, d'après son préfixe
 /// (`af_` : américaine, femme ; `bm_` : britannique, homme…). `p-fenrir60`
-/// a le timbre de `ff_siwis` : française, femme.
+/// a le timbre de `ff_siwis` : française, femme. L'accent suit la langue de
+/// l'interface ; le genre reste « femme » ou « homme », la clé que l'app
+/// compare à ses filtres.
 pub fn kokoro_traits(id: &str) -> (&'static str, &'static str) {
     if id.starts_with("p-") {
-        return ("française", "femme");
+        return (crate::tr!("French", "française"), "femme");
     }
     let mut chars = id.chars();
     let accent = match chars.next() {
-        Some('a') => "américaine",
-        Some('b') => "britannique",
-        Some('f') => "française",
+        Some('a') => crate::tr!("American", "américaine"),
+        Some('b') => crate::tr!("British", "britannique"),
+        Some('f') => crate::tr!("French", "française"),
         _ => "",
     };
     let gender = match chars.next() {
@@ -101,18 +104,18 @@ pub fn accent_of_locale(locale: &str) -> String {
     let language = parts.next().unwrap_or("").to_ascii_lowercase();
     let region = parts.next().unwrap_or("").to_ascii_uppercase();
     let accent = match (language.as_str(), region.as_str()) {
-        ("fr", "FR") | ("fr", "") => "française",
-        ("fr", "CA") => "canadienne",
-        ("fr", "BE") => "belge",
-        ("fr", "CH") => "suisse",
-        ("en", "US") | ("en", "") => "américaine",
-        ("en", "GB") => "britannique",
-        ("en", "AU") => "australienne",
-        ("en", "IE") => "irlandaise",
-        ("en", "IN") => "indienne",
-        ("en", "ZA") => "sud-africaine",
-        ("en", "NZ") => "néo-zélandaise",
-        ("en", "SC") => "écossaise",
+        ("fr", "FR") | ("fr", "") => crate::tr!("French", "française"),
+        ("fr", "CA") => crate::tr!("Canadian", "canadienne"),
+        ("fr", "BE") => crate::tr!("Belgian", "belge"),
+        ("fr", "CH") => crate::tr!("Swiss", "suisse"),
+        ("en", "US") | ("en", "") => crate::tr!("American", "américaine"),
+        ("en", "GB") => crate::tr!("British", "britannique"),
+        ("en", "AU") => crate::tr!("Australian", "australienne"),
+        ("en", "IE") => crate::tr!("Irish", "irlandaise"),
+        ("en", "IN") => crate::tr!("Indian", "indienne"),
+        ("en", "ZA") => crate::tr!("South African", "sud-africaine"),
+        ("en", "NZ") => crate::tr!("New Zealand", "néo-zélandaise"),
+        ("en", "SC") => crate::tr!("Scottish", "écossaise"),
         _ => return locale.to_string(),
     };
     accent.to_string()
@@ -123,10 +126,10 @@ pub fn accent_of_locale(locale: &str) -> String {
 pub fn voice_traits(family: &str, id: &str) -> (&'static str, &'static str) {
     match family {
         "kokoro" => kokoro_traits(id),
-        "qwen3_tts_06b_base_8bit" => ("française", "femme"),
+        "qwen3_tts_06b_base_8bit" => (crate::tr!("French", "française"), "femme"),
         "magpie_tts_357m_8bit" => match id {
-            "sofia" | "aria" => ("américaine", "femme"),
-            "jason" | "leo" | "john_van_stan" => ("américaine", "homme"),
+            "sofia" | "aria" => (crate::tr!("American", "américaine"), "femme"),
+            "jason" | "leo" | "john_van_stan" => (crate::tr!("American", "américaine"), "homme"),
             _ => ("", ""),
         },
         _ => ("", ""),
@@ -200,7 +203,7 @@ pub fn library_entries(
         model_id: SYSTEM.to_string(),
         model_label: "macOS".to_string(),
         voice_id: String::new(),
-        label: MAC_DEFAULT_VOICE.to_string(),
+        label: MAC_DEFAULT_VOICE.get().to_string(),
         language: locale_language.to_string(),
         accent: if system_locale.trim().is_empty() { String::new() } else { accent_of_locale(system_locale) },
         gender: String::new(),
@@ -305,10 +308,12 @@ impl Reader {
             .reading_packages()
             .into_iter()
             .find(|p| p.id == model)
-            .ok_or_else(|| format!("modèle de lecture inconnu : {model}"))?;
+            .ok_or_else(|| crate::tr!(en = "unknown reading model: {model}", fr = "modèle de lecture inconnu : {model}"))?;
         let path = models::install_path(package)
             .filter(|_| models::is_installed(package))
-            .ok_or_else(|| format!("{} n'est pas installé", package.display_name.get()))?;
+            .ok_or_else(|| {
+                crate::tr!(en = "{} is not installed", fr = "{} n'est pas installé", package.display_name.get())
+            })?;
         config.engine.model_path = path.to_string_lossy().into_owned();
         config.engine.family = package.family.to_string();
         config.engine.engine = "auto".to_string();
@@ -329,7 +334,7 @@ impl Reader {
     ) -> Result<(), String> {
         // Un refus coupe aussi l'aperçu précédent : rien ne sonne sous lui.
         self.stop_preview();
-        let text = preview_text(text).ok_or_else(|| NOTHING_TO_READ.to_string())?;
+        let text = preview_text(text).ok_or_else(|| NOTHING_TO_READ.get().to_string())?;
         self.last_activity = now;
         let active = model == self.active_model_id();
         let config = if active { self.current_config().clone() } else { self.config_for_model(model)? };
@@ -367,14 +372,14 @@ impl Reader {
         lib.player.set_volume(config.voice.volume);
         lib.player.set_speed(speed);
         if !lib.player.is_available() {
-            return Err(AUDIO_MISSING.to_string());
+            return Err(AUDIO_MISSING.get().to_string());
         }
         let language = preview_language(&text, &voice_language(model, voice));
         let mut params = config.tts_params_in(&language);
         params.voice = voice.to_string();
         lib.previewer
             .request(text, params, format!("{voice} · {speed:.2}×"))
-            .map_err(|err| format!("aperçu impossible : {err}"))
+            .map_err(|err| crate::tr!(en = "preview failed: {err}", fr = "aperçu impossible : {err}"))
     }
 
     /// La bibliothèque se ferme : le moteur chargé pour l'aperçu est relâché.
@@ -409,10 +414,12 @@ impl Reader {
         let Some(lib) = self.library_preview.as_mut() else { return };
         match lib.previewer.poll() {
             Some(Ok(audio)) => match lib.engine.readiness() {
-                Readiness::Fallback(reason) => lib.error = Some(format!("voix indisponible : {reason}")),
+                Readiness::Fallback(reason) => {
+                    lib.error = Some(crate::tr!(en = "voice unavailable: {reason}", fr = "voix indisponible : {reason}"))
+                }
                 _ => lib.player.play_preview(&audio),
             },
-            Some(Err(err)) => lib.error = Some(format!("aperçu impossible : {err}")),
+            Some(Err(err)) => lib.error = Some(crate::tr!(en = "preview failed: {err}", fr = "aperçu impossible : {err}")),
             None => {}
         }
         // Le lecteur de l'aperçu ferme sa sortie audio, une fois l'aperçu
@@ -537,7 +544,7 @@ mod tests {
         config.voice.voice = String::new();
         let entries = library_entries(&config, &[], SYSTEM, &mac_voices(), "fr_CA");
         let default = entries.iter().find(|e| e.voice_id.is_empty()).expect("la ligne de la voix par défaut");
-        assert_eq!(default.label, MAC_DEFAULT_VOICE);
+        assert_eq!(default.label, MAC_DEFAULT_VOICE.get());
         assert_eq!(default.model_id, SYSTEM);
         assert_eq!((default.language.as_str(), default.accent.as_str()), ("fr", "canadienne"));
         assert!(default.active && default.model_active);
@@ -625,7 +632,7 @@ mod tests {
     fn an_empty_text_is_refused_without_loading_anything() {
         let (mut r, loads, _) = reader(kokoro_config("af_bella"));
         let err = r.preview_voice_with(SYSTEM, "Thomas", "   ", 1.0, Instant::now()).unwrap_err();
-        assert_eq!(err, NOTHING_TO_READ);
+        assert_eq!(err, NOTHING_TO_READ.get());
         assert_eq!(loads.load(Ordering::SeqCst), 0);
     }
 
@@ -644,7 +651,7 @@ mod tests {
         pending_library_preview(&mut r, true);
         assert!(r.preview_view().pending);
         let err = r.preview_voice_with(SYSTEM, "Thomas", " ", 1.0, Instant::now()).unwrap_err();
-        assert_eq!(err, NOTHING_TO_READ);
+        assert_eq!(err, NOTHING_TO_READ.get());
         assert!(!r.preview_view().pending, "l'aperçu précédent ne continue pas sous un refus");
     }
 
@@ -678,7 +685,7 @@ mod tests {
         config.engine.engine = "system".into();
         let (mut r, loads, _) = reader(config);
         let err = r.preview_voice_with(SYSTEM, "Thomas", "Bonjour.", 1.0, Instant::now()).unwrap_err();
-        assert_eq!(err, AUDIO_MISSING, "sortie muette sous test");
+        assert_eq!(err, AUDIO_MISSING.get(), "sortie muette sous test");
         assert_eq!(loads.load(Ordering::SeqCst), 1);
         assert!(r.voice_loaded(), "la voix du lecteur sert");
         assert_eq!(r.preview_model_loaded(), None, "aucun moteur à part");

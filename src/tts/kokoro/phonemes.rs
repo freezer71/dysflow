@@ -283,23 +283,23 @@ impl Running {
         });
         let mut running = Self { writer, frames, child };
         // Désormais, `Running` tue et attend le processus s'il est relâché.
-        thread.context("fil de lecture de sillage-espeak")?;
+        thread.context(crate::tr!("sillage-espeak reading thread", "fil de lecture de sillage-espeak"))?;
         let mut request = Vec::new();
         push_frame(&mut request, voice.as_bytes());
         running.send(&request)?;
         if running.read_frame()? != b"ok" {
-            bail!("sillage-espeak refuse la voix");
+            bail!(crate::tr!("sillage-espeak refuses the voice", "sillage-espeak refuse la voix"));
         }
         Ok(running)
     }
 
     fn send(&mut self, request: &[u8]) -> Result<()> {
-        self.writer.write_all(request).context("écriture vers sillage-espeak")?;
-        self.writer.flush().context("écriture vers sillage-espeak")
+        self.writer.write_all(request).context(crate::tr!("writing to sillage-espeak", "écriture vers sillage-espeak"))?;
+        self.writer.flush().context(crate::tr!("writing to sillage-espeak", "écriture vers sillage-espeak"))
     }
 
     fn read_frame(&self) -> Result<Vec<u8>> {
-        self.frames.recv_timeout(ANSWER_TIMEOUT).map_err(|_| anyhow!("sillage-espeak ne répond plus"))
+        self.frames.recv_timeout(ANSWER_TIMEOUT).map_err(|_| anyhow!(crate::tr!("sillage-espeak no longer answers", "sillage-espeak ne répond plus")))
     }
 
     /// Prêt pour une requête : vivant, et rien d'une requête passée ne reste
@@ -316,7 +316,7 @@ impl Running {
     /// ligne, puis « ok ». Le découpage ne tient qu'aux longueurs.
     fn ask(&mut self, lines: &[String]) -> Result<Vec<String>> {
         if lines.iter().any(|l| l.len() > MAX_LINE) {
-            bail!("entrée trop longue pour sillage-espeak");
+            bail!(crate::tr!("input too long for sillage-espeak", "entrée trop longue pour sillage-espeak"));
         }
         let mut answers = Vec::with_capacity(lines.len());
         let mut start = 0;
@@ -337,7 +337,7 @@ impl Running {
                 answers.push(String::from_utf8_lossy(&self.read_frame()?).into_owned());
             }
             if self.read_frame()? != b"ok" {
-                bail!("réponses de sillage-espeak en trop");
+                bail!(crate::tr!("too many answers from sillage-espeak", "réponses de sillage-espeak en trop"));
             }
             start = end;
         }
@@ -378,7 +378,10 @@ impl EspeakProcess {
     pub fn locate() -> Result<Self> {
         match locate_program() {
             Some(program) => Ok(Self::new(program, data_dir())),
-            None => bail!("Installation de Sillage incomplète (sillage-espeak introuvable)"),
+            None => bail!(crate::tr!(
+                "Incomplete Sillage installation (sillage-espeak not found)",
+                "Installation de Sillage incomplète (sillage-espeak introuvable)"
+            )),
         }
     }
 
@@ -397,11 +400,11 @@ impl EspeakProcess {
                     // personne ne vide finit plein, et l'assistant bloque.
                     .stderr(Stdio::null())
                     .spawn()
-                    .with_context(|| format!("lancement de {}", program.display()))?;
+                    .with_context(|| crate::tr!(en = "starting {}", fr = "lancement de {}", program.display()))?;
                 let (Some(stdin), Some(stdout)) = (child.stdin.take(), child.stdout.take()) else {
                     let _ = child.kill();
                     let _ = child.wait();
-                    bail!("tubes de sillage-espeak absents");
+                    bail!(crate::tr!("sillage-espeak pipes missing", "tubes de sillage-espeak absents"));
                 };
                 Running::start(Box::new(stdin), Box::new(stdout), Some(child), voice)
             }
@@ -460,7 +463,7 @@ impl Phonemizer for EspeakProcess {
         };
         if answers.len() != lines.len() {
             self.running.remove(voice);
-            bail!("réponses de sillage-espeak incomplètes");
+            bail!(crate::tr!("incomplete answers from sillage-espeak", "réponses de sillage-espeak incomplètes"));
         }
         let mut answers = answers.into_iter();
         let mut joined = chunked.iter().map(|chunks| {

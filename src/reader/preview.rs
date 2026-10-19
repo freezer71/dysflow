@@ -121,7 +121,9 @@ impl Reader {
         let Some(lone) = self.lone_preview.as_mut() else { return };
         match lone.previewer.poll() {
             Some(Ok(audio)) => lone.player.play_preview(&audio),
-            Some(Err(err)) => self.preview_error = Some(format!("aperçu impossible : {err}")),
+            Some(Err(err)) => {
+                self.preview_error = Some(crate::tr!(en = "preview failed: {err}", fr = "aperçu impossible : {err}"))
+            }
             None => {}
         }
         // Le lecteur de l'aperçu ferme sa sortie audio, une fois l'aperçu
@@ -175,7 +177,7 @@ mod tests {
     fn a_preview_without_text_loads_the_voice_and_explains_a_missing_output() {
         let (mut r, loads) = reader_with(silent);
         let err = r.preview_voice_in("fr", Instant::now()).unwrap_err();
-        assert_eq!(err, sample::AUDIO_MISSING);
+        assert_eq!(err, sample::AUDIO_MISSING.get());
         assert_eq!(loads.load(Ordering::SeqCst), 1, "la voix se charge au besoin");
         assert!(r.voice_loaded());
         assert!(r.session().is_none(), "aucun texte n'est ouvert pour autant");
@@ -187,7 +189,7 @@ mod tests {
         let (mut r, loads) = reader_with(silent);
         r.open_text("Un. Deux.", "a", Instant::now());
         let err = r.preview_voice_in("fr", Instant::now()).unwrap_err();
-        assert_eq!(err, sample::AUDIO_MISSING);
+        assert_eq!(err, sample::AUDIO_MISSING.get());
         assert_eq!(loads.load(Ordering::SeqCst), 1, "la voix du texte sert");
         assert!(r.lone_preview.is_none(), "pas d'aperçu à part");
     }

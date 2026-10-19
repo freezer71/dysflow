@@ -36,14 +36,14 @@ impl LanguageChoices {
     }
 
     pub fn save(&self) -> Result<()> {
-        let path = Self::path().context("répertoire de données introuvable")?;
+        let path = Self::path().context(crate::tr!("data directory not found", "répertoire de données introuvable"))?;
         self.save_to(&path)
     }
 
     pub(crate) fn load_from(path: &Path) -> Self {
-        let (choices, notice) = crate::paths::load_json(path, "choix de langue");
+        let (choices, notice) = crate::paths::load_json(path, crate::i18n::Tr::new("language choices", "choix de langue"));
         if let Some(notice) = notice {
-            eprintln!("sillage : {notice}");
+            eprintln!("{}", crate::tr!(en = "sillage: {notice}", fr = "sillage : {notice}"));
         }
         choices
     }
@@ -116,7 +116,7 @@ impl Reader {
     }
 
     pub(super) fn save_choices(&mut self) -> Result<()> {
-        let Some(path) = self.choices_path.clone() else { bail!("répertoire de données introuvable") };
+        let Some(path) = self.choices_path.clone() else { bail!(crate::tr!("data directory not found", "répertoire de données introuvable")) };
         self.choices().save_to(&path)
     }
 
@@ -148,11 +148,11 @@ impl Reader {
     pub fn set_document_language(&mut self, language: Option<&str>, now: Instant) -> Result<()> {
         if let Some(code) = language {
             if Lang::parse(code).is_none() {
-                bail!("langue inconnue : {code}");
+                bail!(crate::tr!(en = "unknown language: {code}", fr = "langue inconnue : {code}"));
             }
         }
         let Some(identity) = self.document_identity().map(str::to_string) else {
-            bail!("aucun document ouvert");
+            bail!(crate::tr!("no document open", "aucun document ouvert"));
         };
         let code = language.map(|c| Lang::parse(c).map_or(c, |l| l.code()));
         self.choices().set(&identity, code);
@@ -162,7 +162,7 @@ impl Reader {
         if self.persist {
             if let Err(e) = self.save_choices() {
                 if let Some(app) = self.session.as_mut() {
-                    app.notify(&format!("choix de langue non enregistré : {e}"));
+                    app.notify(&crate::tr!(en = "language choice not saved: {e}", fr = "choix de langue non enregistré : {e}"));
                 }
             }
         }

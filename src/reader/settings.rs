@@ -487,21 +487,22 @@ impl Reader {
     pub fn install_voice(&mut self, id: &str) -> Result<()> {
         if !self.persist {
             // Hors disque, rien ne se télécharge dans le dossier des modèles.
-            return Err(anyhow!(crate::reader::data::TRIAL));
+            return Err(anyhow!(crate::reader::data::TRIAL.get()));
         }
         let package = self.package(id)?;
         if self.download.as_ref().is_some_and(|d| !d.is_finished()) {
-            return Err(anyhow!("téléchargement déjà en cours"));
+            return Err(anyhow!(crate::tr!("download already in progress", "téléchargement déjà en cours")));
         }
         // Mieux vaut refuser tout de suite que remplir le disque à moitié.
         if let Some(free) = (self.free_space)() {
             let missing = package.total_bytes().saturating_sub(models::installed_bytes(package));
             if free < missing {
-                return Err(anyhow!(
-                    "Il manque {} sur le disque pour {}",
+                return Err(anyhow!(crate::tr!(
+                    en = "{} more disk space is needed for {}",
+                    fr = "Il manque {} sur le disque pour {}",
                     models::human_size(missing - free),
-                    package.display_name.get()
-                ));
+                    package.display_name.get(),
+                )));
             }
         }
         self.download = Some((self.start_download)(package)?);
@@ -534,11 +535,15 @@ impl Reader {
         }
         let package = self.package(id)?;
         if package.kind != models::Kind::Speech {
-            return Err(anyhow!("{} sert à la dictée, pas à la lecture", package.display_name.get()));
+            return Err(anyhow!(crate::tr!(
+                en = "{} is for dictation, not for reading",
+                fr = "{} sert à la dictée, pas à la lecture",
+                package.display_name.get(),
+            )));
         }
         let path = models::install_path(package)
             .filter(|_| models::is_installed(package))
-            .ok_or_else(|| anyhow!("voix non installée : {id}"))?;
+            .ok_or_else(|| anyhow!(crate::tr!(en = "voice not installed: {id}", fr = "voix non installée : {id}")))?;
         self.sync_config();
         // Déjà la voix active : rien à recharger.
         if models::is_active_path(&self.config.engine.model_path, &path)
@@ -576,6 +581,7 @@ impl Reader {
             Progress::Running { received, total } => (received, total, None),
             Progress::Done => (d.package.total_bytes(), d.package.total_bytes(), None),
             Progress::Failed(message) => (0, d.package.total_bytes(), Some(message)),
+            // « annulé » n'est pas traduit : l'app y reconnaît l'annulation.
             Progress::Cancelled => (0, d.package.total_bytes(), Some("annulé".into())),
         };
         Some(DownloadView { id: d.package.id.to_string(), received, total, failed })
@@ -1182,7 +1188,7 @@ mod tests {
         let mut r = reader();
         r.set_persistent(false);
         let id = crate::models::CATALOG[0].id;
-        assert_eq!(r.install_voice(id).unwrap_err().to_string(), crate::reader::data::TRIAL);
+        assert_eq!(r.install_voice(id).unwrap_err().to_string(), crate::reader::data::TRIAL.get());
         assert!(r.download().is_none());
     }
 

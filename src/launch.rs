@@ -156,7 +156,7 @@ pub fn prepare(args: &Args) -> Result<Launch> {
     }
     if args.write_config {
         let path = config.save()?;
-        println!("Configuration écrite dans {}", path.display());
+        println!("{}", crate::tr!(en = "Configuration written to {}", fr = "Configuration écrite dans {}", path.display()));
         return Ok(Launch::Done);
     }
     if args.check_kokoro {
@@ -224,7 +224,7 @@ pub fn prepare(args: &Args) -> Result<Launch> {
 
     if (args.file.is_some() || args.clip) && builder.sentence_count() == 0 {
         drop(quiet);
-        anyhow::bail!("aucun contenu lisible");
+        anyhow::bail!(crate::tr!("nothing readable", "aucun contenu lisible"));
     }
 
     let player = crate::audio::Player::with_output(&config.app.output_device);
@@ -255,12 +255,15 @@ pub fn prepare(args: &Args) -> Result<Launch> {
 /// (téléchargé à part). `install.sh` s'en sert après l'installation.
 #[cfg(feature = "kokoro-onnx")]
 fn check_kokoro() -> Result<String> {
-    tts::kokoro::onnx::check_install().context("Kokoro ne se charge pas")
+    tts::kokoro::onnx::check_install().context(crate::tr!("Kokoro does not load", "Kokoro ne se charge pas"))
 }
 
 #[cfg(not(feature = "kokoro-onnx"))]
 fn check_kokoro() -> Result<String> {
-    anyhow::bail!("Kokoro absent de ce binaire (construit sans la feature kokoro-onnx)")
+    anyhow::bail!(crate::tr!(
+        "Kokoro missing from this binary (built without the kokoro-onnx feature)",
+        "Kokoro absent de ce binaire (construit sans la feature kokoro-onnx)"
+    ))
 }
 
 /// Le texte d'une source qui en porte un, pour `--to-markdown`.
@@ -302,7 +305,7 @@ fn read_input(
         for block in crate::doc::blocks::split_blocks(&text) {
             builder.push_block(&block);
         }
-        return Ok((builder, None, "presse-papiers".to_string()));
+        return Ok((builder, None, crate::tr!("clipboard", "presse-papiers").to_string()));
     }
 
     match &args.file {
@@ -329,7 +332,7 @@ fn read_input(
         None => {
             // Le tube est mis de côté et le descripteur 0 rendu au terminal,
             // faute de quoi le clavier resterait muet en mode pipe.
-            let piped = input::detach_piped_stdin().context("récupération du flux d'entrée")?;
+            let piped = input::detach_piped_stdin().context(crate::tr!("taking over the input stream", "récupération du flux d'entrée"))?;
             let stream = match piped {
                 Some(file) => input::spawn_reader(file),
                 None => input::spawn_reader(std::io::stdin()),
@@ -352,7 +355,10 @@ fn read_clipboard() -> Result<String> {
     }
     #[cfg(not(feature = "clipboard"))]
     {
-        anyhow::bail!("--clip exige un binaire compilé avec l'option `clipboard`")
+        anyhow::bail!(crate::tr!(
+            "--clip needs a binary built with the `clipboard` option",
+            "--clip exige un binaire compilé avec l'option `clipboard`"
+        ))
     }
 }
 
@@ -381,7 +387,10 @@ fn migrate_terminal_in(
             }
             config.align_voice_with_family();
             config.app.voice_migration = KOKORO_MIGRATION;
-            Some(format!("Nouvelle voix : Kokoro remplace {former}. L'ancien modèle reste installé."))
+            Some(crate::tr!(
+                en = "New voice: Kokoro replaces {former}. The former model stays installed.",
+                fr = "Nouvelle voix : Kokoro remplace {former}. L'ancien modèle reste installé."
+            ))
         }
         Step::Record => {
             config.app.voice_migration = KOKORO_MIGRATION;
@@ -438,7 +447,7 @@ fn adopt_installed_model(config: &mut Config, notices: &mut Vec<String>) {
         if std::path::Path::new(&crate::config::expand_tilde(configured)).exists() {
             return;
         }
-        notices.push(format!("modèle introuvable : {configured}"));
+        notices.push(crate::tr!(en = "model not found: {configured}", fr = "modèle introuvable : {configured}"));
         config.engine.model_path.clear();
     }
     if let Some(package) = crate::models::first_installed() {
@@ -464,7 +473,7 @@ fn apply_overrides(config: &mut Config, args: &Args) -> Result<()> {
     }
     if let Some(v) = &args.engine {
         if tts::EnginePreference::parse(v).is_none() {
-            anyhow::bail!("moteur inconnu : {v} (attendu : auto ou system)");
+            anyhow::bail!(crate::tr!(en = "unknown engine: {v} (expected: auto or system)", fr = "moteur inconnu : {v} (attendu : auto ou system)"));
         }
         config.engine.engine = v.clone();
     }
@@ -483,7 +492,10 @@ fn apply_overrides(config: &mut Config, args: &Args) -> Result<()> {
     }
     if let Some(v) = &args.code_blocks {
         if doc::builder::CodePolicy::parse(v).is_none() {
-            anyhow::bail!("valeur inconnue : {v} (attendu : announce, skip ou read)");
+            anyhow::bail!(crate::tr!(
+                en = "unknown value: {v} (expected: announce, skip or read)",
+                fr = "valeur inconnue : {v} (attendu : announce, skip ou read)"
+            ));
         }
         config.reading.code_blocks = v.clone();
     }

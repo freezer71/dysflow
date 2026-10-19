@@ -68,11 +68,17 @@ pub fn version_of(library: &Path) -> Result<String> {
     // d'entrée d'ORT, sans argument ; la chaîne rendue est statique.
     unsafe {
         let lib = libloading::Library::new(library)
-            .map_err(|e| anyhow!("ONNX Runtime introuvable ({}) : {e}", library.display()))?;
+            .map_err(|e| {
+                anyhow!(crate::tr!(
+                    en = "ONNX Runtime not found ({}): {e}",
+                    fr = "ONNX Runtime introuvable ({}) : {e}",
+                    library.display(),
+                ))
+            })?;
         let base: libloading::Symbol<unsafe extern "C" fn() -> *const OrtApiBase> =
-            lib.get(b"OrtGetApiBase").context("bibliothèque qui n'est pas ONNX Runtime")?;
+            lib.get(b"OrtGetApiBase").context(crate::tr!("library that is not ONNX Runtime", "bibliothèque qui n'est pas ONNX Runtime"))?;
         let base = base();
-        anyhow::ensure!(!base.is_null(), "ONNX Runtime sans point d'entrée");
+        anyhow::ensure!(!base.is_null(), crate::tr!("ONNX Runtime without an entry point", "ONNX Runtime sans point d'entrée"));
         let version = CStr::from_ptr(((*base).get_version_string)()).to_string_lossy().into_owned();
         Ok(version)
     }
@@ -82,14 +88,15 @@ pub fn version_of(library: &Path) -> Result<String> {
 pub fn check_version(found: &str) -> Result<()> {
     let mut parts = found.trim().split('.').map(|p| p.parse::<u32>());
     let (Some(Ok(major)), Some(Ok(minor))) = (parts.next(), parts.next()) else {
-        bail!("version d'ONNX Runtime illisible : {found}");
+        bail!(crate::tr!(en = "unreadable ONNX Runtime version: {found}", fr = "version d'ONNX Runtime illisible : {found}"));
     };
     if (major, minor) < MINIMUM {
-        bail!(
-            "ONNX Runtime {found} refusé : il faut la {}.{} au moins (les versions antérieures sont 4 fois plus lentes en int8)",
+        bail!(crate::tr!(
+            en = "ONNX Runtime {found} refused: {}.{} at least is needed (earlier versions are 4 times slower in int8)",
+            fr = "ONNX Runtime {found} refusé : il faut la {}.{} au moins (les versions antérieures sont 4 fois plus lentes en int8)",
             MINIMUM.0,
-            MINIMUM.1
-        );
+            MINIMUM.1,
+        ));
     }
     Ok(())
 }
@@ -105,23 +112,29 @@ pub fn check_install() -> Result<String> {
     let version = version_of(&library)?;
     check_version(&version)?;
     let _ = ort::init_from(&library).map_err(|e| anyhow!("ONNX Runtime : {e}"))?.commit();
-    let mut report = format!("ONNX Runtime {version} : {}\n", library.display());
+    let mut report = crate::tr!(en = "ONNX Runtime {version}: {}\n", fr = "ONNX Runtime {version} : {}\n", library.display());
 
     let mut espeak = EspeakProcess::locate()?;
     for (language, word) in [("fr", "bonjour"), ("en", "hello")] {
         let phonemes =
             espeak.phonemize(language, &[word.to_string()]).with_context(|| format!("sillage-espeak ({language})"))?;
         let Some(first) = phonemes.first().filter(|p| !p.trim().is_empty()) else {
-            bail!("sillage-espeak ne rend aucun phonème pour « {word} » ({language})");
+            bail!(crate::tr!(
+                en = "sillage-espeak returns no phoneme for “{word}” ({language})",
+                fr = "sillage-espeak ne rend aucun phonème pour « {word} » ({language})"
+            ));
         };
-        report.push_str(&format!("sillage-espeak ({language}) : {word} → {first}\n"));
+        report.push_str(&crate::tr!(
+            en = "sillage-espeak ({language}): {word} → {first}\n",
+            fr = "sillage-espeak ({language}) : {word} → {first}\n"
+        ));
     }
     espeak.stop();
     let data = match data_dir() {
         Some(dir) => dir.join("espeak-ng-data").display().to_string(),
-        None => "celles du système".to_string(),
+        None => crate::tr!("the system ones", "celles du système").to_string(),
     };
-    report.push_str(&format!("Données espeak-ng : {data}\n"));
+    report.push_str(&crate::tr!(en = "espeak-ng data: {data}\n", fr = "Données espeak-ng : {data}\n"));
     Ok(report)
 }
 
@@ -166,7 +179,7 @@ impl KokoroBackend for OrtBackend {
             .with_inter_op_spinning(false)
             .map_err(|e| anyhow!("ONNX Runtime : {e}"))?
             .commit_from_file(model_dir.join(ONNX_FILE))
-            .map_err(|e| anyhow!("modèle Kokoro int8 ({}) : {e}", ONNX_FILE))?;
+            .map_err(|e| anyhow!(crate::tr!(en = "Kokoro int8 model ({}): {e}", fr = "modèle Kokoro int8 ({}) : {e}", ONNX_FILE)))?;
         *self.session.lock().unwrap_or_else(|e| e.into_inner()) = Some(session);
         Ok(())
     }
@@ -182,7 +195,7 @@ impl KokoroBackend for OrtBackend {
         cancel.check()?;
         let mut guard = self.session.lock().unwrap_or_else(|e| e.into_inner());
         cancel.check()?;
-        let session = guard.as_mut().context("modèle Kokoro non chargé")?;
+        let session = guard.as_mut().context(crate::tr!("Kokoro model not loaded", "modèle Kokoro non chargé"))?;
         let options = RunOptions::new()?;
         let inputs = ort::inputs![
             "input_ids" => Tensor::from_array(([1usize, ids.len()], ids.to_vec()))?,

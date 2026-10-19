@@ -16,7 +16,7 @@ const PER_CHAR_MS: usize = 50;
 
 impl TtsEngine for SilentEngine {
     fn name(&self) -> String {
-        "silencieux".into()
+        crate::tr!("silent", "silencieux").into()
     }
     fn open_session(&self) -> Result<Box<dyn TtsSession>> {
         Ok(Box::new(SilentSession))

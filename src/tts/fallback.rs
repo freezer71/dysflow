@@ -26,7 +26,7 @@ struct Explained {
 
 impl TtsEngine for Explained {
     fn name(&self) -> String {
-        format!("{} (repli)", self.fallback.name())
+        crate::tr!(en = "{} (fallback)", fr = "{} (repli)", self.fallback.name())
     }
 
     fn open_session(&self) -> anyhow::Result<Box<dyn super::TtsSession>> {

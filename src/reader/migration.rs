@@ -67,7 +67,7 @@ pub fn plan(config: &Config, available: &[&'static ModelPackage], installed: imp
 pub fn former_voice(config: &Config) -> String {
     let path = config.engine.model_path.trim();
     if path.is_empty() {
-        return "la voix du système".to_string();
+        return crate::tr!("the system voice", "la voix du système").to_string();
     }
     models::CATALOG
         .iter()
@@ -79,11 +79,15 @@ pub fn former_voice(config: &Config) -> String {
 fn switched(former: &str) -> String {
     // Plus de « Réglages › Voix pour y revenir » : l'app ne propose plus
     // d'autre modèle que Kokoro (14 oct. 2026).
-    format!("Nouvelle voix : Kokoro remplace {former}.")
+    crate::tr!(en = "New voice: Kokoro replaces {former}.", fr = "Nouvelle voix : Kokoro remplace {former}.")
 }
 
 fn offered(package: &ModelPackage) -> String {
-    format!("Nouvelle voix disponible ({}) — Passer à Kokoro ?", models::human_size(package.total_bytes()))
+    crate::tr!(
+        en = "New voice available ({}) — Switch to Kokoro?",
+        fr = "Nouvelle voix disponible ({}) — Passer à Kokoro ?",
+        models::human_size(package.total_bytes()),
+    )
 }
 
 impl Reader {
@@ -147,9 +151,12 @@ impl Reader {
     /// installé entre-temps (onglet Modèles), il le devient tout de suite.
     pub fn accept_offer(&mut self, now: Instant) -> Result<()> {
         if self.config_unreadable {
-            return Err(anyhow!("configuration illisible : le passage à Kokoro attend qu'elle soit corrigée"));
+            return Err(anyhow!(crate::tr!(
+                "unreadable configuration: switching to Kokoro waits until it is fixed",
+                "configuration illisible : le passage à Kokoro attend qu'elle soit corrigée"
+            )));
         }
-        let offer = self.offer.clone().ok_or_else(|| anyhow!("aucune proposition en attente"))?;
+        let offer = self.offer.clone().ok_or_else(|| anyhow!(crate::tr!("no pending offer", "aucune proposition en attente")))?;
         let package = self.package(&offer.id)?;
         if models::is_installed(package) {
             self.switch_to(package.id, now)?;
