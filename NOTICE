@@ -30,6 +30,24 @@ Copyright 2026 Fermion Research, sous licence Creative Commons Attribution
 et quantifié les poids. Le chargeur de Sillage
 (macos/Vendor/KokoroMLX/STT/Parakeet/PhononLoader.swift) suit le format
 décrit par fermion_container.py du même dépôt (Apache 2.0).
+Les autres, chacun depuis son dépôt, à la révision épinglée :
+- Parakeet TDT 0.6B v2 (NVIDIA Corporation, CC-BY-4.0) :
+  mlx-community/parakeet-tdt-0.6b-v2, révision
+  8ae155301e23d820d82aa60d24817c900e69e487 ;
+- Nemotron 3.5 ASR Streaming 0.6B (NVIDIA Corporation, sous licence
+  OpenMDW-1.1, https://openmdw.ai/license/1-1/, celle de
+  nvidia/nemotron-3.5-asr-streaming-0.6b) :
+  mlx-community/nemotron-3.5-asr-streaming-0.6b-8bit, révision
+  7279359e4481b5e9e185a318bd618e429c6d86cd ;
+- Qwen3-ASR 0.6B et 1.7B (Alibaba, Apache 2.0) :
+  mlx-community/Qwen3-ASR-0.6B-8bit, révision
+  89e96d92ba34aca20b3e29fb10cc284097d1219f, et
+  mlx-community/Qwen3-ASR-1.7B-4bit, révision
+  78a389c776a5483b2d0d4ea5494e11012e0d6159 ;
+- Cohere Transcribe 03-2026 (Cohere, Apache 2.0, d'après
+  CohereLabs/cohere-transcribe-03-2026) :
+  beshkenadze/cohere-transcribe-03-2026-mlx-8bit, révision
+  d1f843476f84846e6fe7aa58a6033f17882f0ec9.
 
 La voix « siwis » de Qwen3-TTS 0.6B Base, livrée avec Sillage
 (assets/voices/qwen3-06b-siwis.safetensors), est un vecteur de locuteur

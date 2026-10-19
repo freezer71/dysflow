@@ -49,6 +49,15 @@ pub enum Runtime {
     CanaryMlx,
     /// Dictée, dans l'app seulement : calcul MLX côté Swift.
     VoxtralRealtimeMlx,
+    /// Dictée, dans l'app seulement : Nemotron ASR (RNN-T en flux) en MLX
+    /// côté Swift.
+    NemotronMlx,
+    /// Dictée, dans l'app seulement : Qwen3-ASR en MLX côté Swift
+    /// (vocabulaire BPE à côté des poids).
+    Qwen3AsrMlx,
+    /// Dictée, dans l'app seulement : Cohere Transcribe en MLX côté Swift
+    /// (vocabulaire SentencePiece à côté des poids).
+    CohereMlx,
     /// Lecture à partir du texte, dans l'app seulement : Qwen3-TTS en MLX
     /// (calcul Swift, `TextSpeechCompute`).
     Qwen3TtsMlx,
@@ -226,6 +235,49 @@ const MAGPIE_FILES: &[Companion] = &[
     hf(MAGPIE_REPO, MAGPIE_REVISION, "nanocodec_decoder/model.safetensors", 63_165_546),
     hf(MAGPIE_REPO, MAGPIE_REVISION, "tokenizer/fr.json", 29_555),
     hf(MAGPIE_REPO, MAGPIE_REVISION, "tokenizer/en.json", 29_699),
+];
+
+const PARAKEET_V2_REPO: &str = "mlx-community/parakeet-tdt-0.6b-v2";
+const PARAKEET_V2_REVISION: &str = "8ae155301e23d820d82aa60d24817c900e69e487";
+const NEMOTRON_REPO: &str = "mlx-community/nemotron-3.5-asr-streaming-0.6b-8bit";
+const NEMOTRON_REVISION: &str = "7279359e4481b5e9e185a318bd618e429c6d86cd";
+const QWEN3_ASR_06B_REPO: &str = "mlx-community/Qwen3-ASR-0.6B-8bit";
+const QWEN3_ASR_06B_REVISION: &str = "89e96d92ba34aca20b3e29fb10cc284097d1219f";
+const QWEN3_ASR_17B_REPO: &str = "mlx-community/Qwen3-ASR-1.7B-4bit";
+const QWEN3_ASR_17B_REVISION: &str = "78a389c776a5483b2d0d4ea5494e11012e0d6159";
+/// Cohere Transcribe : la conversion de beshkenadze, celle sur laquelle le
+/// port Swift de mlx-audio-swift a été validé. Le miroir
+/// `mlx-community/cohere-transcribe-03-2026-mlx-8bit` n'est pas quantifié
+/// (4,13 Go de BF16 malgré son nom et sa config) et suit une autre
+/// disposition des poids (celle de mlx-speech) que ce port ne lit pas.
+const COHERE_REPO: &str = "beshkenadze/cohere-transcribe-03-2026-mlx-8bit";
+const COHERE_REVISION: &str = "d1f843476f84846e6fe7aa58a6033f17882f0ec9";
+
+/// Ce que lit le chargeur de Qwen3-ASR à côté de `model.safetensors` :
+/// configuration et vocabulaire BPE (le même que Qwen3-TTS, lu par
+/// `Qwen2BPETokenizer`). Ni `model.safetensors.index.json`, ni
+/// `generation_config.json`, `preprocessor_config.json`,
+/// `chat_template.json`, que personne ne lit.
+const QWEN3_ASR_06B_FILES: &[Companion] = &[
+    hf(QWEN3_ASR_06B_REPO, QWEN3_ASR_06B_REVISION, "config.json", 7_187),
+    hf(QWEN3_ASR_06B_REPO, QWEN3_ASR_06B_REVISION, "vocab.json", 2_776_833),
+    hf(QWEN3_ASR_06B_REPO, QWEN3_ASR_06B_REVISION, "merges.txt", 1_671_853),
+    hf(QWEN3_ASR_06B_REPO, QWEN3_ASR_06B_REVISION, "tokenizer_config.json", 12_487),
+];
+const QWEN3_ASR_17B_FILES: &[Companion] = &[
+    hf(QWEN3_ASR_17B_REPO, QWEN3_ASR_17B_REVISION, "config.json", 7_188),
+    hf(QWEN3_ASR_17B_REPO, QWEN3_ASR_17B_REVISION, "vocab.json", 2_776_833),
+    hf(QWEN3_ASR_17B_REPO, QWEN3_ASR_17B_REVISION, "merges.txt", 1_671_853),
+    hf(QWEN3_ASR_17B_REPO, QWEN3_ASR_17B_REVISION, "tokenizer_config.json", 12_487),
+];
+/// Cohere : configuration, vocabulaire SentencePiece et jetons spéciaux
+/// (`added_tokens_decoder`). Ni `key_map.json`, ni
+/// `conversion_summary.json`, `preprocessor_config.json`,
+/// `special_tokens_map.json`.
+const COHERE_FILES: &[Companion] = &[
+    hf(COHERE_REPO, COHERE_REVISION, "config.json", 4_336),
+    hf(COHERE_REPO, COHERE_REVISION, "tokenizer.model", 492_827),
+    hf(COHERE_REPO, COHERE_REVISION, "tokenizer_config.json", 48_141),
 ];
 
 /// Modèles proposés à l'installation : Kokoro, en MLX (l'app) ou en int8
@@ -494,6 +546,109 @@ pub const CATALOG: &[ModelPackage] = &[
         licenses: "Apache-2.0",
     },
     ModelPackage {
+        id: "parakeet_tdt_v2",
+        family: "parakeet_tdt_v2",
+        display_name: "Parakeet v2",
+        description: "Le Parakeet anglais : un peu plus juste que v3 en anglais, mais il ne connaît que l'anglais.",
+        precision: "bf16",
+        languages: &["en"],
+        repo: PARAKEET_V2_REPO,
+        revision: PARAKEET_V2_REVISION,
+        file: "model.safetensors",
+        languages_label: "Anglais",
+        bytes: 2_471_559_904,
+        recommended: false,
+        pace: "Relecture toutes les 1,5 s",
+        // Le vocabulaire est dans `config.json` (`labels`), comme pour v3.
+        companions: &[hf(PARAKEET_V2_REPO, PARAKEET_V2_REVISION, "config.json", 36_176)],
+        runtime: Runtime::ParakeetMlx,
+        kind: Kind::Dictation,
+        voices_label: "",
+        licenses: "CC-BY-4.0 (poids et code)",
+    },
+    ModelPackage {
+        id: "nemotron_35_asr_streaming_8bit",
+        family: "nemotron_35_asr_streaming_8bit",
+        display_name: "Nemotron 3.5 Streaming",
+        description: "Écrit au fil de la parole, chaque bout d'audio lu une seule fois. Moins juste que Parakeet v3 en français (environ 9 % de mots faux, contre 5 %).",
+        precision: "8 bits",
+        languages: &["fr", "en"],
+        repo: NEMOTRON_REPO,
+        revision: NEMOTRON_REVISION,
+        file: "model.safetensors",
+        languages_label: "40 langues",
+        bytes: 755_598_923,
+        recommended: false,
+        pace: "Au fil de la parole",
+        // Vocabulaire et invites de langue dans `config.json` ; ni
+        // `tokenizer.model` ni `vocab.txt`, que le chargeur ne lit pas.
+        companions: &[hf(NEMOTRON_REPO, NEMOTRON_REVISION, "config.json", 159_605)],
+        runtime: Runtime::NemotronMlx,
+        kind: Kind::Dictation,
+        voices_label: "",
+        licenses: "Poids OpenMDW-1.1 (NVIDIA)",
+    },
+    ModelPackage {
+        id: "qwen3_asr_06b_8bit",
+        family: "qwen3_asr_06b_8bit",
+        display_name: "Qwen3-ASR 0.6B",
+        description: "Reconnaît seul la langue parlée, parmi trente. Écrit le texte jeton par jeton : chaque relecture prend plus de temps qu'avec Parakeet.",
+        precision: "8 bits",
+        languages: &["fr", "en"],
+        repo: QWEN3_ASR_06B_REPO,
+        revision: QWEN3_ASR_06B_REVISION,
+        file: "model.safetensors",
+        languages_label: "30 langues, reconnues seules",
+        bytes: 1_006_229_426,
+        recommended: false,
+        pace: "Relecture glissante, plus espacée que Parakeet",
+        companions: QWEN3_ASR_06B_FILES,
+        runtime: Runtime::Qwen3AsrMlx,
+        kind: Kind::Dictation,
+        voices_label: "",
+        licenses: "Apache-2.0",
+    },
+    ModelPackage {
+        id: "qwen3_asr_17b_4bit",
+        family: "qwen3_asr_17b_4bit",
+        display_name: "Qwen3-ASR 1.7B",
+        description: "Le grand Qwen3-ASR, plus juste que le 0.6B, réduit à 4 bits. Reconnaît seul la langue ; le plus lent des deux à relire.",
+        precision: "4 bits",
+        languages: &["fr", "en"],
+        repo: QWEN3_ASR_17B_REPO,
+        revision: QWEN3_ASR_17B_REVISION,
+        file: "model.safetensors",
+        languages_label: "30 langues, reconnues seules",
+        bytes: 1_603_081_617,
+        recommended: false,
+        pace: "Relecture glissante, plus espacée que Parakeet",
+        companions: QWEN3_ASR_17B_FILES,
+        runtime: Runtime::Qwen3AsrMlx,
+        kind: Kind::Dictation,
+        voices_label: "",
+        licenses: "Apache-2.0",
+    },
+    ModelPackage {
+        id: "cohere_transcribe_8bit",
+        family: "cohere_transcribe_8bit",
+        display_name: "Cohere Transcribe",
+        description: "Le plus juste du classement Open ASR en anglais (5,4 % de mots faux en moyenne). Il ne devine pas la langue : il prend celle du réglage.",
+        precision: "8 bits",
+        languages: &["fr", "en"],
+        repo: COHERE_REPO,
+        revision: COHERE_REVISION,
+        file: "model.safetensors",
+        languages_label: "14 langues, choisie dans le réglage",
+        bytes: 2_418_031_831,
+        recommended: false,
+        pace: "Relecture glissante, plus espacée que Parakeet",
+        companions: COHERE_FILES,
+        runtime: Runtime::CohereMlx,
+        kind: Kind::Dictation,
+        voices_label: "",
+        licenses: "Poids Apache-2.0 (Cohere)",
+    },
+    ModelPackage {
         id: "qwen3_tts_06b_base_8bit",
         family: "qwen3_tts_06b_base_8bit",
         display_name: "Qwen3 0.6B · voix française",
@@ -552,6 +707,9 @@ pub fn available_with(mlx: bool) -> Vec<&'static ModelPackage> {
             | Runtime::WhisperMlx
             | Runtime::CanaryMlx
             | Runtime::VoxtralRealtimeMlx
+            | Runtime::NemotronMlx
+            | Runtime::Qwen3AsrMlx
+            | Runtime::CohereMlx
             | Runtime::Qwen3TtsMlx
             | Runtime::MagpieMlx => mlx,
             Runtime::KokoroOnnx => !mlx && cfg!(feature = "kokoro-onnx"),
@@ -1447,9 +1605,11 @@ mod tests {
     }
 
     #[test]
-    fn every_catalog_entry_speaks_french() {
-        // Le lecteur s'adresse d'abord à un usage francophone.
-        for package in CATALOG {
+    fn every_reading_model_speaks_french() {
+        // Le lecteur s'adresse d'abord à un usage francophone. La dictée peut
+        // proposer un modèle anglais seulement (Parakeet v2) : la
+        // bibliothèque des modèles le filtre par langue.
+        for package in CATALOG.iter().filter(|p| p.kind == Kind::Speech) {
             assert!(package.speaks("fr"), "{} ne parle pas français", package.id);
             assert!(package.speaks("fr-FR"), "variante régionale rejetée");
         }
@@ -1561,7 +1721,7 @@ mod tests {
     #[test]
     fn dictation_packages_each_have_their_own_folder() {
         let dictation: Vec<&ModelPackage> = CATALOG.iter().filter(|p| p.kind == Kind::Dictation).collect();
-        assert_eq!(dictation.len(), 7);
+        assert_eq!(dictation.len(), 12);
         for p in &dictation {
             assert_eq!(p.family, p.id, "{} : un dossier par paquet", p.id);
         }
@@ -1570,7 +1730,7 @@ mod tests {
     #[test]
     fn dictation_is_only_offered_to_the_app() {
         assert!(available_with(false).iter().all(|p| p.kind == Kind::Speech));
-        assert_eq!(available_with(true).iter().filter(|p| p.kind == Kind::Dictation).count(), 7);
+        assert_eq!(available_with(true).iter().filter(|p| p.kind == Kind::Dictation).count(), 12);
     }
 
     #[test]
@@ -1610,6 +1770,41 @@ mod tests {
         assert!(phonon.speaks("en"));
         assert!(available_with(true).iter().any(|p| p.id == "phonon_2"));
         assert!(!available_with(false).iter().any(|p| p.id == "phonon_2"));
+    }
+
+    /// Lot 4 : cinq modèles de plus, épinglés, avec ce que leur chargeur lit
+    /// (tailles relevées sur Hugging Face le 19 oct. 2026).
+    #[test]
+    fn lot_4_dictation_packages_carry_what_their_loader_reads() {
+        let v2 = package("parakeet_tdt_v2");
+        assert_eq!(v2.runtime, Runtime::ParakeetMlx, "même moteur que v3");
+        assert_eq!(v2.total_bytes(), 2_471_559_904 + 36_176);
+        assert!(v2.speaks("en") && !v2.speaks("fr"), "Parakeet v2 ne connaît que l'anglais");
+
+        let nemotron = package("nemotron_35_asr_streaming_8bit");
+        assert_eq!(nemotron.runtime, Runtime::NemotronMlx);
+        assert_eq!(nemotron.total_bytes(), 755_598_923 + 159_605);
+
+        for (id, weights) in [("qwen3_asr_06b_8bit", 1_006_229_426), ("qwen3_asr_17b_4bit", 1_603_081_617)] {
+            let qwen = package(id);
+            assert_eq!(qwen.runtime, Runtime::Qwen3AsrMlx, "{id}");
+            assert_eq!(qwen.bytes, weights, "{id}");
+            let files: Vec<&str> = qwen.companions.iter().map(|c| c.dest).collect();
+            assert_eq!(files, ["config.json", "vocab.json", "merges.txt", "tokenizer_config.json"], "{id}");
+        }
+
+        let cohere = package("cohere_transcribe_8bit");
+        assert_eq!(cohere.runtime, Runtime::CohereMlx);
+        // Vraiment quantifié : le miroir mlx-community (4,13 Go de BF16) n'est pas celui-là.
+        assert_eq!(cohere.repo, "beshkenadze/cohere-transcribe-03-2026-mlx-8bit");
+        assert_eq!(cohere.total_bytes(), 2_418_031_831 + 4_336 + 492_827 + 48_141);
+        assert!(cohere.companions.iter().any(|c| c.dest == "tokenizer.model"));
+
+        for p in [v2, nemotron, package("qwen3_asr_06b_8bit"), package("qwen3_asr_17b_4bit"), cohere] {
+            assert!(!p.recommended, "{} : Parakeet v3 reste le recommandé", p.id);
+            assert!(available_with(true).iter().any(|q| q.id == p.id), "{}", p.id);
+            assert!(!available_with(false).iter().any(|q| q.id == p.id), "{} : pas dans le terminal", p.id);
+        }
     }
 
     #[test]
