@@ -219,7 +219,7 @@ struct VoiceLibrarySheet: View {
     private var footer: some View {
         HStack(spacing: 10) {
             if let selected = library.selected {
-                Text("Selected: \(selected.label)")
+                Text("Selected voice: \(selected.label)")
                     .font(Typo.detail)
                     .foregroundStyle(Palette.muted)
                     .lineLimit(1)
@@ -293,7 +293,7 @@ private struct VoiceLibraryRow: View {
                 HStack(spacing: 4) {
                     Image(systemName: "checkmark")
                         .font(.system(size: 12, weight: .semibold))
-                    Text("Selected")
+                    Text(ModelTable.Gender.feminine.inUseBadge)
                         .font(Typo.caption)
                 }
                 .foregroundStyle(Palette.ink)

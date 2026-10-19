@@ -126,8 +126,8 @@ struct ModelsTable: View {
             .buttonStyle(ModelRowButtonStyle())
             .disabled(!(ModelTable.canUse(row) || downloads))
             .help(downloads ? "Download \(row.name)" : "")
-            .accessibilityLabel(row.active ? "\(row.name), \(ModelTable.used(row))"
-                : downloads ? "Download \(row.name)" : "Use \(row.name)")
+            .accessibilityLabel(row.active ? [row.name, ModelTable.used(row)].joined(separator: ", ")
+                : downloads ? String(localized: "Download \(row.name)") : String(localized: "Use \(row.name)"))
             .accessibilityIdentifier("utiliser-\(row.id)")
             HStack(spacing: 8) {
                 action(row, state)
@@ -178,7 +178,7 @@ struct ModelsTable: View {
     @ViewBuilder private func action(_ row: VoiceModel, _ state: ModelRowState) -> some View {
         switch state {
         case .system:
-            Text(row.active ? "Selected" : "On this Mac")   // la voix de macOS : « Utilisée » (féminin) en français
+            Text(row.active ? ModelTable.usedBadge(row) : String(localized: "On this Mac"))   // la voix de macOS : « Utilisée » (féminin) en français
                 .foregroundStyle(Palette.muted)
                 .accessibilityHidden(true)
         case .notInstalled:

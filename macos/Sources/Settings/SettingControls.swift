@@ -1,19 +1,12 @@
 import Foundation
 import SwiftUI
 
-/// La langue de l'interface : les nombres et les unités s'écrivent à la
-/// française en français (virgule, « Mo », « 60 % »), à l'anglaise sinon.
-enum UILanguage {  // un seul endroit pour la langue des nombres
-    static var isFrench: Bool { Bundle.main.preferredLocalizations.first == "fr" }
-    static var numberLocale: Locale { Locale(identifier: isFrench ? "fr_FR" : "en_US") }
-}
-
 /// Nombres dans la langue de l'interface, à l'écran comme pour VoiceOver.
 enum SettingFormat {
     /// Deux décimales au plus : « 1,25 » (« 1.25 » en anglais), « 1 ».
     static func decimal(_ v: Float) -> String {
         let f = NumberFormatter()
-        f.locale = UILanguage.numberLocale
+        f.locale = UILanguage.locale
         f.minimumFractionDigits = 0
         f.maximumFractionDigits = 2
         return f.string(from: NSNumber(value: v)) ?? "\(v)"
@@ -46,7 +39,7 @@ enum SizeFormat {
             unit += 1
         }
         let f = NumberFormatter()
-        f.locale = UILanguage.numberLocale
+        f.locale = UILanguage.locale
         f.minimumFractionDigits = 0
         f.maximumFractionDigits = value >= 99.95 ? 0 : 1
         f.roundingMode = .halfUp

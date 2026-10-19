@@ -24,8 +24,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// choisie parmi celles de l'app (`en`, `fr`) : un Mac en allemand donne
     /// `en`, et les textes du moteur (catalogue des modèles, erreurs)
     /// suivent toujours l'interface.
-    private let interfaceLanguage: Void = setInterfaceLanguage(
-        tag: Bundle.main.preferredLocalizations.first ?? "en")
+    private let interfaceLanguage: Void = setInterfaceLanguage(tag: UILanguage.tag)
 
     /// Ce que les scènes SwiftUI lisent (`.environment(services)`).
     let services = AppServices()

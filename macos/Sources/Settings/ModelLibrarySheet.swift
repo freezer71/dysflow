@@ -173,7 +173,7 @@ struct ModelLibrarySheet: View {
     private var footer: some View {
         HStack(spacing: 10) {
             if let selected {
-                Text("Chosen: \(selected.name)")
+                Text("Selected model: \(selected.name)")
                     .font(Typo.detail)
                     .foregroundStyle(Palette.muted)
                     .lineLimit(1)
@@ -240,7 +240,7 @@ private struct ModelLibraryRow: View {
                         HStack(spacing: 3) {
                             Image(systemName: "checkmark")
                                 .font(.system(size: 11, weight: .semibold))
-                            Text(row.system ? "Selected" : "In use")
+                            Text(ModelTable.usedBadge(row))
                                 .font(Typo.caption)
                         }
                         .foregroundStyle(Palette.ink)

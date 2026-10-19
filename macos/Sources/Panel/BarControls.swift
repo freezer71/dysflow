@@ -4,10 +4,8 @@ import SwiftUI
 /// « 1,1× » ; « 1.25× » en anglais, qui écrit le point décimal).
 enum SpeedFormat {
     static func number(_ speed: Float) -> String {
-        var s = String(format: "%.2f", (Double(speed) * 100).rounded() / 100)
-        while s.hasSuffix("0") { s.removeLast() }
-        if s.hasSuffix(".") { s.removeLast() }
-        return Bundle.main.preferredLocalizations.first == "fr" ? s.replacingOccurrences(of: ".", with: ",") : s
+        // Le même formateur que le curseur des réglages : les deux ne peuvent pas diverger.
+        SettingFormat.decimal(SettingFormat.rounded(speed))
     }
 
     static func text(_ speed: Float) -> String { number(speed) + "×" }

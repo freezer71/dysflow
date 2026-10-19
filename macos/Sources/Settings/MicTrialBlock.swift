@@ -354,11 +354,11 @@ struct MicTrialHistory: View {
     }
 
     private func line(_ name: String, _ r: TrialResult) -> some View {
-        let date = r.date.formatted(.dateTime.day().month(.wide).locale(UILanguage.numberLocale))
+        let date = r.date.formatted(.dateTime.day().month(.wide).locale(UILanguage.locale))
         let parts = Self.parts(r, size: { SizeFormat.bytes($0) })
         let spoken = parts.joined(separator: ", ")
         return VStack(alignment: .leading, spacing: 4) {
-            Text("\(name), \(date)")
+            Text("\(name) on \(date)")
                 .font(Typo.rowTitle)
                 .foregroundStyle(Palette.ink)
                 .fixedSize(horizontal: false, vertical: true)
@@ -372,6 +372,6 @@ struct MicTrialHistory: View {
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(String(localized: "\(name), \(date): \(spoken)"))
+        .accessibilityLabel(String(localized: "\(name) on \(date): \(spoken)"))
     }
 }

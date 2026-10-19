@@ -123,14 +123,29 @@ enum ModelTable {
         }
     }
 
-    /// « Voix de macOS » est féminin, un modèle masculin : deux clés, pour
-    /// que le français accorde (l'anglais dit « selected » de la voix).
+    /// « Voix de macOS » est féminin, un modèle masculin : deux clés au même
+    /// texte anglais (la clé féminine porte « (feminine) » et sa valeur
+    /// anglaise reste « in use »), pour que le français accorde.
     static func used(_ row: VoiceModel) -> String {
-        row.system ? String(localized: "selected") : String(localized: "in use")
+        row.system ? Gender.feminine.inUse : String(localized: "in use")
     }
 
     static func notUsed(_ row: VoiceModel) -> String {
-        row.system ? String(localized: "not selected") : String(localized: "not in use")
+        row.system ? Gender.feminine.notInUse : String(localized: "not in use")
+    }
+
+    /// L'étiquette « En service » d'une ligne.
+    static func usedBadge(_ row: VoiceModel) -> String {
+        row.system ? Gender.feminine.inUseBadge : String(localized: "In use")
+    }
+
+    /// L'accord du français : l'anglais n'a qu'un texte.
+    enum Gender {
+        case feminine
+
+        var inUse: String { String(localized: "in use (feminine)", defaultValue: "in use") }
+        var notInUse: String { String(localized: "not in use (feminine)", defaultValue: "not in use") }
+        var inUseBadge: String { String(localized: "In use (feminine)", defaultValue: "In use") }
     }
 
     static func bytes(_ count: UInt64) -> String {
