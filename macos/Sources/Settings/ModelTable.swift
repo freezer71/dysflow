@@ -63,8 +63,9 @@ enum ModelTable {
         return row.installed ? .installed : .notInstalled
     }
 
-    /// Ce que le moteur dit d'un téléchargement annulé (`DownloadView.failed`).
-    static let cancelled = "annulé"
+    /// Ce que le moteur dit d'un téléchargement annulé (`DownloadView.failed`) :
+    /// un mot de la clé du moteur, dans les deux langues, jamais affiché.
+    static let cancelled = "annulé"   // xcstrings: garder
 
     /// Un seul téléchargement à la fois.
     static func canDownload(_ row: VoiceModel, download: DownloadView?) -> Bool {
@@ -122,9 +123,14 @@ enum ModelTable {
         }
     }
 
-    /// « Voix de macOS » est féminin, un modèle masculin.
+    /// « Voix de macOS » est féminin, un modèle masculin : deux clés, pour
+    /// que le français accorde (l'anglais dit « selected » de la voix).
     static func used(_ row: VoiceModel) -> String {
-        row.system ? "utilisée" : "utilisé"
+        row.system ? String(localized: "selected") : String(localized: "in use")
+    }
+
+    static func notUsed(_ row: VoiceModel) -> String {
+        row.system ? String(localized: "not selected") : String(localized: "not in use")
     }
 
     static func bytes(_ count: UInt64) -> String {
@@ -138,9 +144,9 @@ enum ModelTable {
     }
 
     static func confirmation(_ row: VoiceModel, fallback: String) -> (title: String, message: String) {
-        var message = "\(bytes(row.diskBytes)) seront libérés. Il faudra le retélécharger pour l'utiliser."
+        var message = String(localized: "\(bytes(row.diskBytes)) will be freed. You will need to download it again to use it.")
         if row.active { message += " " + fallback }
-        return ("Supprimer \(row.name) ?", message)
+        return (String(localized: "Delete \(row.name)?"), message)
     }
 
     /// Ce que VoiceOver entend d'un téléchargement : un palier de 25 % franchi
@@ -150,7 +156,7 @@ enum ModelTable {
         let before = Int((min(max(previous ?? 0, 0), 1) * 4).rounded(.down))
         let now = Int((min(max(current, 0), 1) * 4).rounded(.down))
         guard now > before else { return nil }
-        return "Téléchargement de \(name) : \(now * 25) %"
+        return String(localized: "Downloading \(name): \(now * 25)%")
     }
 
     /// La part reçue d'un téléchargement en cours, `nil` sinon.
@@ -160,7 +166,7 @@ enum ModelTable {
     }
 
     static func footer(used: UInt64, free: UInt64?) -> String {
-        let freeText = free.map { " · \(bytes($0)) libres" } ?? ""
-        return "\(bytes(used)) utilisés par les modèles\(freeText)"
+        let freeText = free.map { String(localized: " · \(bytes($0)) free") } ?? ""
+        return String(localized: "\(bytes(used)) used by models\(freeText)")
     }
 }

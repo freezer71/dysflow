@@ -57,7 +57,7 @@ struct ModelLibrarySheet: View {
         .background(Palette.page)
         .font(Typo.body)
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Bibliothèque des modèles")
+        .accessibilityLabel("Model library")
         .accessibilityIdentifier("bibliotheque-modeles")
         .onAppear {
             // Le modèle utilisé, choisi d'avance : Retour seul ne change rien.
@@ -68,9 +68,9 @@ struct ModelLibrarySheet: View {
                isPresented: Binding(get: { confirming != nil }, set: { if !$0 { confirming = nil } }),
                presenting: confirming) { row in
             // Annuler par défaut : Retour et Échap ne suppriment rien.
-            Button("Annuler", role: .cancel) {}
+            Button("Cancel", role: .cancel) {}
                 .keyboardShortcut(.defaultAction)
-            Button("Supprimer", role: .destructive) {
+            Button("Delete", role: .destructive) {
                 act {
                     try await model.removeModel(row.id)
                     removed(row)
@@ -85,11 +85,11 @@ struct ModelLibrarySheet: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("Bibliothèque des modèles")
+            Text("Model library")
                 .font(.system(size: 22, weight: .heavy))
                 .foregroundStyle(Palette.ink)
                 .accessibilityAddTraits(.isHeader)
-            Text("Tous les modèles de dictée : téléchargez ceux qui vous intéressent, puis choisissez celui qui écrira.")
+            Text("All dictation models: download the ones you like, then choose the one that will write.")
                 .font(Typo.body)
                 .foregroundStyle(Palette.muted)
                 .fixedSize(horizontal: false, vertical: true)
@@ -98,19 +98,19 @@ struct ModelLibrarySheet: View {
 
     private var filters: some View {
         HStack(spacing: 14) {
-            TextField("Rechercher un modèle", text: $filter.search)
+            TextField("Search for a model", text: $filter.search)
                 .textFieldStyle(.notion)
                 .focused($focus, equals: .search)
                 // Retour : la recherche est faite, le clavier passe à la liste.
                 .onSubmit { focus = .list }
                 .frame(minWidth: 160)
-                .accessibilityLabel("Rechercher un modèle par son nom")
+                .accessibilityLabel("Search for a model by name")
                 .accessibilityIdentifier("modeles-recherche")
-            filter("Éditeur", identifier: "modeles-editeur",
+            filter(String(localized: "Maker"), identifier: "modeles-editeur",
                    options: ModelLibrary.makerOptions(rows), selection: $filter.maker)
-            filter("Langue", identifier: "modeles-langue",
+            filter(String(localized: "Language"), identifier: "modeles-langue",
                    options: ModelLibrary.languageOptions, selection: $filter.language)
-            filter("État", identifier: "modeles-etat",
+            filter(String(localized: "Status"), identifier: "modeles-etat",
                    options: ModelLibrary.stateOptions, selection: $filter.state)
         }
     }
@@ -132,7 +132,7 @@ struct ModelLibrarySheet: View {
         let download = model.snapshot.download
         return Group {
             if shown.isEmpty {
-                Text("Aucun modèle ne correspond à ces filtres.")
+                Text("No model matches these filters.")
                     .foregroundStyle(Palette.muted)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(RoundedRectangle(cornerRadius: 16).fill(Palette.sidebar))
@@ -151,7 +151,7 @@ struct ModelLibrarySheet: View {
                 .background(RoundedRectangle(cornerRadius: 16).fill(Palette.sidebar))
                 .clipShape(RoundedRectangle(cornerRadius: 16))
                 .focused($focus, equals: .list)
-                .accessibilityLabel("Modèles")
+                .accessibilityLabel("Models")
                 .accessibilityIdentifier("modeles-liste")
             }
         }
@@ -173,23 +173,23 @@ struct ModelLibrarySheet: View {
     private var footer: some View {
         HStack(spacing: 10) {
             if let selected {
-                Text("Choisi : \(selected.name)")
+                Text("Chosen: \(selected.name)")
                     .font(Typo.detail)
                     .foregroundStyle(Palette.muted)
                     .lineLimit(1)
             }
             Spacer()
-            Button("Annuler") { dismiss() }
+            Button("Cancel") { dismiss() }
                 .buttonStyle(.notion)
                 .keyboardShortcut(.cancelAction)
                 .accessibilityIdentifier("modeles-annuler")
-            Button("Utiliser") { use() }
+            Button("Use") { use() }
                 .buttonStyle(.notionPrimary)
                 // Retour n'utilise que hors de la recherche : là, il la valide.
                 .keyboardShortcut(focus == .search ? nil : .defaultAction)
                 .disabled(!ModelLibrary.canUse(selected) || locked)
-                .help(selected.map { ModelLibrary.canUse($0) ? "" : "Téléchargez-le d'abord" } ?? "")
-                .accessibilityLabel(selected.map { "Utiliser \($0.name)" } ?? "Utiliser")
+                .help(selected.map { ModelLibrary.canUse($0) ? "" : String(localized: "Download it first") } ?? "")
+                .accessibilityLabel(selected.map { String(localized: "Use \($0.name)") } ?? String(localized: "Use"))
                 .accessibilityIdentifier("modeles-utiliser")
         }
     }
@@ -240,7 +240,7 @@ private struct ModelLibraryRow: View {
                         HStack(spacing: 3) {
                             Image(systemName: "checkmark")
                                 .font(.system(size: 11, weight: .semibold))
-                            Text(row.system ? "Utilisée" : "Utilisé")
+                            Text(row.system ? "Selected" : "In use")
                                 .font(Typo.caption)
                         }
                         .foregroundStyle(Palette.ink)
@@ -263,7 +263,7 @@ private struct ModelLibraryRow: View {
                 }
                 // L'échec en entier, en rouge : pas caché dans une bulle d'aide.
                 if case .failed(let message) = state {
-                    Text("Échec du téléchargement : \(message)")
+                    Text("Download failed: \(message)")
                         .font(Typo.detail)
                         .foregroundStyle(ErrorStyle.color)
                         .fixedSize(horizontal: false, vertical: true)
@@ -296,34 +296,34 @@ private struct ModelLibraryRow: View {
     @ViewBuilder private var action: some View {
         switch state {
         case .system:
-            Text("Sur ce Mac")
+            Text("On this Mac")
                 .foregroundStyle(Palette.muted)
                 .accessibilityHidden(true)
         case .notInstalled:
             let allowed = ModelTable.canDownload(row, download: download)
-            Button("Télécharger", action: install)
+            Button("Download", action: install)
                 .buttonStyle(.notion)
                 .disabled(!allowed)
-                .help(allowed ? "" : "Un téléchargement est en cours")
-                .accessibilityLabel("Télécharger \(row.name)")
+                .help(allowed ? "" : "A download is in progress")
+                .accessibilityLabel("Download \(row.name)")
                 .accessibilityIdentifier("biblio-telecharger-\(row.id)")
         case .downloading(let fraction):
             HStack(spacing: 8) {
                 ProgressView(value: fraction)
                     .frame(width: 80)
-                    .accessibilityLabel("Téléchargement de \(row.name)")
-                    .accessibilityValue("\(Int(fraction * 100)) %")
-                Button("Annuler", action: cancel)
+                    .accessibilityLabel("Downloading \(row.name)")
+                    .accessibilityValue("\(Int(fraction * 100))%")
+                Button("Cancel", action: cancel)
                     .buttonStyle(.notionPlain)
-                    .accessibilityLabel("Annuler le téléchargement de \(row.name)")
+                    .accessibilityLabel("Cancel the download of \(row.name)")
                     .accessibilityIdentifier("biblio-annuler-\(row.id)")
             }
         case .failed:
-            Button("Réessayer", action: install)
+            Button("Retry", action: install)
                 .buttonStyle(.notion)
                 .fixedSize()
                 .disabled(!ModelTable.canDownload(row, download: download))
-                .accessibilityLabel("Réessayer de télécharger \(row.name)")
+                .accessibilityLabel("Retry downloading \(row.name)")
                 .accessibilityIdentifier("biblio-telecharger-\(row.id)")
         case .installed:
             removeButton
@@ -331,10 +331,10 @@ private struct ModelLibraryRow: View {
     }
 
     private var removeButton: some View {
-        Button("Supprimer…", action: remove)
+        Button("Delete…", action: remove)
             .buttonStyle(.notionPlain)
             .fixedSize()
-            .accessibilityLabel("Supprimer \(row.name)")
+            .accessibilityLabel("Delete \(row.name)")
             .accessibilityIdentifier("biblio-supprimer-\(row.id)")
     }
 }

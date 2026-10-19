@@ -47,7 +47,7 @@ struct VoiceLibrarySheet: View {
         .background(Palette.page)
         .font(Typo.body)
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Bibliothèque des voix")
+        .accessibilityLabel("Voice library")
         .accessibilityIdentifier("bibliotheque-voix")
         .task {
             await library.load()
@@ -61,17 +61,17 @@ struct VoiceLibrarySheet: View {
         .onDisappear { Task { await library.close() } }
     }
 
-    static let preparing = "Préparation de la voix…"
+    static let preparing = String(localized: "Preparing the voice…")
 
     // MARK: - Parties
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("Bibliothèque des voix")
+            Text("Voice library")
                 .font(.system(size: 22, weight: .heavy))
                 .foregroundStyle(Palette.ink)
                 .accessibilityAddTraits(.isHeader)
-            Text("Écoutez chaque voix sur votre texte, puis choisissez celle qui lira.")
+            Text("Listen to each voice on your text, then choose the one that will read.")
                 .font(Typo.body)
                 .foregroundStyle(Palette.muted)
                 .fixedSize(horizontal: false, vertical: true)
@@ -80,19 +80,19 @@ struct VoiceLibrarySheet: View {
 
     private var filters: some View {
         HStack(spacing: 14) {
-            TextField("Rechercher une voix", text: $library.filter.search)
+            TextField("Search for a voice", text: $library.filter.search)
                 .textFieldStyle(.notion)
                 .focused($focus, equals: .search)
                 // Retour : la recherche est faite, le clavier passe à la liste.
                 .onSubmit { focus = .list }
                 .frame(minWidth: 180)
-                .accessibilityLabel("Rechercher une voix par son nom")
+                .accessibilityLabel("Search for a voice by name")
                 .accessibilityIdentifier("bibliotheque-recherche")
-            filter("Modèle", identifier: "bibliotheque-modele",
+            filter(String(localized: "Model"), identifier: "bibliotheque-modele",
                    options: VoiceLibrary.modelOptions(library.entries), selection: $library.filter.model)
-            filter("Accent", identifier: "bibliotheque-accent",
+            filter(String(localized: "Accent"), identifier: "bibliotheque-accent",
                    options: VoiceLibrary.accentOptions(library.entries), selection: $library.filter.accent)
-            filter("Genre", identifier: "bibliotheque-genre",
+            filter(String(localized: "Gender"), identifier: "bibliotheque-genre",
                    options: VoiceLibrary.genderOptions, selection: $library.filter.gender)
         }
     }
@@ -113,7 +113,7 @@ struct VoiceLibrarySheet: View {
         let rows = library.visible
         return Group {
             if library.loaded && rows.isEmpty {
-                Text("Aucune voix ne correspond à ces filtres.")
+                Text("No voice matches these filters.")
                     .foregroundStyle(Palette.muted)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(RoundedRectangle(cornerRadius: 16).fill(Palette.sidebar))
@@ -136,7 +136,7 @@ struct VoiceLibrarySheet: View {
                     Task { await library.toggle(entry) }
                     return .handled
                 }
-                .accessibilityLabel("Voix")
+                .accessibilityLabel("Voices")
                 .accessibilityIdentifier("bibliotheque-liste")
             }
         }
@@ -163,15 +163,15 @@ struct VoiceLibrarySheet: View {
         if let refusal { return refusal }
         if requested, let error = preview.error { return error }
         if preview.preparing { return preparing }
-        if preview.pending { return "Synthèse de l'aperçu…" }
-        if preview.playing { return "Écoute…" }
+        if preview.pending { return String(localized: "Preparing the preview…") }
+        if preview.playing { return String(localized: "Listening…") }
         return nil
     }
 
     private var textAndSpeed: some View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 6) {
-                Text("Texte à lire")
+                Text("Text to read")
                     .font(Typo.rowTitle)
                     .foregroundStyle(Palette.ink)
                     .accessibilityHidden(true)
@@ -188,8 +188,8 @@ struct VoiceLibrarySheet: View {
                         dismiss()
                         return .handled
                     }
-                    .accessibilityLabel("Texte à lire")
-                    .accessibilityHint("500 caractères au plus")
+                    .accessibilityLabel("Text to read")
+                    .accessibilityHint("Up to 500 characters")
                     .accessibilityIdentifier("bibliotheque-texte")
                 Text(VoiceLibraryStore.countLine(library.text))
                     .font(Typo.detail)
@@ -199,15 +199,16 @@ struct VoiceLibrarySheet: View {
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
-            SettingRow(title: "Vitesse de l'essai", detail: "Pour l'écoute seulement : la lecture garde la sienne") {
+            SettingRow(title: String(localized: "Preview speed"),
+                       detail: String(localized: "For previews only: reading keeps its own")) {
                 Slider(value: Binding(get: { library.speed },
                                       set: { library.speed = SettingFormat.rounded($0) }),
                        in: VoiceLibraryStore.speedRange, step: 0.05) {
-                    Text("Vitesse de l'essai")
+                    Text("Preview speed")
                 }
                 .notionSlider()
-                .accessibilityLabel("Vitesse de l'essai")
-                .accessibilityValue("\(SettingFormat.decimal(library.speed)) fois")
+                .accessibilityLabel("Preview speed")
+                .accessibilityValue("\(SettingFormat.decimal(library.speed)) times")
                 .accessibilityIdentifier("bibliotheque-vitesse")
                 ValueText("\(SettingFormat.decimal(library.speed))×")
             }
@@ -218,22 +219,22 @@ struct VoiceLibrarySheet: View {
     private var footer: some View {
         HStack(spacing: 10) {
             if let selected = library.selected {
-                Text("Choisie : \(selected.label)")
+                Text("Selected: \(selected.label)")
                     .font(Typo.detail)
                     .foregroundStyle(Palette.muted)
                     .lineLimit(1)
             }
             Spacer()
-            Button("Annuler") { dismiss() }
+            Button("Cancel") { dismiss() }
                 .buttonStyle(.notion)
                 .keyboardShortcut(.cancelAction)
                 .accessibilityIdentifier("bibliotheque-annuler")
-            Button("Utiliser") { Task { await use() } }
+            Button("Use") { Task { await use() } }
                 .buttonStyle(.notionPrimary)
                 // Retour n'utilise que hors des champs : là, il écrit ou valide la recherche.
                 .keyboardShortcut(focus == .search || focus == .text ? nil : .defaultAction)
                 .disabled(library.selected == nil || using)
-                .accessibilityLabel(library.selected.map { "Utiliser \($0.label)" } ?? "Utiliser")
+                .accessibilityLabel(library.selected.map { String(localized: "Use \($0.label)") } ?? String(localized: "Use"))
                 .accessibilityIdentifier("bibliotheque-utiliser")
         }
     }
@@ -269,8 +270,8 @@ private struct VoiceLibraryRow: View {
                     .frame(width: 14)
             }
             .buttonStyle(.notion)
-            .help(playing ? "Arrêter" : "Écouter")
-            .accessibilityLabel(playing ? "Arrêter \(entry.label)" : "Écouter \(entry.label)")
+            .help(playing ? "Stop" : "Listen")
+            .accessibilityLabel(playing ? "Stop \(entry.label)" : "Listen to \(entry.label)")
             .accessibilityIdentifier("ecouter-\(entry.id)")
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
@@ -278,7 +279,7 @@ private struct VoiceLibraryRow: View {
                         .font(Typo.rowTitle)
                         .foregroundStyle(Palette.ink)
                     if let badge = entry.qualityBadge { Tag(text: badge, tint: .blue) }
-                    if entry.recommended { Tag(text: "Recommandée", tint: .green) }
+                    if entry.recommended { Tag(text: String(localized: "Recommended"), tint: .green) }
                 }
                 Text(entry.details)
                     .font(Typo.detail)
@@ -292,7 +293,7 @@ private struct VoiceLibraryRow: View {
                 HStack(spacing: 4) {
                     Image(systemName: "checkmark")
                         .font(.system(size: 12, weight: .semibold))
-                    Text("Utilisée")
+                    Text("Selected")
                         .font(Typo.caption)
                 }
                 .foregroundStyle(Palette.ink)

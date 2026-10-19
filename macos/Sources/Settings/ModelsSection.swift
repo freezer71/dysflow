@@ -30,9 +30,9 @@ struct ModelsTable: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 14) {
                 Color.clear.frame(width: Self.choiceWidth + 14 + MakerBadge.size, height: 1)
-                Text("Modèle").frame(maxWidth: .infinity, alignment: .leading)
-                Text("Taille").frame(width: Self.sizeWidth, alignment: .trailing)
-                Text("État").frame(width: Self.actionWidth, alignment: .leading)
+                Text("Model").frame(maxWidth: .infinity, alignment: .leading)
+                Text("Size").frame(width: Self.sizeWidth, alignment: .trailing)
+                Text("Status").frame(width: Self.actionWidth, alignment: .leading)
             }
             .font(Typo.caption)
             .foregroundStyle(Palette.muted)
@@ -56,9 +56,9 @@ struct ModelsTable: View {
                                     set: { if !$0 { state.confirming = nil } }),
                presenting: state.confirming) { row in
             // Annuler par défaut : Retour et Échap ne suppriment rien.
-            Button("Annuler", role: .cancel) {}
+            Button("Cancel", role: .cancel) {}
                 .keyboardShortcut(.defaultAction)
-            Button("Supprimer", role: .destructive) {
+            Button("Delete", role: .destructive) {
                 act {
                     try await model.removeModel(row.id)
                     removed(row)
@@ -87,7 +87,7 @@ struct ModelsTable: View {
             // Le message d'échec en entier, sous la ligne, sur toute sa
             // largeur : pas coupé ni caché dans une bulle d'aide.
             if case .failed(let message) = state {
-                Text("Échec du téléchargement : \(message)")
+                Text("Download failed: \(message)")
                     .font(Typo.detail)
                     .foregroundStyle(ErrorStyle.color)
                     .fixedSize(horizontal: false, vertical: true)
@@ -125,9 +125,9 @@ struct ModelsTable: View {
             }
             .buttonStyle(ModelRowButtonStyle())
             .disabled(!(ModelTable.canUse(row) || downloads))
-            .help(downloads ? "Télécharger \(row.name)" : "")
+            .help(downloads ? "Download \(row.name)" : "")
             .accessibilityLabel(row.active ? "\(row.name), \(ModelTable.used(row))"
-                : downloads ? "Télécharger \(row.name)" : "Utiliser \(row.name)")
+                : downloads ? "Download \(row.name)" : "Use \(row.name)")
             .accessibilityIdentifier("utiliser-\(row.id)")
             HStack(spacing: 8) {
                 action(row, state)
@@ -168,44 +168,44 @@ struct ModelsTable: View {
     }
 
     private func removeButton(_ row: VoiceModel) -> some View {
-        Button("Supprimer…") { state.confirming = row }
+        Button("Delete…") { state.confirming = row }
             .buttonStyle(.notionPlain)
             .fixedSize()
-            .accessibilityLabel("Supprimer \(row.name)")
+            .accessibilityLabel("Delete \(row.name)")
             .accessibilityIdentifier("supprimer-\(row.id)")
     }
 
     @ViewBuilder private func action(_ row: VoiceModel, _ state: ModelRowState) -> some View {
         switch state {
         case .system:
-            Text(row.active ? "Utilisée" : "Sur ce Mac")   // la voix de macOS : féminin
+            Text(row.active ? "Selected" : "On this Mac")   // la voix de macOS : « Utilisée » (féminin) en français
                 .foregroundStyle(Palette.muted)
                 .accessibilityHidden(true)
         case .notInstalled:
             let allowed = ModelTable.canDownload(row, download: model.snapshot.download)
-            Button("Télécharger") { act { try await model.installModel(row.id) } }
+            Button("Download") { act { try await model.installModel(row.id) } }
                 .buttonStyle(.notion)
                 .disabled(!allowed)
-                .help(allowed ? "" : "Un téléchargement est en cours")
-                .accessibilityLabel("Télécharger \(row.name)")
+                .help(allowed ? "" : "A download is in progress")
+                .accessibilityLabel("Download \(row.name)")
                 .accessibilityIdentifier("telecharger-\(row.id)")
         case .downloading(let fraction):
             HStack(spacing: 8) {
                 ProgressView(value: fraction)
                     .frame(width: 90)
-                    .accessibilityLabel("Téléchargement de \(row.name)")
-                    .accessibilityValue("\(Int(fraction * 100)) %")
-                Button("Annuler") { act { try await model.cancelDownload() } }
+                    .accessibilityLabel("Downloading \(row.name)")
+                    .accessibilityValue("\(Int(fraction * 100))%")
+                Button("Cancel") { act { try await model.cancelDownload() } }
                     .buttonStyle(.notionPlain)
-                    .accessibilityLabel("Annuler le téléchargement de \(row.name)")
+                    .accessibilityLabel("Cancel the download of \(row.name)")
                     .accessibilityIdentifier("annuler-\(row.id)")
             }
         case .failed:
             // Le message s'affiche en entier sous la ligne.
-            Button("Réessayer") { act { try await model.installModel(row.id) } }
+            Button("Retry") { act { try await model.installModel(row.id) } }
                 .buttonStyle(.notion)
                 .fixedSize()
-                .accessibilityLabel("Réessayer de télécharger \(row.name)")
+                .accessibilityLabel("Retry downloading \(row.name)")
                 .accessibilityIdentifier("telecharger-\(row.id)")
         case .installed:
             removeButton(row)
@@ -215,16 +215,16 @@ struct ModelsTable: View {
     /// Ce que VoiceOver dit d'une ligne : son nom, s'il est utilisé, son état
     /// et sa taille.
     nonisolated static func label(_ row: VoiceModel, _ state: ModelRowState) -> String {
-        var parts = [row.name, row.active ? ModelTable.used(row) : "non \(ModelTable.used(row))"]
+        var parts = [row.name, row.active ? ModelTable.used(row) : ModelTable.notUsed(row)]
         switch state {
-        case .system: parts.append("sur ce Mac")
-        case .notInstalled: parts.append("non installé, \(ModelTable.size(row)) à télécharger")
-        case .downloading(let fraction): parts.append("téléchargement \(Int(fraction * 100)) %")
-        case .failed(let message): parts.append("échec du téléchargement : \(message)")
-        case .installed: parts.append("installé, \(ModelTable.size(row))")
+        case .system: parts.append(String(localized: "on this Mac"))
+        case .notInstalled: parts.append(String(localized: "not installed, \(ModelTable.size(row)) to download"))
+        case .downloading(let fraction): parts.append(String(localized: "downloading \(Int(fraction * 100))%"))
+        case .failed(let message): parts.append(String(localized: "download failed: \(message)"))
+        case .installed: parts.append(String(localized: "installed, \(ModelTable.size(row))"))
         }
         if state != .installed, ModelTable.canRemove(row, state) {
-            parts.append("téléchargement incomplet, \(ModelTable.bytes(row.diskBytes)) sur le disque")
+            parts.append(String(localized: "incomplete download, \(ModelTable.bytes(row.diskBytes)) on disk"))
         }
         return parts.joined(separator: ", ")
     }

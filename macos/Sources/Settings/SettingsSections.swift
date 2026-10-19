@@ -23,13 +23,14 @@ struct VoiceSection: View {
     @State private var libraryShown = false
 
     var body: some View {
-        SettingsGroup(title: "Voix") {
+        SettingsGroup(title: String(localized: "Voice")) {
             ModelsTable(rows: rows.filter { $0.kind == "speech" }, model: model,
-                        fallback: "La lecture passera à la voix de macOS.", onChange: onChange, state: table)
+                        fallback: String(localized: "Reading will switch to the macOS voice."), onChange: onChange, state: table)
             if !store.capabilities.voices.isEmpty && !Self.suggestsModels(model.snapshot.voice) {
-                SettingRow(title: "Voix", detail: "Lit tout le texte, quelle que soit sa langue") {
+                SettingRow(title: String(localized: "Voice"),
+                           detail: String(localized: "Reads all the text, whatever its language")) {
                     HStack(spacing: 8) {
-                        PopUpPicker(label: "Voix", identifier: "voix-unique",
+                        PopUpPicker(label: String(localized: "Voice"), identifier: "voix-unique",
                                     options: Self.voiceOptions(store.capabilities, quality: macQuality),
                                     selection: Binding(get: { Self.voice(in: store.values, store.capabilities) },
                                                        set: { store.setFamilyVoice($0) }))
@@ -40,12 +41,12 @@ struct VoiceSection: View {
                         } label: {
                             HStack(spacing: 5) {
                                 Image(systemName: "play.fill").font(.system(size: 10))
-                                Text("Écouter")
+                                Text("Listen")
                             }
                         }
                         .buttonStyle(.notion)
                         .fixedSize()
-                        .accessibilityLabel("Écouter la voix")
+                        .accessibilityLabel("Listen to the voice")
                         .accessibilityIdentifier("ecouter-voix")
                     }
                 }
@@ -56,25 +57,25 @@ struct VoiceSection: View {
                             .foregroundStyle(Palette.muted)
                             .accessibilityIdentifier("etat-ecoute")
                         Spacer()
-                        Button("Arrêter") { Task { await store.stopListening() } }
+                        Button("Stop") { Task { await store.stopListening() } }
                             .buttonStyle(.notionPlain)
                             .disabled(!(model.snapshot.preview.pending || model.snapshot.preview.playing))
-                            .accessibilityLabel("Arrêter l'écoute")
+                            .accessibilityLabel("Stop listening")
                     }
                     .padding(.vertical, 8)
                     .padding(.horizontal, Space.inset)
                 }
                 if store.capabilities.family == "system" {
-                    Link("Ajouter des voix dans Réglages Système…",
+                    Link("Add voices in System Settings…",
                          destination: URL(string: "x-apple.systempreferences:com.apple.preference.universalaccess")!)
                         .font(Typo.detail)
                         .padding(.horizontal, Space.inset)
                         .padding(.bottom, 8)
                 }
             }
-            SettingRow(title: "Bibliothèque des voix",
-                       detail: "Toutes les voix installées, à écouter sur votre texte avant de choisir") {
-                Button("Parcourir les voix…") { libraryShown = true }
+            SettingRow(title: String(localized: "Voice library"),
+                       detail: String(localized: "All installed voices, to try on your text before choosing")) {
+                Button("Browse voices…") { libraryShown = true }
                     .buttonStyle(.notion)
                     .accessibilityIdentifier("parcourir-voix")
             }
@@ -84,21 +85,22 @@ struct VoiceSection: View {
                 .padding(.horizontal, Space.inset)
                 .padding(.vertical, 10)
                 .accessibilityIdentifier("place-modeles")
-            SettingRow(title: "Vitesse", detail: "Dans le lecteur : + et −, ou la vitesse de la barre") {
+            SettingRow(title: String(localized: "Speed"),
+                       detail: String(localized: "In the reader: + and −, or the speed in the bar")) {
                 Slider(value: Binding(get: { store.values.speed },
                                       set: { store.set(\.speed, SettingFormat.rounded($0)) }),
                        in: 0.5...3, step: 0.05) {
-                    Text("Vitesse : \(SettingFormat.decimal(store.values.speed))×")
+                    Text("Speed: \(SettingFormat.decimal(store.values.speed))×")
                 }
                 .notionSlider()
-                .accessibilityLabel("Vitesse de lecture")
+                .accessibilityLabel("Reading speed")
                 .accessibilityIdentifier("vitesse")
-                .accessibilityValue("\(SettingFormat.decimal(store.values.speed)) fois")
+                .accessibilityValue("\(SettingFormat.decimal(store.values.speed)) times")
                 ValueText("\(SettingFormat.decimal(store.values.speed))×")
             }
-            SettingRow(title: "Sortie audio",
-                       detail: "Le son ne sort que par là : débranchée, la lecture se met en pause") {
-                PopUpPicker(label: "Sortie audio", identifier: "sortie-audio",
+            SettingRow(title: String(localized: "Audio output"),
+                       detail: String(localized: "Sound plays only there: if it is unplugged, reading pauses")) {
+                PopUpPicker(label: String(localized: "Audio output"), identifier: "sortie-audio",
                             options: AudioOutputChoices.choices(model.outputs, chosen: model.outputDevice)
                                 .map { ($0.title, $0.value) },
                             selection: Binding(get: { model.outputDevice }, set: { model.chooseOutput($0) }))
@@ -138,7 +140,7 @@ struct VoiceSection: View {
 
     /// Avec la voix de macOS, « Voix par défaut de macOS » (valeur vide) :
     /// celle que `say` prend quand aucune n'est choisie.
-    static let macDefaultVoice = "Voix par défaut de macOS"
+    static let macDefaultVoice = String(localized: "macOS default voice")
 
     /// Les voix du menu : celles du modèle ; la voix de macOS ajoute en tête
     /// sa voix par défaut, puis ses voix Premium et Améliorées.
@@ -165,7 +167,7 @@ struct VoiceSection: View {
 
     /// Une voix de macOS vue par AVFoundation : son nom, sa qualité
     /// (3 Premium, 2 Améliorée, 1 sinon) et son genre (« femme », « homme »,
-    /// vide s'il n'est pas dit).
+    /// vide s'il n'est pas dit : les mots du moteur, jamais affichés tels quels).
     struct MacVoice: Equatable {
         let name: String
         let quality: Int
@@ -181,8 +183,8 @@ struct VoiceSection: View {
             default: 1
             }
             let gender = switch voice.gender {
-            case .female: "femme"
-            case .male: "homme"
+            case .female: "femme"   // xcstrings: garder
+            case .male: "homme"   // xcstrings: garder
             default: ""
             }
             return MacVoice(name: voice.name, quality: level, gender: gender)
@@ -238,7 +240,7 @@ struct VoiceSection: View {
         let tag = name[open.upperBound...].dropLast().lowercased()
         switch tag {
         case "premium": return (base, 3)
-        case "enhanced", "améliorée", "amélioré": return (base, 2)
+        case "enhanced", "améliorée", "amélioré": return (base, 2)   // xcstrings: garder (étiquettes de `say`)
         default: return (name.lowercased(), nil)
         }
     }
@@ -262,8 +264,8 @@ struct VoiceSection: View {
     static func previewLine(_ preview: PreviewView, refusal: String?) -> String? {
         if let refusal { return refusal }
         if let error = preview.error { return error }
-        if preview.pending { return "Synthèse de l'aperçu…" }
-        if preview.playing { return "Écoute…" }
+        if preview.pending { return String(localized: "Preparing the preview…") }
+        if preview.playing { return String(localized: "Listening…") }
         return nil
     }
 }
@@ -280,36 +282,37 @@ struct ReadingSection: View {
     }
 
     var body: some View {
-        SettingsGroup(title: "Lecture") {
-            SettingRow(title: "Police") {
-                PopUpPicker(label: "Police de lecture", identifier: "police-lecture", options: Self.fontOptions,
+        SettingsGroup(title: String(localized: "Reading")) {
+            SettingRow(title: String(localized: "Font")) {
+                PopUpPicker(label: String(localized: "Reading font"), identifier: "police-lecture", options: Self.fontOptions,
                             selection: Binding(get: { Self.shownFont(store.values.readingFont) },
                                                set: { store.set(\.readingFont, $0) }))
                     .fixedSize()
             }
-            SettingRow(title: "Taille") {
+            SettingRow(title: String(localized: "Size")) {
                 Slider(value: store.binding(\.readingSize), in: 14...40, step: 1) {
-                    Text("Taille : \(Int(store.values.readingSize)) pt")
+                    Text("Size: \(Int(store.values.readingSize)) pt")
                 }
                 .notionSlider()
-                .accessibilityLabel("Taille du texte")
+                .accessibilityLabel("Text size")
                 .accessibilityIdentifier("taille-texte")
                 .accessibilityValue("\(Int(store.values.readingSize)) points")
                 ValueText("\(Int(store.values.readingSize)) pt")
             }
-            SettingRow(title: "Interlignage", detail: "L'air entre deux lignes") {
+            SettingRow(title: String(localized: "Line spacing"), detail: String(localized: "The space between two lines")) {
                 ValueText("\(store.values.lineSpacing)", width: 20)
-                Stepper("Interlignage : \(store.values.lineSpacing)",
+                Stepper("Line spacing: \(store.values.lineSpacing)",
                         value: Binding(get: { Int(store.values.lineSpacing) },
                                        set: { store.set(\.lineSpacing, UInt32(max(0, $0))) }),
                         in: 0...3)
                     .labelsHidden()
-                    .accessibilityLabel("Interlignage")
+                    .accessibilityLabel("Line spacing")
                     .accessibilityIdentifier("interlignage")
                     .accessibilityValue("\(store.values.lineSpacing)")
             }
-            SettingRow(title: "Règle de lecture", detail: "Une bande sous la ligne lue, pour ne pas la perdre") {
-                Toggle("Règle de lecture", isOn: store.binding(\.readingRuler))
+            SettingRow(title: String(localized: "Reading ruler"),
+                       detail: String(localized: "A band under the line being read, so you do not lose it")) {
+                Toggle("Reading ruler", isOn: store.binding(\.readingRuler))
                     .notionSwitch()
                     .accessibilityIdentifier("regle-lecture")
             }
@@ -328,17 +331,18 @@ struct ShortcutsSection: View {
     }
 
     static let rows = [
-        Row(title: "Lire la sélection", detail: "Le texte sélectionné, sinon le presse-papiers",
+        Row(title: String(localized: "Read the selection"),
+            detail: String(localized: "The selected text, or the clipboard if nothing is selected"),
             name: .readSelection, identifier: "raccourci-lecture-selection"),
-        Row(title: "Afficher / masquer le lecteur", detail: "Dans sa dernière taille",
+        Row(title: String(localized: "Show / hide the reader"), detail: String(localized: "At its last size"),
             name: .showPanel, identifier: "raccourci-afficher"),
     ]
 
-    static let voiceOverNote = "⌃⌥ est aussi la touche de VoiceOver : avec VoiceOver actif, choisissez d'autres touches."
+    static let voiceOverNote = String(localized: "⌃⌥ is also the VoiceOver key: with VoiceOver on, choose other keys.")
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            SettingsGroup(title: "Raccourcis") {
+            SettingsGroup(title: String(localized: "Shortcuts")) {
                 ForEach(Self.rows, id: \.identifier) { row in
                     SettingRow(title: row.title, detail: row.detail) {
                         ShortcutRecorder(target: .shortcut(row.name), title: row.title, identifier: row.identifier)
@@ -359,10 +363,9 @@ struct DictationShortcutRow: View {
     let identifier: String
 
     var body: some View {
-        SettingRow(title: "Dicter",
-                   detail: "Un appui ouvre la dictée, un second saisit le texte là où vous écrivez ; Échap annule. "
-                       + "Une touche seule (Option droite…) demande l'Accessibilité") {
-            ShortcutRecorder(target: .dictation, title: "Raccourci de la dictée", identifier: identifier)
+        SettingRow(title: String(localized: "Dictate"),
+                   detail: String(localized: "One press opens dictation, a second types the text where you write; Esc cancels. A single key (right Option…) needs Accessibility")) {
+            ShortcutRecorder(target: .dictation, title: String(localized: "Dictation shortcut"), identifier: identifier)
         }
     }
 }
@@ -384,7 +387,7 @@ struct DictationSection: View {
 
     /// La ligne de la dictée de macOS : jamais téléchargée ni supprimée.
     static let systemID = "system-dictation"
-    static let fallback = "La dictée passera à celle de macOS."
+    static let fallback = String(localized: "Dictation will switch to macOS dictation.")
 
     /// La dictée de macOS en tête, puis les modèles de dictée. La ligne
     /// utilisée vient du choix des réglages (`dictationModel`), jamais du
@@ -392,8 +395,8 @@ struct DictationSection: View {
     nonisolated static func rows(_ all: [VoiceModel], chosen: String) -> [VoiceModel] {
         let system = VoiceModel(id: systemID, name: DictationModel.label(DictationModel.system), bytes: 0,
                                 installed: true, active: false, recommended: false,
-                                summary: "Sur ce Mac, sans téléchargement.", family: "system",
-                                precision: "", languagesLabel: "Français, anglais", languages: ["fr", "en"],
+                                summary: String(localized: "On this Mac, no download."), family: "system",
+                                precision: "", languagesLabel: String(localized: "French, English"), languages: ["fr", "en"],
                                 pace: "", voicesLabel: "", licenses: "", kind: "dictation", diskBytes: 0,
                                 system: true, hasFiles: false)
         return ([system] + all.filter { $0.kind == "dictation" }).map { row in
@@ -418,12 +421,12 @@ struct DictationSection: View {
 
     /// Pendant un essai du micro, la table ne change rien : le modèle essayé
     /// ne doit pas être libéré ni supprimé sous ses pieds.
-    static let lockedByTrial = "Un essai du micro est en cours : la table des modèles attend qu'il soit fini."
+    static let lockedByTrial = String(localized: "A microphone trial is running: the model table waits until it is done.")
 
     var body: some View {
         let trialRunning = AppDelegate.shared?.micTrial?.isRunning ?? false
         let all = Self.rows(rows, chosen: chosen)
-        SettingsGroup(title: "Dictée") {
+        SettingsGroup(title: String(localized: "Dictation")) {
             // La table ne garde que ce qui est là ou en route ; le reste est
             // dans la bibliothèque des modèles.
             ModelsTable(rows: ModelTable.shortlist(all, download: model.snapshot.download), model: model,
@@ -461,9 +464,9 @@ struct DictationSection: View {
                     .padding(.vertical, 8)
                     .accessibilityIdentifier("dictee-repli")
             }
-            SettingRow(title: "Bibliothèque des modèles",
-                       detail: "Tous les modèles de dictée, à chercher, télécharger et choisir") {
-                Button("Parcourir les modèles…") { libraryShown = true }
+            SettingRow(title: String(localized: "Model library"),
+                       detail: String(localized: "All dictation models, to search, download and choose")) {
+                Button("Browse models…") { libraryShown = true }
                     .buttonStyle(.notion)
                     .accessibilityIdentifier("parcourir-modeles")
             }
@@ -473,15 +476,15 @@ struct DictationSection: View {
                               dictating: AppDelegate.shared?.dictation?.holdsMicrophone ?? false)
             }
             DictationShortcutRow(identifier: "raccourci-dictee")
-            SettingRow(title: "Langue",
-                       detail: "Reconnue sur votre Mac : rien n'en sort. Parakeet et Voxtral la reconnaissent seuls") {
-                PopUpPicker(label: "Langue de la dictée", identifier: "langue-dictee",
+            SettingRow(title: String(localized: "Language"),
+                       detail: String(localized: "Recognized on your Mac: nothing leaves it. Parakeet and Voxtral detect it on their own")) {
+                PopUpPicker(label: String(localized: "Dictation language"), identifier: "langue-dictee",
                             options: Self.options, selection: $language)
                     .fixedSize()
             }
-            SettingRow(title: "Délai et mémoire",
-                       detail: "Dans la fenêtre de dictée : le délai du texte et la mémoire occupée par le modèle") {
-                Toggle("Délai et mémoire", isOn: $showStats)
+            SettingRow(title: String(localized: "Delay and memory"),
+                       detail: String(localized: "In the dictation window: the text delay and the memory the model uses")) {
+                Toggle("Delay and memory", isOn: $showStats)
                     .notionSwitch()
                     .accessibilityIdentifier("mesures-dictee-reglage")
             }
@@ -519,21 +522,21 @@ struct PermissionsSection: View {
     @State private var visible = false
 
     var body: some View {
-        SettingsGroup(title: "Autorisations") {
+        SettingsGroup(title: String(localized: "Permissions")) {
             ForEach(Permission.relevant, id: \.self) { permission in
                 SettingRow(title: permission.title, detail: permission.detail) {
                     if states[permission] == .granted {
-                        Tag(text: "Autorisé", tint: .green)
+                        Tag(text: String(localized: "Allowed"), tint: .green)
                             .accessibilityIdentifier(permission.identifier)
                     } else {
-                        Button(states[permission] == .denied ? "Ouvrir les réglages…" : "Autoriser…") {
+                        Button(states[permission] == .denied ? "Open Settings…" : "Allow…") {
                             Task {
                                 await permission.request()
                                 reload()
                             }
                         }
                         .buttonStyle(.notionPrimary)
-                        .accessibilityLabel("Autoriser : \(permission.title)")
+                        .accessibilityLabel("Allow: \(permission.title)")
                         .accessibilityIdentifier(permission.identifier)
                     }
                 }
@@ -566,16 +569,17 @@ struct StartupSection: View {
     @State private var login = false
 
     var body: some View {
-        SettingsGroup(title: "Démarrage") {
-            SettingRow(title: "Ouvrir sillage à la connexion", detail: "Dans la barre des menus, prêt à lire") {
-                Toggle("Ouvrir sillage à la connexion", isOn: $login)
+        SettingsGroup(title: String(localized: "Startup")) {
+            SettingRow(title: String(localized: "Open sillage at login"),
+                       detail: String(localized: "In the menu bar, ready to read")) {
+                Toggle("Open sillage at login", isOn: $login)
                     .notionSwitch()
                     .onAppear { login = LoginItem.isEnabled }
                     .onChange(of: login) { _, on in
                         // L'inscription peut être refusée : l'interrupteur dit l'état réel.
                         if LoginItem.isEnabled != on, !LoginItem.set(on) { login = LoginItem.isEnabled }
                     }
-                    .accessibilityLabel("Ouvrir sillage à la connexion")
+                    .accessibilityLabel("Open sillage at login")
                     .accessibilityIdentifier("ouvrir-connexion")
             }
         }

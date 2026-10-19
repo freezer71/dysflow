@@ -11,7 +11,8 @@ struct VoiceLibraryEntry: Identifiable, Equatable {
     let label: String
     let language: String
     let accent: String
-    /// « femme », « homme », vide si on ne le sait pas.
+    /// « femme », « homme », vide si on ne le sait pas : la clé du moteur,
+    /// que les filtres comparent ; `genderTitle` est ce qu'on en affiche.
     let gender: String
     /// Voix de macOS : 3 Premium, 2 Améliorée, 1 sinon ; Kokoro : 0.
     let quality: Int
@@ -24,15 +25,21 @@ struct VoiceLibraryEntry: Identifiable, Equatable {
     /// L'étiquette de qualité d'une voix de macOS.
     var qualityBadge: String? {
         switch quality {
-        case 3: "Premium"
-        case 2: "Améliorée"
+        case 3: String(localized: "Premium")
+        case 2: String(localized: "Enhanced")
         default: nil
         }
     }
 
-    /// La ligne sous le nom : modèle, accent, genre.
+    /// Le genre écrit à l'écran et dit à VoiceOver : la clé du moteur
+    /// (« femme », « homme ») dans la langue de l'interface. Une clé
+    /// inconnue reste telle quelle.
+    var genderTitle: String { VoiceLibrary.genderTitle(gender) }
+
+    /// La ligne sous le nom : modèle, accent, genre. L'accent vient du moteur
+    /// dans la langue de l'interface (« French », « française »).
     var details: String {
-        [modelLabel, accent, gender].filter { !$0.isEmpty }.joined(separator: " · ")
+        [modelLabel, accent, genderTitle].filter { !$0.isEmpty }.joined(separator: " · ")
     }
 }
 
@@ -89,7 +96,17 @@ enum VoiceLibrary {
         }
     }
 
-    static let all = "Tous"
+    static let all = String(localized: "All")
+
+    /// Le genre d'une voix en clair, d'après la clé du moteur : « femme » ou
+    /// « homme » (en minuscules, dans une ligne ou pour VoiceOver).
+    static func genderTitle(_ gender: String) -> String {
+        switch gender {
+        case "femme": String(localized: "woman")   // xcstrings: garder (clé du moteur)
+        case "homme": String(localized: "man")   // xcstrings: garder (clé du moteur)
+        default: gender
+        }
+    }
 
     /// « Tous », puis chaque modèle présent, dans l'ordre de la bibliothèque.
     static func modelOptions(_ entries: [VoiceLibraryEntry]) -> [(title: String, value: String)] {
@@ -98,7 +115,9 @@ enum VoiceLibrary {
         return [(title: all, value: "")] + models.map { (title: $0.modelLabel, value: $0.modelID) }
     }
 
-    /// « Tous », puis les accents présents, par ordre alphabétique.
+    /// « Tous », puis les accents présents, par ordre alphabétique. Le
+    /// moteur donne l'accent dans la langue de l'interface : le titre est la
+    /// valeur, triée telle quelle.
     static func accentOptions(_ entries: [VoiceLibraryEntry]) -> [(title: String, value: String)] {
         let accents = Set(entries.map(\.accent).filter { !$0.isEmpty })
             .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
@@ -106,14 +125,16 @@ enum VoiceLibrary {
     }
 
     static let genderOptions: [(title: String, value: String)] =
-        [(title: all, value: ""), (title: "Femme", value: "femme"), (title: "Homme", value: "homme")]
+        // Les valeurs sont les clés du moteur, comparées aux filtres.
+        [(title: all, value: ""), (title: String(localized: "Woman"), value: "femme"),   // xcstrings: garder
+         (title: String(localized: "Man"), value: "homme")]   // xcstrings: garder
 
     /// Ce que VoiceOver dit d'une ligne : tout, en clair.
     static func accessibilityLabel(_ e: VoiceLibraryEntry) -> String {
-        var parts = [e.label, e.modelLabel, e.accent, e.gender].filter { !$0.isEmpty }
+        var parts = [e.label, e.modelLabel, e.accent, e.genderTitle].filter { !$0.isEmpty }
         if let badge = e.qualityBadge { parts.append(badge) }
-        if e.recommended { parts.append("recommandée") }
-        if e.active { parts.append("voix utilisée") }
+        if e.recommended { parts.append(String(localized: "recommended")) }
+        if e.active { parts.append(String(localized: "voice in use")) }
         return parts.joined(separator: ", ")
     }
 }
@@ -165,9 +186,11 @@ final class VoiceLibraryStore {
     /// Ce que le compteur sous « Texte à lire » dit.
     static func countLine(_ text: String) -> String {
         let count = text.count
-        return count > maxCharacters
-            ? "\(count) caractères : seuls les \(maxCharacters) premiers seront lus"
-            : "\(count) caractères sur \(maxCharacters) au plus"
+        if count > maxCharacters {
+            return String(localized: "\(count) characters: only the first \(maxCharacters) will be read")
+        }
+        let counted = String(localized: "\(count) characters")
+        return String(localized: "\(counted) (up to \(maxCharacters))")
     }
 
     init(backend: VoiceLibraryBackend, sampleText: String, speed: Float,

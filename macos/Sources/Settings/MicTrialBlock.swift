@@ -39,36 +39,34 @@ struct MicTrialBlock: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Essai du micro")
+                Text("Microphone trial")
                     .font(Typo.sectionTitle)
                     .foregroundStyle(Palette.ink)
                     .accessibilityAddTraits(.isHeader)
-                Text("Lisez la phrase à voix haute : l'essai s'arrête seul quand elle est dite, ou quand vous "
-                     + "vous taisez. Le texte reconnu s'affiche ici : il n'est saisi nulle part. "
-                     + "Le modèle essayé ne change pas celui de la dictée.")
+                Text("Read the sentence aloud: the trial stops by itself once it has been said, or when you go quiet. The recognized text appears here: it is not typed anywhere. The model you try does not change the one used for dictation.")
                     .font(Typo.body)
                     .foregroundStyle(Palette.muted)
                     .fixedSize(horizontal: false, vertical: true)
             }
             HStack(spacing: 20) {
                 HStack(spacing: 8) {
-                    Text("Modèle")
+                    Text("Model")
                         .font(Typo.rowTitle)
                         .foregroundStyle(Palette.ink)
                         .accessibilityHidden(true)
-                    PopUpPicker(label: "Modèle de l'essai", identifier: "essai-modele", options: options,
+                    PopUpPicker(label: String(localized: "Trial model"), identifier: "essai-modele", options: options,
                                 selection: Binding(get: { selection }, set: { picked = $0 }))
                         .fixedSize()
                         .disabled(trial.isRunning)
                 }
                 Toggle(isOn: Binding(get: { trial.freeText }, set: { trial.freeText = $0 })) {
-                    Text("Texte libre")
+                    Text("Free text")
                         .font(Typo.rowTitle)
                         .foregroundStyle(Palette.ink)
                 }
                 .notionSwitch()
                 .disabled(trial.isRunning)
-                .accessibilityLabel("Texte libre : dire ce que vous voulez, sans précision")
+                .accessibilityLabel("Free text: say whatever you like, with no accuracy score")
                 .accessibilityIdentifier("essai-texte-libre")
                 Spacer(minLength: 0)
             }
@@ -104,12 +102,12 @@ struct MicTrialBlock: View {
 
     @ViewBuilder private var sentenceBox: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(trial.freeText ? "Dites ce que vous voulez" : "Phrase à lire")
+            Text(trial.freeText ? "Say whatever you like" : "Sentence to read")
                 .font(Typo.caption)
                 .foregroundStyle(Palette.muted)
                 .accessibilityHidden(true)
             if trial.freeText {
-                Text("Parlez librement : la précision n'est pas calculée, les délais, le débit et la mémoire le sont.")
+                Text("Speak freely: accuracy is not computed; delays, throughput and memory are.")
                     .font(.system(size: 17))
                     .foregroundStyle(Palette.ink)
                     .lineSpacing(5)
@@ -121,9 +119,9 @@ struct MicTrialBlock: View {
                     .lineSpacing(8)
                     .fixedSize(horizontal: false, vertical: true)
                     .textSelection(.enabled)
-                    .accessibilityLabel("Phrase à lire : \(trial.sentence)")
+                    .accessibilityLabel("Sentence to read: \(trial.sentence)")
                     .accessibilityIdentifier("essai-phrase")
-                Button("Une autre phrase") { trial.nextSentence() }
+                Button("Another sentence") { trial.nextSentence() }
                     .buttonStyle(.notionPlain)
                     .disabled(trial.isRunning)
                     .accessibilityIdentifier("essai-autre-phrase")
@@ -139,7 +137,7 @@ struct MicTrialBlock: View {
             HStack(spacing: 16) {
                 MicLevelMeter(feed: trial.spectrum, live: trial.phase == .listening)
                     .accessibilityElement()
-                    .accessibilityLabel("Niveau du micro")
+                    .accessibilityLabel("Microphone level")
                     .accessibilityValue(meterValue)
                     .accessibilityIdentifier("essai-niveau")
                 Text(status)
@@ -148,13 +146,13 @@ struct MicTrialBlock: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("essai-etat")
                 Spacer(minLength: 12)
-                Button(trial.isRunning ? "Arrêter" : "Démarrer l'essai") {
+                Button(trial.isRunning ? "Stop" : "Start the trial") {
                     if trial.isRunning { trial.stop() } else { trial.start(model: selection) }
                 }
                 .buttonStyle(.notionPrimary)
                 .fixedSize()
                 .disabled(!trial.isRunning && dictating || trial.phase == .finishing)
-                .accessibilityLabel(trial.isRunning ? "Arrêter l'essai" : "Démarrer l'essai du micro")
+                .accessibilityLabel(trial.isRunning ? "Stop the trial" : "Start the microphone trial")
                 .accessibilityIdentifier("essai-demarrer")
             }
             if dictating && !trial.isRunning {
@@ -168,28 +166,32 @@ struct MicTrialBlock: View {
 
     private var heardBox: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Texte reconnu")
+            Text("Recognized text")
                 .font(Typo.caption)
                 .foregroundStyle(Palette.muted)
                 .accessibilityHidden(true)
-            Text(trial.transcript.isEmpty ? "Le texte apparaîtra ici pendant que vous parlez." : trial.transcript.text)
+            Text(trial.transcript.isEmpty ? String(localized: "The text will appear here while you speak.") : trial.transcript.text)
                 .font(.system(size: 17))
                 .foregroundStyle(trial.transcript.isEmpty ? Palette.muted : Palette.ink)
                 .lineSpacing(5)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, minHeight: 48, alignment: .topLeading)
                 .textSelection(.enabled)
-                .accessibilityLabel("Texte reconnu : \(trial.transcript.isEmpty ? "rien pour l'instant" : trial.transcript.text)")
+                .accessibilityLabel("Recognized text: \(heardSpoken)")
                 .accessibilityIdentifier("essai-texte")
         }
+    }
+
+    private var heardSpoken: String {
+        trial.transcript.isEmpty ? String(localized: "nothing yet") : trial.transcript.text
     }
 
     /// Ce que VoiceOver entend quand l'essai change d'état ; la fin d'un
     /// essai (réussi ou non) passe par `announcement`.
     nonisolated static func spoken(_ phase: MicTrialController.Phase) -> String? {
         switch phase {
-        case .listening: "Parlez maintenant."
-        case .finishing: "Le texte final arrive."
+        case .listening: String(localized: "Speak now.")
+        case .finishing: String(localized: "The final text is coming.")
         case .failed(let message) where message != MicTrialController.noFinal: message
         default: nil
         }
@@ -197,10 +199,12 @@ struct MicTrialBlock: View {
 
     private var status: String {
         switch trial.phase {
-        case .idle: trial.results[trial.modelID ?? ""] == nil ? "Prêt." : "Essai terminé."
+        case .idle: trial.results[trial.modelID ?? ""] == nil ? String(localized: "Ready.") : String(localized: "Trial finished.")
         case .preparing(let what): what
-        case .listening: trial.speechHeard ? "Je vous entends. L'essai s'arrêtera seul à la fin." : "Parlez maintenant."
-        case .finishing: "Le texte final arrive…"
+        case .listening: trial.speechHeard
+            ? String(localized: "I can hear you. The trial will stop by itself at the end.")
+            : String(localized: "Speak now.")
+        case .finishing: String(localized: "The final text is coming…")
         case .failed(let message): message
         }
     }
@@ -211,8 +215,8 @@ struct MicTrialBlock: View {
     }
 
     private var meterValue: String {
-        guard trial.phase == .listening else { return "micro fermé" }
-        return trial.speechHeard ? "voix entendue" : "en attente de la voix"
+        guard trial.phase == .listening else { return String(localized: "microphone closed") }
+        return trial.speechHeard ? String(localized: "voice heard") : String(localized: "waiting for your voice")
     }
 }
 
@@ -259,23 +263,23 @@ struct MicTrialResultCard: View {
     var body: some View {
         let v = TrialFormat.values(result, size: { SizeFormat.bytes($0) })
         VStack(alignment: .leading, spacing: 12) {
-            Text("Résultats de \(name)")
+            Text("Results for \(name)")
                 .font(Typo.rowTitle)
                 .foregroundStyle(Palette.ink)
             HStack(alignment: .top, spacing: 24) {
-                metric("Précision", result.freeText ? "Texte libre" : v.precision,
-                       "mots justes")
-                metric("Délai", v.delay,
+                metric(String(localized: "Accuracy"), result.freeText ? String(localized: "Free text") : v.precision,
+                       String(localized: "correct words"))
+                metric(String(localized: "Delay"), v.delay,
                        result.firstDelayFromSpeech
-                           ? "premier texte après le début de la parole, puis texte final après « Arrêter »"
-                           : "premier texte après l'ouverture du micro, puis texte final après « Arrêter »")
-                metric("Débit", v.speed,
-                       result.speed == nil ? "non mesuré pour la dictée de macOS"
-                           : "pendant la dictée, relectures comprises : secondes de parole par seconde de calcul "
-                             + "(pas comparable à une vitesse mesurée en une seule passe)")
-                metric("Mémoire", v.memory,
-                       result.memoryBytes == nil ? "non mesurée pour la dictée de macOS"
-                           : result.memoryMeasured ? "occupée par le modèle chargé" : "estimée : le poids du modèle")
+                           ? String(localized: "first text after speech starts, then final text after “Stop”")
+                           : String(localized: "first text after the microphone opens, then final text after “Stop”"))
+                metric(String(localized: "Throughput"), v.speed,
+                       result.speed == nil ? String(localized: "not measured for macOS dictation")
+                           : String(localized: "during dictation, re-reads included: seconds of speech per second of compute (not comparable to a speed measured in a single pass)"))
+                metric(String(localized: "Memory"), v.memory,
+                       result.memoryBytes == nil ? String(localized: "not available for macOS dictation")
+                           : result.memoryMeasured ? String(localized: "used by the loaded model")
+                           : String(localized: "estimated: the model's size"))
             }
         }
         .padding(Space.inset)
@@ -313,14 +317,14 @@ struct MicTrialHistory: View {
     /// Les valeurs d'un essai, nommées et en entier.
     nonisolated static func parts(_ r: TrialResult, size: (UInt64) -> String) -> [String] {
         let v = TrialFormat.values(r, size: size)
-        var delay = "Délai : \(v.delay)"
-        if r.firstDelay != nil && !r.firstDelayFromSpeech { delay += " (depuis l'ouverture du micro)" }
-        let memory = r.memoryBytes != nil && !r.memoryMeasured ? "environ \(v.memory)" : v.memory
+        var delay = String(localized: "Delay: \(v.delay)")
+        if r.firstDelay != nil && !r.firstDelayFromSpeech { delay += String(localized: " (since the microphone opened)") }
+        let memory = r.memoryBytes != nil && !r.memoryMeasured ? String(localized: "about \(v.memory)") : v.memory
         return [
-            r.freeText ? "Texte libre" : "Précision : \(v.precision)",
+            r.freeText ? String(localized: "Free text") : String(localized: "Accuracy: \(v.precision)"),
             delay,
-            "Débit : \(v.speed)",
-            "Mémoire : \(memory)",
+            String(localized: "Throughput: \(v.speed)"),
+            String(localized: "Memory: \(memory)"),
         ]
     }
 
@@ -328,7 +332,7 @@ struct MicTrialHistory: View {
         let shown = options.filter { results[$0.value] != nil }
         if !shown.isEmpty {
             VStack(alignment: .leading, spacing: 0) {
-                Text("Derniers essais")
+                Text("Latest trials")
                     .font(Typo.rowTitle)
                     .foregroundStyle(Palette.ink)
                     .accessibilityAddTraits(.isHeader)
@@ -338,8 +342,7 @@ struct MicTrialHistory: View {
                     if let result = results[option.value] { line(option.title, result) }
                     Rule()
                 }
-                Text("Délai : le premier texte, puis le texte final après « Arrêter ». "
-                     + "Débit : mesuré pendant la dictée, relectures comprises.")
+                Text("Delay: the first text, then the final text after “Stop”. Throughput: measured during dictation, re-reads included.")
                     .font(Typo.body)
                     .foregroundStyle(Palette.muted)
                     .fixedSize(horizontal: false, vertical: true)
@@ -351,10 +354,11 @@ struct MicTrialHistory: View {
     }
 
     private func line(_ name: String, _ r: TrialResult) -> some View {
-        let date = r.date.formatted(.dateTime.day().month(.wide).locale(Locale(identifier: "fr_FR")))
+        let date = r.date.formatted(.dateTime.day().month(.wide).locale(UILanguage.numberLocale))
         let parts = Self.parts(r, size: { SizeFormat.bytes($0) })
+        let spoken = parts.joined(separator: ", ")
         return VStack(alignment: .leading, spacing: 4) {
-            Text("\(name), le \(date)")
+            Text("\(name), \(date)")
                 .font(Typo.rowTitle)
                 .foregroundStyle(Palette.ink)
                 .fixedSize(horizontal: false, vertical: true)
@@ -368,6 +372,6 @@ struct MicTrialHistory: View {
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(name), le \(date) : " + parts.joined(separator: ", "))
+        .accessibilityLabel(String(localized: "\(name), \(date): \(spoken)"))
     }
 }
