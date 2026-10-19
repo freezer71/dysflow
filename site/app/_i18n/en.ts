@@ -63,7 +63,7 @@ export const en: Dico = {
           "Voices and dictation run on your machine. No account, no server, no quota: a contract, a medical record or a draft never leaves your computer.",
       },
       {
-        titre: "Every word, followed by eye",
+        titre: "Follow every word with your eyes",
         texte:
           "The spoken word gets a highlight, its line a discreet band: the word shows where the voice is, the line shows where to come back to when you look up. Made for dyslexia and long reading.",
       },
@@ -121,9 +121,9 @@ export const en: Dico = {
     },
     comparaisonTitre: {
       surtitre: "Comparison",
-      titre: "Everything the big ones do, without the subscription or the cloud",
+      titre: "Everything the big names do, without the subscription or the cloud",
       texte:
-        "Commercial readers send your text to their servers and charge for the good voices. sillage does the math at your place.",
+        "Commercial readers send your text to their servers and charge for the good voices. sillage does the computing on your machine.",
     },
     comparaison: {
       critere: "Criterion",
@@ -137,9 +137,9 @@ export const en: Dico = {
         { critere: "Your text stays on your machine", cases: ["@oui", "@non", "@non", "@non", "@oui"] },
         { critere: "Natural neural voices", cases: ["@oui", "@oui", "@oui", "@oui", "@partiel"] },
         { critere: "Highlights the word being read", cases: ["@oui", "@oui", "@oui", "@oui", "@oui"] },
-        { critere: "Doesn't read markup, code or table borders", cases: ["@oui", "Not stated", "Not stated", "Not stated", "@non"] },
+        { critere: "Doesn't read markup, code or table borders", cases: ["@oui", "Not specified", "Not specified", "Not specified", "@non"] },
         { critere: "Scanned page recognition", cases: ["@oui", "@oui", "@oui", "@oui", "@non"] },
-        { critere: "Built-in dictation, offline", cases: ["@oui", "Not stated", "@non", "@non", "@partiel"] },
+        { critere: "Built-in dictation, offline", cases: ["@oui", "Not specified", "@non", "@non", "@partiel"] },
         { critere: "Linux version", cases: ["Terminal", "Browser", "Browser", "Browser", "@non"] },
       ],
       note: "Based on what the vendors state on their websites, as of October 2026. Spotted a mistake?",
@@ -200,7 +200,7 @@ export const en: Dico = {
     },
     champs: {
       taille: "Size",
-      precision: "Precision",
+      precision: "Accuracy",
       langues: "Languages",
       calcul: "Compute",
       rythme: "Speed",
