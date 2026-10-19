@@ -52,9 +52,13 @@ enum ModelTable {
     static func state(_ row: VoiceModel, download: DownloadView?) -> ModelRowState {
         if row.system { return .system }
         if let d = download, d.id == row.id {
-            // Annulé : un choix, pas un échec — la ligne redevient ce qu'elle était.
-            if let failed = d.failed, failed != cancelled { return .failed(failed) }
-            if d.received < d.total { return .downloading(d.total == 0 ? 0 : Double(d.received) / Double(d.total)) }
+            if let failed = d.failed {
+                // Annulé : un choix, pas un échec — la ligne redevient ce
+                // qu'elle était, même avec moins reçu que prévu.
+                if failed != cancelled { return .failed(failed) }
+            } else if d.received < d.total {
+                return .downloading(d.total == 0 ? 0 : Double(d.received) / Double(d.total))
+            }
         }
         return row.installed ? .installed : .notInstalled
     }
