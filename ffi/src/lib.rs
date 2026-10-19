@@ -656,7 +656,7 @@ impl SillageReader {
     pub fn open_image(&self, bytes: Vec<u8>) -> Result<(), SillageError> {
         let markdown = sillage::source::image_bytes(&bytes).map_err(failed)?;
         if markdown.trim().is_empty() {
-            return Err(failed(sillage::tr!("no text recognised in the image", "aucun texte reconnu dans l'image")));
+            return Err(failed(sillage::tr!("no text recognized in the image", "aucun texte reconnu dans l'image")));
         }
         self.open_text(markdown, "image".into());
         Ok(())

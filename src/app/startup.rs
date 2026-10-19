@@ -27,7 +27,7 @@ impl Phase {
         match self {
             Phase::LoadingModel => crate::tr!(en = "loading the {family} model…", fr = "chargement du modèle {family}…"),
             Phase::PreparingFirstSentence => {
-                crate::tr!("synthesising the first sentence…", "synthèse de la première phrase…").to_string()
+                crate::tr!("synthesizing the first sentence…", "synthèse de la première phrase…").to_string()
             }
         }
     }

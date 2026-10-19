@@ -123,7 +123,7 @@ impl App {
         // passe de « chargement… » à son nom réel sous les yeux.
         if let Some(elapsed) = self.previewer.pending_for() {
             return Some(crate::tr!(
-                en = "♪  {} · {} — synthesising the preview… {:.1} s",
+                en = "♪  {} · {} — synthesizing the preview… {:.1} s",
                 fr = "♪  {} · {} — synthèse de l'aperçu… {:.1} s",
                 self.previewer.label(),
                 self.engine_name(),

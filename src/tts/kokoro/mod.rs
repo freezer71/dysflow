@@ -281,7 +281,7 @@ impl TtsSession for KokoroSession {
             Ok(p) => p,
             Err(err) => {
                 self.inner.break_down(crate::tr!(en = "espeak-ng has stopped ({err})", fr = "espeak-ng s'est arrêté ({err})"));
-                bail!(crate::tr!(en = "phonemisation failed: {err}", fr = "phonétisation impossible : {err}"));
+                bail!(crate::tr!(en = "phonemization failed: {err}", fr = "phonétisation impossible : {err}"));
             }
         };
 

@@ -222,7 +222,7 @@ impl Config {
     }
 
     pub(crate) fn save_to(&self, path: &std::path::Path) -> Result<()> {
-        let text = toml::to_string_pretty(self).context(crate::tr!("serialising the configuration", "sérialisation de la configuration"))?;
+        let text = toml::to_string_pretty(self).context(crate::tr!("serializing the configuration", "sérialisation de la configuration"))?;
         crate::paths::write_atomic(path, text.as_bytes())
             .with_context(|| crate::tr!(en = "writing {}", fr = "écriture de {}", path.display()))?;
         Ok(())

@@ -99,7 +99,7 @@ impl Ocr {
         let text = self
             .api
             .get_utf8_text()
-            .map_err(|e| anyhow::anyhow!(crate::tr!(en = "recognising the text: {e}", fr = "reconnaissance du texte : {e}")))?;
+            .map_err(|e| anyhow::anyhow!(crate::tr!(en = "recognizing the text: {e}", fr = "reconnaissance du texte : {e}")))?;
         Ok(Page {
             lines: text.lines().map(|l| l.trim_end().to_string()).collect(),
         })

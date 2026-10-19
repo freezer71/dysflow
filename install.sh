@@ -239,7 +239,7 @@ else
     ln -sfn ../lib/sillage/sillage "$PREFIX/bin/sillage"
     etape "$(t "Installed in $PREFIX/lib/sillage" "Installé dans $PREFIX/lib/sillage")"
     "$PREFIX/bin/sillage" --check-kokoro >/dev/null 2>&1 \
-        || etape "$(t "Warning: Kokoro does not load ($PREFIX/bin/sillage --check-kokoro); the system voice will read" "Attention : Kokoro ne se charge pas ($PREFIX/bin/sillage --check-kokoro) ; la voix du système lira")"
+        || etape "$(t "Warning: Kokoro does not load ($PREFIX/bin/sillage --check-kokoro); the system voice will be used instead" "Attention : Kokoro ne se charge pas ($PREFIX/bin/sillage --check-kokoro) ; la voix du système lira")"
 fi
 
 printf '\n%s✓ %s%s\n' "$vert$gras" "$(t "sillage $version is installed." "sillage $version est installé.")" "$fin" >&2
@@ -251,10 +251,10 @@ case ":$PATH:" in
     ;;
 esac
 if [ "$systeme" = Darwin ]; then
-    printf '\n%s\n' "$(t 'sillage is open in the menu bar. The Kokoro voice installs itself.' 'sillage est ouvert dans la barre des menus. La voix Kokoro s’installe toute seule.')" >&2
+    printf '\n%s\n' "$(t 'sillage is open in the menu bar. The Kokoro voice is installed automatically.' 'sillage est ouvert dans la barre des menus. La voix Kokoro s’installe toute seule.')" >&2
     printf '%s %ssillage document.pdf%s\n' "$(t 'To read a file:' 'Pour lire un fichier :')" "$gras" "$fin" >&2
 else
     printf '\n%s %ssillage document.md%s   ·   cat notes.md | sillage\n' "$(t 'To read a file:' 'Pour lire un fichier :')" "$gras" "$fin" >&2
-    printf '%s\n' "$(t 'The Kokoro voice (108 MB) downloads itself on first read.' 'La voix Kokoro (108 Mo) se télécharge toute seule à la première lecture.')" >&2
+    printf '%s\n' "$(t 'The Kokoro voice (108 MB) is downloaded automatically the first time you read.' 'La voix Kokoro (108 Mo) se télécharge toute seule à la première lecture.')" >&2
 fi
 printf '%s %scurl -fsSL https://sillage.koumalabs.org/install.sh | sh -s -- --uninstall%s\n' "$(t 'To uninstall:' 'Pour désinstaller :')" "$gras" "$fin" >&2

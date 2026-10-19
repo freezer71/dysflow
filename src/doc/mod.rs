@@ -84,7 +84,7 @@ impl Punctuation {
     pub fn label(&self) -> &'static str {
         match self {
             Punctuation::Comma => crate::tr!("comma", "virgule"),
-            Punctuation::Period => crate::tr!("full stop", "point"),
+            Punctuation::Period => crate::tr!("period", "point"),
             Punctuation::Question => crate::tr!("question mark", "point d'interrogation"),
             Punctuation::Exclamation => crate::tr!("exclamation mark", "point d'exclamation"),
             Punctuation::Colon => crate::tr!("colon", "deux-points"),

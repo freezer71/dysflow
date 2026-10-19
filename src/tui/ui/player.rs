@@ -95,7 +95,7 @@ pub(super) fn render_player(frame: &mut Frame, app: &App, area: Rect) {
     ];
     if stats.failed > 0 {
         second.push(Span::styled(
-            crate::tr!(en = "  ⚠ {} failure(s)", fr = "  ⚠ {} échec(s)", stats.failed),
+            crate::tr!(en = "  ⚠ {} failure{}", fr = "  ⚠ {} échec{}", stats.failed, if stats.failed == 1 { "" } else { "s" }),
             Style::default().fg(ACCENT),
         ));
     }
@@ -195,7 +195,7 @@ pub(super) fn status_spans(app: &App) -> Vec<Span<'static>> {
     }
     if app.skipped_count() > 0 {
         spans.push(Span::styled(
-            crate::tr!(en = "· {} sentence(s) skipped ", fr = "· {} phrase(s) sautée(s) ", app.skipped_count()),
+            crate::tr!(en = "· {0} sentence{1} skipped ", fr = "· {0} phrase{1} sautée{1} ", app.skipped_count(), if app.skipped_count() == 1 { "" } else { "s" }),
             Style::default().fg(DIM),
         ));
     }
