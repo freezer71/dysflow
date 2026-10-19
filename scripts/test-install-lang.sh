@@ -42,7 +42,8 @@ verifie "--force, --uninstall" --option-inconnue
 
 # Les deux noms de l'option de désinstallation sont acceptés.
 for nom in --uninstall --desinstaller; do
-    if grep -q -e "$nom)" "$racine/install.sh"; then
+    # La ligne du case : « --uninstall | --desinstaller) », pas le message d'erreur.
+    if grep -E "^[[:space:]]*(--[a-z]+ \| )*$nom( \| --[a-z]+)*\)" "$racine/install.sh" | grep -q 'DESINSTALLER=1'; then
         echo "ok   $nom accepté"
     else
         echo "ECHEC $nom absent du case"
