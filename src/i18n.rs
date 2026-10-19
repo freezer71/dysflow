@@ -102,7 +102,7 @@ pub fn with_ui_lang<R>(lang: UiLang, f: impl FnOnce() -> R) -> R {
 }
 
 /// Un texte d'interface dans les deux langues ; utilisable en `const`.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Tr {
     pub en: &'static str,
     pub fr: &'static str,

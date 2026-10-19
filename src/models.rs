@@ -5,6 +5,7 @@
 //! d'un vrai modèle atteignable depuis l'interface, sans ligne de commande et
 //! sans jamais télécharger quoi que ce soit sans accord explicite.
 
+use crate::i18n::Tr;
 use crate::sync::LockExt;
 use anyhow::{anyhow, Context, Result};
 use std::io::{Read, Write};
@@ -77,10 +78,10 @@ pub enum Kind {
 pub struct ModelPackage {
     pub id: &'static str,
     pub family: &'static str,
-    pub display_name: &'static str,
-    pub description: &'static str,
+    pub display_name: Tr,
+    pub description: Tr,
     /// Précision des poids, qui arbitre taille contre qualité.
-    pub precision: &'static str,
+    pub precision: Tr,
     pub languages: &'static [&'static str],
     pub repo: &'static str,
     pub revision: &'static str,
@@ -91,22 +92,22 @@ pub struct ModelPackage {
     /// Certains modèles annoncent un ordre de grandeur plutôt qu'une liste ;
     /// afficher « 31 langues » pour un modèle qui en revendique six cents
     /// serait faux dans l'autre sens.
-    pub languages_label: &'static str,
+    pub languages_label: Tr,
     /// Taille annoncée, relevée sur le dépôt.
     pub bytes: u64,
     /// Recommandé comme premier modèle.
     pub recommended: bool,
     /// Ce que la lecture donnera : fluide, ou hachée parce que le modèle
     /// produit moins vite qu'il ne parle. Mesuré, pas promis.
-    pub pace: &'static str,
+    pub pace: Tr,
     /// Fichiers téléchargés à côté du fichier principal.
     pub companions: &'static [Companion],
     pub runtime: Runtime,
     pub kind: Kind,
     /// Les voix, pour la fiche (« Française : … · Anglaise : … »).
-    pub voices_label: &'static str,
+    pub voices_label: Tr,
     /// Les licences, pour la fiche.
-    pub licenses: &'static str,
+    pub licenses: Tr,
 }
 
 impl ModelPackage {
@@ -198,7 +199,10 @@ const KOKORO_SHARED: &[Companion] = &[
     kokoro_voice!("bm_lewis"),
 ];
 
-const KOKORO_VOICES_LABEL: &str = "30 voix : p-fenrir60 (française, recommandée), af_bella (américaine, recommandée)…";
+const KOKORO_VOICES_LABEL: Tr = Tr::new(
+    "30 voices: p-fenrir60 (French, recommended), af_bella (American, recommended)…",
+    "30 voix : p-fenrir60 (française, recommandée), af_bella (américaine, recommandée)…",
+);
 
 /// Un compagnon rangé sous le même chemin que dans le dépôt.
 const fn hf(repo: &'static str, revision: &'static str, file: &'static str, bytes: u64) -> Companion {
@@ -291,57 +295,57 @@ pub const CATALOG: &[ModelPackage] = &[
     ModelPackage {
         id: "kokoro_82m_mlx",
         family: "kokoro",
-        display_name: "Kokoro 82M · MLX",
-        description: "Voix naturelle et légère, calculée par la puce graphique.",
-        precision: "bf16",
+        display_name: Tr::new("Kokoro 82M · MLX", "Kokoro 82M · MLX"),
+        description: Tr::new("Natural, light voice, computed by the GPU.", "Voix naturelle et légère, calculée par la puce graphique."),
+        precision: Tr::new("bf16", "bf16"),
         languages: KOKORO_LANGUAGES,
         repo: KOKORO_MLX_REPO,
         revision: KOKORO_MLX_REVISION,
         file: "kokoro-v1_0.safetensors",
-        languages_label: "Français, anglais",
+        languages_label: Tr::new("French, English", "Français, anglais"),
         bytes: 327_115_152,
         recommended: true,
-        pace: "Quinze fois plus vite que la parole sur M5 : lecture fluide.",
+        pace: Tr::new("Fifteen times faster than speech on M5: smooth reading.", "Quinze fois plus vite que la parole sur M5 : lecture fluide."),
         companions: KOKORO_SHARED,
         runtime: Runtime::KokoroMlx,
         kind: Kind::Speech,
         voices_label: KOKORO_VOICES_LABEL,
-        licenses: "Poids et voix Apache-2.0 · code MLX MIT · espeak-ng GPL-3.0 (programme séparé)",
+        licenses: Tr::new("Weights and voices Apache-2.0 · MLX code MIT · espeak-ng GPL-3.0 (separate program)", "Poids et voix Apache-2.0 · code MLX MIT · espeak-ng GPL-3.0 (programme séparé)"),
     },
     ModelPackage {
         id: "kokoro_82m_int8",
         family: "kokoro",
-        display_name: "Kokoro 82M · int8",
-        description: "Voix naturelle et légère, calculée par le processeur (ONNX Runtime ≥ 1.31).",
-        precision: "int8",
+        display_name: Tr::new("Kokoro 82M · int8", "Kokoro 82M · int8"),
+        description: Tr::new("Natural, light voice, computed by the CPU (ONNX Runtime ≥ 1.31).", "Voix naturelle et légère, calculée par le processeur (ONNX Runtime ≥ 1.31)."),
+        precision: Tr::new("int8", "int8"),
         languages: KOKORO_LANGUAGES,
         repo: KOKORO_ONNX_REPO,
         revision: KOKORO_ONNX_REVISION,
         file: "onnx/model_quantized.onnx",
-        languages_label: "Français, anglais",
+        languages_label: Tr::new("French, English", "Français, anglais"),
         bytes: 92_361_055,
         recommended: true,
-        pace: "Huit à dix fois plus vite que la parole sur processeur : lecture fluide.",
+        pace: Tr::new("Eight to ten times faster than speech on CPU: smooth reading.", "Huit à dix fois plus vite que la parole sur processeur : lecture fluide."),
         companions: KOKORO_SHARED,
         runtime: Runtime::KokoroOnnx,
         kind: Kind::Speech,
         voices_label: KOKORO_VOICES_LABEL,
-        licenses: "Poids et voix Apache-2.0 · ONNX Runtime MIT · espeak-ng GPL-3.0 (programme séparé)",
+        licenses: Tr::new("Weights and voices Apache-2.0 · ONNX Runtime MIT · espeak-ng GPL-3.0 (separate program)", "Poids et voix Apache-2.0 · ONNX Runtime MIT · espeak-ng GPL-3.0 (programme séparé)"),
     },
     ModelPackage {
         id: "parakeet_tdt_v3",
         family: "parakeet_tdt_v3",
-        display_name: "Parakeet v3",
-        description: "Reconnaît vite et bien vingt-cinq langues européennes, sur la puce graphique.",
-        precision: "bf16",
+        display_name: Tr::new("Parakeet v3", "Parakeet v3"),
+        description: Tr::new("Fast, accurate recognition of twenty-five European languages, on the GPU.", "Reconnaît vite et bien vingt-cinq langues européennes, sur la puce graphique."),
+        precision: Tr::new("bf16", "bf16"),
         languages: &["fr", "en"],
         repo: "mlx-community/parakeet-tdt-0.6b-v3",
         revision: "ed2b7e8c15f9aaa0b5772e2efb986255eaef7e15",
         file: "model.safetensors",
-        languages_label: "25 langues européennes",
+        languages_label: Tr::new("25 European languages", "25 langues européennes"),
         bytes: 2_508_288_736,
         recommended: true,
-        pace: "Relecture toutes les 1,5 s",
+        pace: Tr::new("Re-read every 1.5 s", "Relecture toutes les 1,5 s"),
         companions: &[
             Companion {
                 repo: "mlx-community/parakeet-tdt-0.6b-v3",
@@ -353,44 +357,44 @@ pub const CATALOG: &[ModelPackage] = &[
         ],
         runtime: Runtime::ParakeetMlx,
         kind: Kind::Dictation,
-        voices_label: "",
-        licenses: "CC-BY-4.0 (poids et code)",
+        voices_label: Tr::new("", ""),
+        licenses: Tr::new("CC-BY-4.0 (weights and code)", "CC-BY-4.0 (poids et code)"),
     },
     ModelPackage {
         id: "phonon_2",
         family: "phonon_2",
-        display_name: "Phonon-2",
-        description: "Parakeet v3 réentraîné pour l'anglais et réduit à 164 Mo, presque aussi juste. Le français passe, moins sûrement.",
-        precision: "≈ 2 bits",
+        display_name: Tr::new("Phonon-2", "Phonon-2"),
+        description: Tr::new("Parakeet v3 retrained for English and shrunk to 164 MB, almost as accurate. French works, less reliably.", "Parakeet v3 réentraîné pour l'anglais et réduit à 164 Mo, presque aussi juste. Le français passe, moins sûrement."),
+        precision: Tr::new("≈ 2-bit", "≈ 2 bits"),
         languages: &["en", "fr"],
         repo: "FermionResearch/Phonon-2",
         revision: "7e153e4054c0a10db6d47d6fff5c062d4c77c154",
         // Poids et `config.json` dans une seule archive, lue par l'app.
         file: "phonon-2.bps.tar.zst",
-        languages_label: "Anglais (français moins sûr)",
+        languages_label: Tr::new("English (French less reliable)", "Anglais (français moins sûr)"),
         bytes: 163_515_201,
         recommended: false,
-        pace: "Relecture toutes les 1,5 s",
+        pace: Tr::new("Re-read every 1.5 s", "Relecture toutes les 1,5 s"),
         companions: &[],
         runtime: Runtime::PhononMlx,
         kind: Kind::Dictation,
-        voices_label: "",
-        licenses: "Poids CC-BY-4.0 (Fermion Research, d'après NVIDIA)",
+        voices_label: Tr::new("", ""),
+        licenses: Tr::new("CC-BY-4.0 weights (Fermion Research, based on NVIDIA)", "Poids CC-BY-4.0 (Fermion Research, d'après NVIDIA)"),
     },
     ModelPackage {
         id: "whisper_tiny_4bit",
         family: "whisper_tiny_4bit",
-        display_name: "Whisper tiny",
-        description: "Le plus petit Whisper : rapide, pour un texte court ou une machine juste.",
-        precision: "4 bits",
+        display_name: Tr::new("Whisper tiny", "Whisper tiny"),
+        description: Tr::new("The smallest Whisper: fast, for a short text or a modest machine.", "Le plus petit Whisper : rapide, pour un texte court ou une machine juste."),
+        precision: Tr::new("4-bit", "4 bits"),
         languages: &["fr", "en"],
         repo: "mlx-community/whisper-tiny-4bit",
         revision: "064afea920b0373f8e19d51dc698bfbb91f501ff",
         file: "model.safetensors",
-        languages_label: "99 langues",
+        languages_label: Tr::new("99 languages", "99 langues"),
         bytes: 22_029_431,
         recommended: false,
-        pace: "Relecture toutes les 1,5 s",
+        pace: Tr::new("Re-read every 1.5 s", "Relecture toutes les 1,5 s"),
         companions: &[
             Companion {
                 repo: "mlx-community/whisper-tiny-4bit",
@@ -409,23 +413,23 @@ pub const CATALOG: &[ModelPackage] = &[
         ],
         runtime: Runtime::WhisperMlx,
         kind: Kind::Dictation,
-        voices_label: "",
-        licenses: "Apache-2.0",
+        voices_label: Tr::new("", ""),
+        licenses: Tr::new("Apache-2.0", "Apache-2.0"),
     },
     ModelPackage {
         id: "whisper_small_4bit",
         family: "whisper_small_4bit",
-        display_name: "Whisper small",
-        description: "Un bon compromis entre taille et justesse, en quatre-vingt-dix-neuf langues.",
-        precision: "4 bits",
+        display_name: Tr::new("Whisper small", "Whisper small"),
+        description: Tr::new("A good trade-off between size and accuracy, in ninety-nine languages.", "Un bon compromis entre taille et justesse, en quatre-vingt-dix-neuf langues."),
+        precision: Tr::new("4-bit", "4 bits"),
         languages: &["fr", "en"],
         repo: "mlx-community/whisper-small-4bit",
         revision: "1ac90abbb1b2f53863bfd2a483a3c31d792c3e5b",
         file: "model.safetensors",
-        languages_label: "99 langues",
+        languages_label: Tr::new("99 languages", "99 langues"),
         bytes: 139_111_057,
         recommended: false,
-        pace: "Relecture toutes les 1,5 s",
+        pace: Tr::new("Re-read every 1.5 s", "Relecture toutes les 1,5 s"),
         companions: &[
             Companion {
                 repo: "mlx-community/whisper-small-4bit",
@@ -444,23 +448,23 @@ pub const CATALOG: &[ModelPackage] = &[
         ],
         runtime: Runtime::WhisperMlx,
         kind: Kind::Dictation,
-        voices_label: "",
-        licenses: "Apache-2.0",
+        voices_label: Tr::new("", ""),
+        licenses: Tr::new("Apache-2.0", "Apache-2.0"),
     },
     ModelPackage {
         id: "whisper_large_v3_turbo_4bit",
         family: "whisper_large_v3_turbo_4bit",
-        display_name: "Whisper large-v3-turbo",
-        description: "Le plus juste des Whisper de la liste, au prix d'un téléchargement plus lourd.",
-        precision: "4 bits",
+        display_name: Tr::new("Whisper large-v3-turbo", "Whisper large-v3-turbo"),
+        description: Tr::new("The most accurate Whisper in the list, at the cost of a heavier download.", "Le plus juste des Whisper de la liste, au prix d'un téléchargement plus lourd."),
+        precision: Tr::new("4-bit", "4 bits"),
         languages: &["fr", "en"],
         repo: "mlx-community/whisper-large-v3-turbo-4bit",
         revision: "0f058d38170d183f9fdee07908f5b515d91793a8",
         file: "model.safetensors",
-        languages_label: "99 langues",
+        languages_label: Tr::new("99 languages", "99 langues"),
         bytes: 463_462_982,
         recommended: false,
-        pace: "Relecture toutes les 1,5 s",
+        pace: Tr::new("Re-read every 1.5 s", "Relecture toutes les 1,5 s"),
         companions: &[
             Companion {
                 repo: "mlx-community/whisper-large-v3-turbo-4bit",
@@ -479,23 +483,23 @@ pub const CATALOG: &[ModelPackage] = &[
         ],
         runtime: Runtime::WhisperMlx,
         kind: Kind::Dictation,
-        voices_label: "",
-        licenses: "Apache-2.0",
+        voices_label: Tr::new("", ""),
+        licenses: Tr::new("Apache-2.0", "Apache-2.0"),
     },
     ModelPackage {
         id: "canary_1b_v2_q8",
         family: "canary_1b_v2_q8",
-        display_name: "Canary 1b-v2",
-        description: "Reconnaissance et traduction de vingt-cinq langues européennes, quantifié en 8 bits.",
-        precision: "q8",
+        display_name: Tr::new("Canary 1b-v2", "Canary 1b-v2"),
+        description: Tr::new("Recognition and translation of twenty-five European languages, quantized to 8 bits.", "Reconnaissance et traduction de vingt-cinq langues européennes, quantifié en 8 bits."),
+        precision: Tr::new("q8", "q8"),
         languages: &["fr", "en"],
         repo: "Mediform/canary-1b-v2-mlx-q8",
         revision: "0b6b32ee10f30c89e3ead7249bb636445e3019ee",
         file: "model.safetensors",
-        languages_label: "25 langues européennes",
+        languages_label: Tr::new("25 European languages", "25 langues européennes"),
         bytes: 1_136_436_574,
         recommended: false,
-        pace: "Relecture toutes les 1,5 s",
+        pace: Tr::new("Re-read every 1.5 s", "Relecture toutes les 1,5 s"),
         companions: &[
             Companion {
                 repo: "Mediform/canary-1b-v2-mlx-q8",
@@ -507,23 +511,23 @@ pub const CATALOG: &[ModelPackage] = &[
         ],
         runtime: Runtime::CanaryMlx,
         kind: Kind::Dictation,
-        voices_label: "",
-        licenses: "CC-BY-4.0",
+        voices_label: Tr::new("", ""),
+        licenses: Tr::new("CC-BY-4.0", "CC-BY-4.0"),
     },
     ModelPackage {
         id: "voxtral_realtime_4bit",
         family: "voxtral_realtime_4bit",
-        display_name: "Voxtral Realtime",
-        description: "Écrit au fil de la parole, sans attendre la fin de la phrase.",
-        precision: "4 bits",
+        display_name: Tr::new("Voxtral Realtime", "Voxtral Realtime"),
+        description: Tr::new("Writes as you speak, without waiting for the end of the sentence.", "Écrit au fil de la parole, sans attendre la fin de la phrase."),
+        precision: Tr::new("4-bit", "4 bits"),
         languages: &["fr", "en"],
         repo: "mlx-community/Voxtral-Mini-4B-Realtime-2602-4bit",
         revision: "fdebf7b2af834a1db4b8a3c99ab7480b333adf9e",
         file: "model.safetensors",
-        languages_label: "13 langues",
+        languages_label: Tr::new("13 languages", "13 langues"),
         bytes: 3_133_798_126,
         recommended: false,
-        pace: "Au fil de la parole",
+        pace: Tr::new("As you speak", "Au fil de la parole"),
         companions: &[
             Companion {
                 repo: "mlx-community/Voxtral-Mini-4B-Realtime-2602-4bit",
@@ -542,153 +546,153 @@ pub const CATALOG: &[ModelPackage] = &[
         ],
         runtime: Runtime::VoxtralRealtimeMlx,
         kind: Kind::Dictation,
-        voices_label: "",
-        licenses: "Apache-2.0",
+        voices_label: Tr::new("", ""),
+        licenses: Tr::new("Apache-2.0", "Apache-2.0"),
     },
     ModelPackage {
         id: "parakeet_tdt_v2",
         family: "parakeet_tdt_v2",
-        display_name: "Parakeet v2",
-        description: "Le Parakeet anglais : un peu plus juste que v3 en anglais, mais il ne connaît que l'anglais.",
-        precision: "bf16",
+        display_name: Tr::new("Parakeet v2", "Parakeet v2"),
+        description: Tr::new("The English Parakeet: slightly more accurate than v3 in English, but it only knows English.", "Le Parakeet anglais : un peu plus juste que v3 en anglais, mais il ne connaît que l'anglais."),
+        precision: Tr::new("bf16", "bf16"),
         languages: &["en"],
         repo: PARAKEET_V2_REPO,
         revision: PARAKEET_V2_REVISION,
         file: "model.safetensors",
-        languages_label: "Anglais",
+        languages_label: Tr::new("English", "Anglais"),
         bytes: 2_471_559_904,
         recommended: false,
-        pace: "Relecture toutes les 1,5 s",
+        pace: Tr::new("Re-read every 1.5 s", "Relecture toutes les 1,5 s"),
         // Le vocabulaire est dans `config.json` (`labels`), comme pour v3.
         companions: &[hf(PARAKEET_V2_REPO, PARAKEET_V2_REVISION, "config.json", 36_176)],
         runtime: Runtime::ParakeetMlx,
         kind: Kind::Dictation,
-        voices_label: "",
-        licenses: "CC-BY-4.0 (poids et code)",
+        voices_label: Tr::new("", ""),
+        licenses: Tr::new("CC-BY-4.0 (weights and code)", "CC-BY-4.0 (poids et code)"),
     },
     ModelPackage {
         id: "nemotron_35_asr_streaming_8bit",
         family: "nemotron_35_asr_streaming_8bit",
-        display_name: "Nemotron 3.5 Streaming",
-        description: "Écrit au fil de la parole, chaque bout d'audio lu une seule fois. Moins juste que Parakeet v3 en français (environ 9 % de mots faux, contre 5 %).",
-        precision: "8 bits",
+        display_name: Tr::new("Nemotron 3.5 Streaming", "Nemotron 3.5 Streaming"),
+        description: Tr::new("Writes as you speak, each bit of audio read only once. Less accurate than Parakeet v3 in French (about 9% wrong words, against 5%).", "Écrit au fil de la parole, chaque bout d'audio lu une seule fois. Moins juste que Parakeet v3 en français (environ 9 % de mots faux, contre 5 %)."),
+        precision: Tr::new("8-bit", "8 bits"),
         languages: &["fr", "en"],
         repo: NEMOTRON_REPO,
         revision: NEMOTRON_REVISION,
         file: "model.safetensors",
-        languages_label: "40 langues",
+        languages_label: Tr::new("40 languages", "40 langues"),
         bytes: 755_598_923,
         recommended: false,
-        pace: "Au fil de la parole : 1,5 s de calcul pour 36 s de parole (M5)",
+        pace: Tr::new("As you speak: 1.5 s of compute for 36 s of speech (M5)", "Au fil de la parole : 1,5 s de calcul pour 36 s de parole (M5)"),
         // Vocabulaire et invites de langue dans `config.json` ; ni
         // `tokenizer.model` ni `vocab.txt`, que le chargeur ne lit pas.
         companions: &[hf(NEMOTRON_REPO, NEMOTRON_REVISION, "config.json", 159_605)],
         runtime: Runtime::NemotronMlx,
         kind: Kind::Dictation,
-        voices_label: "",
-        licenses: "Poids OpenMDW-1.1 (NVIDIA)",
+        voices_label: Tr::new("", ""),
+        licenses: Tr::new("OpenMDW-1.1 weights (NVIDIA)", "Poids OpenMDW-1.1 (NVIDIA)"),
     },
     ModelPackage {
         id: "qwen3_asr_06b_8bit",
         family: "qwen3_asr_06b_8bit",
-        display_name: "Qwen3-ASR 0.6B",
-        description: "Reconnaît seul la langue parlée, parmi trente. Écrit le texte jeton par jeton : chaque relecture prend plus de temps qu'avec Parakeet.",
-        precision: "8 bits",
+        display_name: Tr::new("Qwen3-ASR 0.6B", "Qwen3-ASR 0.6B"),
+        description: Tr::new("Detects the spoken language by itself, among thirty. Writes the text token by token: each re-read takes longer than with Parakeet.", "Reconnaît seul la langue parlée, parmi trente. Écrit le texte jeton par jeton : chaque relecture prend plus de temps qu'avec Parakeet."),
+        precision: Tr::new("8-bit", "8 bits"),
         languages: &["fr", "en"],
         repo: QWEN3_ASR_06B_REPO,
         revision: QWEN3_ASR_06B_REVISION,
         file: "model.safetensors",
-        languages_label: "30 langues, reconnues seules",
+        languages_label: Tr::new("30 languages, detected automatically", "30 langues, reconnues seules"),
         bytes: 1_006_229_426,
         recommended: false,
-        pace: "Relecture glissante : 0,4 s de calcul pour 9 s de parole, 1,5 s pour 36 s (M5)",
+        pace: Tr::new("Sliding re-read: 0.4 s of compute for 9 s of speech, 1.5 s for 36 s (M5)", "Relecture glissante : 0,4 s de calcul pour 9 s de parole, 1,5 s pour 36 s (M5)"),
         companions: QWEN3_ASR_06B_FILES,
         runtime: Runtime::Qwen3AsrMlx,
         kind: Kind::Dictation,
-        voices_label: "",
-        licenses: "Apache-2.0",
+        voices_label: Tr::new("", ""),
+        licenses: Tr::new("Apache-2.0", "Apache-2.0"),
     },
     ModelPackage {
         id: "qwen3_asr_17b_4bit",
         family: "qwen3_asr_17b_4bit",
-        display_name: "Qwen3-ASR 1.7B",
-        description: "Le grand Qwen3-ASR, plus juste que le 0.6B, réduit à 4 bits. Reconnaît seul la langue ; le plus lent des deux à relire.",
-        precision: "4 bits",
+        display_name: Tr::new("Qwen3-ASR 1.7B", "Qwen3-ASR 1.7B"),
+        description: Tr::new("The large Qwen3-ASR, more accurate than the 0.6B, shrunk to 4 bits. Detects the language by itself; the slower of the two to re-read.", "Le grand Qwen3-ASR, plus juste que le 0.6B, réduit à 4 bits. Reconnaît seul la langue ; le plus lent des deux à relire."),
+        precision: Tr::new("4-bit", "4 bits"),
         languages: &["fr", "en"],
         repo: QWEN3_ASR_17B_REPO,
         revision: QWEN3_ASR_17B_REVISION,
         file: "model.safetensors",
-        languages_label: "30 langues, reconnues seules",
+        languages_label: Tr::new("30 languages, detected automatically", "30 langues, reconnues seules"),
         bytes: 1_603_081_617,
         recommended: false,
-        pace: "Relecture glissante : 0,6 s de calcul pour 9 s de parole, 2,4 s pour 36 s (M5)",
+        pace: Tr::new("Sliding re-read: 0.6 s of compute for 9 s of speech, 2.4 s for 36 s (M5)", "Relecture glissante : 0,6 s de calcul pour 9 s de parole, 2,4 s pour 36 s (M5)"),
         companions: QWEN3_ASR_17B_FILES,
         runtime: Runtime::Qwen3AsrMlx,
         kind: Kind::Dictation,
-        voices_label: "",
-        licenses: "Apache-2.0",
+        voices_label: Tr::new("", ""),
+        licenses: Tr::new("Apache-2.0", "Apache-2.0"),
     },
     ModelPackage {
         id: "cohere_transcribe_8bit",
         family: "cohere_transcribe_8bit",
-        display_name: "Cohere Transcribe",
-        description: "Le plus juste du classement Open ASR en anglais (5,4 % de mots faux en moyenne). Il ne devine pas la langue : il prend celle du réglage.",
-        precision: "8 bits",
+        display_name: Tr::new("Cohere Transcribe", "Cohere Transcribe"),
+        description: Tr::new("Top of the Open ASR leaderboard in English (5.4% wrong words on average). It does not guess the language: it uses the one in the settings.", "Le plus juste du classement Open ASR en anglais (5,4 % de mots faux en moyenne). Il ne devine pas la langue : il prend celle du réglage."),
+        precision: Tr::new("8-bit", "8 bits"),
         languages: &["fr", "en"],
         repo: COHERE_REPO,
         revision: COHERE_REVISION,
         file: "model.safetensors",
-        languages_label: "14 langues, choisie dans le réglage",
+        languages_label: Tr::new("14 languages, chosen in the settings", "14 langues, choisie dans le réglage"),
         bytes: 2_418_031_831,
         recommended: false,
-        pace: "Relecture glissante : 0,4 s de calcul pour 9 s de parole, 1,8 s pour 36 s (M5)",
+        pace: Tr::new("Sliding re-read: 0.4 s of compute for 9 s of speech, 1.8 s for 36 s (M5)", "Relecture glissante : 0,4 s de calcul pour 9 s de parole, 1,8 s pour 36 s (M5)"),
         companions: COHERE_FILES,
         runtime: Runtime::CohereMlx,
         kind: Kind::Dictation,
-        voices_label: "",
-        licenses: "Poids Apache-2.0 (Cohere)",
+        voices_label: Tr::new("", ""),
+        licenses: Tr::new("Apache-2.0 weights (Cohere)", "Poids Apache-2.0 (Cohere)"),
     },
     ModelPackage {
         id: "qwen3_tts_06b_base_8bit",
         family: "qwen3_tts_06b_base_8bit",
-        display_name: "Qwen3 0.6B · voix française",
-        description: "Une voix française fixe, au timbre tiré de SIWIS, calculée par la puce graphique. Suivi des mots approché. Avec l'autre Qwen installé, chacun garde sa copie du décodeur de son (682 Mo).",
-        precision: "8 bits",
+        display_name: Tr::new("Qwen3 0.6B · French voice", "Qwen3 0.6B · voix française"),
+        description: Tr::new("A fixed French voice, with a timbre drawn from SIWIS, computed by the GPU. Approximate word tracking. With the other Qwen installed, each keeps its own copy of the sound decoder (682 MB).", "Une voix française fixe, au timbre tiré de SIWIS, calculée par la puce graphique. Suivi des mots approché. Avec l'autre Qwen installé, chacun garde sa copie du décodeur de son (682 Mo)."),
+        precision: Tr::new("8-bit", "8 bits"),
         languages: &["fr", "en"],
         repo: QWEN3_06B_REPO,
         revision: QWEN3_06B_REVISION,
         file: "model.safetensors",
-        languages_label: "10 langues, dont français et anglais",
+        languages_label: Tr::new("10 languages, including French and English", "10 langues, dont français et anglais"),
         bytes: 1_304_461_214,
         recommended: false,
-        pace: "Lourd : lecture hachée au-delà de 1× (occupé 76 % du temps à 1× sur M5).",
+        pace: Tr::new("Heavy: choppy reading above 1× (busy 76% of the time at 1× on M5).", "Lourd : lecture hachée au-delà de 1× (occupé 76 % du temps à 1× sur M5)."),
         companions: QWEN3_06B_FILES,
         runtime: Runtime::Qwen3TtsMlx,
         kind: Kind::Speech,
-        voices_label: "1 voix : siwis (française, fixe)",
-        licenses: "Poids Apache-2.0 · code MLX MIT (mlx-audio-swift) · timbre tiré de SIWIS (CC-BY-4.0, Idiap)",
+        voices_label: Tr::new("1 voice: siwis (French, fixed)", "1 voix : siwis (française, fixe)"),
+        licenses: Tr::new("Apache-2.0 weights · MLX code MIT (mlx-audio-swift) · timbre drawn from SIWIS (CC-BY-4.0, Idiap)", "Poids Apache-2.0 · code MLX MIT (mlx-audio-swift) · timbre tiré de SIWIS (CC-BY-4.0, Idiap)"),
     },
     // Qwen3 1.7B CustomVoice retiré le 17 oct. 2026 : mesuré à 110 % du temps occupé à 1× sur M5
     // (lecture hachée même à vitesse normale) ; à reprendre après optimisation du port Swift.
     ModelPackage {
         id: "magpie_tts_357m_8bit",
         family: "magpie_tts_357m_8bit",
-        display_name: "MagpieTTS 357M",
-        description: "Modèle multilingue de NVIDIA, cinq voix anglaises, le français lu tel quel. Suivi des mots approché.",
-        precision: "8 bits",
+        display_name: Tr::new("MagpieTTS 357M", "MagpieTTS 357M"),
+        description: Tr::new("NVIDIA's multilingual model, five English voices, French read as is. Approximate word tracking.", "Modèle multilingue de NVIDIA, cinq voix anglaises, le français lu tel quel. Suivi des mots approché."),
+        precision: Tr::new("8-bit", "8 bits"),
         languages: &["fr", "en"],
         repo: MAGPIE_REPO,
         revision: MAGPIE_REVISION,
         file: "config.json",
-        languages_label: "9 langues, dont français et anglais",
+        languages_label: Tr::new("9 languages, including French and English", "9 langues, dont français et anglais"),
         bytes: 32,
         recommended: false,
-        pace: "Lourd : lecture hachée au-delà de 1× (occupé 69 % du temps à 1× sur M5).",
+        pace: Tr::new("Heavy: choppy reading above 1× (busy 69% of the time at 1× on M5).", "Lourd : lecture hachée au-delà de 1× (occupé 69 % du temps à 1× sur M5)."),
         companions: MAGPIE_FILES,
         runtime: Runtime::MagpieMlx,
         kind: Kind::Speech,
-        voices_label: "5 voix anglaises : sofia (recommandée), aria, jason, leo, john_van_stan",
-        licenses: "Poids NVIDIA Open Model License (téléchargés par vous) · code Apache-2.0 (speech-swift) · dictionnaire anglais CMUdict (BSD)",
+        voices_label: Tr::new("5 English voices: sofia (recommended), aria, jason, leo, john_van_stan", "5 voix anglaises : sofia (recommandée), aria, jason, leo, john_van_stan"),
+        licenses: Tr::new("NVIDIA Open Model License weights (downloaded by you) · Apache-2.0 code (speech-swift) · CMUdict English dictionary (BSD)", "Poids NVIDIA Open Model License (téléchargés par vous) · code Apache-2.0 (speech-swift) · dictionnaire anglais CMUdict (BSD)"),
     },
 ];
 
@@ -1288,7 +1292,7 @@ pub fn human_size(bytes: u64) -> String {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct VoiceOption {
     pub id: &'static str,
-    pub label: &'static str,
+    pub label: Tr,
     /// Langue de la voix ; vide : toutes celles du modèle.
     pub language: &'static str,
 }
@@ -1313,50 +1317,50 @@ pub fn voices_for_family(family: &str) -> &'static [VoiceOption] {
 /// la prononciation suit la langue du texte. La première d'une langue est
 /// sa voix par défaut.
 const KOKORO_VOICES: &[VoiceOption] = &[
-    VoiceOption { id: "p-fenrir60", label: "p-fenrir60 · française, recommandée", language: "fr" },
-    VoiceOption { id: "ff_siwis", label: "ff_siwis · française, femme", language: "fr" },
-    VoiceOption { id: "af_bella", label: "af_bella · américaine, femme, recommandée", language: "en" },
-    VoiceOption { id: "af_heart", label: "af_heart · américaine, femme", language: "en" },
-    VoiceOption { id: "af_alloy", label: "af_alloy · américaine, femme", language: "en" },
-    VoiceOption { id: "af_aoede", label: "af_aoede · américaine, femme", language: "en" },
-    VoiceOption { id: "af_jessica", label: "af_jessica · américaine, femme", language: "en" },
-    VoiceOption { id: "af_kore", label: "af_kore · américaine, femme", language: "en" },
-    VoiceOption { id: "af_nicole", label: "af_nicole · américaine, femme", language: "en" },
-    VoiceOption { id: "af_nova", label: "af_nova · américaine, femme", language: "en" },
-    VoiceOption { id: "af_river", label: "af_river · américaine, femme", language: "en" },
-    VoiceOption { id: "af_sarah", label: "af_sarah · américaine, femme", language: "en" },
-    VoiceOption { id: "af_sky", label: "af_sky · américaine, femme", language: "en" },
-    VoiceOption { id: "am_fenrir", label: "am_fenrir · américaine, homme", language: "en" },
-    VoiceOption { id: "am_adam", label: "am_adam · américaine, homme", language: "en" },
-    VoiceOption { id: "am_echo", label: "am_echo · américaine, homme", language: "en" },
-    VoiceOption { id: "am_eric", label: "am_eric · américaine, homme", language: "en" },
-    VoiceOption { id: "am_liam", label: "am_liam · américaine, homme", language: "en" },
-    VoiceOption { id: "am_michael", label: "am_michael · américaine, homme", language: "en" },
-    VoiceOption { id: "am_onyx", label: "am_onyx · américaine, homme", language: "en" },
-    VoiceOption { id: "am_puck", label: "am_puck · américaine, homme", language: "en" },
-    VoiceOption { id: "am_santa", label: "am_santa · américaine, homme", language: "en" },
-    VoiceOption { id: "bf_alice", label: "bf_alice · britannique, femme", language: "en" },
-    VoiceOption { id: "bf_emma", label: "bf_emma · britannique, femme", language: "en" },
-    VoiceOption { id: "bf_isabella", label: "bf_isabella · britannique, femme", language: "en" },
-    VoiceOption { id: "bf_lily", label: "bf_lily · britannique, femme", language: "en" },
-    VoiceOption { id: "bm_daniel", label: "bm_daniel · britannique, homme", language: "en" },
-    VoiceOption { id: "bm_fable", label: "bm_fable · britannique, homme", language: "en" },
-    VoiceOption { id: "bm_george", label: "bm_george · britannique, homme", language: "en" },
-    VoiceOption { id: "bm_lewis", label: "bm_lewis · britannique, homme", language: "en" },
+    VoiceOption { id: "p-fenrir60", label: Tr::new("p-fenrir60 · French, recommended", "p-fenrir60 · française, recommandée"), language: "fr" },
+    VoiceOption { id: "ff_siwis", label: Tr::new("ff_siwis · French, female", "ff_siwis · française, femme"), language: "fr" },
+    VoiceOption { id: "af_bella", label: Tr::new("af_bella · American, female, recommended", "af_bella · américaine, femme, recommandée"), language: "en" },
+    VoiceOption { id: "af_heart", label: Tr::new("af_heart · American, female", "af_heart · américaine, femme"), language: "en" },
+    VoiceOption { id: "af_alloy", label: Tr::new("af_alloy · American, female", "af_alloy · américaine, femme"), language: "en" },
+    VoiceOption { id: "af_aoede", label: Tr::new("af_aoede · American, female", "af_aoede · américaine, femme"), language: "en" },
+    VoiceOption { id: "af_jessica", label: Tr::new("af_jessica · American, female", "af_jessica · américaine, femme"), language: "en" },
+    VoiceOption { id: "af_kore", label: Tr::new("af_kore · American, female", "af_kore · américaine, femme"), language: "en" },
+    VoiceOption { id: "af_nicole", label: Tr::new("af_nicole · American, female", "af_nicole · américaine, femme"), language: "en" },
+    VoiceOption { id: "af_nova", label: Tr::new("af_nova · American, female", "af_nova · américaine, femme"), language: "en" },
+    VoiceOption { id: "af_river", label: Tr::new("af_river · American, female", "af_river · américaine, femme"), language: "en" },
+    VoiceOption { id: "af_sarah", label: Tr::new("af_sarah · American, female", "af_sarah · américaine, femme"), language: "en" },
+    VoiceOption { id: "af_sky", label: Tr::new("af_sky · American, female", "af_sky · américaine, femme"), language: "en" },
+    VoiceOption { id: "am_fenrir", label: Tr::new("am_fenrir · American, male", "am_fenrir · américaine, homme"), language: "en" },
+    VoiceOption { id: "am_adam", label: Tr::new("am_adam · American, male", "am_adam · américaine, homme"), language: "en" },
+    VoiceOption { id: "am_echo", label: Tr::new("am_echo · American, male", "am_echo · américaine, homme"), language: "en" },
+    VoiceOption { id: "am_eric", label: Tr::new("am_eric · American, male", "am_eric · américaine, homme"), language: "en" },
+    VoiceOption { id: "am_liam", label: Tr::new("am_liam · American, male", "am_liam · américaine, homme"), language: "en" },
+    VoiceOption { id: "am_michael", label: Tr::new("am_michael · American, male", "am_michael · américaine, homme"), language: "en" },
+    VoiceOption { id: "am_onyx", label: Tr::new("am_onyx · American, male", "am_onyx · américaine, homme"), language: "en" },
+    VoiceOption { id: "am_puck", label: Tr::new("am_puck · American, male", "am_puck · américaine, homme"), language: "en" },
+    VoiceOption { id: "am_santa", label: Tr::new("am_santa · American, male", "am_santa · américaine, homme"), language: "en" },
+    VoiceOption { id: "bf_alice", label: Tr::new("bf_alice · British, female", "bf_alice · britannique, femme"), language: "en" },
+    VoiceOption { id: "bf_emma", label: Tr::new("bf_emma · British, female", "bf_emma · britannique, femme"), language: "en" },
+    VoiceOption { id: "bf_isabella", label: Tr::new("bf_isabella · British, female", "bf_isabella · britannique, femme"), language: "en" },
+    VoiceOption { id: "bf_lily", label: Tr::new("bf_lily · British, female", "bf_lily · britannique, femme"), language: "en" },
+    VoiceOption { id: "bm_daniel", label: Tr::new("bm_daniel · British, male", "bm_daniel · britannique, homme"), language: "en" },
+    VoiceOption { id: "bm_fable", label: Tr::new("bm_fable · British, male", "bm_fable · britannique, homme"), language: "en" },
+    VoiceOption { id: "bm_george", label: Tr::new("bm_george · British, male", "bm_george · britannique, homme"), language: "en" },
+    VoiceOption { id: "bm_lewis", label: Tr::new("bm_lewis · British, male", "bm_lewis · britannique, homme"), language: "en" },
 ];
 
 const QWEN3_BASE_VOICES: &[VoiceOption] = &[
-    VoiceOption { id: "siwis", label: "siwis · française, femme, recommandée", language: "fr" },
+    VoiceOption { id: "siwis", label: Tr::new("siwis · French, female, recommended", "siwis · française, femme, recommandée"), language: "fr" },
 ];
 
 /// Les cinq voix du paquet MLX, dans l'ordre de `baked_speaker_names`
 /// (relevé §3.d) ; `MagpieSpeaker(named:)` les reconnaît.
 const MAGPIE_VOICES: &[VoiceOption] = &[
-    VoiceOption { id: "sofia", label: "sofia · américaine, femme, recommandée", language: "en" },
-    VoiceOption { id: "aria", label: "aria · américaine, femme", language: "en" },
-    VoiceOption { id: "jason", label: "jason · américaine, homme", language: "en" },
-    VoiceOption { id: "leo", label: "leo · américaine, homme", language: "en" },
-    VoiceOption { id: "john_van_stan", label: "john_van_stan · américaine, homme (LibriVox)", language: "en" },
+    VoiceOption { id: "sofia", label: Tr::new("sofia · American, female, recommended", "sofia · américaine, femme, recommandée"), language: "en" },
+    VoiceOption { id: "aria", label: Tr::new("aria · American, female", "aria · américaine, femme"), language: "en" },
+    VoiceOption { id: "jason", label: Tr::new("jason · American, male", "jason · américaine, homme"), language: "en" },
+    VoiceOption { id: "leo", label: Tr::new("leo · American, male", "leo · américaine, homme"), language: "en" },
+    VoiceOption { id: "john_van_stan", label: Tr::new("john_van_stan · American, male (LibriVox)", "john_van_stan · américaine, homme (LibriVox)"), language: "en" },
 ];
 
 /// Les familles lues par un moteur à texte (lot 3) : une session, la voix et
@@ -1663,7 +1667,7 @@ mod tests {
             assert_eq!(p.total_bytes(), total, "{id}");
             assert!(p.companions.iter().all(|c| c.repo == p.repo && c.revision == p.revision), "{id}");
             assert!(p.companions.iter().all(|c| c.dest == c.file), "{id} : même arborescence que le dépôt");
-            assert!(p.description.contains("Suivi des mots approché"), "{id}");
+            assert!(p.description.get().contains("Suivi des mots approché"), "{id}");
             assert!(!p.recommended, "{id}");
         }
         let magpie = package("magpie_tts_357m_8bit");
@@ -1701,13 +1705,50 @@ mod tests {
     }
 
     #[test]
+    fn the_catalogue_reads_in_english_without_a_word_of_french() {
+        use crate::i18n::{with_ui_lang, UiLang};
+        with_ui_lang(UiLang::En, || {
+            for p in CATALOG {
+                for (name, text) in [
+                    ("display_name", p.display_name.get()),
+                    ("description", p.description.get()),
+                    ("precision", p.precision.get()),
+                    ("languages_label", p.languages_label.get()),
+                    ("pace", p.pace.get()),
+                    ("voices_label", p.voices_label.get()),
+                    ("licenses", p.licenses.get()),
+                ] {
+                    for french in ["é", "è", "à", " voix", " langues"] {
+                        assert!(!text.contains(french), "{} {name} : {french} dans {text:?}", p.id);
+                    }
+                }
+            }
+            for v in voices_for_family("kokoro") {
+                let label = v.label.get();
+                assert!(!label.contains("é") && !label.contains("femme"), "{label}");
+            }
+        });
+    }
+
+    #[test]
+    fn the_catalogue_keeps_its_french() {
+        use crate::i18n::{with_ui_lang, UiLang};
+        with_ui_lang(UiLang::Fr, || {
+            assert_eq!(
+                package("kokoro_82m_mlx").description.get(),
+                "Voix naturelle et légère, calculée par la puce graphique."
+            );
+        });
+    }
+
+    #[test]
     fn the_measured_models_say_so_in_their_pace() {
         assert_eq!(
-            package("qwen3_tts_06b_base_8bit").pace,
+            package("qwen3_tts_06b_base_8bit").pace.get(),
             "Lourd : lecture hachée au-delà de 1× (occupé 76 % du temps à 1× sur M5)."
         );
         assert_eq!(
-            package("magpie_tts_357m_8bit").pace,
+            package("magpie_tts_357m_8bit").pace.get(),
             "Lourd : lecture hachée au-delà de 1× (occupé 69 % du temps à 1× sur M5)."
         );
     }
@@ -2354,7 +2395,7 @@ mod tests {
         assert_eq!(voices_for_family("kokoro").len(), 30);
         assert_eq!(default_voice_for_language("kokoro", "fr"), "p-fenrir60");
         assert_eq!(default_voice_for_language("kokoro", "en-US"), "af_bella");
-        assert!(voices_for_family("kokoro").iter().all(|v| v.label.contains('·')));
+        assert!(voices_for_family("kokoro").iter().all(|v| v.label.get().contains('·')));
     }
 
     #[test]

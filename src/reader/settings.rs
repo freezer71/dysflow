@@ -266,17 +266,21 @@ pub struct ModelCapabilities {
 fn system_voice_row(active: bool) -> VoiceModel {
     VoiceModel {
         id: "system".into(),
-        name: "Voix de macOS".into(),
+        name: crate::tr!("macOS voice", "Voix de macOS").into(),
         bytes: 0,
         installed: true,
         active,
         recommended: false,
-        summary: "Les voix installées sur ce Mac (Réglages Système › Accessibilité › Contenu énoncé).".into(),
+        summary: crate::tr!(
+            "The voices installed on this Mac (System Settings › Accessibility › Spoken Content).",
+            "Les voix installées sur ce Mac (Réglages Système › Accessibilité › Contenu énoncé)."
+        )
+        .into(),
         family: "system".into(),
         precision: String::new(),
-        languages_label: "Selon les voix installées".into(),
+        languages_label: crate::tr!("Depends on the installed voices", "Selon les voix installées").into(),
         languages: vec!["fr".into(), "en".into()],
-        pace: "Immédiate".into(),
+        pace: crate::tr!("Instant", "Immédiate").into(),
         voices_label: String::new(),
         licenses: "Apple".into(),
         kind: "speech".into(),
@@ -292,21 +296,21 @@ fn system_voice_row(active: bool) -> VoiceModel {
 pub fn voice_model(p: &models::ModelPackage, active_path: &str, system_chosen: bool) -> VoiceModel {
     VoiceModel {
         id: p.id.to_string(),
-        name: p.display_name.to_string(),
+        name: p.display_name.get().to_string(),
         bytes: p.total_bytes(),
         installed: models::is_installed(p),
         active: !system_chosen
             && !active_path.is_empty()
             && models::install_path(p).is_some_and(|path| path.to_string_lossy() == active_path),
         recommended: p.recommended,
-        summary: p.description.to_string(),
+        summary: p.description.get().to_string(),
         family: p.family.to_string(),
-        precision: p.precision.to_string(),
-        languages_label: p.languages_label.to_string(),
+        precision: p.precision.get().to_string(),
+        languages_label: p.languages_label.get().to_string(),
         languages: p.languages.iter().map(|l| l.to_string()).collect(),
-        pace: p.pace.to_string(),
-        voices_label: p.voices_label.to_string(),
-        licenses: p.licenses.to_string(),
+        pace: p.pace.get().to_string(),
+        voices_label: p.voices_label.get().to_string(),
+        licenses: p.licenses.get().to_string(),
         kind: match p.kind {
             models::Kind::Speech => "speech",
             models::Kind::Dictation => "dictation",
@@ -472,7 +476,7 @@ impl Reader {
         ModelCapabilities {
             voices: models::voices_for_family(&family)
                 .iter()
-                .map(|v| VoiceChoice { id: v.id.to_string(), label: v.label.to_string(), language: v.language.to_string() })
+                .map(|v| VoiceChoice { id: v.id.to_string(), label: v.label.get().to_string(), language: v.language.to_string() })
                 .collect(),
             languages: models::languages_for_family(&family).into_iter().map(String::from).collect(),
             honoured: models::honoured_options(&family).iter().map(|o| o.to_string()).collect(),
@@ -496,7 +500,7 @@ impl Reader {
                 return Err(anyhow!(
                     "Il manque {} sur le disque pour {}",
                     models::human_size(missing - free),
-                    package.display_name
+                    package.display_name.get()
                 ));
             }
         }
@@ -530,7 +534,7 @@ impl Reader {
         }
         let package = self.package(id)?;
         if package.kind != models::Kind::Speech {
-            return Err(anyhow!("{} sert à la dictée, pas à la lecture", package.display_name));
+            return Err(anyhow!("{} sert à la dictée, pas à la lecture", package.display_name.get()));
         }
         let path = models::install_path(package)
             .filter(|_| models::is_installed(package))
@@ -808,12 +812,12 @@ mod tests {
         for package in crate::models::CATALOG {
             let v = voice_model(package, "", false);
             assert_eq!(v.id, package.id);
-            assert_eq!(v.summary, package.description);
+            assert_eq!(v.summary, package.description.get());
             assert_eq!(v.family, package.family);
-            assert_eq!(v.precision, package.precision);
-            assert_eq!(v.languages_label, package.languages_label);
+            assert_eq!(v.precision, package.precision.get());
+            assert_eq!(v.languages_label, package.languages_label.get());
             assert_eq!(v.languages.len(), package.languages.len());
-            assert_eq!(v.pace, package.pace);
+            assert_eq!(v.pace, package.pace.get());
             assert!(!v.active, "aucun chemin actif");
         }
         let first = &crate::models::CATALOG[0];

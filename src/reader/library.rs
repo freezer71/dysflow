@@ -188,7 +188,7 @@ pub fn library_entries(
                 accent: accent.to_string(),
                 gender: gender.to_string(),
                 locale: String::new(),
-                recommended: voice.label.contains("recommandée"),
+                recommended: voice.label.fr.contains("recommandée"),
                 model_active,
                 active: model_active && voice.id == current,
             });
@@ -308,7 +308,7 @@ impl Reader {
             .ok_or_else(|| format!("modèle de lecture inconnu : {model}"))?;
         let path = models::install_path(package)
             .filter(|_| models::is_installed(package))
-            .ok_or_else(|| format!("{} n'est pas installé", package.display_name))?;
+            .ok_or_else(|| format!("{} n'est pas installé", package.display_name.get()))?;
         config.engine.model_path = path.to_string_lossy().into_owned();
         config.engine.family = package.family.to_string();
         config.engine.engine = "auto".to_string();
@@ -495,7 +495,7 @@ mod tests {
             let (accent, gender) = kokoro_traits(v.id);
             assert!(!accent.is_empty() && !gender.is_empty(), "{}", v.id);
             // Le catalogue et le préfixe disent le même accent.
-            assert!(v.label.contains(accent), "{} : {accent}", v.label);
+            assert!(v.label.fr.contains(accent), "{} : {accent}", v.label.fr);
         }
     }
 

@@ -981,6 +981,15 @@ pub fn default_settings() -> SettingsView {
     settings_of(settings::SettingsView::of(&Config::default()))
 }
 
+/// Donne au moteur la langue de l'interface de l'app (`Bundle.main.
+/// preferredLocalizations.first` : `fr`, `fr-CA`, `en`, `de`…). Français si le
+/// code de langue vaut `fr`, anglais sinon. À appeler au lancement, avant de
+/// lire le catalogue des modèles.
+#[uniffi::export]
+pub fn set_interface_language(tag: String) {
+    sillage::i18n::set_ui_lang(sillage::i18n::UiLang::from_locale(&tag));
+}
+
 /// La phrase d'exemple des aperçus, dans `language` (`fr` par défaut) : le
 /// texte que la bibliothèque des voix propose d'abord.
 #[uniffi::export]
@@ -1290,6 +1299,30 @@ mod tests {
         reader.release_voice_preview();
         let preview = reader.snapshot().preview;
         assert!(!preview.pending && !preview.preparing);
+    }
+
+    #[test]
+    fn the_interface_language_reaches_the_catalogue() {
+        use sillage::i18n::{set_ui_lang, ui_lang, UiLang};
+        // Seul test à toucher la langue globale : le lecteur répond sur son
+        // propre fil, que la surcharge d'un fil de test n'atteint pas.
+        let before = ui_lang();
+        let reader = SillageReader::silent();
+        set_interface_language("de_DE".into());
+        assert_eq!(ui_lang(), UiLang::En);
+        let english = reader.voices();
+        set_interface_language("fr-CA".into());
+        assert_eq!(ui_lang(), UiLang::Fr);
+        let french = reader.voices();
+        set_ui_lang(before);
+        let system = |v: &[VoiceModel]| v.iter().find(|m| m.system).map(|m| m.name.clone());
+        assert_eq!(system(&english).as_deref(), Some("macOS voice"));
+        assert_eq!(system(&french).as_deref(), Some("Voix de macOS"));
+        // Les paquets du catalogue passent par `voice_model`, comme la ligne de
+        // macOS : le lecteur muet n'a pas MLX, certains manquent donc ici.
+        for (en, fr) in english.iter().zip(&french).filter(|(m, _)| !m.system) {
+            assert_ne!(en.summary, fr.summary, "{}", en.id);
+        }
     }
 
     #[test]

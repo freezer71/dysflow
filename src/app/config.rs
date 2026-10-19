@@ -88,7 +88,7 @@ impl Field {
                 models::voices_for_family(&config.engine.family)
                     .iter()
                     .find(|v| v.id == id)
-                    .map_or_else(|| id.clone(), |v| v.label.to_string())
+                    .map_or_else(|| id.clone(), |v| v.label.get().to_string())
             }
             Field::Speed => format!("{:.2}×", config.voice.speed),
             Field::LineWidth => match config.reading.line_width {
@@ -237,7 +237,7 @@ impl ConfigScreen {
         };
         self.install_error = Some(format!(
             "Voix {} non installée : {reason} — nouvel essai au prochain lancement",
-            package.display_name
+            package.display_name.get()
         ));
         None
     }

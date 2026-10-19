@@ -52,7 +52,7 @@ impl App {
         // Le modèle change, ses voix aussi : chaque langue reçoit la sienne.
         self.config.align_voice_with_family();
         self.reload_engine();
-        self.notify(&format!("Voix {} prête", package.display_name));
+        self.notify(&format!("Voix {} prête", package.display_name.get()));
         // Le choix doit survivre au relancement : il s'écrit tout de suite.
         if let Err(err) = self.save_model_choice() {
             self.notify(&format!("Modèle choisi, non enregistré : {err:#}"));
@@ -191,7 +191,7 @@ impl App {
             };
             return Some(format!(
                 "Installation de la voix {} : {progress} — la voix du système lit en attendant",
-                download.package.display_name
+                download.package.display_name.get()
             ));
         }
         self.screen.install_error.clone()

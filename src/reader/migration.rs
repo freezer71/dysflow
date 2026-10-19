@@ -72,7 +72,7 @@ pub fn former_voice(config: &Config) -> String {
     models::CATALOG
         .iter()
         .find(|p| models::is_active_package(path, p))
-        .map(|p| p.display_name.to_string())
+        .map(|p| p.display_name.get().to_string())
         .unwrap_or_else(|| config.engine.family.clone())
 }
 

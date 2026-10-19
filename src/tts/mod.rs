@@ -250,18 +250,18 @@ fn build_text_engine(
     let Some(compute) = text else {
         return (
             fallback,
-            Some(format!("Calcul Metal indisponible — {} ne tourne que dans l'app", package.display_name)),
+            Some(format!("Calcul Metal indisponible — {} ne tourne que dans l'app", package.display_name.get())),
         );
     };
     let main = std::path::Path::new(&settings.model_path);
     let dir = main.parent().filter(|_| main.is_file()).map(std::path::Path::to_path_buf);
     let Some(dir) = dir else {
         // L'app ne garde que le moteur : la raison doit y rester lisible.
-        let note = format!("{} n'est pas installé — voir les réglages", package.display_name);
+        let note = format!("{} n'est pas installé — voir les réglages", package.display_name.get());
         return (fallback::explained(fallback, note.clone()), Some(note));
     };
     let repli = Arc::clone(&fallback);
-    let engine = lazy::LazyEngine::spawn(package.display_name.to_string(), 1, fallback, move || {
+    let engine = lazy::LazyEngine::spawn(package.display_name.get().to_string(), 1, fallback, move || {
         let engine = text_compute::TextComputeEngine::load(compute, package, &dir, repli)?;
         Ok(Arc::new(engine) as Arc<dyn TtsEngine>)
     })

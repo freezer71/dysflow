@@ -22,7 +22,7 @@ impl Reader {
         if self.download.as_ref().is_some_and(|d| d.package.id == package.id && !d.is_finished()) {
             return Some(format!(
                 "{} se télécharge : annulez d'abord le téléchargement",
-                package.display_name
+                package.display_name.get()
             ));
         }
         None
