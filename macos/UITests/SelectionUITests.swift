@@ -22,7 +22,7 @@ final class SelectionUITests: XCTestCase {
     private func launch() -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--show-panel"]
-        app.launch()
+        app.launchInFrench()
         XCTAssertTrue(app.groups["lecteur"].waitForExistence(timeout: 5))
         return app
     }

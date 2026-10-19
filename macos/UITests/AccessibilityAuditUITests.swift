@@ -7,7 +7,7 @@ final class AccessibilityAuditUITests: XCTestCase {
     func testReaderAndMiniPassTheAudit() throws {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--show-panel"]
-        app.launch()
+        app.launchInFrench()
         XCTAssertTrue(app.groups["lecteur"].waitForExistence(timeout: 5))
         try app.performAccessibilityAuditOutsideTouchBar()
         app.typeKey("m", modifierFlags: .command)

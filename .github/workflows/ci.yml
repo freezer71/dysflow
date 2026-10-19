@@ -129,3 +129,10 @@ jobs:
           xcodebuild -project Sillage.xcodeproj -scheme Sillage \
             -destination 'platform=macOS,arch=arm64' -derivedDataPath build/derived \
             test -only-testing:SillageTests
+      - name: Textes sans français (catalogue)
+        # Après la compilation des tests : le script lit les .stringsdata de
+        # build/derived. Non bloquant tant que l'app n'est pas toute
+        # traduite ; la Tâche 12 du plan de l'anglais retire
+        # continue-on-error et le rend bloquant.
+        continue-on-error: true
+        run: ./scripts/check-xcstrings.sh

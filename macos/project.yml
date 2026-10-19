@@ -1,6 +1,9 @@
 name: Sillage
 options:
   bundleIdPrefix: fr.sillage
+  # L'anglais est la langue de développement : les textes du code sont en
+  # anglais, le français vient de Resources/*.xcstrings.
+  developmentLanguage: en
   deploymentTarget:
     macOS: "14.0"
 packages:
@@ -69,6 +72,10 @@ targets:
         buildPhase: resources
       # L'icône de l'app (scripts/logo.sh l'écrit depuis assets/logo).
       - path: Resources/Assets.xcassets
+      # Les textes de l'interface en français (scripts/check-xcstrings.sh
+      # compte ceux qui en manquent), et ceux de l'Info.plist.
+      - path: Resources/Localizable.xcstrings
+      - path: Resources/InfoPlist.xcstrings
     dependencies:
       - package: KeyboardShortcuts
       # MLX n'arrive que par ce framework (jamais en paquet ici).
@@ -86,9 +93,14 @@ targets:
         INFOPLIST_KEY_CFBundleDisplayName: sillage
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         INFOPLIST_KEY_NSHumanReadableCopyright: ""
-        # La dictée : le micro, transcrit sur le Mac (SpeechAnalyzer).
-        INFOPLIST_KEY_NSMicrophoneUsageDescription: "sillage écoute le micro pendant la dictée, pour écrire ce que vous dites. Rien ne quitte votre Mac."
-        INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: "sillage transcrit votre voix sur votre Mac pendant la dictée."
+        # La dictée : le micro, transcrit sur le Mac (SpeechAnalyzer). En
+        # anglais ici ; le français dans Resources/InfoPlist.xcstrings.
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: "sillage listens to the microphone during dictation, to write what you say. Nothing leaves your Mac."
+        INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: "sillage transcribes your voice on your Mac during dictation."
+        # Le compilateur écrit les textes localisables (.stringsdata) :
+        # scripts/check-xcstrings.sh en tire les clés exactes du catalogue.
+        SWIFT_EMIT_LOC_STRINGS: YES
+        LOCALIZATION_PREFERS_STRING_CATALOGS: YES
         # `scripts/build-macos.sh --mesure` y met SILLAGE_MESURE : le code de
         # mesure (`--measure`) n'entre que dans cette copie, jamais dans
         # l'app livrée. DEBUG (tests) l'a aussi.
@@ -205,3 +217,8 @@ schemes:
         Sillage: all
     test:
       targets: [SillageTests, SillageUITests]
+      # Les tests unitaires tournent en français : leurs assertions gardent
+      # les libellés français. Les tests d'interface passent par
+      # launchInFrench() (UITests/LaunchLanguage.swift).
+      commandLineArguments:
+        "-AppleLanguages (fr)": true

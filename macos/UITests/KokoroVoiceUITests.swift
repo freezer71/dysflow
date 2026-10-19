@@ -9,7 +9,7 @@ final class KokoroVoiceUITests: XCTestCase {
     private func settings(_ arguments: [String]) -> (XCUIApplication, XCUIElement) {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--show-settings"] + arguments
-        app.launch()
+        app.launchInFrench()
         let window = app.windows["Réglages"]
         XCTAssertTrue(window.waitForExistence(timeout: 5))
         window.selectSettingsSection("voix")

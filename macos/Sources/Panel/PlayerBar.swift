@@ -55,7 +55,7 @@ struct PlayButton: View {
         .buttonStyle(BarButtonStyle(disc: prominent))
         .help("Lecture / pause (Espace)")
         .accessibilityIdentifier("lecture")
-        .accessibilityLabel(playing ? "Pause" : "Lecture")
+        .accessibilityLabel(playing ? "Pause" : "Play")
         // Le mode petit garde le focus aux touches de la barre.
         if prominent { button.focusable(false) } else { button }
     }

@@ -1,0 +1,410 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "" : {
+
+    },
+    "%@ fois" : {
+
+    },
+    "%@, %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@, %2$@"
+          }
+        }
+      }
+    },
+    "%@, le %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@, le %2$@"
+          }
+        }
+      }
+    },
+    "%lld %%" : {
+
+    },
+    "%lld points" : {
+
+    },
+    "%u" : {
+
+    },
+    "%u / %u" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$u / %2$u"
+          }
+        }
+      }
+    },
+    "500 caractères au plus" : {
+
+    },
+    "Afficher le lecteur" : {
+
+    },
+    "Ajouter des voix dans Réglages Système…" : {
+
+    },
+    "Annuler" : {
+
+    },
+    "Annuler le téléchargement de %@" : {
+
+    },
+    "Arrêter" : {
+
+    },
+    "Arrêter %@" : {
+
+    },
+    "Arrêter l'essai" : {
+
+    },
+    "Arrêter l'écoute" : {
+
+    },
+    "Aucun modèle ne correspond à ces filtres." : {
+
+    },
+    "Aucun résultat" : {
+
+    },
+    "Aucun titre" : {
+
+    },
+    "Aucune voix ne correspond à ces filtres." : {
+
+    },
+    "Autoriser" : {
+
+    },
+    "Autoriser : %@" : {
+
+    },
+    "Autoriser la lecture de la sélection…" : {
+
+    },
+    "Autoriser…" : {
+
+    },
+    "Bibliothèque des modèles" : {
+
+    },
+    "Bibliothèque des voix" : {
+
+    },
+    "Choisi : %@" : {
+
+    },
+    "Choisie : %@" : {
+
+    },
+    "Copier la dernière dictée" : {
+
+    },
+    "Derniers essais" : {
+
+    },
+    "Dicter" : {
+
+    },
+    "Dictée" : {
+
+    },
+    "Dites ce que vous voulez" : {
+
+    },
+    "Délai et mémoire" : {
+
+    },
+    "Démarrer l'essai" : {
+
+    },
+    "Démarrer l'essai du micro" : {
+
+    },
+    "Effacer : %@" : {
+
+    },
+    "Effacer le raccourci" : {
+
+    },
+    "En lecture : %@" : {
+
+    },
+    "Essai du micro" : {
+
+    },
+    "Installation de la voix" : {
+
+    },
+    "Interlignage" : {
+
+    },
+    "Interlignage : %u" : {
+
+    },
+    "Lecture / pause (Espace)" : {
+
+    },
+    "Lire la sélection" : {
+
+    },
+    "Modification du texte" : {
+
+    },
+    "Modèle" : {
+
+    },
+    "Modèles" : {
+
+    },
+    "Niveau du micro" : {
+
+    },
+    "Ouvrir les réglages…" : {
+
+    },
+    "Ouvrir sillage à la connexion" : {
+
+    },
+    "Ouvrir un fichier…" : {
+
+    },
+    "Parcourir les modèles…" : {
+
+    },
+    "Parcourir les voix…" : {
+
+    },
+    "Parlez librement : la précision n'est pas calculée, les délais, le débit et la mémoire le sont." : {
+
+    },
+    "Pause" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pause"
+          }
+        }
+      }
+    },
+    "Phrase à lire" : {
+
+    },
+    "Phrase à lire : %@" : {
+
+    },
+    "Play" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lecture"
+          }
+        }
+      }
+    },
+    "Progression" : {
+
+    },
+    "Quitter sillage" : {
+
+    },
+    "Raccourcis" : {
+
+    },
+    "Rechercher" : {
+
+    },
+    "Rechercher un modèle" : {
+
+    },
+    "Rechercher un modèle par son nom" : {
+
+    },
+    "Rechercher une voix" : {
+
+    },
+    "Rechercher une voix par son nom" : {
+
+    },
+    "Remplacer" : {
+
+    },
+    "Remplacer config.toml ?" : {
+
+    },
+    "Remplacer config.toml par les réglages actuels…" : {
+
+    },
+    "Règle de lecture" : {
+
+    },
+    "Réessayer" : {
+
+    },
+    "Réessayer de télécharger %@" : {
+
+    },
+    "Réessayer l'installation de la voix" : {
+
+    },
+    "Réglages" : {
+
+    },
+    "Réglages…" : {
+
+    },
+    "Résultats de %@" : {
+
+    },
+    "Saisie" : {
+
+    },
+    "Saisie dans %@" : {
+
+    },
+    "Sections des réglages" : {
+
+    },
+    "Sommaire" : {
+
+    },
+    "Sortie audio" : {
+
+    },
+    "Supprimer" : {
+
+    },
+    "Supprimer %@" : {
+
+    },
+    "Supprimer…" : {
+
+    },
+    "Sur ce Mac" : {
+
+    },
+    "Taille" : {
+
+    },
+    "Taille : %lld pt" : {
+
+    },
+    "Taille du texte" : {
+
+    },
+    "Temps restant" : {
+
+    },
+    "Terminé" : {
+
+    },
+    "Texte libre" : {
+
+    },
+    "Texte libre : dire ce que vous voulez, sans précision" : {
+
+    },
+    "Texte reconnu" : {
+
+    },
+    "Texte reconnu : %@" : {
+
+    },
+    "Texte à lire" : {
+
+    },
+    "Texte à modifier" : {
+
+    },
+    "Tous les modèles de dictée : téléchargez ceux qui vous intéressent, puis choisissez celui qui écrira." : {
+
+    },
+    "Téléchargement de %@" : {
+
+    },
+    "Télécharger" : {
+
+    },
+    "Télécharger %@" : {
+
+    },
+    "Téléchargez-le d'abord" : {
+
+    },
+    "Un téléchargement est en cours" : {
+
+    },
+    "Une autre phrase" : {
+
+    },
+    "Utiliser" : {
+
+    },
+    "Utiliser %@" : {
+
+    },
+    "Utilisé" : {
+
+    },
+    "Utilisée" : {
+
+    },
+    "Vitesse" : {
+
+    },
+    "Vitesse (+ −)" : {
+
+    },
+    "Vitesse : %@×" : {
+
+    },
+    "Vitesse de l'essai" : {
+
+    },
+    "Vitesse de lecture" : {
+
+    },
+    "Voix" : {
+
+    },
+    "sillage" : {
+      "shouldTranslate" : false
+    },
+    "valider" : {
+
+    },
+    "Échec du téléchargement : %@" : {
+
+    },
+    "Écouter" : {
+
+    },
+    "Écouter %@" : {
+
+    },
+    "Écouter la voix" : {
+
+    },
+    "Écoutez chaque voix sur votre texte, puis choisissez celle qui lira." : {
+
+    },
+    "État" : {
+
+    }
+  },
+  "version" : "1.0"
+}

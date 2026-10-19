@@ -12,7 +12,7 @@ final class VoiceStatusUITests: XCTestCase {
     func testNothingIsSaidWhenTheVoiceIsFine() {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--show-panel"]
-        app.launch()
+        app.launchInFrench()
         XCTAssertTrue(app.groups["lecteur"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.descendants(matching: .any)["etat-voix"].exists)
     }
@@ -20,7 +20,7 @@ final class VoiceStatusUITests: XCTestCase {
     func testAFailedInstallationOffersToRetryInTheReaderAndTheSettings() throws {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--show-panel", "--show-settings", "--ui-testing-echec-voix"]
-        app.launch()
+        app.launchInFrench()
         let reader = app.groups["lecteur"]
         XCTAssertTrue(reader.waitForExistence(timeout: 5))
         XCTAssertTrue(reader.buttons["reessayer-voix"].waitForExistence(timeout: 2), "pas de Réessayer dans le lecteur")
@@ -36,7 +36,7 @@ final class VoiceStatusUITests: XCTestCase {
     func testTheDownloadShowsItsProgressAndPassesTheAudit() throws {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--show-panel", "--ui-testing-telechargement"]
-        app.launch()
+        app.launchInFrench()
         XCTAssertTrue(app.groups["lecteur"].waitForExistence(timeout: 5))
         let line = app.staticTexts["etat-voix"]
         XCTAssertTrue(line.waitForExistence(timeout: 2))

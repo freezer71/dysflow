@@ -17,6 +17,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// premier.
     private let formerDefaults: Void = FormerDefaults.adopt()
 
+    /// La langue de l'app, donnée au moteur Rust avant qu'il ne serve quoi
+    /// que ce soit : initialisée juste après les anciens réglages, avant les
+    /// services et toute vue (`SillageApp` crée ce délégué avant d'évaluer
+    /// ses scènes). `preferredLocalizations` est la langue que macOS a
+    /// choisie parmi celles de l'app (`en`, `fr`) : un Mac en allemand donne
+    /// `en`, et les textes du moteur (catalogue des modèles, erreurs)
+    /// suivent toujours l'interface.
+    private let interfaceLanguage: Void = setInterfaceLanguage(
+        tag: Bundle.main.preferredLocalizations.first ?? "en")
+
     /// Ce que les scènes SwiftUI lisent (`.environment(services)`).
     let services = AppServices()
 

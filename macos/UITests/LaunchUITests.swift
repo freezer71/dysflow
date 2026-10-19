@@ -5,7 +5,7 @@ final class LaunchUITests: XCTestCase {
     func testAppLaunchesInTestMode() {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing"]
-        app.launch()
+        app.launchInFrench()
         XCTAssertTrue(app.wait(for: .runningForeground, timeout: 5)
                       || app.wait(for: .runningBackground, timeout: 5))
     }
@@ -15,7 +15,7 @@ final class LaunchUITests: XCTestCase {
     func testAManualLaunchOpensTheEmptyReader() {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--ui-testing-vide", "--ui-testing-lancement-manuel"]
-        app.launch()
+        app.launchInFrench()
         XCTAssertTrue(app.groups["lecteur"].waitForExistence(timeout: 5), "pas de lecteur")
         let invitation = app.staticTexts["invitation"]
         XCTAssertTrue(invitation.waitForExistence(timeout: 2))
