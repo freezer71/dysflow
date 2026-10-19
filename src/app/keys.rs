@@ -53,7 +53,7 @@ const HELP_EN: &[(&str, &str)] = &[
     ("+ / -", "Speed (saved)"),
     ("t", "Contents: ↑ ↓ then Enter"),
     ("s", "Settings"),
-    ("Pg↑ Pg↓", "Reread without moving the reading"),
+    ("Pg↑ Pg↓", "Scroll back without moving the reading position"),
     ("f", "Follow the reading again"),
     ("?", "Help"),
     ("Esc", "Close the contents, else quit"),

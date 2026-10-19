@@ -76,7 +76,7 @@ impl Field {
                 "La voix du système lit tant que Kokoro n'est pas installé."
             ),
             Field::Speed => crate::tr!(
-                "Applied to the sound, without resynthesis: the voice speeds up without going higher. \
+                "Applied to the sound, without resynthesis: the voice speeds up without the pitch rising. \
                  t to hear it.",
                 "Appliquée au son, sans resynthèse : la voix accélère sans monter dans les aigus. \
                  t pour l'entendre."

@@ -143,7 +143,7 @@ impl Inner {
         let failures = self.failures.fetch_add(1, Ordering::SeqCst) + 1;
         if failures >= MAX_COMPUTE_FAILURES {
             eprintln!("kokoro : {failures} échecs du calcul d'affilée, passage en repli");
-            self.break_down(crate::tr!("Kokoro computing failing", "calcul Kokoro en échec").to_string());
+            self.break_down(crate::tr!("Kokoro keeps failing", "calcul Kokoro en échec").to_string());
         }
     }
 }

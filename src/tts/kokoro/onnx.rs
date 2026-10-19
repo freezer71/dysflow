@@ -92,7 +92,7 @@ pub fn check_version(found: &str) -> Result<()> {
     };
     if (major, minor) < MINIMUM {
         bail!(crate::tr!(
-            en = "ONNX Runtime {found} refused: {}.{} at least is needed (earlier versions are 4 times slower in int8)",
+            en = "ONNX Runtime {found} refused: at least {}.{} is needed (earlier versions are 4 times slower in int8)",
             fr = "ONNX Runtime {found} refusé : il faut la {}.{} au moins (les versions antérieures sont 4 fois plus lentes en int8)",
             MINIMUM.0,
             MINIMUM.1,

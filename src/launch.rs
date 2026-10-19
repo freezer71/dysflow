@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use clap::Parser;
+use clap::{Command, CommandFactory, FromArgMatches, Parser};
 use std::io::IsTerminal;
 use std::path::PathBuf;
 use std::sync::mpsc::Receiver;
@@ -9,14 +9,10 @@ use crate::config::Config;
 use crate::doc::DocumentBuilder;
 use crate::input::{self, InputEvent};
 use crate::logging::StderrRedirect;
-use crate::{doc, tts};
+use crate::{doc, tr, tts};
 
 #[derive(Parser, Debug, Default)]
-#[command(
-    name = "sillage",
-    version,
-    about = "Lit à voix haute du markdown pipé ou un fichier, avec contrôles de lecture complets."
-)]
+#[command(name = "sillage", version, disable_help_flag = true, disable_version_flag = true)]
 pub struct Args {
     /// Fichier à lire. En son absence, le contenu est lu sur l'entrée standard.
     pub file: Option<PathBuf>,
@@ -99,9 +95,110 @@ pub struct Args {
     pub update: bool,
 }
 
+/// La commande avec son aide dans la langue de l'interface. Les commentaires
+/// de doc des champs de `Args` restent pour les lecteurs du code : l'aide
+/// affichée vient d'ici, à l'exécution.
+pub fn command() -> Command {
+    // clap ajoute « : » au titre ; l'espace garde la typographie française.
+    let arguments = tr!("Arguments", "Arguments ");
+    let options = tr!("Options", "Options ");
+    Args::command()
+        .about(tr!(
+            "Read aloud piped markdown or a file, with full playback controls.",
+            "Lit à voix haute du markdown pipé ou un fichier, avec contrôles de lecture complets."
+        ))
+        .help_template(format!(
+            "{{about}}\n\n{usage}{{usage}}\n\n{{all-args}}",
+            usage = tr!("Usage: ", "Utilisation : ")
+        ))
+        .arg(
+            clap::Arg::new("help")
+                .short('h')
+                .long("help")
+                .action(clap::ArgAction::Help)
+                .help(tr!("Print help", "Affiche l'aide"))
+                .help_heading(options),
+        )
+        .arg(
+            clap::Arg::new("version")
+                .short('V')
+                .long("version")
+                .action(clap::ArgAction::Version)
+                .help(tr!("Print version", "Affiche la version"))
+                .help_heading(options),
+        )
+        .mut_arg("file", |a| {
+            a.help(tr!(
+                "File to read. Without one, the content is read from standard input.",
+                "Fichier à lire. En son absence, le contenu est lu sur l'entrée standard."
+            ))
+            .help_heading(arguments)
+        })
+        .mut_arg("voice", |a| {
+            a.help(tr!(
+                "Voice, preset, or path to a reference WAV.",
+                "Voix, préréglage, ou chemin d'un WAV de référence."
+            ))
+            .help_heading(options)
+        })
+        .mut_arg("speed", |a| {
+            a.help(tr!("Reading speed (0.5 to 3.0).", "Débit de lecture (0,5 à 3,0)."))
+                .help_heading(options)
+        })
+        .mut_arg("to_markdown", |a| {
+            a.help(tr!(
+                "Print the markdown extracted from the file, then quit.",
+                "Écrit le markdown extrait du fichier puis quitte."
+            ))
+            .help_heading(options)
+        })
+        .mut_arg("clip", |a| {
+            a.help(tr!("Read the clipboard instead of a file.", "Lit le presse-papiers au lieu d'un fichier."))
+                .help_heading(options)
+        })
+        .mut_arg("no_cache", |a| {
+            a.help(tr!(
+                "Extract again without using the cache.",
+                "Refait l'extraction sans consulter le cache."
+            ))
+            .help_heading(options)
+        })
+        .mut_arg("config", |a| {
+            a.help(tr!("Open the settings screen right away.", "Ouvre directement l'écran de configuration."))
+                .help_heading(options)
+        })
+        .mut_arg("update", |a| {
+            a.help(tr!(
+                "Update sillage: install the latest published version.",
+                "Met sillage à jour : installe la dernière version publiée."
+            ))
+            .help_heading(options)
+        })
+}
+
+/// `Args` lu sur la ligne de commande, avec l'aide dans la langue de l'interface.
+pub fn parse_args() -> Args {
+    let matches = command().get_matches();
+    Args::from_arg_matches(&matches).unwrap_or_else(|e| e.exit())
+}
+
 /// Ce que `sillage` lancé seul dans un terminal affiche, avant de rendre la
 /// main : il n'y a rien à lire, mais tout à savoir pour lire.
-pub const SHORT_HELP: &str = "\
+pub fn short_help() -> &'static str {
+    tr!(
+        "\
+sillage reads a text aloud, showing it word by word.
+
+Four ways to read:
+  sillage document.md        a file: markdown, text, PDF, image
+  command | sillage          what a command writes, as it goes
+  sillage --clip             the clipboard
+  the sillage app (macOS)    ⌃⌥Space reads the selection
+
+Settings: sillage --config · update: sillage --update
+All options: sillage --help
+",
+        "\
 sillage lit un texte à voix haute, en le montrant mot à mot.
 
 Quatre manières de lire :
@@ -112,7 +209,9 @@ Quatre manières de lire :
 
 Réglages : sillage --config · mise à jour : sillage --update
 Toutes les options : sillage --help
-";
+"
+    )
+}
 
 /// Vrai quand `sillage` est lancé seul dans un terminal : ni fichier, ni
 /// presse-papiers, ni réglages demandés, et rien qui arrive par un tube.
@@ -176,7 +275,7 @@ pub fn prepare(args: &Args) -> Result<Launch> {
     // Lancé seul, sans rien à lire : dire comment lire plutôt qu'ouvrir un
     // écran vide. `--config` ouvre les réglages.
     if nothing_to_read(args, std::io::stdin().is_terminal()) {
-        print!("{SHORT_HELP}");
+        print!("{}", short_help());
         return Ok(Launch::Done);
     }
 
@@ -666,14 +765,31 @@ mod tests {
     #[test]
     fn the_short_help_names_the_four_ways_to_read() {
         for way in ["sillage document.md", "| sillage", "sillage --clip", "app", "--config", "--help"] {
-            assert!(SHORT_HELP.contains(way), "{way} manque :\n{SHORT_HELP}");
+            let help = short_help();
+            assert!(help.contains(way), "{way} manque :\n{help}");
         }
     }
 
     #[test]
+    fn the_help_follows_the_interface_language() {
+        use crate::i18n::{with_ui_lang, UiLang};
+        let en = with_ui_lang(UiLang::En, || command().render_help().to_string());
+        assert!(en.contains("Read aloud"), "{en}");
+        assert!(!en.contains("Lit à voix haute"), "{en}");
+        assert!(en.contains("Usage:") && en.contains("Options:"), "{en}");
+        let fr = with_ui_lang(UiLang::Fr, || command().render_help().to_string());
+        assert!(fr.contains("Lit à voix haute"), "{fr}");
+        assert!(!fr.contains("Read aloud"), "{fr}");
+        assert!(fr.contains("Utilisation :") && fr.contains("Options :"), "{fr}");
+        assert!(!fr.contains("Print help") && !fr.contains("Usage:"), "{fr}");
+        assert!(with_ui_lang(UiLang::En, short_help).contains("Four ways"));
+        assert!(!with_ui_lang(UiLang::En, short_help).contains("Quatre manières"));
+        assert!(with_ui_lang(UiLang::Fr, short_help).contains("Quatre manières"));
+    }
+
+    #[test]
     fn help_shows_only_the_everyday_options() {
-        use clap::CommandFactory;
-        let help = Args::command().render_help().to_string();
+        let help = command().render_help().to_string();
         for shown in ["[FILE]", "--clip", "--speed", "--voice", "--to-markdown", "--no-cache", "--config", "--update"] {
             assert!(help.contains(shown), "{shown} manque :\n{help}");
         }

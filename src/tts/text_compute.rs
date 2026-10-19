@@ -109,7 +109,7 @@ impl Inner {
         if failures >= MAX_COMPUTE_FAILURES {
             eprintln!("{} : {failures} échecs du calcul d'affilée, passage en repli", self.package.id);
             *self.broken.locked() =
-                Some(crate::tr!(en = "{} computing failing", fr = "calcul {} en échec", self.package.display_name.get()));
+                Some(crate::tr!(en = "{} keeps failing", fr = "calcul {} en échec", self.package.display_name.get()));
             self.release_compute();
         }
     }
@@ -243,7 +243,7 @@ impl TtsSession for TextComputeSession {
         let kept = trim_silence(&raw.samples, raw.sample_rate);
         if kept.is_empty() {
             self.inner.compute_failed();
-            bail!(crate::tr!(en = "{} said nothing", fr = "{} n'a rien dit", self.inner.package.display_name.get()));
+            bail!(crate::tr!(en = "{} produced no audio", fr = "{} n'a rien dit", self.inner.package.display_name.get()));
         }
         self.inner.failures.store(0, Ordering::SeqCst);
         Ok(Synthesis { pcm: PcmBuffer::new(kept.to_vec(), raw.sample_rate, 1), words: None })

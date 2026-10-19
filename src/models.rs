@@ -1268,7 +1268,7 @@ fn settle(partial: &Path, destination: &Path, expected: u64) -> Result<()> {
     if expected > 0 && len != expected {
         let _ = std::fs::remove_file(partial);
         anyhow::bail!(crate::tr!(
-            en = "file received with {} instead of {}: the transfer must be redone",
+            en = "received {} instead of {}: the download must start over",
             fr = "fichier reçu de {} au lieu de {} : le transfert est à refaire",
             human_size(len),
             human_size(expected),

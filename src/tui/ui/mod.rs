@@ -172,7 +172,7 @@ mod tests {
             app.show_help = true;
             screens.push(screen_text(&app));
             let all = screens.join("\n");
-            for french in ['é', 'è', 'à', 'ç', 'ê'] {
+            for french in ['é', 'è', 'à', 'ç', 'ê', 'ô', 'û', 'ù', 'î'] {
                 assert!(!all.contains(french), "« {french} » à l'écran :\n{all}");
             }
             for word in ["Réglages", "Raccourcis", "Sommaire", "Vitesse", "aide"] {

@@ -252,7 +252,7 @@ fn build_text_engine(
         return (
             fallback,
             Some(crate::tr!(
-                en = "Metal computing unavailable — {} only runs in the app",
+                en = "Metal compute unavailable — {} only runs in the app",
                 fr = "Calcul Metal indisponible — {} ne tourne que dans l'app",
                 package.display_name.get(),
             )),
@@ -327,7 +327,7 @@ fn kokoro_backend(
     match mlx {
         Some(backend) => Ok(backend as Arc<dyn kokoro::KokoroBackend>),
         None => Err(crate::tr!(
-            "Metal computing unavailable — Kokoro MLX only runs in the app, on the GPU",
+            "Metal compute unavailable — Kokoro MLX only runs in the app, on the GPU",
             "Calcul Metal indisponible — Kokoro MLX ne tourne que dans l'app, sur la puce graphique"
         )
         .to_string()),
