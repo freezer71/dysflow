@@ -90,6 +90,8 @@ jobs:
         run: python3 -I scripts/third-party-rust.py --check
       - name: shellcheck
         run: shellcheck install.sh scripts/*.sh
+      - name: langue de install.sh
+        run: sh scripts/test-install-lang.sh
 
   macos-app:
     name: App macOS
