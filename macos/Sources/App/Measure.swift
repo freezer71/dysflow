@@ -1,3 +1,4 @@
+// xcstrings: garder tout le fichier (sortie de mesure et textes lus à voix haute, en français)
 #if DEBUG || SILLAGE_MESURE
 import Foundation
 import KokoroMLX

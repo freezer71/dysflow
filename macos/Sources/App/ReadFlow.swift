@@ -21,11 +21,11 @@ struct ReadFlow {
         prepare()
         switch await capture() {
         case .text(let text):
-            open(text, "sélection")
+            open(text, "sélection") // xcstrings: garder
         case .veto(.secure):
-            say("Champ sécurisé : rien n'est lu")
+            say(String(localized: "Secure field: nothing is read"))
         case .veto(.ownApp):
-            say("sillage est au premier plan : sélectionnez dans une autre application")
+            say(String(localized: "sillage is in front: select text in another app"))
         case .noSelection, .unsupported:
             await openClipboard()
         }
@@ -35,13 +35,13 @@ struct ReadFlow {
     private func openClipboard() async {
         switch readClipboard() {
         case .text(let text):
-            open(text, "presse-papiers")
+            open(text, "presse-papiers") // xcstrings: garder
         case .image(let data):
-            do { try await openImage(data) } catch { say("Sélectionnez ou copiez du texte") }
+            do { try await openImage(data) } catch { say(String(localized: "Select or copy some text")) }
         case .concealed:
-            say("Presse-papiers protégé : rien n'est lu")
+            say(String(localized: "Protected clipboard: nothing is read"))
         case .empty:
-            say("Sélectionnez ou copiez du texte")
+            say(String(localized: "Select or copy some text"))
         }
     }
 }

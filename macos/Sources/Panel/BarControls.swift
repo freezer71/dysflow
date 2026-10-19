@@ -1,17 +1,17 @@
 import SwiftUI
 
-/// La vitesse à la française : virgule, deux décimales au plus, sans zéro
-/// inutile (« 1× », « 1,25× », « 1,1× »).
+/// La vitesse : deux décimales au plus, sans zéro inutile (« 1× », « 1,25× »,
+/// « 1,1× » ; « 1.25× » en anglais, qui écrit le point décimal).
 enum SpeedFormat {
     static func number(_ speed: Float) -> String {
         var s = String(format: "%.2f", (Double(speed) * 100).rounded() / 100)
         while s.hasSuffix("0") { s.removeLast() }
         if s.hasSuffix(".") { s.removeLast() }
-        return s.replacingOccurrences(of: ".", with: ",")
+        return Bundle.main.preferredLocalizations.first == "fr" ? s.replacingOccurrences(of: ".", with: ",") : s
     }
 
     static func text(_ speed: Float) -> String { number(speed) + "×" }
-    static func spoken(_ speed: Float) -> String { number(speed) + " fois" }
+    static func spoken(_ speed: Float) -> String { String(localized: "\(number(speed)) times", comment: "VoiceOver: playback speed") }
 }
 
 /// Une fraction de la barre de progression devient une phrase (la
@@ -37,11 +37,11 @@ struct BarTransportItem: Identifiable, Equatable {
 
 /// ⏮ et ⏭ : une phrase en arrière, une en avant, comme ← et →.
 enum SentenceTransport {
-    static let previous = BarTransportItem(identifier: "phrase-precedente", label: "Phrase précédente",
-                                           help: "Phrase précédente (←)", symbol: "backward.end.fill",
+    static let previous = BarTransportItem(identifier: "phrase-precedente", label: String(localized: "Previous sentence"),
+                                           help: String(localized: "Previous sentence (←)"), symbol: "backward.end.fill",
                                            action: .command(.sentences(delta: -1)))
-    static let next = BarTransportItem(identifier: "phrase-suivante", label: "Phrase suivante",
-                                       help: "Phrase suivante (→)", symbol: "forward.end.fill",
+    static let next = BarTransportItem(identifier: "phrase-suivante", label: String(localized: "Next sentence"),
+                                       help: String(localized: "Next sentence (→)"), symbol: "forward.end.fill",
                                        action: .command(.sentences(delta: 1)))
 }
 
@@ -68,8 +68,8 @@ struct TransportButton: View {
 /// Un bouton d'icône de barre (fermer, réduire, agrandir).
 struct BarIconButton: View {
     let symbol: String
-    let label: String
-    let help: String
+    let label: LocalizedStringKey
+    let help: LocalizedStringKey
     let identifier: String
     let action: () -> Void
 
@@ -88,9 +88,9 @@ struct BarIconButton: View {
 
 /// Un bouton titré de l'en-tête (Sommaire, Rechercher, Modifier).
 struct HeaderButton: View {
-    let title: String
+    let title: LocalizedStringKey
     let symbol: String
-    let help: String
+    let help: LocalizedStringKey
     let identifier: String
     var selected = false
     /// L'icône seule, quand le lecteur est trop étroit (l'intitulé reste
@@ -145,8 +145,8 @@ struct SeekableTimeline: View {
         .frame(height: 20)
         .accessibilityRepresentation {
             ProgressView(value: Timeline.clamped(progress))
-                .accessibilityLabel("Progression")
-                .accessibilityValue("\(Int(Timeline.clamped(progress) * 100)) %")
+                .accessibilityLabel("Progress")
+                .accessibilityValue("\(Int(Timeline.clamped(progress) * 100))%")
         }
         .accessibilityIdentifier("progression")
     }
@@ -183,8 +183,8 @@ struct SpeedMenu: View {
         .menuIndicator(.hidden)
         .fixedSize()
         .focusable(false)
-        .help("Vitesse (+ −)")
-        .accessibilityLabel("Vitesse")
+        .help("Speed (+ −)")
+        .accessibilityLabel("Speed")
         .accessibilityValue(SpeedFormat.spoken(speed))
         .accessibilityIdentifier("vitesse-lecteur")
     }
@@ -220,8 +220,8 @@ struct OutputMenu: View {
         .menuIndicator(.hidden)
         .fixedSize()
         .focusable(false)
-        .help("Sortie audio : " + AudioOutputChoices.buttonTitle(model.outputs, chosen: chosen))
-        .accessibilityLabel("Sortie audio")
+        .help(String(localized: "Audio output: \(AudioOutputChoices.buttonTitle(model.outputs, chosen: chosen))"))
+        .accessibilityLabel("Audio output")
         .accessibilityValue(chosen.isEmpty ? AudioOutputChoices.systemTitle(model.outputs) : chosen)
         .accessibilityIdentifier("sortie-audio-lecteur")
     }

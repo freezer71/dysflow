@@ -4,8 +4,47 @@
     "" : {
 
     },
+    "%@ (disconnected)" : {
+      "comment" : "Audio output that is chosen but unplugged",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ (débranché)"
+          }
+        }
+      }
+    },
     "%@ fois" : {
 
+    },
+    "%@ of %@" : {
+      "comment" : "VoiceOver: elapsed time of total time",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ of %2$@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ sur %@"
+          }
+        }
+      }
+    },
+    "%@ times" : {
+      "comment" : "VoiceOver: playback speed",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ fois"
+          }
+        }
+      }
     },
     "%@, %@" : {
       "localizations" : {
@@ -33,6 +72,17 @@
     "%lld points" : {
 
     },
+    "%lld%%" : {
+      "comment" : "VoiceOver: progress",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld %%"
+          }
+        }
+      }
+    },
     "%u" : {
 
     },
@@ -49,11 +99,38 @@
     "500 caractères au plus" : {
 
     },
-    "Afficher le lecteur" : {
-
+    "? or Esc to close" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "? ou Échap pour fermer"
+          }
+        }
+      }
+    },
+    "Accessibility" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Accessibilité"
+          }
+        }
+      }
     },
     "Ajouter des voix dans Réglages Système…" : {
 
+    },
+    "Allow Reading the Selection…" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Autoriser la lecture de la sélection…"
+          }
+        }
+      }
     },
     "Annuler" : {
 
@@ -76,14 +153,38 @@
     "Aucun modèle ne correspond à ces filtres." : {
 
     },
-    "Aucun résultat" : {
-
-    },
-    "Aucun titre" : {
-
-    },
     "Aucune voix ne correspond à ces filtres." : {
 
+    },
+    "Audio output" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sortie audio"
+          }
+        }
+      }
+    },
+    "Audio output not saved: %@" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sortie audio non enregistrée : %@"
+          }
+        }
+      }
+    },
+    "Audio output: %@" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sortie audio : %@"
+          }
+        }
+      }
     },
     "Autoriser" : {
 
@@ -91,11 +192,18 @@
     "Autoriser : %@" : {
 
     },
-    "Autoriser la lecture de la sélection…" : {
-
-    },
     "Autoriser…" : {
 
+    },
+    "Back to the start" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Revenir au début"
+          }
+        }
+      }
     },
     "Bibliothèque des modèles" : {
 
@@ -103,26 +211,190 @@
     "Bibliothèque des voix" : {
 
     },
+    "Cancel" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Annuler"
+          }
+        }
+      }
+    },
+    "Can’t open “%@”" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossible d'ouvrir « %@ »"
+          }
+        }
+      }
+    },
     "Choisi : %@" : {
 
     },
     "Choisie : %@" : {
 
     },
-    "Copier la dernière dictée" : {
-
+    "Choose a text, a PDF or an image to read" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choisissez un texte, un PDF ou une image à lire"
+          }
+        }
+      }
+    },
+    "Close" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fermer"
+          }
+        }
+      }
+    },
+    "Close (reading stops)" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fermer (la lecture s'arrête)"
+          }
+        }
+      }
+    },
+    "Close search or contents, otherwise close" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fermer la recherche ou le sommaire, sinon fermer"
+          }
+        }
+      }
+    },
+    "Close, reading stops (⌘W)" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fermer, la lecture s'arrête (⌘W)"
+          }
+        }
+      }
+    },
+    "Collapse" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Réduire"
+          }
+        }
+      }
+    },
+    "Collapse / expand" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Réduire / agrandir"
+          }
+        }
+      }
+    },
+    "Collapse to the mini player (⌘M)" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Réduire en mini (⌘M)"
+          }
+        }
+      }
+    },
+    "Contents" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sommaire"
+          }
+        }
+      }
+    },
+    "Contents (t)" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sommaire (t)"
+          }
+        }
+      }
+    },
+    "Copy" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copier"
+          }
+        }
+      }
+    },
+    "Copy Last Dictation" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copier la dernière dictée"
+          }
+        }
+      }
+    },
+    "Copy the selection, or else the sentence" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copier la sélection, sinon la phrase"
+          }
+        }
+      }
     },
     "Derniers essais" : {
 
     },
-    "Dicter" : {
-
+    "Dictate" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dicter"
+          }
+        }
+      }
     },
     "Dictée" : {
 
     },
     "Dites ce que vous voulez" : {
 
+    },
+    "Done" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Terminé"
+          }
+        }
+      }
     },
     "Délai et mémoire" : {
 
@@ -133,20 +405,132 @@
     "Démarrer l'essai du micro" : {
 
     },
+    "Edit" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modifier"
+          }
+        }
+      }
+    },
+    "Edit the text" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modifier le texte"
+          }
+        }
+      }
+    },
+    "Edit the text (e)" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modifier le texte (e)"
+          }
+        }
+      }
+    },
+    "Editing text" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modification du texte"
+          }
+        }
+      }
+    },
     "Effacer : %@" : {
 
     },
     "Effacer le raccourci" : {
 
     },
-    "En lecture : %@" : {
-
+    "Elapsed time" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Temps écoulé"
+          }
+        }
+      }
+    },
+    "Esc" : {
+      "comment" : "Key name",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Échap"
+          }
+        }
+      }
     },
     "Essai du micro" : {
 
     },
-    "Installation de la voix" : {
-
+    "Expand" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agrandir"
+          }
+        }
+      }
+    },
+    "Expand the reader (⌘M)" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agrandir le lecteur (⌘M)"
+          }
+        }
+      }
+    },
+    "For dictation; your voice is transcribed on your Mac" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pour la dictée ; la voix est transcrite sur votre Mac"
+          }
+        }
+      }
+    },
+    "Home" : {
+      "comment" : "Key name",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Début"
+          }
+        }
+      }
+    },
+    "Installing the voice: %@ of %@ — the system voice reads in the meantime" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Installing the voice: %1$@ of %2$@ — the system voice reads in the meantime"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Installation de la voix : %@ sur %@ — la voix du système lit en attendant"
+          }
+        }
+      }
     },
     "Interlignage" : {
 
@@ -154,14 +538,35 @@
     "Interlignage : %u" : {
 
     },
-    "Lecture / pause (Espace)" : {
-
+    "Later" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Plus tard"
+          }
+        }
+      }
     },
-    "Lire la sélection" : {
-
+    "Microphone" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Micro"
+          }
+        }
+      }
     },
-    "Modification du texte" : {
-
+    "Mini reader" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lecteur réduit"
+          }
+        }
+      }
     },
     "Modèle" : {
 
@@ -169,16 +574,143 @@
     "Modèles" : {
 
     },
+    "Next / previous heading" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Titre suivant / précédent"
+          }
+        }
+      }
+    },
+    "Next / previous result" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Résultat suivant / précédent"
+          }
+        }
+      }
+    },
+    "Next sentence" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Phrase suivante"
+          }
+        }
+      }
+    },
+    "Next sentence (→)" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Phrase suivante (→)"
+          }
+        }
+      }
+    },
     "Niveau du micro" : {
 
+    },
+    "No headings" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aucun titre"
+          }
+        }
+      }
+    },
+    "No line that way" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aucune ligne de ce côté"
+          }
+        }
+      }
+    },
+    "No results" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aucun résultat"
+          }
+        }
+      }
+    },
+    "Nothing to read — %@" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rien à lire — %@"
+          }
+        }
+      }
+    },
+    "Nothing to read — shortcut: ⌘," : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rien à lire — raccourci : ⌘,"
+          }
+        }
+      }
+    },
+    "Now playing: %@" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "En lecture : %@"
+          }
+        }
+      }
+    },
+    "Open File…" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ouvrir un fichier…"
+          }
+        }
+      }
+    },
+    "Open System Settings" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ouvrir les réglages"
+          }
+        }
+      }
+    },
+    "Open a file" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ouvrir un fichier"
+          }
+        }
+      }
     },
     "Ouvrir les réglages…" : {
 
     },
     "Ouvrir sillage à la connexion" : {
-
-    },
-    "Ouvrir un fichier…" : {
 
     },
     "Parcourir les modèles…" : {
@@ -190,7 +722,38 @@
     "Parlez librement : la précision n'est pas calculée, les délais, le débit et la mémoire le sont." : {
 
     },
+    "Paste" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Coller"
+          }
+        }
+      }
+    },
+    "Paste some text (⌘V) or drop in a file" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Collez un texte (⌘V) ou déposez un fichier"
+          }
+        }
+      }
+    },
     "Pause" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pause"
+          }
+        }
+      }
+    },
+    "Paused" : {
+      "comment" : "VoiceOver",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -216,17 +779,176 @@
         }
       }
     },
-    "Progression" : {
-
+    "Play / pause" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lecture / pause"
+          }
+        }
+      }
     },
-    "Quitter sillage" : {
-
+    "Play / pause (Space)" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lecture / pause (Espace)"
+          }
+        }
+      }
     },
-    "Raccourcis" : {
-
+    "Playing" : {
+      "comment" : "VoiceOver",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lecture"
+          }
+        }
+      }
     },
-    "Rechercher" : {
-
+    "Preparing the voice (first time)…" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Voix en préparation (première fois)…"
+          }
+        }
+      }
+    },
+    "Previous / next line" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ligne précédente / suivante"
+          }
+        }
+      }
+    },
+    "Previous / next sentence" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Phrase précédente / suivante"
+          }
+        }
+      }
+    },
+    "Previous sentence" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Phrase précédente"
+          }
+        }
+      }
+    },
+    "Previous sentence (←)" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Phrase précédente (←)"
+          }
+        }
+      }
+    },
+    "Progress" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Progression"
+          }
+        }
+      }
+    },
+    "Protected clipboard: nothing is read" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Presse-papiers protégé : rien n'est lu"
+          }
+        }
+      }
+    },
+    "Quit sillage" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quitter sillage"
+          }
+        }
+      }
+    },
+    "Read Selection" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lire la sélection"
+          }
+        }
+      }
+    },
+    "Read from Here" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lire à partir d'ici"
+          }
+        }
+      }
+    },
+    "Read the clipboard" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lire le presse-papiers"
+          }
+        }
+      }
+    },
+    "Read the clipboard (⌘V)" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lire le presse-papiers (⌘V)"
+          }
+        }
+      }
+    },
+    "Read what you select" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lire ce que vous sélectionnez"
+          }
+        }
+      }
+    },
+    "Reader" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lecteur"
+          }
+        }
+      }
     },
     "Rechercher un modèle" : {
 
@@ -249,6 +971,26 @@
     "Remplacer config.toml par les réglages actuels…" : {
 
     },
+    "Retry" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Réessayer"
+          }
+        }
+      }
+    },
+    "Retry installing the voice" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Réessayer l'installation de la voix"
+          }
+        }
+      }
+    },
     "Règle de lecture" : {
 
     },
@@ -258,13 +1000,7 @@
     "Réessayer de télécharger %@" : {
 
     },
-    "Réessayer l'installation de la voix" : {
-
-    },
     "Réglages" : {
-
-    },
-    "Réglages…" : {
 
     },
     "Résultats de %@" : {
@@ -276,14 +1012,160 @@
     "Saisie dans %@" : {
 
     },
+    "Search" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rechercher"
+          }
+        }
+      }
+    },
+    "Search (/ or ⌘F)" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rechercher (/ ou ⌘F)"
+          }
+        }
+      }
+    },
+    "Section: %@" : {
+      "comment" : "VoiceOver",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Section : %@"
+          }
+        }
+      }
+    },
     "Sections des réglages" : {
 
     },
-    "Sommaire" : {
-
+    "Secure field: nothing is read" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Champ sécurisé : rien n'est lu"
+          }
+        }
+      }
     },
-    "Sortie audio" : {
-
+    "Select or copy some text" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sélectionnez ou copiez du texte"
+          }
+        }
+      }
+    },
+    "Selection copied" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sélection copiée"
+          }
+        }
+      }
+    },
+    "Sentence copied" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Phrase copiée"
+          }
+        }
+      }
+    },
+    "Settings" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Réglages"
+          }
+        }
+      }
+    },
+    "Settings (⌘,)" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Réglages (⌘,)"
+          }
+        }
+      }
+    },
+    "Settings…" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Réglages…"
+          }
+        }
+      }
+    },
+    "Shortcuts" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Raccourcis"
+          }
+        }
+      }
+    },
+    "Show Reader" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Afficher le lecteur"
+          }
+        }
+      }
+    },
+    "Space" : {
+      "comment" : "Key name",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Espace"
+          }
+        }
+      }
+    },
+    "Speed" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vitesse"
+          }
+        }
+      }
+    },
+    "Speed (+ −)" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vitesse (+ −)"
+          }
+        }
+      }
     },
     "Supprimer" : {
 
@@ -297,6 +1179,46 @@
     "Sur ce Mac" : {
 
     },
+    "System" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Système"
+          }
+        }
+      }
+    },
+    "System Output" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sortie du système"
+          }
+        }
+      }
+    },
+    "System Output (%@)" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sortie du système (%@)"
+          }
+        }
+      }
+    },
+    "System voice as a fallback: %@" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Voix du système en repli : %@"
+          }
+        }
+      }
+    },
     "Taille" : {
 
     },
@@ -306,11 +1228,35 @@
     "Taille du texte" : {
 
     },
-    "Temps restant" : {
-
+    "Text being read" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Texte lu"
+          }
+        }
+      }
     },
-    "Terminé" : {
-
+    "Text edited" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Texte modifié"
+          }
+        }
+      }
+    },
+    "Text to edit" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Texte à modifier"
+          }
+        }
+      }
     },
     "Texte libre" : {
 
@@ -327,8 +1273,55 @@
     "Texte à lire" : {
 
     },
-    "Texte à modifier" : {
-
+    "The voice could not be installed: %@" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La voix ne s'est pas installée : %@"
+          }
+        }
+      }
+    },
+    "This help" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cette aide"
+          }
+        }
+      }
+    },
+    "Time remaining" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Temps restant"
+          }
+        }
+      }
+    },
+    "To read selected text in any app, sillage needs the Accessibility permission. Without it, it only reads what you copy." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pour lire le texte sélectionné dans n'importe quelle application, sillage a besoin de l'autorisation Accessibilité. Sans elle, il lit seulement ce que vous copiez."
+          }
+        }
+      }
+    },
+    "To read the selection and type dictation where you write" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pour lire la sélection et saisir la dictée là où vous écrivez"
+          }
+        }
+      }
     },
     "Tous les modèles de dictée : téléchargez ceux qui vous intéressent, puis choisissez celui qui écrira." : {
 
@@ -363,12 +1356,6 @@
     "Utilisée" : {
 
     },
-    "Vitesse" : {
-
-    },
-    "Vitesse (+ −)" : {
-
-    },
     "Vitesse : %@×" : {
 
     },
@@ -378,14 +1365,62 @@
     "Vitesse de lecture" : {
 
     },
+    "Voice installation" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Installation de la voix"
+          }
+        }
+      }
+    },
+    "Voice unavailable: %@" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Voix indisponible : %@"
+          }
+        }
+      }
+    },
     "Voix" : {
 
+    },
+    "confirm" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "valider"
+          }
+        }
+      }
     },
     "sillage" : {
       "shouldTranslate" : false
     },
-    "valider" : {
-
+    "sillage is in front: select text in another app" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "sillage est au premier plan : sélectionnez dans une autre application"
+          }
+        }
+      }
+    },
+    "unknown" : {
+      "comment" : "VoiceOver: remaining time",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "inconnu"
+          }
+        }
+      }
     },
     "Échec du téléchargement : %@" : {
 

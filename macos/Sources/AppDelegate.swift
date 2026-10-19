@@ -99,7 +99,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 do {
                     try await model.openFile(url)
                 } catch {
-                    model.message = "Impossible d'ouvrir « \(url.lastPathComponent) »"
+                    model.message = String(localized: "Can’t open “\(url.lastPathComponent)”")
                 }
                 panel.show()
             }
@@ -114,7 +114,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         chooser.allowedContentTypes = OpenableFiles.types
         chooser.allowsMultipleSelection = false
         chooser.canChooseDirectories = false
-        chooser.message = "Choisissez un texte, un PDF ou une image à lire"
+        chooser.message = String(localized: "Choose a text, a PDF or an image to read")
         chooser.level = NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue + 1)
         NSApp.activate()
         chooser.begin { [weak self] response in
@@ -525,6 +525,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         KeyboardShortcuts.onKeyUp(for: .showPanel) { [unowned self] in self.panel.toggleVisibility() }
     }
 
+    // xcstrings: garder (texte d'exemple lu à voix haute, en français)
     static let sample = """
     # Les monades
 

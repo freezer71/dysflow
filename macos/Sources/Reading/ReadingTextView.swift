@@ -109,7 +109,7 @@ final class ReadingTextView: NSTextView {
         maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude,
                          height: CGFloat.greatestFiniteMagnitude)
         textContainer?.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
-        setAccessibilityLabel("Texte lu")
+        setAccessibilityLabel(String(localized: "Text being read"))
     }
 
     deinit {
@@ -161,9 +161,9 @@ final class ReadingTextView: NSTextView {
         let point = convert(event.locationInWindow, from: nil)
         let index = characterIndex(under: point)
         let menu = NSMenu()
-        let copy = NSMenuItem(title: "Copier", action: #selector(copyFromMenu(_:)), keyEquivalent: "")
+        let copy = NSMenuItem(title: String(localized: "Copy"), action: #selector(copyFromMenu(_:)), keyEquivalent: "")
         copy.target = self
-        let read = NSMenuItem(title: "Lire à partir d'ici", action: #selector(readFromMenu(_:)), keyEquivalent: "")
+        let read = NSMenuItem(title: String(localized: "Read from Here"), action: #selector(readFromMenu(_:)), keyEquivalent: "")
         read.target = self
         read.representedObject = index
         menu.items = [copy, read]

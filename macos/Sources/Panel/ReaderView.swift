@@ -125,7 +125,7 @@ struct ReaderHeader: View {
                 .layoutPriority(-1)
             Spacer(minLength: 8)
             if controller.searchActive {
-                TextField("Rechercher", text: $query)
+                TextField("Search", text: $query)
                     .textFieldStyle(.notion)
                     .frame(width: 200)
                     .focused($searchFocused)
@@ -140,7 +140,7 @@ struct ReaderHeader: View {
                     .onChange(of: controller.openSearchRequests) { searchFocused = true }
             }
             if let search = model.snapshot.search {
-                Text(search.count == 0 ? "Aucun résultat" : "\(search.position + 1) / \(search.count)")
+                Text(search.count == 0 ? "No results" : "\(search.position + 1) / \(search.count)")
                     .monospacedDigit()
                     .accessibilityIdentifier("resultats-recherche")
             }
@@ -148,11 +148,11 @@ struct ReaderHeader: View {
             // ViewThatFits : il mesure ses deux variantes à chaque mise à jour,
             // soit à chaque image pendant la lecture (~40 % d'un cœur).
             headerButtons(compact: Self.compact(width: width, searching: controller.searchActive))
-            BarIconButton(symbol: "gearshape", label: "Réglages", help: "Réglages (⌘,)",
+            BarIconButton(symbol: "gearshape", label: "Settings", help: "Settings (⌘,)",
                           identifier: "bouton-reglages") {
                 controller.perform(.openSettings)
             }
-            BarIconButton(symbol: "xmark", label: "Fermer", help: "Fermer, la lecture s'arrête (⌘W)",
+            BarIconButton(symbol: "xmark", label: "Close", help: "Close, reading stops (⌘W)",
                           identifier: "fermer") {
                 controller.perform(.close)
             }
@@ -172,19 +172,19 @@ struct ReaderHeader: View {
 
     private func headerButtons(compact: Bool) -> some View {
         HStack(spacing: 6) {
-            HeaderButton(title: "Coller", symbol: "doc.on.clipboard", help: "Lire le presse-papiers (⌘V)",
+            HeaderButton(title: "Paste", symbol: "doc.on.clipboard", help: "Read the clipboard (⌘V)",
                          identifier: "bouton-coller", compact: compact) {
                 controller.perform(.paste)
             }
-            HeaderButton(title: "Sommaire", symbol: "list.bullet", help: "Sommaire (t)",
+            HeaderButton(title: "Contents", symbol: "list.bullet", help: "Contents (t)",
                          identifier: "bouton-sommaire", selected: controller.sidebarVisible, compact: compact) {
                 controller.perform(.toggleSidebar)
             }
-            HeaderButton(title: "Rechercher", symbol: "magnifyingglass", help: "Rechercher (/ ou ⌘F)",
+            HeaderButton(title: "Search", symbol: "magnifyingglass", help: "Search (/ or ⌘F)",
                          identifier: "bouton-rechercher", selected: controller.searchActive, compact: compact) {
                 controller.perform(.openSearch)
             }
-            HeaderButton(title: "Modifier", symbol: "pencil", help: "Modifier le texte (e)",
+            HeaderButton(title: "Edit", symbol: "pencil", help: "Edit the text (e)",
                          identifier: "bouton-modifier", selected: controller.editing, compact: compact) {
                 controller.perform(.edit)
             }
@@ -224,8 +224,8 @@ struct ReaderBar: View {
                 .fixedSize()
             SpeedMenu(speed: s.speed) { controller.perform(.command(.setSpeed(speed: $0))) }
             OutputMenu(model: model)
-            BarIconButton(symbol: "arrow.down.right.and.arrow.up.left", label: "Réduire",
-                          help: "Réduire en mini (⌘M)", identifier: "reduire") {
+            BarIconButton(symbol: "arrow.down.right.and.arrow.up.left", label: "Collapse",
+                          help: "Collapse to the mini player (⌘M)", identifier: "reduire") {
                 controller.perform(.toggleSize)
             }
         }

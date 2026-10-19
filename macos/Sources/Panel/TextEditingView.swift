@@ -21,7 +21,7 @@ struct TextEditingView: View {
                 .background(RoundedRectangle(cornerRadius: 8)
                     .fill(Color(nsColor: style.theme.text).opacity(0.05)))
                 .focused($focused)
-                .accessibilityLabel("Texte à modifier")
+                .accessibilityLabel("Text to edit")
                 .accessibilityIdentifier("edition-texte")
                 // Le champ n'accepte le focus qu'une fois posé dans la fenêtre.
                 .onAppear { DispatchQueue.main.async { focused = true } }
@@ -37,20 +37,20 @@ struct EditingBar: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Label("Modification du texte", systemImage: "pencil")
+            Label("Editing text", systemImage: "pencil")
                 .labelStyle(.titleAndIcon)
                 .foregroundStyle(Color(nsColor: theme.chrome))
             Spacer(minLength: 8)
             HStack(spacing: 6) {
                 Keycap(key: "esc", color: Color(nsColor: theme.chrome),
                        fill: Color(nsColor: theme.text).opacity(0.07))
-                Text("valider").foregroundStyle(Color(nsColor: theme.chrome))
+                Text("confirm").foregroundStyle(Color(nsColor: theme.chrome))
             }
             .accessibilityElement(children: .combine)
-            Button("Annuler") { controller.cancelEditing() }
+            Button("Cancel") { controller.cancelEditing() }
                 .buttonStyle(.notionPlain)
                 .accessibilityIdentifier("edition-annuler")
-            Button("Terminé") { controller.finishEditing() }
+            Button("Done") { controller.finishEditing() }
                 .buttonStyle(.notionPrimary)
                 .accessibilityIdentifier("edition-terminer")
         }

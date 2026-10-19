@@ -53,12 +53,12 @@ private struct SettingsWindowName: NSViewRepresentable {
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
             guard let window else { return }
-            window.setAccessibilityIdentifier("Réglages")
+            window.setAccessibilityIdentifier("Réglages") // xcstrings: garder
             Self.hideTitlebar(window)
             // SwiftUI règle la fenêtre après l'avoir posée : on repasse au
             // tour suivant.
             DispatchQueue.main.async { Self.hideTitlebar(window) }
-            window.contentView?.setAccessibilityLabel("Réglages")
+            window.contentView?.setAccessibilityLabel(String(localized: "Settings"))
             for button in [NSWindow.ButtonType.miniaturizeButton, .zoomButton] {
                 window.standardWindowButton(button)?.isHidden = true
             }

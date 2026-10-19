@@ -98,7 +98,7 @@ struct MiniTitle: View {
             .frame(maxWidth: .infinity, alignment: .center)
             .frame(height: 20)
             .help(title)
-            .accessibilityLabel("En lecture : \(title)")
+            .accessibilityLabel("Now playing: \(title)")
             .accessibilityIdentifier("titre-mini")
     }
 }
@@ -118,7 +118,7 @@ struct MiniTimeRow: View {
     let value: String
     let theme: Theme
 
-    static let elapsedLabel = "Temps écoulé"
+    static let elapsedLabel = String(localized: "Elapsed time")
     /// Ce que VoiceOver lit : le temps lui-même.
     static func elapsedValue(_ elapsed: String) -> String { elapsed }
 
@@ -134,12 +134,12 @@ struct MiniTimeRow: View {
                 .frame(height: 9)
                 .accessibilityRepresentation {
                     ProgressView(value: Timeline.clamped(Double(progress)))
-                        .accessibilityLabel("Progression")
+                        .accessibilityLabel("Progress")
                         .accessibilityValue(value)
                 }
             Text(remaining)
                 .monospacedDigit().fixedSize()
-                .accessibilityLabel("Temps restant")
+                .accessibilityLabel("Time remaining")
                 .accessibilityValue(spokenRemaining)
                 .accessibilityIdentifier("temps-restant")
         }
@@ -162,8 +162,8 @@ struct MiniControlsRow: View {
         HStack(spacing: 0) {
             // La même largeur des deux côtés : le transport reste centré.
             // Coller marche aussi sans document : c'est ainsi qu'on en ouvre un.
-            BarIconButton(symbol: "doc.on.clipboard", label: "Coller",
-                          help: "Lire le presse-papiers (⌘V)", identifier: "coller-mini") {
+            BarIconButton(symbol: "doc.on.clipboard", label: "Paste",
+                          help: "Read the clipboard (⌘V)", identifier: "coller-mini") {
                 send(Self.pasteAction)
             }
             .frame(width: MiniBarMetrics.side, alignment: .leading)
@@ -175,8 +175,8 @@ struct MiniControlsRow: View {
             }
             .disabled(!transportEnabled)
             Spacer(minLength: 0)
-            BarIconButton(symbol: "arrow.up.left.and.arrow.down.right", label: "Agrandir",
-                          help: "Agrandir le lecteur (⌘M)", identifier: "agrandir") {
+            BarIconButton(symbol: "arrow.up.left.and.arrow.down.right", label: "Expand",
+                          help: "Expand the reader (⌘M)", identifier: "agrandir") {
                 send(Self.growAction)
             }
             .frame(width: MiniBarMetrics.side, alignment: .trailing)

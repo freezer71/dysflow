@@ -5,9 +5,9 @@ import Foundation
 enum ReadingCopy {
     static func choose(selection: String?, sentence: String) -> (text: String, message: String)? {
         if let selection, !selection.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return (selection, "Sélection copiée")
+            return (selection, String(localized: "Selection copied"))
         }
         guard !sentence.isEmpty else { return nil }
-        return (sentence, "Phrase copiée")
+        return (sentence, String(localized: "Sentence copied"))
     }
 }

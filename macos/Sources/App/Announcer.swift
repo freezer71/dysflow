@@ -21,10 +21,10 @@ struct Announcer {
         // Nouveau document : les identifiants de section repartent de zéro.
         guard s.revision == wasRevision else { reseed(with: s); return nil }
         defer { playing = s.playing; section = .some(s.section) }
-        if s.playing != wasPlaying { return s.playing ? "Lecture" : "Pause" }
+        if s.playing != wasPlaying { return s.playing ? String(localized: "Playing", comment: "VoiceOver") : String(localized: "Paused", comment: "VoiceOver") }
         if s.section != wasSection, let id = s.section,
            let title = doc.sections.first(where: { $0.id == id })?.title {
-            return "Section : \(title)"
+            return String(localized: "Section: \(title)", comment: "VoiceOver")
         }
         return nil
     }

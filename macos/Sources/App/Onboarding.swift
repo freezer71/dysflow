@@ -13,14 +13,13 @@ enum Onboarding {
         UserDefaults.standard.set(true, forKey: doneKey)
         NSApp.activate()
         let alert = NSAlert()
-        alert.messageText = "Lire ce que vous sélectionnez"
-        alert.informativeText = """
-        Pour lire le texte sélectionné dans n'importe quelle application, \
-        sillage a besoin de l'autorisation Accessibilité. Sans elle, il lit \
-        seulement ce que vous copiez.
-        """
-        alert.addButton(withTitle: "Ouvrir les réglages")
-        alert.addButton(withTitle: "Plus tard")
+        alert.messageText = String(localized: "Read what you select")
+        alert.informativeText = String(localized: """
+        To read selected text in any app, sillage needs the Accessibility \
+        permission. Without it, it only reads what you copy.
+        """)
+        alert.addButton(withTitle: String(localized: "Open System Settings"))
+        alert.addButton(withTitle: String(localized: "Later"))
         if alert.runModal() == .alertFirstButtonReturn {
             let options = ["AXTrustedCheckOptionPrompt": true] as CFDictionary
             _ = AXIsProcessTrustedWithOptions(options)
