@@ -379,6 +379,8 @@ struct DictationSection: View {
     @AppStorage(DictationLanguage.defaultsKey) private var language = DictationLanguage.stored().rawValue
     @AppStorage(DictationModel.defaultsKey) private var chosen = DictationModel.stored()
     @AppStorage(DictationStats.defaultsKey) private var showStats = DictationStats.shown()
+    /// La bibliothèque des modèles est ouverte, en feuille sur la fenêtre.
+    @State private var libraryShown = false
 
     /// La ligne de la dictée de macOS : jamais téléchargée ni supprimée.
     static let systemID = "system-dictation"
@@ -420,18 +422,15 @@ struct DictationSection: View {
 
     var body: some View {
         let trialRunning = AppDelegate.shared?.micTrial?.isRunning ?? false
+        let all = Self.rows(rows, chosen: chosen)
         SettingsGroup(title: "Dictée") {
-            ModelsTable(rows: Self.rows(rows, chosen: chosen), model: model, fallback: Self.fallback,
+            // La table ne garde que ce qui est là ou en route ; le reste est
+            // dans la bibliothèque des modèles.
+            ModelsTable(rows: ModelTable.shortlist(all, download: model.snapshot.download), model: model,
+                        fallback: Self.fallback,
                         isUsed: { Self.isUsed($0, chosen: chosen) },
-                        use: { row in chosen = row.id == Self.systemID ? DictationModel.system : row.id },
-                        removed: { row in
-                            // Un essai en route s'arrête d'abord : il ne
-                            // réenregistrerait rien après l'oubli.
-                            AppDelegate.shared?.micTrial?.cancel()
-                            if row.id == chosen { chosen = DictationModel.system }
-                            // Ses derniers essais partent avec lui.
-                            AppDelegate.shared?.micTrial?.forget(row.id)
-                        },
+                        use: { row in use(row) },
+                        removed: { row in removed(row) },
                         onChange: onChange, state: table)
                 .disabled(trialRunning)
                 // Le modèle choisi change (un autre, la dictée de macOS, ou le
@@ -462,6 +461,12 @@ struct DictationSection: View {
                     .padding(.vertical, 8)
                     .accessibilityIdentifier("dictee-repli")
             }
+            SettingRow(title: "Bibliothèque des modèles",
+                       detail: "Tous les modèles de dictée, à chercher, télécharger et choisir") {
+                Button("Parcourir les modèles…") { libraryShown = true }
+                    .buttonStyle(.notion)
+                    .accessibilityIdentifier("parcourir-modeles")
+            }
             // L'essai du micro : un modèle essayé sans changer celui de la dictée.
             if let trial = AppDelegate.shared?.micTrial {
                 MicTrialBlock(trial: trial, rows: rows, chosen: chosen,
@@ -481,6 +486,27 @@ struct DictationSection: View {
                     .accessibilityIdentifier("mesures-dictee-reglage")
             }
         }
+        .sheet(isPresented: $libraryShown) {
+            ModelLibrarySheet(model: model, rows: all, locked: trialRunning,
+                              onUse: { row in use(row) }, removed: { row in removed(row) },
+                              onChange: onChange)
+        }
+    }
+
+    /// Choisir une ligne (table ou bibliothèque) : le changement de `chosen`
+    /// arrête l'essai et libère l'ancien modèle (`onChange(of: chosen)`).
+    private func use(_ row: VoiceModel) {
+        chosen = row.id == Self.systemID ? DictationModel.system : row.id
+    }
+
+    /// Après la suppression d'un modèle, depuis la table ou la bibliothèque.
+    private func removed(_ row: VoiceModel) {
+        // Un essai en route s'arrête d'abord : il ne réenregistrerait rien
+        // après l'oubli.
+        AppDelegate.shared?.micTrial?.cancel()
+        if row.id == chosen { chosen = DictationModel.system }
+        // Ses derniers essais partent avec lui.
+        AppDelegate.shared?.micTrial?.forget(row.id)
     }
 }
 
