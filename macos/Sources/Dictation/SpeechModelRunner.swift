@@ -134,7 +134,7 @@ final class SpeechModelRunner: @unchecked Sendable {
         touch()
         return try await onQueue { [self] in
             defer { touch() }
-            guard let model else { throw DictationError.failed("aucun modèle de dictée chargé") }
+            guard let model else { throw DictationError.failed(String(localized: "no dictation model loaded")) }
             let begin = ContinuousClock.now
             defer { compute.withLock { $0 += ContinuousClock.now - begin } }
             return try body(model)

@@ -34,7 +34,7 @@ final class DictationPanel: NSPanel {
                    backing: .buffered, defer: true)
         isFloatingPanel = true
         level = .statusBar
-        title = "Dictée"
+        title = String(localized: "Dictation")
         backgroundColor = .clear
         isOpaque = false
         // Pas d'ombre de fenêtre : calculée sur un fond transparent, elle

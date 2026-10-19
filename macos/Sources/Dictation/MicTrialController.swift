@@ -43,10 +43,9 @@ final class MicTrialController {
         case failed(String)
     }
 
-    nonisolated static let dictationBusy = "Une dictée est en cours : l'essai pourra commencer quand elle sera finie."
-    nonisolated static let trialBusy = "Un essai du micro est en cours dans les réglages : arrêtez-le pour dicter."
-    nonisolated static let noFinal = "L'essai n'a pas abouti : aucun texte final n'est arrivé (rien n'a été entendu, ou le modèle "
-        + "n'a pas répondu). Le résultat précédent est gardé."
+    nonisolated static let dictationBusy = String(localized: "A dictation is running: the trial can start when it’s done.")
+    nonisolated static let trialBusy = String(localized: "A microphone trial is running in settings: stop it to dictate.")
+    nonisolated static let noFinal = String(localized: "The trial didn’t complete: no final text arrived (nothing was heard, or the model didn’t respond). The previous result is kept.")
 
     private(set) var phase: Phase = .idle
     private(set) var transcript = Transcript()
@@ -138,7 +137,7 @@ final class MicTrialController {
             return
         }
         guard let trial = make(id) else {
-            phase = .failed("\(DictationModel.label(id)) n'est pas installé : l'essai ne peut pas commencer.")
+            phase = .failed(String(localized: "\(DictationModel.label(id)) isn’t installed: the trial can’t start."))
             return
         }
         refreshLanguage()
@@ -159,7 +158,7 @@ final class MicTrialController {
         gotFinal = false
         announcement = nil
         spectrum.reset()
-        phase = .preparing(trial.load == nil ? "Ouverture du micro…" : "Chargement du modèle…")
+        phase = .preparing(trial.load == nil ? String(localized: "Opening the microphone…") : String(localized: "Loading the model…"))
         let locale = language.locale
         Task {
             do {
@@ -167,7 +166,7 @@ final class MicTrialController {
                     let measured = try await load()
                     guard session == mine else { return }
                     memory = measured
-                    phase = .preparing("Ouverture du micro…")
+                    phase = .preparing(String(localized: "Opening the microphone…"))
                 }
                 computeBefore = trial.computeSeconds?()
                 try await trial.engine.start(locale: locale) { event in
@@ -231,7 +230,7 @@ final class MicTrialController {
         switch event {
         case .downloading(let fraction):
             if case .preparing = phase {
-                phase = .preparing("La langue s'installe : \(Int((fraction * 100).rounded())) %")
+                phase = .preparing(String(localized: "The language is installing: \(Int((fraction * 100).rounded()))%"))
             }
         case .listening:
             if case .preparing = phase {

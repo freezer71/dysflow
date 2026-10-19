@@ -41,7 +41,7 @@ final class TextSpeechMLXCompute: TextSpeechCompute, @unchecked Sendable {
     static let magpieRuntime = "magpie_mlx"
     /// La phrase de préparation : compile `compile(shapeless:)` et les
     /// noyaux Metal.
-    static let warmUpText = "Bonjour."
+    static let warmUpText = "Bonjour."   // xcstrings: garder (préparation en français)
 
     private struct Entry {
         let model: TextSpeechModel
@@ -82,7 +82,7 @@ final class TextSpeechMLXCompute: TextSpeechCompute, @unchecked Sendable {
         switch runtime {
         case qwenRuntime: return try Qwen3TTSRunner.load(directory: directory)
         case magpieRuntime: return try MagpieRunner.load(directory: directory)
-        default: throw SillageError.Failed(message: "moteur de lecture inconnu : \(runtime)")
+        default: throw SillageError.Failed(message: String(localized: "unknown reading engine: \(runtime)"))
         }
     }
 
@@ -118,7 +118,7 @@ final class TextSpeechMLXCompute: TextSpeechCompute, @unchecked Sendable {
             } catch {
                 budget.remove(key(modelDir))
                 clearCache()
-                throw SillageError.Failed(message: "Le modèle de lecture ne se charge pas : \(Self.message(of: error))")
+                throw SillageError.Failed(message: String(localized: "The reading model won’t load: \(Self.message(of: error))"))
             }
         }
     }
@@ -145,7 +145,7 @@ final class TextSpeechMLXCompute: TextSpeechCompute, @unchecked Sendable {
             // L'abandon d'abord, après l'attente du verrou.
             if isCancelled() { throw SillageError.Cancelled }
             guard let model = loaded[modelDir]?.model else {
-                throw SillageError.Failed(message: "modèle de lecture non chargé")
+                throw SillageError.Failed(message: String(localized: "reading model not loaded"))
             }
             let samples: [Float]?
             do {

@@ -101,10 +101,10 @@ final class RoutingDictationEngine: DictationEngine {
     /// `instead` : le modèle qui manque (le repli est dit).
     private func startSystem(locale: Locale, events: @escaping @MainActor @Sendable (DictationEvent) -> Void,
                              instead missing: String?, token mine: Int) async throws {
-        if let missing { fallbackNotice = "\(DictationModel.label(missing)) indisponible : dictée de macOS" }
+        if let missing { fallbackNotice = String(localized: "\(DictationModel.label(missing)) unavailable: macOS dictation") }
         guard let system else {
             active = nil
-            throw DictationError.failed("\(DictationModel.label(missing ?? "")) indisponible")
+            throw DictationError.failed(String(localized: "\(DictationModel.label(missing ?? "")) unavailable"))
         }
         try await retire(keeping: system, token: mine)
         active = system

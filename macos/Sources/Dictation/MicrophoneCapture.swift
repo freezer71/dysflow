@@ -93,7 +93,7 @@ final class MicrophoneCapture: @unchecked Sendable {
         guard natural.sampleRate > 0, natural.channelCount > 0 else { throw DictationError.noMicrophone }
         guard let tap = MicrophoneTap(from: natural, spectrum: spectrum, append: { [buffer] converted in
             buffer.withLock { $0.append(converted) }
-        }) else { throw DictationError.failed("format audio non pris en charge") }
+        }) else { throw DictationError.failed(String(localized: "unsupported audio format")) }
         let sink = AVAudioSinkNode(receiverBlock: tap.receiver())
         audio.attach(sink)
         audio.connect(node, to: sink, format: natural)

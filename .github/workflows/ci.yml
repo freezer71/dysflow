@@ -119,6 +119,7 @@ jobs:
       - name: sillage-espeak
         run: ./scripts/build-espeak.sh
       - name: Moteur et liaison Swift
+        id: ffi
         run: ./scripts/build-ffi.sh
       - name: Tests de l'app
         # Les tests d'interface (SillageUITests) pilotent l'app à l'écran et
@@ -130,9 +131,14 @@ jobs:
             -destination 'platform=macOS,arch=arm64' -derivedDataPath build/derived \
             test -only-testing:SillageTests
       - name: Textes sans français (catalogue)
-        # Après la compilation des tests : le script lit les .stringsdata de
-        # build/derived. Non bloquant tant que l'app n'est pas toute
-        # traduite ; la Tâche 12 du plan de l'anglais retire
-        # continue-on-error et le rend bloquant.
-        continue-on-error: true
+        # Bloquant : après la compilation des tests (le script lit les
+        # .stringsdata de build/derived), même si les tests ont échoué, du
+        # moment que le moteur a été construit. Il synchronise aussi le
+        # catalogue avec le code.
+        if: ${{ !cancelled() && steps.ffi.conclusion == 'success' }}
         run: ./scripts/check-xcstrings.sh
+      - name: Catalogue à jour
+        # Le script a réécrit le catalogue : une différence avec le dépôt est
+        # une synchronisation oubliée (clé nouvelle ou périmée).
+        if: ${{ !cancelled() && steps.ffi.conclusion == 'success' }}
+        run: git diff --exit-code macos/Resources/Localizable.xcstrings

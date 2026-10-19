@@ -171,11 +171,11 @@ struct TrialMemory: Equatable {
 /// Les phrases à lire, courtes et sans piège de nombre ; une autre à chaque essai.
 enum TrialSentences {
     static let french = [
-        "Le petit chat dort au soleil près de la fenêtre.",
-        "Nous partirons demain matin vers la mer avec nos amis.",
-        "Elle lit un livre passionnant chaque soir avant de dormir.",
-        "Le boulanger du village prépare le pain très tôt.",
-        "Il pleut depuis ce matin, alors je reste à la maison.",
+        "Le petit chat dort au soleil près de la fenêtre.",   // xcstrings: garder (lue à voix haute)
+        "Nous partirons demain matin vers la mer avec nos amis.",   // xcstrings: garder (lue à voix haute)
+        "Elle lit un livre passionnant chaque soir avant de dormir.",   // xcstrings: garder (lue à voix haute)
+        "Le boulanger du village prépare le pain très tôt.",   // xcstrings: garder (lue à voix haute)
+        "Il pleut depuis ce matin, alors je reste à la maison.",   // xcstrings: garder (lue à voix haute)
     ]
     static let english = [
         "The little cat is sleeping in the sun by the window.",
@@ -249,7 +249,7 @@ struct TrialResultsStore {
     }
 }
 
-/// Les résultats écrits à la française, à l'écran et pour VoiceOver.
+/// Les résultats écrits dans la langue de l'interface, à l'écran et pour VoiceOver.
 enum TrialFormat {
     struct Values: Equatable {
         var precision, delay, speed, memory: String
@@ -257,14 +257,14 @@ enum TrialFormat {
 
     static let none = "—"
 
-    static func percent(_ v: Double) -> String { "\(Int(v.rounded())) %" }
+    static func percent(_ v: Double) -> String { "\(Int(v.rounded()))" + (UILanguage.isFrench ? " %" : "%") }
     static func seconds(_ v: Double) -> String { "\(decimal(v)) s" }
     static func speed(_ v: Double) -> String { "\(decimal(v))×" }
 
     /// Un chiffre après la virgule.
     static func decimal(_ v: Double) -> String {
         let f = NumberFormatter()
-        f.locale = Locale(identifier: "fr_FR")
+        f.locale = UILanguage.locale
         f.minimumFractionDigits = 1
         f.maximumFractionDigits = 1
         return f.string(from: NSNumber(value: v)) ?? "\(v)"
@@ -273,9 +273,9 @@ enum TrialFormat {
     /// Délai : « premier texte puis texte final » (« 0,8 s puis 0,3 s »).
     static func values(_ r: TrialResult, size: (UInt64) -> String) -> Values {
         let delay: String = switch (r.firstDelay, r.finalDelay) {
-        case let (first?, final?): "\(seconds(first)) puis \(seconds(final))"
+        case let (first?, final?): String(localized: "\(seconds(first)) then \(seconds(final))")
         case let (first?, nil): seconds(first)
-        case let (nil, final?): "\(none) puis \(seconds(final))"
+        case let (nil, final?): String(localized: "\(none) then \(seconds(final))")
         case (nil, nil): none
         }
         return Values(precision: r.precision.map(percent) ?? none,
@@ -286,24 +286,26 @@ enum TrialFormat {
 
     /// Ce que VoiceOver dit à la fin d'un essai, en phrases entières.
     static func announcement(_ r: TrialResult, model: String, size: (UInt64) -> String) -> String {
-        var parts = ["Essai de \(model) terminé."]
+        var parts = [String(localized: "\(model) trial finished.")]
         if let precision = r.precision {
-            parts.append("Précision : \(percent(precision)).")
+            parts.append(String(localized: "Accuracy: \(percent(precision))."))
         } else if r.freeText {
-            parts.append("Texte libre : pas de précision.")
+            parts.append(String(localized: "Free text: no accuracy."))
         }
         if let first = r.firstDelay {
-            let basis = r.firstDelayFromSpeech ? "le début de la parole" : "l'ouverture du micro"
-            parts.append("Premier texte \(seconds(first)) après \(basis).")
+            let basis = r.firstDelayFromSpeech ? String(localized: "the start of speech") : String(localized: "the microphone opening")
+            parts.append(String(localized: "First text \(seconds(first)) after \(basis)."))
         } else {
-            parts.append("Aucun texte provisoire.")
+            parts.append(String(localized: "No interim text."))
         }
-        if let final = r.finalDelay { parts.append("Texte final \(seconds(final)) après l'arrêt.") }
+        if let final = r.finalDelay { parts.append(String(localized: "Final text \(seconds(final)) after stopping.")) }
         if let s = r.speed {
-            parts.append("Débit pendant la dictée, relectures comprises : \(decimal(s)) fois le temps réel.")
+            parts.append(String(localized: "Speed during dictation, rereads included: \(decimal(s)) times real time."))
         }
         if let bytes = r.memoryBytes {
-            parts.append("Mémoire : \(size(UInt64(max(0, bytes))))\(r.memoryMeasured ? "" : " environ").")
+            let amount = size(UInt64(max(0, bytes)))
+            parts.append(r.memoryMeasured ? String(localized: "Memory: \(amount).")
+                         : String(localized: "Memory: about \(amount)."))
         }
         return parts.joined(separator: " ")
     }

@@ -43,8 +43,8 @@ enum CopyReason: Equatable {
 
     var message: String {
         switch self {
-        case .noAccessibility: "Texte copié : ⌘V pour le coller (autorisez l'Accessibilité pour la saisie directe)"
-        case .secureInput, .ownWindow: "Texte copié : ⌘V pour le coller"
+        case .noAccessibility: String(localized: "Text copied: press ⌘V to paste (allow Accessibility for direct typing)")
+        case .secureInput, .ownWindow: String(localized: "Text copied: press ⌘V to paste")
         }
     }
 }

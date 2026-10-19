@@ -18,15 +18,15 @@ enum DictationModifier: String, CaseIterable {
 
     var label: String {
         switch self {
-        case .none: "Aucune"
-        case .rightOption: "Option droite"
-        case .leftOption: "Option gauche"
-        case .rightCommand: "Commande droite"
-        case .leftCommand: "Commande gauche"
-        case .rightControl: "Contrôle droite"
-        case .leftControl: "Contrôle gauche"
-        case .rightShift: "Maj droite"
-        case .leftShift: "Maj gauche"
+        case .none: String(localized: "No key")
+        case .rightOption: String(localized: "Right Option")
+        case .leftOption: String(localized: "Left Option")
+        case .rightCommand: String(localized: "Right Command")
+        case .leftCommand: String(localized: "Left Command")
+        case .rightControl: String(localized: "Right Control")
+        case .leftControl: String(localized: "Left Control")
+        case .rightShift: String(localized: "Right Shift")
+        case .leftShift: String(localized: "Left Shift")
         case .function: "Fn"
         }
     }
