@@ -208,7 +208,9 @@ else
     tar -xzf "$tmp/$archive" -C "$tmp/paquet"
     # Un seul dossier dans l'archive (sillage-<version>-linux-<arch>).
     dossier=$(find "$tmp/paquet" -mindepth 1 -maxdepth 1 -type d | head -1)
-    [ -n "$dossier" ] && [ -x "$dossier/sillage" ] || echec "l'archive ne contient pas le binaire sillage"
+    if [ -z "$dossier" ] || [ ! -x "$dossier/sillage" ]; then
+        echec "l'archive ne contient pas le binaire sillage"
+    fi
     mkdir -p "$PREFIX/lib"
     rm -rf "$PREFIX/lib/sillage"
     mv "$dossier" "$PREFIX/lib/sillage"
