@@ -2,9 +2,9 @@ import Foundation
 import KokoroMLX
 import os
 
-/// Un modèle de dictée chargé (Parakeet, Canary, Voxtral, Whisper) : de
-/// l'audio en 16 kHz mono vers du texte. Appelé sous `MLXGate`, hors du fil
-/// principal.
+/// Un modèle de dictée chargé (Parakeet, Canary, Voxtral, Whisper, Nemotron,
+/// Qwen3-ASR, Cohere) : de l'audio en 16 kHz mono vers du texte. Appelé
+/// sous `MLXGate`, hors du fil principal.
 protocol LoadedSpeechModel: AnyObject {
     func transcribe(_ samples: [Float], language: String) throws -> String
 }

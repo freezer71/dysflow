@@ -2,7 +2,7 @@ import Foundation
 import KokoroMLX
 
 /// La dictée par un modèle qui lit tout d'un bloc (Parakeet, Whisper,
-/// Canary) : le micro garde tout ce qui est dit, et le modèle relit le tout
+/// Canary, Qwen3-ASR, Cohere) : le micro garde tout ce qui est dit, et le modèle relit le tout
 /// toutes les 0,4 s au moins, à trois fois sa durée de lecture
 /// (`RollingTranscription`), un
 /// texte provisoire qui remplace le précédent, avec son délai ; à la fin,
@@ -194,7 +194,7 @@ enum SpeechModels {
     private static func loadModel(_ directory: URL) throws -> LoadedSpeechModel {
         let id = directory.lastPathComponent
         switch id {
-        case "parakeet_tdt_v3":
+        case "parakeet_tdt_v3", "parakeet_tdt_v2":
             return ParakeetSpeech(try ParakeetModel.fromDirectory(directory))
         case "phonon_2":
             return ParakeetSpeech(try ParakeetModel.fromPhonon(directory))
@@ -202,6 +202,12 @@ enum SpeechModels {
             return CanarySpeech(try CanaryModel.fromModelDirectory(directory))
         case "voxtral_realtime_4bit":
             return VoxtralSpeech(try VoxtralRealtimeModel.fromDirectory(directory))
+        case "nemotron_35_asr_streaming_8bit":
+            return NemotronSpeech(try NemotronASRModel.fromDirectory(directory))
+        case "qwen3_asr_06b_8bit", "qwen3_asr_17b_4bit":
+            return Qwen3ASRSpeech(try Qwen3ASRModel.fromModelDirectory(directory))
+        case "cohere_transcribe_8bit":
+            return CohereSpeech(try CohereTranscribeModel.fromDirectory(directory))
         case _ where id.hasPrefix("whisper_"):
             return WhisperSpeech(try WhisperModel.fromDirectory(directory))
         default:
@@ -241,7 +247,8 @@ extension STTGenerateParameters {
 }
 
 /// Parakeet v3 (et Phonon-2, son dérivé) reconnaît la langue tout seul :
-/// `language` est ignoré.
+/// `language` est ignoré. Parakeet v2, même moteur, ne connaît que
+/// l'anglais : la langue n'y change rien non plus.
 final class ParakeetSpeech: LoadedSpeechModel {
     private let model: ParakeetModel
     init(_ model: ParakeetModel) {
@@ -348,10 +355,80 @@ final class CanarySpeech: LoadedSpeechModel {
     }
 }
 
+/// Qwen3-ASR (0.6B et 1.7B) : la langue n'est jamais imposée, le modèle la
+/// reconnaît seul (il écrit « language French<asr_text>… », dont seul le
+/// texte est gardé). `language` est ignoré.
+final class Qwen3ASRSpeech: LoadedSpeechModel {
+    private let model: Qwen3ASRModel
+    init(_ model: Qwen3ASRModel) {
+        self.model = model
+    }
+
+    func transcribe(_ samples: [Float], language: String) throws -> String {
+        SpeechModels.applyLimits()
+        let parameters = model.defaultGenerationParameters.with(language: nil)
+        return model.generate(samples: samples, generationParameters: parameters)
+            .text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
+/// Cohere Transcribe : la langue est imposée (celle du réglage « Langue »
+/// de la dictée, « fr » ou « en ») ; il ne la devine pas.
+///
+/// L'audio est lu par tranches de 30 s au plus, coupées aux silences
+/// (`splitAudioIntoChunks`) : le modèle a appris sur 35 s au plus
+/// (`max_audio_clip_s`) et son encodeur ne voit pas au-delà de 6,7 min.
+/// Le plafond de jetons vaut pour toute la dictée (il est partagé entre
+/// les tranches) : il est levé, chaque tranche restant bornée par les
+/// 1 024 positions du décodeur.
+final class CohereSpeech: LoadedSpeechModel {
+    static let chunkSeconds: Float = 30
+    static let maxTokens = 1 << 20
+
+    private let model: CohereTranscribeModel
+    init(_ model: CohereTranscribeModel) {
+        self.model = model
+    }
+
+    func transcribe(_ samples: [Float], language: String) throws -> String {
+        SpeechModels.applyLimits()
+        let base = model.defaultGenerationParameters
+        let parameters = STTGenerateParameters(
+            maxTokens: Self.maxTokens, temperature: base.temperature, topP: base.topP, topK: base.topK,
+            verbose: false, language: language, chunkDuration: Self.chunkSeconds,
+            minChunkDuration: base.minChunkDuration)
+        // Les tranches sont jointes par des sauts de ligne : une seule ligne
+        // dans le texte dicté.
+        return model.generate(samples: samples, generationParameters: parameters).text
+            .split(whereSeparator: \.isNewline).joined(separator: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
+/// Un modèle qui dicte au fil de la parole (`StreamingDictationEngine`) :
+/// il ouvre une session de flux, sous `MLXGate`.
+protocol StreamingSpeechModel: LoadedSpeechModel {
+    /// Une session neuve ; `language` : « fr », « en ».
+    func makeSession(language: String) -> SpeechStreamSession
+}
+
+/// Une session de flux, gardée par le moteur de dictée ; elle ne se touche
+/// que sous `MLXGate` (dans `SpeechModelRunner.withModel`), un appel à la
+/// fois.
+protocol SpeechStreamSession: AnyObject, Sendable {
+    /// Le texte nouveau depuis le dernier appel.
+    func step(_ samples: [Float]) -> String
+    /// Ferme le flux ; le texte entier.
+    func finish() -> String
+}
+
 /// Voxtral Realtime : la dictée passe par une session de flux
-/// (`VoxtralDictationEngine`) ; `transcribe` lit tout d'un bloc. Multilingue
-/// sans invite : `language` est ignoré.
-final class VoxtralSpeech: LoadedSpeechModel {
+/// (`StreamingDictationEngine`) ; `transcribe` lit tout d'un bloc.
+/// Multilingue sans invite : `language` est ignoré.
+final class VoxtralSpeech: StreamingSpeechModel {
+    /// Le retard du texte sur la voix (le défaut du modèle).
+    static let delayMs = 480
+
     private let model: VoxtralRealtimeModel
     init(_ model: VoxtralRealtimeModel) {
         self.model = model
@@ -364,28 +441,71 @@ final class VoxtralSpeech: LoadedSpeechModel {
     }
 
     /// Une session neuve, retard `delayMs` (sous `MLXGate`).
-    func makeSession(delayMs: Int) -> VoxtralSession {
+    func makeSession(language: String) -> SpeechStreamSession {
         SpeechModels.applyLimits()
-        return VoxtralSession(model.makeStreamSession(transcriptionDelayMs: delayMs))
+        return VoxtralSession(model.makeStreamSession(transcriptionDelayMs: Self.delayMs))
     }
 }
 
-/// Une session Voxtral, gardée par le moteur de dictée ; elle ne se touche
-/// que sous `MLXGate` (dans `SpeechModelRunner.withModel`), un appel à la
-/// fois.
-final class VoxtralSession: @unchecked Sendable {
+final class VoxtralSession: SpeechStreamSession, @unchecked Sendable {
     private let session: VoxtralRealtimeStreamSession
 
     init(_ session: VoxtralRealtimeStreamSession) {
         self.session = session
     }
 
-    /// Le texte nouveau depuis le dernier appel.
     func step(_ samples: [Float]) -> String {
         session.step(samples).text
     }
 
-    /// Ferme le flux ; le texte entier.
+    func finish() -> String {
+        session.finish()
+        return session.text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
+/// Nemotron 3.5 ASR Streaming : un vrai flux (encodeur à caches et RNN-T
+/// glouton, `NemotronASRStreamSession`) ; chaque bout d'audio n'est lu
+/// qu'une fois, au lieu de relire tout l'audio. La langue est passée en
+/// invite (« fr », « en » : le dictionnaire d'invites du modèle les a) ;
+/// `transcribe` lit tout d'un bloc (l'essai du micro peut s'en servir).
+final class NemotronSpeech: StreamingSpeechModel {
+    /// Tranches de 560 ms (contexte droit de 6 trames de 80 ms) : le texte
+    /// suit la voix d'environ 0,6 s, comme Voxtral. Fiche du modèle, FLEURS
+    /// français avec l'invite de langue : 9,45 % de mots faux à 560 ms,
+    /// 9,03 % à 1,12 s (la tranche native, deux fois plus en retard),
+    /// 10,97 % à 80 ms.
+    static let chunkMs = 560
+
+    private let model: NemotronASRModel
+    init(_ model: NemotronASRModel) {
+        self.model = model
+    }
+
+    func transcribe(_ samples: [Float], language: String) throws -> String {
+        SpeechModels.applyLimits()
+        let parameters = model.defaultGenerationParameters.with(language: language)
+        return model.generate(samples: samples, generationParameters: parameters)
+            .text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    func makeSession(language: String) -> SpeechStreamSession {
+        SpeechModels.applyLimits()
+        return NemotronSession(model.makeStreamSession(language: language, chunkMs: Self.chunkMs))
+    }
+}
+
+final class NemotronSession: SpeechStreamSession, @unchecked Sendable {
+    private let session: NemotronASRStreamSession
+
+    init(_ session: NemotronASRStreamSession) {
+        self.session = session
+    }
+
+    func step(_ samples: [Float]) -> String {
+        session.step(samples).text
+    }
+
     func finish() -> String {
         session.finish()
         return session.text.trimmingCharacters(in: .whitespacesAndNewlines)

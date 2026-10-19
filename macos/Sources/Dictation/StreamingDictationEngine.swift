@@ -1,11 +1,13 @@
 import Foundation
 import KokoroMLX
 
-/// La dictée par Voxtral Realtime, au fil de la parole : toutes les 80 ms
-/// (un jeton de Voxtral), ce que le micro a reçu depuis la fois précédente
-/// passe à une session de flux, et le texte nouveau s'ajoute au provisoire.
-/// Le texte suit la voix d'environ 0,5 s (retard de 480 ms, le réglage du
-/// modèle). À la fin, la session se ferme et rend le texte définitif.
+/// La dictée au fil de la parole, par un modèle qui lit en flux (Voxtral
+/// Realtime, Nemotron 3.5 Streaming : `StreamingSpeechModel`) : toutes les
+/// 80 ms, ce que le micro a reçu depuis la fois précédente passe à une
+/// session de flux, et le texte nouveau s'ajoute au provisoire. Chaque bout
+/// d'audio n'est lu qu'une fois. Le texte suit la voix d'environ 0,5 s
+/// (Voxtral : retard de 480 ms, le réglage du modèle ; Nemotron : tranches
+/// de 560 ms). À la fin, la session se ferme et rend le texte définitif.
 ///
 /// Comme `MLXDictationEngine` : le micro s'ouvre et `.listening` part tout
 /// de suite, le modèle se charge pendant qu'on parle, et la première passe
@@ -13,16 +15,16 @@ import KokoroMLX
 /// chaque appel au modèle passe par `SpeechModelRunner.withModel` (sous
 /// `MLXGate`, hors du fil principal).
 @MainActor
-final class VoxtralDictationEngine: DictationEngine {
-    /// Un jeton de Voxtral : 1 280 échantillons à 16 kHz.
+final class StreamingDictationEngine: DictationEngine {
+    /// Un jeton de Voxtral : 1 280 échantillons à 16 kHz ; une trame de
+    /// Nemotron (qui attend d'avoir une tranche entière : un pas sans
+    /// tranche ne calcule rien).
     static let tick: Duration = .milliseconds(80)
-    /// Le retard du texte sur la voix (le défaut du modèle).
-    static let delayMs = 480
 
     private let runner: SpeechModelRunner
     private let directory: URL
     private var capture: MicrophoneCapture?
-    private var load: Task<VoxtralSession, Error>?
+    private var load: Task<SpeechStreamSession, Error>?
     private var loop: Task<Void, Never>?
     private var events: (@MainActor @Sendable (DictationEvent) -> Void)?
     /// Le texte provisoire : les morceaux rendus par la session, bout à bout.
@@ -48,17 +50,18 @@ final class VoxtralDictationEngine: DictationEngine {
         events(.listening)
 
         let runner = runner, directory = directory
+        let language = MLXDictationEngine.languageCode(locale)
         let load = Task {
             try await runner.prepare(directory: directory)
             return try await runner.withModel { model in
-                guard let voxtral = model as? VoxtralSpeech else {
-                    throw DictationError.failed("ce modèle n'est pas Voxtral")
+                guard let streaming = model as? StreamingSpeechModel else {
+                    throw DictationError.failed("ce modèle ne dicte pas au fil de la parole")
                 }
-                return voxtral.makeSession(delayMs: Self.delayMs)
+                return streaming.makeSession(language: language)
             }
         }
         self.load = load
-        let session: VoxtralSession
+        let session: SpeechStreamSession
         do {
             session = try await load.value
         } catch {
@@ -120,7 +123,7 @@ final class VoxtralDictationEngine: DictationEngine {
 
     /// Toutes les 80 ms, ce qui est arrivé depuis la fois d'avant. Chaque
     /// bloc est attendu : jamais deux à la fois, et dans l'ordre.
-    private func feedLoop(capture: MicrophoneCapture, session: VoxtralSession,
+    private func feedLoop(capture: MicrophoneCapture, session: SpeechStreamSession,
                           events: @escaping @MainActor @Sendable (DictationEvent) -> Void,
                           generation id: Int) -> Task<Void, Never> {
         let runner = runner
