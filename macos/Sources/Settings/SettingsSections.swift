@@ -95,11 +95,11 @@ struct VoiceSection: View {
                 .notionSlider()
                 .accessibilityLabel("Reading speed")
                 .accessibilityIdentifier("vitesse")
-                .accessibilityValue("\(SettingFormat.decimal(store.values.speed)) times")
+                .accessibilityValue("\(SettingFormat.decimal(store.values.speed))× speed")
                 ValueText("\(SettingFormat.decimal(store.values.speed))×")
             }
             SettingRow(title: String(localized: "Audio output"),
-                       detail: String(localized: "Sound plays only there: if it is unplugged, reading pauses")) {
+                       detail: String(localized: "Sound plays only through this device; if it's unplugged, reading pauses")) {
                 PopUpPicker(label: String(localized: "Audio output"), identifier: "sortie-audio",
                             options: AudioOutputChoices.choices(model.outputs, chosen: model.outputDevice)
                                 .map { ($0.title, $0.value) },
@@ -311,7 +311,7 @@ struct ReadingSection: View {
                     .accessibilityValue("\(store.values.lineSpacing)")
             }
             SettingRow(title: String(localized: "Reading ruler"),
-                       detail: String(localized: "A band under the line being read, so you do not lose it")) {
+                       detail: String(localized: "A band under the line being read, so you don't lose your place")) {
                 Toggle("Reading ruler", isOn: store.binding(\.readingRuler))
                     .notionSwitch()
                     .accessibilityIdentifier("regle-lecture")
@@ -364,7 +364,7 @@ struct DictationShortcutRow: View {
 
     var body: some View {
         SettingRow(title: String(localized: "Dictate"),
-                   detail: String(localized: "One press opens dictation, a second types the text where you write; Esc cancels. A single key (right Option…) needs Accessibility")) {
+                   detail: String(localized: "Press once to open dictation, again to type the text where you're writing; Esc cancels. A single key (right Option…) requires Accessibility access")) {
             ShortcutRecorder(target: .dictation, title: String(localized: "Dictation shortcut"), identifier: identifier)
         }
     }
@@ -529,7 +529,7 @@ struct PermissionsSection: View {
                         Tag(text: String(localized: "Allowed"), tint: .green)
                             .accessibilityIdentifier(permission.identifier)
                     } else {
-                        Button(states[permission] == .denied ? "Open Settings…" : "Allow…") {
+                        Button(states[permission] == .denied ? "Open System Settings…" : "Allow…") {
                             Task {
                                 await permission.request()
                                 reload()

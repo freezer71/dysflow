@@ -197,7 +197,7 @@ struct ModelsTable: View {
                     .accessibilityValue("\(Int(fraction * 100))%")
                 Button("Cancel") { act { try await model.cancelDownload() } }
                     .buttonStyle(.notionPlain)
-                    .accessibilityLabel("Cancel the download of \(row.name)")
+                    .accessibilityLabel("Cancel downloading \(row.name)")
                     .accessibilityIdentifier("annuler-\(row.id)")
             }
         case .failed:

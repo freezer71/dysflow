@@ -126,7 +126,7 @@ struct ShortcutRecorder: View {
     /// Change à chaque enregistrement : l'affichage relit les réglages.
     @State private var revision = 0
 
-    static let placeholder = String(localized: "Type the shortcut…")
+    static let placeholder = String(localized: "Press the shortcut…")
     static let refusal = String(localized: "Add ⌘, ⌥ or ⌃")
 
     var body: some View {

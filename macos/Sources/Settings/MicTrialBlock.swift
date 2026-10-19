@@ -274,10 +274,10 @@ struct MicTrialResultCard: View {
                            ? String(localized: "first text after speech starts, then final text after “Stop”")
                            : String(localized: "first text after the microphone opens, then final text after “Stop”"))
                 metric(String(localized: "Throughput"), v.speed,
-                       result.speed == nil ? String(localized: "not measured for macOS dictation")
+                       result.speed == nil ? String(localized: "not measured with macOS dictation")
                            : String(localized: "during dictation, re-reads included: seconds of speech per second of compute (not comparable to a speed measured in a single pass)"))
                 metric(String(localized: "Memory"), v.memory,
-                       result.memoryBytes == nil ? String(localized: "not available for macOS dictation")
+                       result.memoryBytes == nil ? String(localized: "not available with macOS dictation")
                            : result.memoryMeasured ? String(localized: "used by the loaded model")
                            : String(localized: "estimated: the model's size"))
             }

@@ -106,7 +106,7 @@ struct ModelLibrarySheet: View {
                 .frame(minWidth: 160)
                 .accessibilityLabel("Search for a model by name")
                 .accessibilityIdentifier("modeles-recherche")
-            filter(String(localized: "Maker"), identifier: "modeles-editeur",
+            filter(String(localized: "Developer"), identifier: "modeles-editeur",
                    options: ModelLibrary.makerOptions(rows), selection: $filter.maker)
             filter(String(localized: "Language"), identifier: "modeles-langue",
                    options: ModelLibrary.languageOptions, selection: $filter.language)
@@ -315,7 +315,7 @@ private struct ModelLibraryRow: View {
                     .accessibilityValue("\(Int(fraction * 100))%")
                 Button("Cancel", action: cancel)
                     .buttonStyle(.notionPlain)
-                    .accessibilityLabel("Cancel the download of \(row.name)")
+                    .accessibilityLabel("Cancel downloading \(row.name)")
                     .accessibilityIdentifier("biblio-annuler-\(row.id)")
             }
         case .failed:

@@ -9,7 +9,7 @@ enum SpeedFormat {
     }
 
     static func text(_ speed: Float) -> String { number(speed) + "×" }
-    static func spoken(_ speed: Float) -> String { String(localized: "\(number(speed)) times", comment: "VoiceOver: playback speed") }
+    static func spoken(_ speed: Float) -> String { String(localized: "\(number(speed))× speed", comment: "VoiceOver: playback speed") }
 }
 
 /// Une fraction de la barre de progression devient une phrase (la

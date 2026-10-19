@@ -300,7 +300,7 @@ enum TrialFormat {
         }
         if let final = r.finalDelay { parts.append(String(localized: "Final text \(seconds(final)) after stopping.")) }
         if let s = r.speed {
-            parts.append(String(localized: "Speed during dictation, rereads included: \(decimal(s)) times real time."))
+            parts.append(String(localized: "Speed during dictation, re-reads included: \(decimal(s))× real time."))
         }
         if let bytes = r.memoryBytes {
             let amount = size(UInt64(max(0, bytes)))

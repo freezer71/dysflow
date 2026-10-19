@@ -38,9 +38,38 @@ final class EnglishUITests: XCTestCase {
         app.terminate()
     }
 
-    /// Aucun texte visible des réglages ne contient d'accent français ni
-    /// « Réglages ». Le titre de la fenêtre est cherché par son identifiant
-    /// (`Réglages`, gardé en français pour les tests).
+    /// Les traductions françaises du catalogue : texte français → clé anglaise.
+    /// Un nom propre (une voix du système comme « Amélie », un modèle) n'y est
+    /// pas, il ne fait donc jamais échouer le test. Si le catalogue ne se lit
+    /// pas, on retombe sur les lettres accentuées.
+    private static let frenchTexts: [String: String]? = {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("Resources/Localizable.xcstrings")
+        guard let data = try? Data(contentsOf: url),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let strings = root["strings"] as? [String: [String: Any]] else { return nil }
+        var texts: [String: String] = [:]
+        for (key, entry) in strings {
+            let localizations = entry["localizations"] as? [String: Any]
+            let french = (localizations?["fr"] as? [String: Any])?["stringUnit"] as? [String: Any]
+            if let value = french?["value"] as? String, value != key { texts[value] = key }
+        }
+        return texts
+    }()
+
+    /// Ce texte est-il du français d'interface (et non un nom propre) ?
+    private func isFrench(_ string: String) -> Bool {
+        if string.contains("Réglages") { return true }
+        guard let texts = Self.frenchTexts else {
+            return string.rangeOfCharacter(from: CharacterSet(charactersIn: "éèà")) != nil
+        }
+        return texts[string] != nil
+    }
+
+    /// Aucun texte visible des réglages n'est une traduction française du
+    /// catalogue, ni ne contient « Réglages ». Le titre de la fenêtre est
+    /// cherché par son identifiant (`Réglages`, gardé en français pour les
+    /// tests).
     private func checkSettings(language: String, locale: String) {
         let app = launch(["--ui-testing-reglages-neufs", "--show-settings"], language: language, locale: locale)
         let window = app.windows["Réglages"]
@@ -52,9 +81,7 @@ final class EnglishUITests: XCTestCase {
                 let shown = [text.label, text.value as? String ?? ""]
                 for string in shown {
                     seen += string.isEmpty ? 0 : 1
-                    XCTAssertNil(string.rangeOfCharacter(from: CharacterSet(charactersIn: "éèà")),
-                                 "texte français dans « \(section) » : « \(string) »")
-                    XCTAssertFalse(string.contains("Réglages"), "« Réglages » dans « \(section) » : « \(string) »")
+                    XCTAssertFalse(isFrench(string), "texte français dans « \(section) » : « \(string) »")
                 }
             }
         }

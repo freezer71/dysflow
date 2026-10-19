@@ -136,17 +136,6 @@
         }
       }
     },
-    "%@ times" : {
-      "comment" : "VoiceOver: playback speed",
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ fois"
-          }
-        }
-      }
-    },
     "%@ trial finished." : {
       "localizations" : {
         "fr" : {
@@ -199,6 +188,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@ seront libérés. Il faudra le retélécharger pour l'utiliser."
+          }
+        }
+      }
+    },
+    "%@× speed" : {
+      "comment" : "VoiceOver: playback speed",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ fois"
           }
         }
       }
@@ -333,7 +333,7 @@
         }
       }
     },
-    "A band under the line being read, so you do not lose it" : {
+    "A band under the line being read, so you don't lose your place" : {
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -643,7 +643,7 @@
         }
       }
     },
-    "Cancel the download of %@" : {
+    "Cancel downloading %@" : {
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -919,6 +919,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Supprimer…"
+          }
+        }
+      }
+    },
+    "Developer" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Éditeur"
           }
         }
       }
@@ -1570,16 +1580,6 @@
         }
       }
     },
-    "Maker" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Éditeur"
-          }
-        }
-      }
-    },
     "Man" : {
       "localizations" : {
         "fr" : {
@@ -1900,16 +1900,6 @@
         }
       }
     },
-    "One press opens dictation, a second types the text where you write; Esc cancels. A single key (right Option…) needs Accessibility" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Un appui ouvre la dictée, un second saisit le texte là où vous écrivez ; Échap annule. Une touche seule (Option droite…) demande l'Accessibilité"
-          }
-        }
-      }
-    },
     "Open File…" : {
       "localizations" : {
         "fr" : {
@@ -1920,22 +1910,22 @@
         }
       }
     },
-    "Open Settings…" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ouvrir les réglages…"
-          }
-        }
-      }
-    },
     "Open System Settings" : {
       "localizations" : {
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ouvrir les réglages"
+          }
+        }
+      }
+    },
+    "Open System Settings…" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ouvrir les réglages…"
           }
         }
       }
@@ -2098,6 +2088,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Préparation de la voix…"
+          }
+        }
+      }
+    },
+    "Press once to open dictation, again to type the text where you're writing; Esc cancels. A single key (right Option…) requires Accessibility access" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un appui ouvre la dictée, un second saisit le texte là où vous écrivez ; Échap annule. Une touche seule (Option droite…) demande l'Accessibilité"
+          }
+        }
+      }
+    },
+    "Press the shortcut…" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tapez le raccourci…"
           }
         }
       }
@@ -2457,7 +2467,7 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Contrôle droite"
+            "value" : "Contrôle droit"
           }
         }
       }
@@ -2733,7 +2743,7 @@
         }
       }
     },
-    "Sound plays only there: if it is unplugged, reading pauses" : {
+    "Sound plays only through this device; if it's unplugged, reading pauses" : {
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -2804,7 +2814,7 @@
         }
       }
     },
-    "Speed during dictation, rereads included: %@ times real time." : {
+    "Speed during dictation, re-reads included: %@× real time." : {
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -3224,16 +3234,6 @@
         }
       }
     },
-    "Type the shortcut…" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tapez le raccourci…"
-          }
-        }
-      }
-    },
     "Typing" : {
       "localizations" : {
         "fr" : {
@@ -3551,7 +3551,7 @@
         }
       }
     },
-    "not available for macOS dictation" : {
+    "not available with macOS dictation" : {
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -3598,7 +3598,7 @@
         }
       }
     },
-    "not measured for macOS dictation" : {
+    "not measured with macOS dictation" : {
       "localizations" : {
         "fr" : {
           "stringUnit" : {

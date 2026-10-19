@@ -208,7 +208,7 @@ struct VoiceLibrarySheet: View {
                 }
                 .notionSlider()
                 .accessibilityLabel("Preview speed")
-                .accessibilityValue("\(SettingFormat.decimal(library.speed)) times")
+                .accessibilityValue("\(SettingFormat.decimal(library.speed))× speed")
                 .accessibilityIdentifier("bibliotheque-vitesse")
                 ValueText("\(SettingFormat.decimal(library.speed))×")
             }
