@@ -66,6 +66,9 @@ final class RoutingDictationEngine: DictationEngine {
         } catch {
             guard token == mine else { throw await stale(engine) }
             guard !stopped, Self.mayFallBack(after: error) else { throw error }
+            // Il n'est plus le moteur actif : le repli ne l'arrête pas une
+            // seconde fois (`retire`).
+            active = nil
             await engine.cancel()
             guard token == mine else { throw CancellationError() }
             guard !stopped else { throw error }
