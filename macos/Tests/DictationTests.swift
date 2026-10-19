@@ -462,7 +462,7 @@ final class DictationControllerTests: XCTestCase {
         var t = Transcript()
         t.receive("Un deux trois.", isFinal: true)
         t.receive("quatre cinq", isFinal: false)
-        let shown = DictationLine.styled(t, theme: .paper, from: 4)
+        let shown = DictationLine.styled(t, theme: .paper, from: 3)   // « d » de « deux »
         XCTAssertEqual(String(shown.characters), "…deux trois. quatre cinq")
         XCTAssertEqual(String(DictationLine.styled(t, theme: .paper).characters), "Un deux trois. quatre cinq")
         XCTAssertEqual(String(DictationLine.styled(t, theme: .paper, upTo: 18).characters), "Un deux trois. qua",
