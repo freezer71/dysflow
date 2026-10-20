@@ -118,7 +118,7 @@ final class SettingsUITests: XCTestCase {
     private func launch(_ arguments: [String], keepingSection: Bool = false) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing"] + (keepingSection ? [] : ["--ui-testing-reglages-neufs"]) + arguments
-        app.launch()
+        app.launchInFrench()
         return app
     }
 

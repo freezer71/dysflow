@@ -111,7 +111,7 @@ final class KokoroMLXCompute: KokoroCompute, @unchecked Sendable {
                     directory = modelDir
                 } catch {
                     budget.remove("kokoro")
-                    throw SillageError.Failed(message: "Calcul Metal indisponible : \(error.localizedDescription)")
+                    throw SillageError.Failed(message: String(localized: "Metal compute unavailable: \(error.localizedDescription)"))
                 }
             }
             users += 1
@@ -122,7 +122,7 @@ final class KokoroMLXCompute: KokoroCompute, @unchecked Sendable {
     /// symboles, espaces, une virgule), pour que les noyaux préparés soient
     /// ceux d'une lecture. Lettres ASCII seules (a → 43 … z → 68, sans g,
     /// absent du vocabulaire de Kokoro), espace 16, virgule 3, point 4.
-    static let warmUpPhonemes = "la vwa se prepar, avek yn fraz kurt."
+    static let warmUpPhonemes = "la vwa se prepar, avek yn fraz kurt."   // xcstrings: garder (phonèmes)
 
     static func warmUpIds() -> [Int64] {
         let ids = warmUpPhonemes.unicodeScalars.map { c -> Int64 in
@@ -143,7 +143,7 @@ final class KokoroMLXCompute: KokoroCompute, @unchecked Sendable {
     /// (la lecture est partie avant), elle ne fait rien et réussit.
     func warmUp() throws {
         try gate.run {
-            guard forward != nil else { throw SillageError.Failed(message: "modèle Kokoro non chargé") }
+            guard forward != nil else { throw SillageError.Failed(message: String(localized: "Kokoro model not loaded")) }
             if kernelsCompiled { return }
             _ = try runLocked(ids: Self.warmUpIds(), style: [Float](repeating: 0, count: 256), isCancelled: nil)
         }
@@ -164,7 +164,7 @@ final class KokoroMLXCompute: KokoroCompute, @unchecked Sendable {
         // L'abandon d'abord : une synthèse inutile pendant une brève
         // libération des poids est un abandon, pas un échec.
         if isCancelled?() == true { throw SillageError.Cancelled }
-        guard let forward else { throw SillageError.Failed(message: "modèle Kokoro non chargé") }
+        guard let forward else { throw SillageError.Failed(message: String(localized: "Kokoro model not loaded")) }
         counter.withLockUnchecked { synthesized += 1 }
         let debut = DispatchTime.now().uptimeNanoseconds
         let sortie = forward.run(ids: ids.map { Int32(clamping: $0) }, style: style, shouldStop: isCancelled)

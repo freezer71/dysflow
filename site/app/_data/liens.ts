@@ -11,7 +11,7 @@ const derniere = `${depot}/releases/latest/download`;
 export const commandeInstallation =
   "curl -fsSL https://sillage.koumalabs.org/install.sh | sh";
 
-export const commandeDesinstallation = `${commandeInstallation} -s -- --desinstaller`;
+export const commandeDesinstallation = `${commandeInstallation} -s -- --uninstall`;
 
 export const telechargements = {
   dmg: `${derniere}/sillage-macos.dmg`,

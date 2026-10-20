@@ -1,4 +1,5 @@
 #if DEBUG
+// xcstrings: garder tout le fichier (imite les textes du moteur, en français : les tests tournent en français)
 /// Pour les tests d'interface seulement : le lecteur muet n'a ni
 /// configuration illisible ni voix Kokoro. Ces arguments les posent dans
 /// ce qu'il rend, pour que les tests les atteignent au clavier et les

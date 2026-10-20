@@ -17,28 +17,28 @@ enum AudioOutputChoices {
         var list = [Choice(title: systemTitle(outputs), value: "")]
         list += outputs.devices.map { Choice(title: $0, value: $0) }
         if !chosen.isEmpty, !outputs.devices.contains(chosen) {
-            list.append(Choice(title: "\(chosen) (débranché)", value: chosen))
+            list.append(Choice(title: String(localized: "\(chosen) (disconnected)", comment: "Audio output that is chosen but unplugged"), value: chosen))
         }
         return list
     }
 
     static func systemTitle(_ outputs: AudioOutputsView) -> String {
-        guard let system = outputs.system else { return "Sortie du système" }
-        return "Sortie du système (\(system))"
+        guard let system = outputs.system else { return String(localized: "System Output") }
+        return String(localized: "System Output (\(system))")
     }
 
     /// Le nom court montré sur le bouton du panneau : la sortie choisie,
     /// sinon celle que le système utilise.
     static func buttonTitle(_ outputs: AudioOutputsView, chosen: String) -> String {
         guard chosen.isEmpty else { return chosen }
-        return outputs.system ?? "Système"
+        return outputs.system ?? String(localized: "System")
     }
 
     /// Le symbole de la sortie choisie, pour le bouton du panneau.
     static func symbol(for chosen: String) -> String {
         guard !chosen.isEmpty else { return "speaker.wave.2" }
         let name = chosen.lowercased()
-        let worn = ["airpods", "casque", "écouteur", "ecouteur", "headphone", "buds", "beats"]
+        let worn = ["airpods", "casque", "écouteur", "ecouteur", "headphone", "buds", "beats"] // xcstrings: garder
         return worn.contains { name.contains($0) } ? "headphones" : "hifispeaker"
     }
 }

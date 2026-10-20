@@ -25,10 +25,10 @@ struct DictationView: View {
                 Group {
                     // Une autorisation manque : le bouton prend la place des barres.
                     if let permission = controller.missingPermission {
-                        Button("Autoriser") { controller.requestMissingPermission() }
+                        Button("Allow") { controller.requestMissingPermission() }
                             .buttonStyle(.notionPrimary)
                             .controlSize(.mini)
-                            .accessibilityLabel("Autoriser : \(permission.title)")
+                            .accessibilityLabel("Allow: \(permission.title)")
                             .accessibilityIdentifier("autoriser-dictee")
                     } else {
                         VoiceBars(feed: controller.spectrum, phase: controller.phase, theme: theme)
@@ -53,7 +53,7 @@ struct DictationView: View {
             increaseContrast = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
         }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Dictée")
+        .accessibilityLabel("Dictation")
     }
 }
 
@@ -70,8 +70,8 @@ struct TargetIcon: View {
             }
         }
         .frame(width: 14, height: 14)
-        .help(target.map { "Saisie dans \($0.name)" } ?? "")
-        .accessibilityLabel(target.map { "Saisie dans \($0.name)" } ?? "Saisie")
+        .help(target.map { String(localized: "Typing into \($0.name)") } ?? "")
+        .accessibilityLabel(target.map { String(localized: "Typing into \($0.name)") } ?? String(localized: "Typing"))
     }
 }
 
@@ -107,8 +107,8 @@ struct DictationStats: View {
     }
 
     static func help(latency: Duration?, memory: Int?) -> String {
-        [latency.map { "Délai : \(format($0)), de la fin de ce qui a été dit au texte affiché" },
-         memory.map { "Mémoire : \(size($0)), occupée par le modèle et ses calculs" }]
+        [latency.map { String(localized: "Delay: \(format($0)), from the end of what was said to the text shown") },
+         memory.map { String(localized: "Memory: \(size($0)), used by the model and its computations") }]
             .compactMap { $0 }.joined(separator: ". ")
     }
 
@@ -116,7 +116,7 @@ struct DictationStats: View {
     static func format(_ latency: Duration) -> String {
         let ms = Double(latency.components.seconds) * 1000 + Double(latency.components.attoseconds) / 1e15
         if ms < 1000 { return "\(Int(ms.rounded())) ms" }
-        return (ms / 1000).formatted(.number.precision(.fractionLength(1)).locale(Locale(identifier: "fr_FR"))) + " s"
+        return (ms / 1000).formatted(.number.precision(.fractionLength(1)).locale(UILanguage.locale)) + " s"
     }
 
     /// Comme le reste des réglages (« 506 Mo »).
@@ -214,12 +214,12 @@ struct DictationLine: View {
     @State private var reveal = TypingReveal()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    static let placeholder = "Parlez, le texte s'écrit ici."
+    static let placeholder = String(localized: "Speak, and the text appears here.")
 
     /// Ce que disent les deux lignes à la place du texte.
     static func status(_ phase: DictationController.Phase) -> String? {
         switch phase {
-        case .preparing(let download?): "Installation de la langue… \(Int((download * 100).rounded())) %"
+        case .preparing(let download?): String(localized: "Installing the language… \(Int((download * 100).rounded()))%")
         case .notice(let message), .failed(let message): message
         case .preparing, .listening, .finishing, .hidden: nil
         }

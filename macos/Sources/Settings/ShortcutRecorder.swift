@@ -94,7 +94,7 @@ enum DictationTrigger {
     /// « Option droite », « ⌃⌥D », « Option droite ou ⌃⌥D », ou `nil`.
     static func label(modifier: DictationModifier, combo: String?) -> String? {
         let parts = [modifier == .none ? nil : modifier.label, combo].compactMap { $0 }
-        return parts.isEmpty ? nil : parts.joined(separator: " ou ")
+        return parts.isEmpty ? nil : parts.joined(separator: String(localized: " or "))
     }
 
     static func currentLabel(defaults: UserDefaults = .standard) -> String? {
@@ -126,8 +126,8 @@ struct ShortcutRecorder: View {
     /// Change à chaque enregistrement : l'affichage relit les réglages.
     @State private var revision = 0
 
-    static let placeholder = "Tapez le raccourci…"
-    static let refusal = "Ajoutez ⌘, ⌥ ou ⌃"
+    static let placeholder = String(localized: "Press the shortcut…")
+    static let refusal = String(localized: "Add ⌘, ⌥ or ⌃")
 
     var body: some View {
         let current = currentLabel
@@ -135,7 +135,7 @@ struct ShortcutRecorder: View {
             Button {
                 recording ? stop() : start()
             } label: {
-                Text(recording ? (refused ? Self.refusal : Self.placeholder) : (current ?? "Aucun"))
+                Text(recording ? (refused ? Self.refusal : Self.placeholder) : (current ?? String(localized: "None")))
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(recording ? Palette.muted : (current == nil ? Palette.muted : Palette.ink))
                     .lineLimit(1)
@@ -155,7 +155,7 @@ struct ShortcutRecorder: View {
             .pointingHandCursor()
             .help(help)
             .accessibilityLabel(title)
-            .accessibilityValue(recording ? Self.placeholder : (current ?? "aucun"))
+            .accessibilityValue(recording ? Self.placeholder : (current ?? String(localized: "none")))
             .accessibilityHint(help)
             .accessibilityIdentifier(identifier)
             if current != nil, !recording {
@@ -170,8 +170,8 @@ struct ShortcutRecorder: View {
                 }
                 .buttonStyle(.plain)
                 .pointingHandCursor()
-                .help("Effacer le raccourci")
-                .accessibilityLabel("Effacer : \(title)")
+                .help("Clear the shortcut")
+                .accessibilityLabel("Clear: \(title)")
                 .accessibilityIdentifier("\(identifier)-effacer")
             }
         }
@@ -182,10 +182,9 @@ struct ShortcutRecorder: View {
     private var help: String {
         switch target {
         case .dictation:
-            "Cliquez, puis tapez une touche de modification seule (Option, Commande, Contrôle, Maj, Fn) "
-                + "ou une combinaison (⌥D). Échap annule."
+            String(localized: "Click, then press a single modifier key (Option, Command, Control, Shift, Fn) or a combination (⌥D). Esc cancels.")
         case .shortcut:
-            "Cliquez, puis tapez une combinaison (⌃⌥S) ou une touche de fonction. Échap annule."
+            String(localized: "Click, then press a combination (⌃⌥S) or a function key. Esc cancels.")
         }
     }
 
@@ -199,7 +198,7 @@ struct ShortcutRecorder: View {
 
     /// Une combinaison, écrite comme sur le clavier, avec les noms français.
     static func text(_ shortcut: KeyboardShortcuts.Shortcut) -> String {
-        shortcut.description.replacingOccurrences(of: "Space", with: "Espace")
+        shortcut.description.replacingOccurrences(of: "Space", with: String(localized: "Space", comment: "Key name"))
     }
 
     private func start() {

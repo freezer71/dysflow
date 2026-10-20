@@ -37,7 +37,7 @@ commande `sillage` qui l'ouvre ; sous Linux, le lecteur au terminal dans
 dernière version remplace l'installée — modèles et réglages restent — ou le
 script dit qu'elle est déjà là (`sh -s -- --force` pour réinstaller quand
 même). Pour désinstaller,
-la même commande suivie de `-s -- --desinstaller` (modèles et réglages
+la même commande suivie de `-s -- --uninstall` (modèles et réglages
 restent).
 
 Sur Mac, la [publication](https://github.com/freezer71/sillage/releases/latest)

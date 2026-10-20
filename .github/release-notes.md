@@ -32,7 +32,7 @@ système lit en attendant.
 ## Désinstaller
 
 ```bash
-curl -fsSL https://sillage.koumalabs.org/install.sh | sh -s -- --desinstaller
+curl -fsSL https://sillage.koumalabs.org/install.sh | sh -s -- --uninstall
 ```
 
 Chaque archive a son empreinte SHA-256 (`.sha256`).

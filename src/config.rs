@@ -197,26 +197,34 @@ impl Config {
                 Ok(config) => (config.normalised(), None),
                 Err(err) => (
                     Self::default(),
-                    Some(format!("configuration ignorée ({}) : {err}", path.display())),
+                    Some(crate::tr!(
+                        en = "configuration ignored ({}): {err}",
+                        fr = "configuration ignorée ({}) : {err}",
+                        path.display(),
+                    )),
                 ),
             },
             Err(err) => (
                 Self::default(),
-                Some(format!("configuration illisible ({}) : {err}", path.display())),
+                Some(crate::tr!(
+                    en = "unreadable configuration ({}): {err}",
+                    fr = "configuration illisible ({}) : {err}",
+                    path.display(),
+                )),
             ),
         }
     }
 
     pub fn save(&self) -> Result<PathBuf> {
-        let path = Self::path().context("répertoire de configuration introuvable")?;
+        let path = Self::path().context(crate::tr!("configuration directory not found", "répertoire de configuration introuvable"))?;
         self.save_to(&path)?;
         Ok(path)
     }
 
     pub(crate) fn save_to(&self, path: &std::path::Path) -> Result<()> {
-        let text = toml::to_string_pretty(self).context("sérialisation de la configuration")?;
+        let text = toml::to_string_pretty(self).context(crate::tr!("serializing the configuration", "sérialisation de la configuration"))?;
         crate::paths::write_atomic(path, text.as_bytes())
-            .with_context(|| format!("écriture de {}", path.display()))?;
+            .with_context(|| crate::tr!(en = "writing {}", fr = "écriture de {}", path.display()))?;
         Ok(())
     }
 
@@ -229,8 +237,9 @@ impl Config {
             return Ok(Self::default());
         }
         let text = std::fs::read_to_string(path)
-            .with_context(|| format!("configuration illisible ({})", path.display()))?;
-        toml::from_str(&text).with_context(|| format!("configuration invalide ({})", path.display()))
+            .with_context(|| crate::tr!(en = "unreadable configuration ({})", fr = "configuration illisible ({})", path.display()))?;
+        toml::from_str(&text)
+            .with_context(|| crate::tr!(en = "invalid configuration ({})", fr = "configuration invalide ({})", path.display()))
     }
 
     /// Ramène chaque réglage dans les bornes que l'écran lui donne.

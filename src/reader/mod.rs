@@ -169,10 +169,10 @@ impl Reader {
             if app.player.is_playing() {
                 app.player.pause();
             }
-            app.notify(&format!("{name} débranché : lecture en pause"));
+            app.notify(&crate::tr!(en = "{name} unplugged: reading paused", fr = "{name} débranché : lecture en pause"));
         } else if present && !was {
             app.replace_player((self.players)(&name), false);
-            app.notify(&format!("{name} de retour : Espace pour reprendre"));
+            app.notify(&crate::tr!(en = "{name} is back: Space to resume", fr = "{name} de retour : Espace pour reprendre"));
         }
     }
 
@@ -186,7 +186,7 @@ impl Reader {
         let missing = player.error().map(str::to_string);
         app.replace_player(player, playing && missing.is_none());
         if let Some(err) = missing {
-            app.notify(&format!("sortie audio indisponible : {err}"));
+            app.notify(&crate::tr!(en = "audio output unavailable: {err}", fr = "sortie audio indisponible : {err}"));
         }
     }
 
@@ -223,7 +223,7 @@ impl Reader {
         if !self.writes_config() {
             return Ok(());
         }
-        let path = self.config_path.as_deref().ok_or_else(|| anyhow::anyhow!("répertoire de configuration introuvable"))?;
+        let path = self.config_path.as_deref().ok_or_else(|| anyhow::anyhow!(crate::tr!("configuration directory not found", "répertoire de configuration introuvable")))?;
         self.config.save_to(path)
     }
 
@@ -233,12 +233,15 @@ impl Reader {
     pub fn replace_unreadable_config(&mut self) -> anyhow::Result<()> {
         use anyhow::Context;
         if !self.persist {
-            return Err(anyhow::anyhow!(data::TRIAL));
+            return Err(anyhow::anyhow!(data::TRIAL.get()));
         }
         if !self.config_unreadable {
-            return Err(anyhow::anyhow!("la configuration est lisible : rien à remplacer"));
+            return Err(anyhow::anyhow!(crate::tr!(
+                "the configuration is readable: nothing to replace",
+                "la configuration est lisible : rien à remplacer"
+            )));
         }
-        let path = self.config_path.clone().ok_or_else(|| anyhow::anyhow!("répertoire de configuration introuvable"))?;
+        let path = self.config_path.clone().ok_or_else(|| anyhow::anyhow!(crate::tr!("configuration directory not found", "répertoire de configuration introuvable")))?;
         if path.exists() {
             let kept = (1..)
                 .map(|n| {
@@ -248,7 +251,7 @@ impl Reader {
                 })
                 .find(|p| !p.exists())
                 .expect("un nom libre");
-            std::fs::copy(&path, &kept).with_context(|| format!("copie de {}", path.display()))?;
+            std::fs::copy(&path, &kept).with_context(|| crate::tr!(en = "copying {}", fr = "copie de {}", path.display()))?;
         }
         self.sync_config();
         self.config.save_to(&path)?;
@@ -261,7 +264,7 @@ impl Reader {
         crate::models::available_with(self.mlx)
             .into_iter()
             .find(|p| p.id == id)
-            .ok_or_else(|| anyhow::anyhow!("voix inconnue : {id}"))
+            .ok_or_else(|| anyhow::anyhow!(crate::tr!(en = "unknown voice: {id}", fr = "voix inconnue : {id}")))
     }
 
     pub fn session(&self) -> Option<&App> {

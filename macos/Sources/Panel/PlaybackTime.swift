@@ -16,22 +16,22 @@ enum PlaybackTime {
 
     /// Ce que VoiceOver dit du temps restant : « 2:00 ».
     static func spokenRemaining(elapsed: Double?, total: Double?) -> String {
-        remaining(elapsed: elapsed, total: total).map { PlayerBar.time($0) } ?? "inconnu"
+        remaining(elapsed: elapsed, total: total).map { PlayerBar.time($0) } ?? String(localized: "unknown", comment: "VoiceOver: remaining time")
     }
 
     /// La valeur de la timeline pour VoiceOver : « 0:56 sur 2:56 », ou le
     /// pourcentage lu tant que la durée n'est pas connue.
     static func timelineValue(elapsed: Double?, total: Double?, progress: Float) -> String {
         if let elapsed, let total, elapsed.isFinite, total.isFinite {
-            return "\(PlayerBar.time(elapsed)) sur \(PlayerBar.time(total))"
+            return String(localized: "\(PlayerBar.time(elapsed)) of \(PlayerBar.time(total))", comment: "VoiceOver: elapsed time of total time")
         }
-        return "\(Int(Timeline.clamped(Double(progress)) * 100)) %"
+        return String(localized: "\(Int(Timeline.clamped(Double(progress)) * 100))%", comment: "VoiceOver: progress")
     }
 
     /// La barre réduite sans document.
     @MainActor
     static func emptyText(shortcut: KeyboardShortcuts.Shortcut?) -> String {
-        guard let shortcut else { return "Rien à lire — raccourci : ⌘," }
-        return "Rien à lire — " + PanelInvitation.keys(shortcut)
+        guard let shortcut else { return String(localized: "Nothing to read — shortcut: ⌘,") }
+        return String(localized: "Nothing to read — \(PanelInvitation.keys(shortcut))")
     }
 }

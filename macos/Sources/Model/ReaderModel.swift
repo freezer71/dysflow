@@ -327,7 +327,7 @@ final class ReaderModel {
                 _ = try await updateSettings(patch)
             } catch {
                 audioOutputs.select(previous)
-                message = "Sortie audio non enregistrée : \(error.localizedDescription)"
+                message = String(localized: "Audio output not saved: \(error.localizedDescription)")
             }
         }
     }

@@ -40,9 +40,9 @@ pub struct Vocab(HashMap<char, i64>);
 
 impl Vocab {
     pub fn from_config(path: &Path) -> Result<Self> {
-        let text = std::fs::read_to_string(path).with_context(|| format!("lecture de {}", path.display()))?;
-        let json: serde_json::Value = serde_json::from_str(&text).context("config.json illisible")?;
-        let vocab = json["vocab"].as_object().context("config.json sans vocabulaire")?;
+        let text = std::fs::read_to_string(path).with_context(|| crate::tr!(en = "reading {}", fr = "lecture de {}", path.display()))?;
+        let json: serde_json::Value = serde_json::from_str(&text).context(crate::tr!("unreadable config.json", "config.json illisible"))?;
+        let vocab = json["vocab"].as_object().context(crate::tr!("config.json without vocabulary", "config.json sans vocabulaire"))?;
         Ok(Self::from_pairs(vocab.iter().filter_map(|(symbol, id)| {
             let mut chars = symbol.chars();
             match (chars.next(), chars.next(), id.as_i64()) {
@@ -143,7 +143,7 @@ impl Inner {
         let failures = self.failures.fetch_add(1, Ordering::SeqCst) + 1;
         if failures >= MAX_COMPUTE_FAILURES {
             eprintln!("kokoro : {failures} échecs du calcul d'affilée, passage en repli");
-            self.break_down("calcul Kokoro en échec".to_string());
+            self.break_down(crate::tr!("Kokoro keeps failing", "calcul Kokoro en échec").to_string());
         }
     }
 }
@@ -203,7 +203,7 @@ impl KokoroEngine {
 impl TtsEngine for KokoroEngine {
     fn name(&self) -> String {
         match self.inner.broken() {
-            Some(_) => format!("{} (repli)", self.inner.fallback.name()),
+            Some(_) => crate::tr!(en = "{} (fallback)", fr = "{} (repli)", self.inner.fallback.name()),
             None => format!("Kokoro · {}", self.inner.backend.label()),
         }
     }
@@ -280,8 +280,8 @@ impl TtsSession for KokoroSession {
         let phonemes = match self.inner.phonemizer.locked().phonemize(language, &items) {
             Ok(p) => p,
             Err(err) => {
-                self.inner.break_down(format!("espeak-ng s'est arrêté ({err})"));
-                bail!("phonétisation impossible : {err}");
+                self.inner.break_down(crate::tr!(en = "espeak-ng has stopped ({err})", fr = "espeak-ng s'est arrêté ({err})"));
+                bail!(crate::tr!(en = "phonemization failed: {err}", fr = "phonétisation impossible : {err}"));
             }
         };
 
@@ -320,7 +320,7 @@ impl TtsSession for KokoroSession {
             chunks.push((kept, raw.durations));
         }
         if samples.is_empty() {
-            bail!("phrase sans phonème connu");
+            bail!(crate::tr!("sentence without any known phoneme", "phrase sans phonème connu"));
         }
         self.inner.failures.store(0, Ordering::SeqCst);
         let timing = if words.is_empty() {

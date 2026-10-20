@@ -75,7 +75,7 @@ struct ReglagesView: View {
         // La barre de titre est transparente : la liste monte jusqu'en haut.
         .ignoresSafeArea()
         .modifier(HiddenWindowToolbar())
-        .navigationTitle("Réglages")
+        .navigationTitle("Settings")
         .frame(minWidth: Self.minWidth, idealWidth: Self.idealWidth, maxWidth: .infinity,
                minHeight: Self.minHeight, idealHeight: Self.idealHeight, maxHeight: .infinity)
         .font(Typo.body)
@@ -223,7 +223,7 @@ struct SettingsSidebar: View {
             }
         }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Sections des réglages")
+        .accessibilityLabel("Settings sections")
         .accessibilityIdentifier("sections-reglages")
     }
 }
@@ -293,7 +293,7 @@ struct ConfigUnreadableBanner: View {
                 Text(line)
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("configuration-illisible")
-                Button("Remplacer config.toml par les réglages actuels…") { confirming = true }
+                Button("Replace config.toml with the current settings…") { confirming = true }
                     .buttonStyle(.notion)
                     .accessibilityIdentifier("remplacer-configuration")
                 ErrorText(error.text, identifier: "erreur-remplacement")
@@ -305,11 +305,11 @@ struct ConfigUnreadableBanner: View {
             .background(Color(nsColor: .adaptive(light: 0xFBF3DB, dark: 0x3A3220)))
             .accessibilityElement(children: .contain)
             .onAppear { AnnounceOnce.post(line) }
-            .alert("Remplacer config.toml ?", isPresented: $confirming) {
+            .alert("Replace config.toml?", isPresented: $confirming) {
                 // Annuler par défaut : Retour et Échap ne remplacent rien.
-                Button("Annuler", role: .cancel) {}
+                Button("Cancel", role: .cancel) {}
                     .keyboardShortcut(.defaultAction)
-                Button("Remplacer", role: .destructive) {
+                Button("Replace", role: .destructive) {
                     Task {
                         await store.flush()
                         do {
@@ -321,16 +321,14 @@ struct ConfigUnreadableBanner: View {
                     }
                 }
             } message: {
-                Text("Le fichier actuel est gardé à côté, sous le nom config.toml.illisible. "
-                     + "Les réglages affichés seront écrits à sa place.")
+                Text("The current file is kept alongside, named config.toml.illisible. The settings shown will be written in its place.")
             }
         }
     }
 
     static func line(unreadable: Bool) -> String? {
         guard unreadable else { return nil }
-        return "Configuration illisible : config.toml n'a pas pu être lu. Les réglages s'appliquent, "
-            + "mais ne sont pas enregistrés tant qu'il n'est pas corrigé ou remplacé."
+        return String(localized: "Unreadable configuration: config.toml could not be read. Settings still apply, but they are not saved until it is fixed or replaced.")
     }
 }
 

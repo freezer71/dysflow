@@ -14,7 +14,7 @@ enum ModelLibrary {
         var search = ""
     }
 
-    static let all = "Tous"
+    static let all = String(localized: "All")
 
     /// Les valeurs du filtre « Langue ».
     static let french = "fr"
@@ -82,11 +82,12 @@ enum ModelLibrary {
     }
 
     static let languageOptions: [(title: String, value: String)] =
-        [(title: "Toutes", value: ""), (title: "Français", value: french),
-         (title: "Anglais seulement", value: englishOnly)]
+        [(title: String(localized: "All languages"), value: ""), (title: String(localized: "French"), value: french),
+         (title: String(localized: "English only"), value: englishOnly)]
 
     static let stateOptions: [(title: String, value: String)] =
-        [(title: all, value: ""), (title: "Installés", value: installed), (title: "À télécharger", value: missing)]
+        [(title: all, value: ""), (title: String(localized: "Installed"), value: installed),
+         (title: String(localized: "To download"), value: missing)]
 
     /// La ligne sous le nom : langues et précision.
     static func details(_ row: VoiceModel) -> String {
@@ -110,14 +111,14 @@ enum ModelLibrary {
     static func accessibilityLabel(_ row: VoiceModel, _ state: ModelRowState) -> String {
         var parts = [row.name, ModelTable.maker(row).name, row.languagesLabel].filter { !$0.isEmpty }
         switch state {
-        case .system: parts.append("sur ce Mac")
-        case .notInstalled: parts.append("non installé, \(ModelTable.size(row)) à télécharger")
-        case .downloading(let fraction): parts.append("téléchargement \(Int(fraction * 100)) %")
-        case .failed(let message): parts.append("échec du téléchargement : \(message)")
-        case .installed: parts.append("installé, \(ModelTable.size(row))")
+        case .system: parts.append(String(localized: "on this Mac"))
+        case .notInstalled: parts.append(String(localized: "not installed, \(ModelTable.size(row)) to download"))
+        case .downloading(let fraction): parts.append(String(localized: "downloading \(Int(fraction * 100))%"))
+        case .failed(let message): parts.append(String(localized: "download failed: \(message)"))
+        case .installed: parts.append(String(localized: "installed, \(ModelTable.size(row))"))
         }
         if state != .installed, ModelTable.canRemove(row, state) {
-            parts.append("téléchargement incomplet, \(ModelTable.bytes(row.diskBytes)) sur le disque")
+            parts.append(String(localized: "incomplete download, \(ModelTable.bytes(row.diskBytes)) on disk"))
         }
         if row.active { parts.append(ModelTable.used(row)) }
         return parts.joined(separator: ", ")

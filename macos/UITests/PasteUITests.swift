@@ -23,7 +23,7 @@ final class PasteUITests: XCTestCase {
         NSPasteboard.general.setString("Bonjour du presse-papiers. Deuxième phrase.", forType: .string)
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--ui-testing-vide", "--show-panel"]
-        app.launch()
+        app.launchInFrench()
         XCTAssertTrue(app.groups["lecteur"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["invitation"].waitForExistence(timeout: 2))
         app.typeKey("v", modifierFlags: .command)

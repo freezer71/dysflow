@@ -83,14 +83,14 @@ impl Punctuation {
     /// Libellé affiché dans la barre d'état.
     pub fn label(&self) -> &'static str {
         match self {
-            Punctuation::Comma => "virgule",
-            Punctuation::Period => "point",
-            Punctuation::Question => "point d'interrogation",
-            Punctuation::Exclamation => "point d'exclamation",
-            Punctuation::Colon => "deux-points",
-            Punctuation::SemiColon => "point-virgule",
-            Punctuation::Ellipsis => "points de suspension",
-            Punctuation::Dash => "tiret",
+            Punctuation::Comma => crate::tr!("comma", "virgule"),
+            Punctuation::Period => crate::tr!("period", "point"),
+            Punctuation::Question => crate::tr!("question mark", "point d'interrogation"),
+            Punctuation::Exclamation => crate::tr!("exclamation mark", "point d'exclamation"),
+            Punctuation::Colon => crate::tr!("colon", "deux-points"),
+            Punctuation::SemiColon => crate::tr!("semicolon", "point-virgule"),
+            Punctuation::Ellipsis => crate::tr!("ellipsis", "points de suspension"),
+            Punctuation::Dash => crate::tr!("dash", "tiret"),
         }
     }
 

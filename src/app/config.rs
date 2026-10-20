@@ -32,12 +32,12 @@ pub const FIELDS: [Field; 6] = [
 impl Field {
     pub fn label(&self) -> &'static str {
         match self {
-            Field::VoiceFr => "Voix française",
-            Field::VoiceEn => "Voix anglaise",
-            Field::Speed => "Vitesse",
-            Field::LineWidth => "Largeur de colonne",
-            Field::LineSpacing => "Interlignage",
-            Field::ReadingRuler => "Règle de lecture",
+            Field::VoiceFr => crate::tr!("French voice", "Voix française"),
+            Field::VoiceEn => crate::tr!("English voice", "Voix anglaise"),
+            Field::Speed => crate::tr!("Speed", "Vitesse"),
+            Field::LineWidth => crate::tr!("Column width", "Largeur de colonne"),
+            Field::LineSpacing => crate::tr!("Line spacing", "Interlignage"),
+            Field::ReadingRuler => crate::tr!("Reading ruler", "Règle de lecture"),
         }
     }
 
@@ -60,19 +60,36 @@ impl Field {
                     .filter(|v| v.language == language)
                     .count();
                 if choices > 1 {
-                    "← → pour changer de voix, t pour l'écouter. Chaque document parle avec la voix de sa langue."
+                    crate::tr!(
+                        "← → to change voice, t to listen. Each document speaks with the voice of its language.",
+                        "← → pour changer de voix, t pour l'écouter. Chaque document parle avec la voix de sa langue."
+                    )
                 } else {
-                    "t pour l'écouter. Chaque document parle avec la voix de sa langue."
+                    crate::tr!(
+                        "t to listen. Each document speaks with the voice of its language.",
+                        "t pour l'écouter. Chaque document parle avec la voix de sa langue."
+                    )
                 }
             }
-            Field::VoiceFr | Field::VoiceEn => "La voix du système lit tant que Kokoro n'est pas installé.",
-            Field::Speed => {
+            Field::VoiceFr | Field::VoiceEn => crate::tr!(
+                "The system voice reads until Kokoro is installed.",
+                "La voix du système lit tant que Kokoro n'est pas installé."
+            ),
+            Field::Speed => crate::tr!(
+                "Applied to the sound, without resynthesis: the voice speeds up without the pitch rising. \
+                 t to hear it.",
                 "Appliquée au son, sans resynthèse : la voix accélère sans monter dans les aigus. \
                  t pour l'entendre."
-            }
-            Field::LineWidth => "Une ligne trop large fait perdre le début de la suivante.",
-            Field::LineSpacing => "Lignes vides entre deux lignes de texte.",
-            Field::ReadingRuler => "Souligne d'un fond la ligne en cours de lecture.",
+            ),
+            Field::LineWidth => crate::tr!(
+                "A line too wide makes you lose the start of the next one.",
+                "Une ligne trop large fait perdre le début de la suivante."
+            ),
+            Field::LineSpacing => crate::tr!("Blank lines between two lines of text.", "Lignes vides entre deux lignes de texte."),
+            Field::ReadingRuler => crate::tr!(
+                "Shades the line being read.",
+                "Souligne d'un fond la ligne en cours de lecture."
+            ),
         }
     }
 
@@ -81,26 +98,31 @@ impl Field {
         match self {
             Field::VoiceFr | Field::VoiceEn => {
                 if !models::voices_follow_language(&config.engine.family) {
-                    return "voix du système".to_string();
+                    return crate::tr!("system voice", "voix du système").to_string();
                 }
                 let language = self.language().expect("une ligne de voix a sa langue");
                 let id = config.tts_params_in(language).voice;
                 models::voices_for_family(&config.engine.family)
                     .iter()
                     .find(|v| v.id == id)
-                    .map_or_else(|| id.clone(), |v| v.label.to_string())
+                    .map_or_else(|| id.clone(), |v| v.label.get().to_string())
             }
             Field::Speed => format!("{:.2}×", config.voice.speed),
             Field::LineWidth => match config.reading.line_width {
-                0 => "plein écran".to_string(),
-                n => format!("{n} caractères"),
+                0 => crate::tr!("full screen", "plein écran").to_string(),
+                n => crate::tr!(en = "{n} characters", fr = "{n} caractères"),
             },
             Field::LineSpacing => match config.reading.line_spacing {
-                0 => "aucun".to_string(),
-                1 => "une ligne".to_string(),
-                n => format!("{n} lignes"),
+                0 => crate::tr!("none", "aucun").to_string(),
+                1 => crate::tr!("one line", "une ligne").to_string(),
+                n => crate::tr!(en = "{n} lines", fr = "{n} lignes"),
             },
-            Field::ReadingRuler => if config.reading.reading_ruler { "oui" } else { "non" }.to_string(),
+            Field::ReadingRuler => if config.reading.reading_ruler {
+                crate::tr!("on", "oui")
+            } else {
+                crate::tr!("off", "non")
+            }
+            .to_string(),
         }
     }
 
@@ -233,11 +255,12 @@ impl ConfigScreen {
             }
             models::Progress::Running { .. } => return None,
             models::Progress::Failed(err) => err,
-            models::Progress::Cancelled => "téléchargement interrompu".to_string(),
+            models::Progress::Cancelled => crate::tr!("download interrupted", "téléchargement interrompu").to_string(),
         };
-        self.install_error = Some(format!(
-            "Voix {} non installée : {reason} — nouvel essai au prochain lancement",
-            package.display_name
+        self.install_error = Some(crate::tr!(
+            en = "Voice {} not installed: {reason} — will retry at next launch",
+            fr = "Voix {} non installée : {reason} — nouvel essai au prochain lancement",
+            package.display_name.get(),
         ));
         None
     }

@@ -48,11 +48,11 @@ pub fn of_path(path: &Path) -> Result<Kind> {
         return Ok(Kind::Directory);
     }
     let mut file =
-        File::open(path).with_context(|| format!("ouverture de {}", path.display()))?;
+        File::open(path).with_context(|| crate::tr!(en = "opening {}", fr = "ouverture de {}", path.display()))?;
     let mut head = [0u8; HEAD];
     let read = file
         .read(&mut head)
-        .with_context(|| format!("lecture de {}", path.display()))?;
+        .with_context(|| crate::tr!(en = "reading {}", fr = "lecture de {}", path.display()))?;
     Ok(sniff(&head[..read]))
 }
 

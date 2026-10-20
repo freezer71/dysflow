@@ -8,7 +8,7 @@ final class ExpandedUITests: XCTestCase {
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--show-panel"]
-        app.launch()
+        app.launchInFrench()
         XCTAssertTrue(app.groups["lecteur"].waitForExistence(timeout: 5))
         let sommaire = app.outlines["sommaire"]
         XCTAssertFalse(sommaire.exists, "le sommaire est fermé à l'ouverture")
@@ -33,7 +33,7 @@ final class ExpandedUITests: XCTestCase {
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--show-panel"]
-        app.launch()
+        app.launchInFrench()
         XCTAssertTrue(app.groups["lecteur"].waitForExistence(timeout: 5))
         app.typeKey("t", modifierFlags: [])
         let crumb = app.staticTexts["fil-ariane"]
@@ -57,7 +57,7 @@ final class ExpandedUITests: XCTestCase {
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--show-panel"]
-        app.launch()
+        app.launchInFrench()
         XCTAssertTrue(app.groups["lecteur"].waitForExistence(timeout: 5))
         // « / » ouvre le champ.
         app.typeKey("/", modifierFlags: [])
@@ -102,7 +102,7 @@ final class ExpandedUITests: XCTestCase {
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--show-panel"]
-        app.launch()
+        app.launchInFrench()
         XCTAssertTrue(app.groups["lecteur"].waitForExistence(timeout: 5))
         app.typeKey("t", modifierFlags: [])
         let outline = app.outlines["sommaire"]

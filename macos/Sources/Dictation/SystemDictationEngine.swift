@@ -64,7 +64,7 @@ final class SystemDictationEngine: DictationEngine {
         guard natural.sampleRate > 0, natural.channelCount > 0 else { throw DictationError.noMicrophone }
         guard let tap = AudioTap(from: natural, to: format, input: continuation,
                                  spectrum: { columns in Task { @MainActor in events(.spectrum(columns)) } })
-        else { throw DictationError.failed("format audio non pris en charge") }
+        else { throw DictationError.failed(String(localized: "unsupported audio format")) }
         let sink = AVAudioSinkNode(receiverBlock: tap.receiver())
         audio.attach(sink)
         audio.connect(node, to: sink, format: natural)
@@ -188,7 +188,7 @@ final class SystemDictationEngine: DictationEngine {
         do {
             try await request.downloadAndInstall()
         } catch {
-            throw DictationError.failed("la langue n'a pas pu s'installer")
+            throw DictationError.failed(String(localized: "the language couldn’t be installed"))
         }
     }
 

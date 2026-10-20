@@ -23,7 +23,7 @@ pub enum SillageError {
     Failed { message: String },
     /// Une synthèse Kokoro abandonnée en route (`SynthesisCancel`) : ni un
     /// échec ni un résultat.
-    #[error("synthèse abandonnée")]
+    #[error("{}", sillage::tr!("synthesis cancelled", "synthèse abandonnée"))]
     Cancelled,
 }
 
@@ -225,7 +225,7 @@ pub fn text_speech_bridge_check(
     backend.release(dir);
     let raw = raw?;
     if raw.samples.is_empty() || raw.samples.iter().any(|s| !s.is_finite()) {
-        return Err(failed("sortie invalide"));
+        return Err(failed(sillage::tr!("invalid output", "sortie invalide")));
     }
     Ok(raw.samples.len() as u64)
 }
@@ -656,7 +656,7 @@ impl SillageReader {
     pub fn open_image(&self, bytes: Vec<u8>) -> Result<(), SillageError> {
         let markdown = sillage::source::image_bytes(&bytes).map_err(failed)?;
         if markdown.trim().is_empty() {
-            return Err(failed("aucun texte reconnu dans l'image"));
+            return Err(failed(sillage::tr!("no text recognized in the image", "aucun texte reconnu dans l'image")));
         }
         self.open_text(markdown, "image".into());
         Ok(())
@@ -706,7 +706,7 @@ impl SillageReader {
                     .map(settings_of)
                     .map_err(|e| e.to_string())
             })
-            .ok_or_else(|| failed("lecteur indisponible"))?
+            .ok_or_else(|| failed(sillage::tr!("reader unavailable", "lecteur indisponible")))?
             .map_err(failed)
     }
 
@@ -775,14 +775,14 @@ impl SillageReader {
     pub fn install_voice(&self, id: String) -> Result<(), SillageError> {
         self.handle
             .ask(move |reader| reader.install_voice(&id).map_err(|e| e.to_string()))
-            .ok_or_else(|| failed("lecteur indisponible"))?
+            .ok_or_else(|| failed(sillage::tr!("reader unavailable", "lecteur indisponible")))?
             .map_err(failed)
     }
 
     pub fn use_voice(&self, id: String) -> Result<(), SillageError> {
         self.handle
             .ask(move |reader| reader.use_voice(&id, Instant::now()).map_err(|e| e.to_string()))
-            .ok_or_else(|| failed("lecteur indisponible"))?
+            .ok_or_else(|| failed(sillage::tr!("reader unavailable", "lecteur indisponible")))?
             .map_err(failed)
     }
 
@@ -798,7 +798,7 @@ impl SillageReader {
                     .set_document_language(language.as_deref(), Instant::now())
                     .map_err(|e| e.to_string())
             })
-            .ok_or_else(|| failed("lecteur indisponible"))?
+            .ok_or_else(|| failed(sillage::tr!("reader unavailable", "lecteur indisponible")))?
             .map_err(failed)
     }
 
@@ -806,7 +806,7 @@ impl SillageReader {
     pub fn preview_voice_in(&self, language: String) -> Result<(), SillageError> {
         self.handle
             .ask(move |reader| reader.preview_voice_in(&language, Instant::now()))
-            .ok_or_else(|| failed("lecteur indisponible"))?
+            .ok_or_else(|| failed(sillage::tr!("reader unavailable", "lecteur indisponible")))?
             .map_err(failed)
     }
 
@@ -847,7 +847,7 @@ impl SillageReader {
         -> Result<(), SillageError> {
         self.handle
             .ask(move |reader| reader.preview_voice_with(&model_id, &voice, &text, speed, Instant::now()))
-            .ok_or_else(|| failed("lecteur indisponible"))?
+            .ok_or_else(|| failed(sillage::tr!("reader unavailable", "lecteur indisponible")))?
             .map_err(failed)
     }
 
@@ -867,7 +867,7 @@ impl SillageReader {
     pub fn accept_voice_offer(&self) -> Result<(), SillageError> {
         self.handle
             .ask(|reader| reader.accept_offer(Instant::now()).map_err(|e| e.to_string()))
-            .ok_or_else(|| failed("lecteur indisponible"))?
+            .ok_or_else(|| failed(sillage::tr!("reader unavailable", "lecteur indisponible")))?
             .map_err(failed)
     }
 
@@ -884,7 +884,7 @@ impl SillageReader {
     pub fn ensure_default_voice(&self) -> Result<(), SillageError> {
         self.handle
             .ask(|reader| reader.ensure_default_voice(Instant::now()).map_err(|e| e.to_string()))
-            .ok_or_else(|| failed("lecteur indisponible"))?
+            .ok_or_else(|| failed(sillage::tr!("reader unavailable", "lecteur indisponible")))?
             .map_err(failed)
     }
 
@@ -893,7 +893,7 @@ impl SillageReader {
     pub fn replace_unreadable_config(&self) -> Result<(), SillageError> {
         self.handle
             .ask(|reader| reader.replace_unreadable_config().map_err(|e| e.to_string()))
-            .ok_or_else(|| failed("lecteur indisponible"))?
+            .ok_or_else(|| failed(sillage::tr!("reader unavailable", "lecteur indisponible")))?
             .map_err(failed)
     }
 
@@ -918,14 +918,14 @@ impl SillageReader {
     pub fn cancel_download(&self) -> Result<(), SillageError> {
         self.handle
             .ask(|reader| reader.cancel_download().map_err(|e| e.to_string()))
-            .ok_or_else(|| failed("lecteur indisponible"))?
+            .ok_or_else(|| failed(sillage::tr!("reader unavailable", "lecteur indisponible")))?
             .map_err(failed)
     }
 
     pub fn remove_model(&self, id: String) -> Result<(), SillageError> {
         self.handle
             .ask(move |reader| reader.remove_model(&id).map_err(|e| e.to_string()))
-            .ok_or_else(|| failed("lecteur indisponible"))?
+            .ok_or_else(|| failed(sillage::tr!("reader unavailable", "lecteur indisponible")))?
             .map_err(failed)
     }
 
@@ -962,7 +962,7 @@ impl SillageReader {
     pub fn clear_document_cache(&self) -> Result<u64, SillageError> {
         self.handle
             .ask(|reader| reader.clear_document_cache().map_err(|e| e.to_string()))
-            .ok_or_else(|| failed("lecteur indisponible"))?
+            .ok_or_else(|| failed(sillage::tr!("reader unavailable", "lecteur indisponible")))?
             .map_err(failed)
     }
 }
@@ -979,6 +979,15 @@ fn crossbeam_channel_bounded() -> (
 #[uniffi::export]
 pub fn default_settings() -> SettingsView {
     settings_of(settings::SettingsView::of(&Config::default()))
+}
+
+/// Donne au moteur la langue de l'interface de l'app (`Bundle.main.
+/// preferredLocalizations.first` : `fr`, `fr-CA`, `en`, `de`…). Français si le
+/// code de langue vaut `fr`, anglais sinon. À appeler au lancement, avant de
+/// lire le catalogue des modèles.
+#[uniffi::export]
+pub fn set_interface_language(tag: String) {
+    sillage::i18n::set_ui_lang(sillage::i18n::UiLang::from_locale(&tag));
 }
 
 /// La phrase d'exemple des aperçus, dans `language` (`fr` par défaut) : le
@@ -1165,6 +1174,16 @@ mod tests {
     use super::*;
     use std::time::{Duration, Instant};
 
+    /// La langue de l'interface est globale, et le lecteur répond sur son
+    /// propre fil, que `with_ui_lang` n'atteint pas : le test qui la change et
+    /// ceux qui lisent un texte traduit passent l'un après l'autre. Hors de ce
+    /// test, elle vaut l'anglais, le défaut de la FFI.
+    static LANGUE: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn langue() -> std::sync::MutexGuard<'static, ()> {
+        LANGUE.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
     #[test]
     fn a_silent_reader_opens_text_and_follows_commands() {
         let reader = SillageReader::silent();
@@ -1244,11 +1263,12 @@ mod tests {
 
     #[test]
     fn the_silent_reader_writes_and_erases_nothing() {
+        let _langue = langue();
         let reader = SillageReader::silent();
         let patch = SettingsPatch { seek_step: Some(7), ..Default::default() };
         assert_eq!(reader.update_settings(patch).expect("rien à écrire").seek_step, 7);
         let err = reader.clear_document_cache().unwrap_err().to_string();
-        assert!(err.contains("mode d'essai"), "{err}");
+        assert!(err.contains("trial mode"), "{err}");
     }
 
     /// Les commandes que l'app envoie encore traversent le pont telles quelles.
@@ -1262,12 +1282,13 @@ mod tests {
 
     #[test]
     fn capabilities_and_preview_answer_without_a_model() {
+        let _langue = langue();
         let reader = SillageReader::silent();
         let caps = reader.capabilities();
         assert!(caps.voices.is_empty());
         assert_eq!(caps.languages.len(), 7);
         let err = reader.preview_voice_in("fr".into()).unwrap_err().to_string();
-        assert!(err.contains("sortie audio"), "{err}");
+        assert!(err.contains("audio output"), "{err}");
         reader.stop_preview();
         assert!(!reader.snapshot().preview.pending);
     }
@@ -1280,16 +1301,48 @@ mod tests {
 
     #[test]
     fn the_voice_library_answers_without_a_model() {
+        let _langue = langue();
         let reader = SillageReader::silent();
         // Le lecteur muet ne propose aucun paquet : les voix de macOS seules.
         assert!(reader.voice_library("fr_FR".into()).iter().all(|v| v.model_id == "system" && v.model_label == "macOS"));
         let err = reader.preview_voice_with("system".into(), "Thomas".into(), "  ".into(), 1.0).unwrap_err();
-        assert!(err.to_string().contains("Rien à lire"), "{err}");
+        assert!(err.to_string().contains("Nothing to read"), "{err}");
         let err = reader.preview_voice_with("system".into(), "Thomas".into(), "Bonjour.".into(), 1.0).unwrap_err();
-        assert!(err.to_string().contains("sortie audio"), "{err}");
+        assert!(err.to_string().contains("audio output"), "{err}");
         reader.release_voice_preview();
         let preview = reader.snapshot().preview;
         assert!(!preview.pending && !preview.preparing);
+    }
+
+    #[test]
+    fn the_interface_language_reaches_the_catalogue() {
+        use sillage::i18n::{set_ui_lang, ui_lang, UiLang};
+        // Seul test à toucher la langue globale : le lecteur répond sur son
+        // propre fil, que la surcharge d'un fil de test n'atteint pas. La
+        // langue d'avant revient même si une assertion échoue.
+        struct Restaure(UiLang);
+        impl Drop for Restaure {
+            fn drop(&mut self) {
+                set_ui_lang(self.0);
+            }
+        }
+        let _langue = langue();
+        let _restaure = Restaure(ui_lang());
+        let reader = SillageReader::silent();
+        set_interface_language("de_DE".into());
+        assert_eq!(ui_lang(), UiLang::En);
+        let english = reader.voices();
+        set_interface_language("fr-CA".into());
+        assert_eq!(ui_lang(), UiLang::Fr);
+        let french = reader.voices();
+        let system = |v: &[VoiceModel]| v.iter().find(|m| m.system).map(|m| m.name.clone());
+        assert_eq!(system(&english).as_deref(), Some("macOS voice"));
+        assert_eq!(system(&french).as_deref(), Some("Voix de macOS"));
+        // Les paquets du catalogue passent par `voice_model`, comme la ligne de
+        // macOS : le lecteur muet n'a pas MLX, certains manquent donc ici.
+        for (en, fr) in english.iter().zip(&french).filter(|(m, _)| !m.system) {
+            assert_ne!(en.summary, fr.summary, "{}", en.id);
+        }
     }
 
     #[test]
@@ -1462,10 +1515,11 @@ mod tests {
 
     #[test]
     fn the_offer_answers_cross_the_bridge() {
+        let _langue = langue();
         let reader = SillageReader::silent();
         assert!(reader.snapshot().offer.is_none());
         let err = reader.accept_voice_offer().unwrap_err().to_string();
-        assert!(err.contains("aucune proposition"), "{err}");
+        assert!(err.contains("no pending offer"), "{err}");
         reader.dismiss_voice_offer();
         reader.dismiss_notice();
         assert!(reader.snapshot().notice.is_none());
@@ -1486,10 +1540,11 @@ mod tests {
     /// Le lecteur muet n'écrit rien : « Remplacer » y est refusé.
     #[test]
     fn an_unreadable_config_reaches_the_snapshot() {
+        let _langue = langue();
         let reader = SillageReader::silent();
         assert!(!reader.snapshot().config_unreadable);
         let err = reader.replace_unreadable_config().unwrap_err().to_string();
-        assert!(err.contains("mode d'essai"), "{err}");
+        assert!(err.contains("trial mode"), "{err}");
     }
 
     /// L'app de test (lecteur muet) appelle l'installation comme l'app

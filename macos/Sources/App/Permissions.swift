@@ -18,15 +18,15 @@ enum Permission: CaseIterable {
 
     var title: String {
         switch self {
-        case .accessibility: "Accessibilité"
-        case .microphone: "Micro"
+        case .accessibility: String(localized: "Accessibility")
+        case .microphone: String(localized: "Microphone")
         }
     }
 
     var detail: String {
         switch self {
-        case .accessibility: "Pour lire la sélection et saisir la dictée là où vous écrivez"
-        case .microphone: "Pour la dictée ; la voix est transcrite sur votre Mac"
+        case .accessibility: String(localized: "To read the selection and type dictation where you write")
+        case .microphone: String(localized: "For dictation; your voice is transcribed on your Mac")
         }
     }
 

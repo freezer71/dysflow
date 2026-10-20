@@ -55,7 +55,7 @@ final class MLXDictationEngine: DictationEngine {
             try await load.value
         } catch {
             if generation == id { await cancel() }
-            throw DictationError.failed("le modèle ne se charge pas : \(error.localizedDescription)")
+            throw DictationError.failed(String(localized: "the model won’t load: \(error.localizedDescription)"))
         }
         // Fini ou annulé pendant le chargement : `finish` fait la lecture.
         guard generation == id else { return }
@@ -211,7 +211,7 @@ enum SpeechModels {
         case _ where id.hasPrefix("whisper_"):
             return WhisperSpeech(try WhisperModel.fromDirectory(directory))
         default:
-            throw DictationError.failed("modèle de dictée inconnu : \(id)")
+            throw DictationError.failed(String(localized: "unknown dictation model: \(id)"))
         }
     }
 

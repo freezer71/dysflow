@@ -47,7 +47,9 @@ pub struct ReadingStyle {
 }
 
 /// Début du statut d'une voix dont aucune session ne s'ouvre.
-const VOICE_UNAVAILABLE: &str = "Voix indisponible : ";
+fn voice_unavailable() -> &'static str {
+    crate::tr!("Voice unavailable: ", "Voix indisponible : ")
+}
 
 pub struct App {
     builder: DocumentBuilder,
@@ -217,7 +219,7 @@ impl App {
         let mut notices = notices;
         let output_error = player.error().map(str::to_string);
         if let Some(err) = &output_error {
-            notices.push(format!("sortie audio indisponible : {err}"));
+            notices.push(crate::tr!(en = "audio output unavailable: {err}", fr = "sortie audio indisponible : {err}"));
         }
 
         let autoplay = config.reading.autoplay;

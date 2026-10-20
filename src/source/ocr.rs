@@ -46,10 +46,10 @@ fn tessdata_dir() -> Result<PathBuf> {
 
 fn prepare_tessdata() -> Result<PathBuf> {
     let dir = crate::paths::cache_dir()
-        .context("répertoire de cache introuvable")?
+        .context(crate::tr!("cache directory not found", "répertoire de cache introuvable"))?
         .join("tessdata");
     std::fs::create_dir_all(&dir)
-        .with_context(|| format!("création de {}", dir.display()))?;
+        .with_context(|| crate::tr!(en = "creating {}", fr = "création de {}", dir.display()))?;
     for (lang, data) in [("fra", FRA), ("eng", ENG)] {
         let file = dir.join(format!("{lang}.traineddata"));
         let current = std::fs::metadata(&file).map(|m| m.len()).unwrap_or(0);
@@ -58,9 +58,9 @@ fn prepare_tessdata() -> Result<PathBuf> {
             // doivent jamais voir un fichier à moitié écrit.
             let temp = dir.join(format!("{lang}.{}.tmp", std::process::id()));
             std::fs::write(&temp, data)
-                .with_context(|| format!("écriture de {}", temp.display()))?;
+                .with_context(|| crate::tr!(en = "writing {}", fr = "écriture de {}", temp.display()))?;
             std::fs::rename(&temp, &file)
-                .with_context(|| format!("mise en place de {}", file.display()))?;
+                .with_context(|| crate::tr!(en = "putting {} in place", fr = "mise en place de {}", file.display()))?;
         }
     }
     Ok(dir)
@@ -77,7 +77,12 @@ impl Ocr {
         let dir = tessdata_dir()?;
         let api = tesseract_rs::TesseractAPI::new();
         api.init(dir.to_string_lossy().as_ref(), LANGUAGES)
-            .map_err(|e| anyhow::anyhow!("ouverture du moteur de reconnaissance : {e}"))?;
+            .map_err(|e| {
+                anyhow::anyhow!(crate::tr!(
+                    en = "opening the recognition engine: {e}",
+                    fr = "ouverture du moteur de reconnaissance : {e}"
+                ))
+            })?;
         Ok(Self { api })
     }
 
@@ -90,11 +95,11 @@ impl Ocr {
         let (width, height) = grey.dimensions();
         self.api
             .set_image(grey.as_raw(), width as i32, height as i32, 1, width as i32)
-            .map_err(|e| anyhow::anyhow!("chargement de l'image : {e}"))?;
+            .map_err(|e| anyhow::anyhow!(crate::tr!(en = "loading the image: {e}", fr = "chargement de l'image : {e}")))?;
         let text = self
             .api
             .get_utf8_text()
-            .map_err(|e| anyhow::anyhow!("reconnaissance du texte : {e}"))?;
+            .map_err(|e| anyhow::anyhow!(crate::tr!(en = "recognizing the text: {e}", fr = "reconnaissance du texte : {e}")))?;
         Ok(Page {
             lines: text.lines().map(|l| l.trim_end().to_string()).collect(),
         })
@@ -104,7 +109,7 @@ impl Ocr {
 /// Reconnaît le texte d'un fichier image.
 pub fn pages(path: &Path) -> Result<Vec<Page>> {
     let image =
-        image::open(path).with_context(|| format!("lecture de l'image {}", path.display()))?;
+        image::open(path).with_context(|| crate::tr!(en = "reading the image {}", fr = "lecture de l'image {}", path.display()))?;
     Ok(vec![Ocr::new()?.read(&image)?])
 }
 
@@ -156,12 +161,12 @@ fn natural_key(name: &str) -> Vec<Natural> {
 /// Reconnaît le texte de toutes les images d'un dossier, dans l'ordre.
 pub fn directory_pages(dir: &Path) -> Result<Vec<Page>> {
     let mut files: Vec<PathBuf> = std::fs::read_dir(dir)
-        .with_context(|| format!("lecture de {}", dir.display()))?
+        .with_context(|| crate::tr!(en = "reading {}", fr = "lecture de {}", dir.display()))?
         .filter_map(|entry| entry.ok().map(|e| e.path()))
         .filter(|path| matches!(super::kind::of_path(path), Ok(super::Kind::Image)))
         .collect();
     if files.is_empty() {
-        anyhow::bail!("{} ne contient aucune image lisible", dir.display());
+        anyhow::bail!(crate::tr!(en = "{} contains no readable image", fr = "{} ne contient aucune image lisible", dir.display()));
     }
     files.sort_by_key(|path| {
         natural_key(&path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default())
@@ -173,7 +178,7 @@ pub fn directory_pages(dir: &Path) -> Result<Vec<Page>> {
     let mut pages = Vec::with_capacity(files.len());
     for file in files {
         let image = image::open(&file)
-            .with_context(|| format!("lecture de l'image {}", file.display()))?;
+            .with_context(|| crate::tr!(en = "reading the image {}", fr = "lecture de l'image {}", file.display()))?;
         pages.push(engine.read(&image)?);
     }
     Ok(pages)
@@ -182,13 +187,16 @@ pub fn directory_pages(dir: &Path) -> Result<Vec<Page>> {
 /// Reconnaît une image donnée en pixels bruts, comme le presse-papiers la rend.
 pub fn read_rgba(pixels: &[u8], width: u32, height: u32) -> Result<Page> {
     let buffer = image::RgbaImage::from_raw(width, height, pixels.to_vec())
-        .context("les pixels ne forment pas une image de cette taille")?;
+        .context(crate::tr!(
+            "the pixels do not form an image of this size",
+            "les pixels ne forment pas une image de cette taille"
+        ))?;
     Ocr::new()?.read(&image::DynamicImage::ImageRgba8(buffer))
 }
 
 /// Reconnaît une image encodée (PNG, TIFF…), donnée par ses octets.
 pub fn read_encoded(bytes: &[u8]) -> Result<Page> {
-    let image = image::load_from_memory(bytes).context("ces octets ne forment pas une image lisible")?;
+    let image = image::load_from_memory(bytes).context(crate::tr!("these bytes do not form a readable image", "ces octets ne forment pas une image lisible"))?;
     Ocr::new()?.read(&image)
 }
 

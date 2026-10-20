@@ -11,12 +11,12 @@ enum SettingsSection: String, CaseIterable, Identifiable, Sendable {
     /// Le mot de la liste, et le titre du volet.
     var title: String {
         switch self {
-        case .voix: "Voix"
-        case .affichage: "Affichage"
-        case .dictee: "Dictée"
-        case .raccourcis: "Raccourcis"
-        case .autorisations: "Autorisations"
-        case .demarrage: "Démarrage"
+        case .voix: String(localized: "Voice")
+        case .affichage: String(localized: "Display")
+        case .dictee: String(localized: "Dictation")
+        case .raccourcis: String(localized: "Shortcuts")
+        case .autorisations: String(localized: "Permissions")
+        case .demarrage: String(localized: "Startup")
         }
     }
 

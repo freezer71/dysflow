@@ -4,7 +4,10 @@ use super::*;
 
 /// Le rappel permanent de la ligne d'état, après « s réglages · ? » : les
 /// touches qu'un nouveau venu cherche d'abord.
-pub(super) const REMINDER: &str = " aide · espace lecture · ← → phrase · / chercher · t sommaire ";
+pub(super) const REMINDER: crate::i18n::Tr = crate::i18n::Tr::new(
+    " help · space play · ← → sentence · / search · t contents ",
+    " aide · espace lecture · ← → phrase · / chercher · t sommaire ",
+);
 
 pub(super) fn render_player(frame: &mut Frame, app: &App, area: Rect) {
     let doc = app.doc();
@@ -80,16 +83,19 @@ pub(super) fn render_player(frame: &mut Frame, app: &App, area: Rect) {
         ),
         // L'avance de synthèse est visible : on sait si le moteur suit.
         Span::styled(
-            format!(
-                " ⟐ {} prêtes · {} en cours · {} sessions",
-                stats.ready, stats.in_flight, stats.workers
+            crate::tr!(
+                en = " ⟐ {} ready · {} in progress · {} sessions",
+                fr = " ⟐ {} prêtes · {} en cours · {} sessions",
+                stats.ready,
+                stats.in_flight,
+                stats.workers,
             ),
             Style::default().fg(FAINT),
         ),
     ];
     if stats.failed > 0 {
         second.push(Span::styled(
-            format!("  ⚠ {} échec(s)", stats.failed),
+            crate::tr!(en = "  ⚠ {} failure{}", fr = "  ⚠ {} échec{}", stats.failed, if stats.failed == 1 { "" } else { "s" }),
             Style::default().fg(ACCENT),
         ));
     }
@@ -123,7 +129,7 @@ pub(super) fn status_spans(app: &App) -> Vec<Span<'static>> {
             Style::default().fg(BRIGHT).add_modifier(Modifier::BOLD),
         ));
         spans.push(Span::styled(
-            "  Entrée pour chercher · Échap pour annuler ",
+            crate::tr!("  Enter to search · Esc to cancel ", "  Entrée pour chercher · Échap pour annuler "),
             Style::default().fg(FAINT),
         ));
         return spans;
@@ -133,11 +139,11 @@ pub(super) fn status_spans(app: &App) -> Vec<Span<'static>> {
     // l'a annoncé, sans quoi on cherche pourquoi le texte ne défile plus.
     if !app.view.is_following() {
         spans.push(Span::styled(
-            " ⏸ vue figée ",
+            crate::tr!(" ⏸ view frozen ", " ⏸ vue figée "),
             Style::default().fg(Color::Black).bg(ACCENT).add_modifier(Modifier::BOLD),
         ));
         spans.push(Span::styled(
-            "f revient à la lecture · Pg↑ Pg↓ défilent ",
+            crate::tr!("f back to the reading · Pg↑ Pg↓ scroll ", "f revient à la lecture · Pg↑ Pg↓ défilent "),
             Style::default().fg(NORMAL),
         ));
     } else if !app.status().is_empty() {
@@ -149,7 +155,7 @@ pub(super) fn status_spans(app: &App) -> Vec<Span<'static>> {
         // L'installation de la voix est un état, pas un événement : elle se
         // voit tant qu'elle dure, et son échec jusqu'au prochain lancement.
         spans.push(Span::styled(
-            " ⬇ voix ",
+            crate::tr!(" ⬇ voice ", " ⬇ voix "),
             Style::default().fg(Color::Black).bg(ACCENT).add_modifier(Modifier::BOLD),
         ));
         spans.push(Span::styled(format!(" {install} "), Style::default().fg(NORMAL)));
@@ -162,12 +168,12 @@ pub(super) fn status_spans(app: &App) -> Vec<Span<'static>> {
             "s",
             Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
         ));
-        spans.push(Span::styled(" réglages · ", Style::default().fg(FAINT)));
+        spans.push(Span::styled(crate::tr!(" settings · ", " réglages · "), Style::default().fg(FAINT)));
         spans.push(Span::styled(
             "?",
             Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
         ));
-        spans.push(Span::styled(REMINDER, Style::default().fg(FAINT)));
+        spans.push(Span::styled(REMINDER.get(), Style::default().fg(FAINT)));
     }
 
     // Où en est la recherche, tant qu'elle a des résultats à parcourir.
@@ -189,12 +195,12 @@ pub(super) fn status_spans(app: &App) -> Vec<Span<'static>> {
     }
     if app.skipped_count() > 0 {
         spans.push(Span::styled(
-            format!("· {} phrase(s) sautée(s) ", app.skipped_count()),
+            crate::tr!(en = "· {0} sentence{1} skipped ", fr = "· {0} phrase{1} sautée{1} ", app.skipped_count(), if app.skipped_count() == 1 { "" } else { "s" }),
             Style::default().fg(DIM),
         ));
     }
     if app.is_finished() {
-        spans.push(Span::styled("· lecture terminée ", Style::default().fg(DIM)));
+        spans.push(Span::styled(crate::tr!("· reading finished ", "· lecture terminée "), Style::default().fg(DIM)));
     }
     spans
 }
@@ -215,7 +221,7 @@ pub(super) fn current_punctuation(app: &App) -> Option<&'static str> {
 
 pub(super) fn render_panel(frame: &mut Frame, app: &App, area: Rect) {
     let (title, lines) = match app.panel {
-        Panel::Contents => ("Sommaire", contents_lines(app)),
+        Panel::Contents => (crate::tr!("Contents", "Sommaire"), contents_lines(app)),
         Panel::None => return,
     };
 

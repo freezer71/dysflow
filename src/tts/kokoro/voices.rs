@@ -23,7 +23,7 @@ pub struct VoicePack {
 
 impl VoicePack {
     pub fn from_values(values: Vec<f32>) -> Result<Self> {
-        ensure!(values.len() == ROWS * WIDTH, "voix illisible : {} valeurs au lieu de {}", values.len(), ROWS * WIDTH);
+        ensure!(values.len() == ROWS * WIDTH, crate::tr!(en = "unreadable voice: {} values instead of {}", fr = "voix illisible : {} valeurs au lieu de {}", values.len(), ROWS * WIDTH));
         Ok(Self { values })
     }
 
@@ -40,41 +40,44 @@ impl VoicePack {
 
     /// Lit le seul tenseur d'un fichier safetensors, en flottants 32 bits.
     pub fn from_safetensors(bytes: &[u8]) -> Result<Self> {
-        ensure!(bytes.len() >= 8, "voix illisible : fichier trop court");
+        ensure!(bytes.len() >= 8, crate::tr!("unreadable voice: file too short", "voix illisible : fichier trop court"));
         let header_len = usize::try_from(u64::from_le_bytes(bytes[..8].try_into().expect("8 octets")))
-            .context("voix illisible : en-tête démesuré")?;
-        let data_start = header_len.checked_add(8).context("voix illisible : en-tête démesuré")?;
-        ensure!(bytes.len() >= data_start, "voix illisible : en-tête tronqué");
+            .context(crate::tr!("unreadable voice: oversized header", "voix illisible : en-tête démesuré"))?;
+        let data_start = header_len.checked_add(8).context(crate::tr!("unreadable voice: oversized header", "voix illisible : en-tête démesuré"))?;
+        ensure!(bytes.len() >= data_start, crate::tr!("unreadable voice: truncated header", "voix illisible : en-tête tronqué"));
         let header: serde_json::Map<String, serde_json::Value> =
-            serde_json::from_slice(&bytes[8..data_start]).context("voix illisible : en-tête")?;
+            serde_json::from_slice(&bytes[8..data_start]).context(crate::tr!("unreadable voice: header", "voix illisible : en-tête"))?;
         let (_, info) = header
             .iter()
             .find(|(name, _)| name.as_str() != "__metadata__")
-            .context("voix illisible : aucun tenseur")?;
+            .context(crate::tr!("unreadable voice: no tensor", "voix illisible : aucun tenseur"))?;
         let dtype = info["dtype"].as_str().unwrap_or("");
         if dtype != "F32" {
-            bail!("voix illisible : type {dtype} au lieu de F32");
+            bail!(crate::tr!(en = "unreadable voice: type {dtype} instead of F32", fr = "voix illisible : type {dtype} au lieu de F32"));
         }
         let shape: Vec<u64> = info["shape"]
             .as_array()
-            .context("voix illisible : forme absente")?
+            .context(crate::tr!("unreadable voice: missing shape", "voix illisible : forme absente"))?
             .iter()
             .filter_map(serde_json::Value::as_u64)
             .collect();
         ensure!(
             shape == [ROWS as u64, 1, WIDTH as u64],
-            "voix illisible : forme {shape:?} au lieu de [{ROWS}, 1, {WIDTH}]"
+            crate::tr!(
+                en = "unreadable voice: shape {shape:?} instead of [{ROWS}, 1, {WIDTH}]",
+                fr = "voix illisible : forme {shape:?} au lieu de [{ROWS}, 1, {WIDTH}]"
+            )
         );
         let offsets: Vec<usize> = info["data_offsets"]
             .as_array()
-            .context("voix illisible : positions")?
+            .context(crate::tr!("unreadable voice: offsets", "voix illisible : positions"))?
             .iter()
             .filter_map(|v| v.as_u64().and_then(|v| usize::try_from(v).ok()))
             .collect();
-        ensure!(offsets.len() == 2 && offsets[0] <= offsets[1], "voix illisible : positions");
-        let start = data_start.checked_add(offsets[0]).context("voix illisible : position démesurée")?;
-        let end = data_start.checked_add(offsets[1]).context("voix illisible : position démesurée")?;
-        ensure!(end <= bytes.len() && end - start == ROWS * WIDTH * 4, "voix illisible : données tronquées");
+        ensure!(offsets.len() == 2 && offsets[0] <= offsets[1], crate::tr!("unreadable voice: offsets", "voix illisible : positions"));
+        let start = data_start.checked_add(offsets[0]).context(crate::tr!("unreadable voice: oversized offset", "voix illisible : position démesurée"))?;
+        let end = data_start.checked_add(offsets[1]).context(crate::tr!("unreadable voice: oversized offset", "voix illisible : position démesurée"))?;
+        ensure!(end <= bytes.len() && end - start == ROWS * WIDTH * 4, crate::tr!("unreadable voice: truncated data", "voix illisible : données tronquées"));
         let values = bytes[start..end]
             .as_chunks::<4>()
             .0
@@ -124,7 +127,7 @@ pub fn load_voice(model_dir: &Path, name: &str) -> Result<VoicePack> {
         return VoicePack::from_safetensors(bytes);
     }
     let path = model_dir.join("voices").join(format!("{name}.safetensors"));
-    let bytes = std::fs::read(&path).with_context(|| format!("voix absente : {}", path.display()))?;
+    let bytes = std::fs::read(&path).with_context(|| crate::tr!(en = "voice missing: {}", fr = "voix absente : {}", path.display()))?;
     VoicePack::from_safetensors(&bytes)
 }
 

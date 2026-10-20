@@ -90,6 +90,8 @@ jobs:
         run: python3 -I scripts/third-party-rust.py --check
       - name: shellcheck
         run: shellcheck install.sh scripts/*.sh
+      - name: langue de install.sh
+        run: sh scripts/test-install-lang.sh
 
   macos-app:
     name: App macOS
@@ -117,6 +119,7 @@ jobs:
       - name: sillage-espeak
         run: ./scripts/build-espeak.sh
       - name: Moteur et liaison Swift
+        id: ffi
         run: ./scripts/build-ffi.sh
       - name: Tests de l'app
         # Les tests d'interface (SillageUITests) pilotent l'app à l'écran et
@@ -127,3 +130,15 @@ jobs:
           xcodebuild -project Sillage.xcodeproj -scheme Sillage \
             -destination 'platform=macOS,arch=arm64' -derivedDataPath build/derived \
             test -only-testing:SillageTests
+      - name: Textes sans français (catalogue)
+        # Bloquant : après la compilation des tests (le script lit les
+        # .stringsdata de build/derived), même si les tests ont échoué, du
+        # moment que le moteur a été construit. Il synchronise aussi le
+        # catalogue avec le code.
+        if: ${{ !cancelled() && steps.ffi.conclusion == 'success' }}
+        run: ./scripts/check-xcstrings.sh
+      - name: Catalogue à jour
+        # Le script a réécrit le catalogue : une différence avec le dépôt est
+        # une synchronisation oubliée (clé nouvelle ou périmée).
+        if: ${{ !cancelled() && steps.ffi.conclusion == 'success' }}
+        run: git diff --exit-code macos/Resources/Localizable.xcstrings

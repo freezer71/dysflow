@@ -29,13 +29,13 @@ enum DictationError: Error, Equatable {
     var message: String {
         switch self {
         case .microphoneDenied:
-            "sillage n'a pas accès au micro : autorisez-le pour dicter"
+            String(localized: "sillage can’t access the microphone: allow it to dictate")
         case .noMicrophone:
-            "Aucun micro branché"
+            String(localized: "No microphone connected")
         case .languageUnavailable:
-            "Cette langue n'est pas disponible pour la dictée"
+            String(localized: "This language isn’t available for dictation")
         case .failed(let reason):
-            "La dictée n'a pas pu démarrer : \(reason)"
+            String(localized: "Dictation couldn’t start: \(reason)")
         }
     }
 }
@@ -61,8 +61,8 @@ enum DictationLanguage: String, CaseIterable {
 
     var label: String {
         switch self {
-        case .french: "Français"
-        case .english: "Anglais"
+        case .french: String(localized: "French")
+        case .english: String(localized: "English")
         }
     }
 
@@ -92,7 +92,7 @@ enum DictationModel {
     /// Le nom montré (« Parakeet v3 »).
     static func label(_ id: String) -> String {
         switch id {
-        case system: "Dictée de macOS"
+        case system: String(localized: "macOS dictation")
         case "parakeet_tdt_v3": "Parakeet v3"
         case "phonon_2": "Phonon-2"
         case "whisper_tiny_4bit": "Whisper tiny"
@@ -105,7 +105,7 @@ enum DictationModel {
         case "qwen3_asr_06b_8bit": "Qwen3-ASR 0.6B"
         case "qwen3_asr_17b_4bit": "Qwen3-ASR 1.7B"
         case "cohere_transcribe_8bit": "Cohere Transcribe"
-        default: id.isEmpty ? "Le modèle de dictée" : id
+        default: id.isEmpty ? String(localized: "The dictation model") : id
         }
     }
 }

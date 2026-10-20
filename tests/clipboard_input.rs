@@ -8,6 +8,9 @@ fn pasting_text_asks_for_no_recognition() {
     // fermait la porte à tout binaire construit par défaut — le plus courant.
     let out = Command::new(env!("CARGO_BIN_EXE_sillage"))
         .args(["--clip", "--to-markdown"])
+        // Le refus se cherche dans sa version française : la langue de
+        // l'interface est fixée, quelle que soit celle de la machine.
+        .env("LC_ALL", "fr_FR.UTF-8")
         .output()
         .expect("le binaire doit se lancer");
 

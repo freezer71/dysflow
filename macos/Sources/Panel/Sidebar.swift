@@ -12,7 +12,7 @@ struct Sidebar: View {
         let model = controller.model
         let items = model.tableOfContents
         VStack(alignment: .leading, spacing: 4) {
-            Text("Sommaire")
+            Text("Contents")
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(Color(nsColor: theme.chrome))
                 .padding(.leading, 16)
@@ -40,7 +40,7 @@ struct Sidebar: View {
             })
             .overlay {
                 if items.isEmpty {
-                    Text("Aucun titre")
+                    Text("No headings")
                         .font(.system(size: 13))
                         .foregroundStyle(Color(nsColor: theme.chrome))
                 }

@@ -9,24 +9,24 @@ struct MenuContent: View {
     @Environment(AppServices.self) private var app
 
     var body: some View {
-        Button("Lire la sélection") {
+        Button("Read Selection") {
             Task { @MainActor in await app.readSelection() }
         }
         .globalKeyboardShortcut(.readSelection)
         if let dictation = app.dictation {
-            Button("Dicter") { dictation.toggle() }
+            Button("Dictate") { dictation.toggle() }
                 .globalKeyboardShortcut(.dictate)
             // La saisie est partie au mauvais endroit : le texte se reprend ici.
-            Button("Copier la dernière dictée") { dictation.copyLast() }
+            Button("Copy Last Dictation") { dictation.copyLast() }
                 .disabled(dictation.lastText == nil)
         }
-        Button("Ouvrir un fichier…") { app.chooseFile() }
+        Button("Open File…") { app.chooseFile() }
             .keyboardShortcut("o")
         // Toujours là : de quoi revenir au lecteur.
-        Button("Afficher le lecteur") { app.panel?.show() }
+        Button("Show Reader") { app.panel?.show() }
             .globalKeyboardShortcut(.showPanel)
         if Onboarding.needsReminder {
-            Button("Autoriser la lecture de la sélection…") {
+            Button("Allow Reading the Selection…") {
                 Onboarding.reminded()
                 let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!
                 NSWorkspace.shared.open(url)
@@ -35,9 +35,9 @@ struct MenuContent: View {
         Divider()
         // Pas de `SettingsLink` : il ouvre la fenêtre sans mettre sillage au
         // premier plan, et elle s'ouvre derrière l'application active.
-        Button("Réglages…") { SettingsOpener.shared.open() }
+        Button("Settings…") { SettingsOpener.shared.open() }
             .keyboardShortcut(",")
-        Button("Quitter sillage") { NSApp.terminate(nil) }
+        Button("Quit sillage") { NSApp.terminate(nil) }
             .keyboardShortcut("q")
     }
 }

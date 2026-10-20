@@ -266,17 +266,21 @@ pub struct ModelCapabilities {
 fn system_voice_row(active: bool) -> VoiceModel {
     VoiceModel {
         id: "system".into(),
-        name: "Voix de macOS".into(),
+        name: crate::tr!("macOS voice", "Voix de macOS").into(),
         bytes: 0,
         installed: true,
         active,
         recommended: false,
-        summary: "Les voix installées sur ce Mac (Réglages Système › Accessibilité › Contenu énoncé).".into(),
+        summary: crate::tr!(
+            "The voices installed on this Mac (System Settings › Accessibility › Spoken Content).",
+            "Les voix installées sur ce Mac (Réglages Système › Accessibilité › Contenu énoncé)."
+        )
+        .into(),
         family: "system".into(),
         precision: String::new(),
-        languages_label: "Selon les voix installées".into(),
+        languages_label: crate::tr!("Depends on the installed voices", "Selon les voix installées").into(),
         languages: vec!["fr".into(), "en".into()],
-        pace: "Immédiate".into(),
+        pace: crate::tr!("Instant", "Immédiate").into(),
         voices_label: String::new(),
         licenses: "Apple".into(),
         kind: "speech".into(),
@@ -292,21 +296,21 @@ fn system_voice_row(active: bool) -> VoiceModel {
 pub fn voice_model(p: &models::ModelPackage, active_path: &str, system_chosen: bool) -> VoiceModel {
     VoiceModel {
         id: p.id.to_string(),
-        name: p.display_name.to_string(),
+        name: p.display_name.get().to_string(),
         bytes: p.total_bytes(),
         installed: models::is_installed(p),
         active: !system_chosen
             && !active_path.is_empty()
             && models::install_path(p).is_some_and(|path| path.to_string_lossy() == active_path),
         recommended: p.recommended,
-        summary: p.description.to_string(),
+        summary: p.description.get().to_string(),
         family: p.family.to_string(),
-        precision: p.precision.to_string(),
-        languages_label: p.languages_label.to_string(),
+        precision: p.precision.get().to_string(),
+        languages_label: p.languages_label.get().to_string(),
         languages: p.languages.iter().map(|l| l.to_string()).collect(),
-        pace: p.pace.to_string(),
-        voices_label: p.voices_label.to_string(),
-        licenses: p.licenses.to_string(),
+        pace: p.pace.get().to_string(),
+        voices_label: p.voices_label.get().to_string(),
+        licenses: p.licenses.get().to_string(),
         kind: match p.kind {
             models::Kind::Speech => "speech",
             models::Kind::Dictation => "dictation",
@@ -472,7 +476,7 @@ impl Reader {
         ModelCapabilities {
             voices: models::voices_for_family(&family)
                 .iter()
-                .map(|v| VoiceChoice { id: v.id.to_string(), label: v.label.to_string(), language: v.language.to_string() })
+                .map(|v| VoiceChoice { id: v.id.to_string(), label: v.label.get().to_string(), language: v.language.to_string() })
                 .collect(),
             languages: models::languages_for_family(&family).into_iter().map(String::from).collect(),
             honoured: models::honoured_options(&family).iter().map(|o| o.to_string()).collect(),
@@ -483,21 +487,22 @@ impl Reader {
     pub fn install_voice(&mut self, id: &str) -> Result<()> {
         if !self.persist {
             // Hors disque, rien ne se télécharge dans le dossier des modèles.
-            return Err(anyhow!(crate::reader::data::TRIAL));
+            return Err(anyhow!(crate::reader::data::TRIAL.get()));
         }
         let package = self.package(id)?;
         if self.download.as_ref().is_some_and(|d| !d.is_finished()) {
-            return Err(anyhow!("téléchargement déjà en cours"));
+            return Err(anyhow!(crate::tr!("download already in progress", "téléchargement déjà en cours")));
         }
         // Mieux vaut refuser tout de suite que remplir le disque à moitié.
         if let Some(free) = (self.free_space)() {
             let missing = package.total_bytes().saturating_sub(models::installed_bytes(package));
             if free < missing {
-                return Err(anyhow!(
-                    "Il manque {} sur le disque pour {}",
+                return Err(anyhow!(crate::tr!(
+                    en = "{} more disk space is needed for {}",
+                    fr = "Il manque {} sur le disque pour {}",
                     models::human_size(missing - free),
-                    package.display_name
-                ));
+                    package.display_name.get(),
+                )));
             }
         }
         self.download = Some((self.start_download)(package)?);
@@ -530,11 +535,15 @@ impl Reader {
         }
         let package = self.package(id)?;
         if package.kind != models::Kind::Speech {
-            return Err(anyhow!("{} sert à la dictée, pas à la lecture", package.display_name));
+            return Err(anyhow!(crate::tr!(
+                en = "{} is for dictation, not for reading",
+                fr = "{} sert à la dictée, pas à la lecture",
+                package.display_name.get(),
+            )));
         }
         let path = models::install_path(package)
             .filter(|_| models::is_installed(package))
-            .ok_or_else(|| anyhow!("voix non installée : {id}"))?;
+            .ok_or_else(|| anyhow!(crate::tr!(en = "voice not installed: {id}", fr = "voix non installée : {id}")))?;
         self.sync_config();
         // Déjà la voix active : rien à recharger.
         if models::is_active_path(&self.config.engine.model_path, &path)
@@ -572,6 +581,7 @@ impl Reader {
             Progress::Running { received, total } => (received, total, None),
             Progress::Done => (d.package.total_bytes(), d.package.total_bytes(), None),
             Progress::Failed(message) => (0, d.package.total_bytes(), Some(message)),
+            // « annulé » n'est pas traduit : l'app y reconnaît l'annulation.
             Progress::Cancelled => (0, d.package.total_bytes(), Some("annulé".into())),
         };
         Some(DownloadView { id: d.package.id.to_string(), received, total, failed })
@@ -808,12 +818,12 @@ mod tests {
         for package in crate::models::CATALOG {
             let v = voice_model(package, "", false);
             assert_eq!(v.id, package.id);
-            assert_eq!(v.summary, package.description);
+            assert_eq!(v.summary, package.description.get());
             assert_eq!(v.family, package.family);
-            assert_eq!(v.precision, package.precision);
-            assert_eq!(v.languages_label, package.languages_label);
+            assert_eq!(v.precision, package.precision.get());
+            assert_eq!(v.languages_label, package.languages_label.get());
             assert_eq!(v.languages.len(), package.languages.len());
-            assert_eq!(v.pace, package.pace);
+            assert_eq!(v.pace, package.pace.get());
             assert!(!v.active, "aucun chemin actif");
         }
         let first = &crate::models::CATALOG[0];
@@ -1178,7 +1188,7 @@ mod tests {
         let mut r = reader();
         r.set_persistent(false);
         let id = crate::models::CATALOG[0].id;
-        assert_eq!(r.install_voice(id).unwrap_err().to_string(), crate::reader::data::TRIAL);
+        assert_eq!(r.install_voice(id).unwrap_err().to_string(), crate::reader::data::TRIAL.get());
         assert!(r.download().is_none());
     }
 

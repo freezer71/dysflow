@@ -225,7 +225,7 @@ fn find_output(name: &str) -> Option<rodio::cpal::Device> {
 
 /// Le message d'une sortie choisie mais absente.
 pub fn missing_output(name: &str) -> String {
-    format!("sortie « {name} » absente")
+    crate::tr!(en = "output “{name}” missing", fr = "sortie « {name} » absente")
 }
 
 impl Default for Player {
@@ -243,7 +243,7 @@ impl Player {
         use rodio::cpal::traits::HostTrait;
         match rodio::cpal::default_host().default_output_device() {
             Some(_) => Self::with(Some(Output::System), None),
-            None => Self::with(None, Some("aucune sortie audio".to_string())),
+            None => Self::with(None, Some(crate::tr!("no audio output", "aucune sortie audio").to_string())),
         }
     }
 
@@ -293,7 +293,7 @@ impl Player {
     /// s'ouvrent de front : la carte son n'est pas partageable ainsi. Sert
     /// aussi au mode de test de l'app.
     pub fn silent() -> Self {
-        Self::with(None, Some("sortie audio désactivée".to_string()))
+        Self::with(None, Some(crate::tr!("audio output disabled", "sortie audio désactivée").to_string()))
     }
 
     /// Ouvre la sortie et y remet la file, là où elle s'était tue. Sans

@@ -12,7 +12,7 @@ final class MenuUITests: XCTestCase {
     func testTheMenuHasFiveLines() {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing"]
-        app.launch()
+        app.launchInFrench()
         app.statusItems.firstMatch.click()
         let titles = app.menuItems.allElementsBoundByIndex.map(\.title).filter { !$0.isEmpty }
             .filter { $0 != "Autoriser la lecture de la sélection…" }
@@ -25,7 +25,7 @@ final class MenuUITests: XCTestCase {
     func testControlOptionSShowsAndHidesTheReader() {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--ui-testing-raccourcis"]
-        app.launch()
+        app.launchInFrench()
         XCTAssertFalse(app.groups["lecteur"].waitForExistence(timeout: 1), "rien au lancement")
         app.typeKey("s", modifierFlags: [.control, .option])
         XCTAssertTrue(app.groups["lecteur"].waitForExistence(timeout: 3), "⌃⌥S n'a rien affiché")

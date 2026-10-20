@@ -22,7 +22,7 @@ pub use kind::Kind;
 /// demande la reconnaissance ; le texte, lui, ne demande rien.
 #[cfg(feature = "clipboard")]
 pub fn clipboard() -> Result<String> {
-    let mut board = arboard::Clipboard::new().context("accès au presse-papiers")?;
+    let mut board = arboard::Clipboard::new().context(crate::tr!("accessing the clipboard", "accès au presse-papiers"))?;
     #[cfg(feature = "ocr")]
     if let Ok(image) = board.get_image() {
         let width = image.width as u32;
@@ -31,10 +31,14 @@ pub fn clipboard() -> Result<String> {
         return Ok(layout::to_markdown(&[page]));
     }
     #[cfg(feature = "ocr")]
-    let absent = "le presse-papiers ne contient ni image ni texte";
+    let absent = crate::tr!("the clipboard holds neither image nor text", "le presse-papiers ne contient ni image ni texte");
     #[cfg(not(feature = "ocr"))]
-    let absent = "le presse-papiers ne contient pas de texte ; \
-                  une image demande un binaire compilé avec l'option `ocr`";
+    let absent = crate::tr!(
+        "the clipboard holds no text; \
+         an image needs a binary built with the `ocr` option",
+        "le presse-papiers ne contient pas de texte ; \
+         une image demande un binaire compilé avec l'option `ocr`"
+    );
     board.get_text().context(absent)
 }
 
@@ -53,7 +57,10 @@ pub fn image_bytes(bytes: &[u8]) -> Result<String> {
     #[cfg(not(feature = "ocr"))]
     {
         let _ = bytes;
-        anyhow::bail!("une image demande un binaire compilé avec l'option `ocr`")
+        anyhow::bail!(crate::tr!(
+            "an image needs a binary built with the `ocr` option",
+            "une image demande un binaire compilé avec l'option `ocr`"
+        ))
     }
 }
 
@@ -85,23 +92,25 @@ pub fn load_with_cache(path: &Path, cached: bool) -> Result<String> {
         // latin-1 se lit avec quelques caractères de remplacement plutôt
         // que d'être refusé.
         Kind::Text => crate::input::decode_text(
-            &std::fs::read(path).with_context(|| format!("lecture de {}", path.display()))?,
+            &std::fs::read(path).with_context(|| crate::tr!(en = "reading {}", fr = "lecture de {}", path.display()))?,
         ),
         Kind::Pdf => layout::to_markdown(&pdf::pages(path)?),
         #[cfg(feature = "ocr")]
         Kind::Image => layout::to_markdown(&ocr::pages(path)?),
         #[cfg(not(feature = "ocr"))]
-        Kind::Image => anyhow::bail!(
-            "{} est une image : ce binaire a été compilé sans l'option `ocr`",
-            path.display()
-        ),
+        Kind::Image => anyhow::bail!(crate::tr!(
+            en = "{} is an image: this binary was built without the `ocr` option",
+            fr = "{} est une image : ce binaire a été compilé sans l'option `ocr`",
+            path.display(),
+        )),
         #[cfg(feature = "ocr")]
         Kind::Directory => layout::to_markdown(&ocr::directory_pages(path)?),
         #[cfg(not(feature = "ocr"))]
-        Kind::Directory => anyhow::bail!(
-            "{} est un dossier : ce binaire a été compilé sans l'option `ocr`",
-            path.display()
-        ),
+        Kind::Directory => anyhow::bail!(crate::tr!(
+            en = "{} is a folder: this binary was built without the `ocr` option",
+            fr = "{} est un dossier : ce binaire a été compilé sans l'option `ocr`",
+            path.display(),
+        )),
     };
     if let Some(key) = key {
         cache::write(&key, &markdown);

@@ -24,11 +24,11 @@ enum VoiceStatus: Equatable {
     var text: String {
         switch self {
         case .downloading(let received, let total):
-            "Installation de la voix : \(SizeFormat.bytes(received)) sur \(SizeFormat.bytes(total)) — la voix du système lit en attendant"
-        case .failed(let why): "La voix ne s'est pas installée : \(why)"
-        case .unavailable(let why): "Voix indisponible : \(why)"
-        case .fallback(let why): "Voix du système en repli : \(why)"
-        case .preparing: "Voix en préparation (première fois)…"
+            String(localized: "Installing the voice: \(SizeFormat.bytes(received)) of \(SizeFormat.bytes(total)) — the system voice reads in the meantime")
+        case .failed(let why): String(localized: "The voice could not be installed: \(why)")
+        case .unavailable(let why): String(localized: "Voice unavailable: \(why)")
+        case .fallback(let why): String(localized: "System voice as a fallback: \(why)")
+        case .preparing: String(localized: "Preparing the voice (first time)…")
         }
     }
 
@@ -50,7 +50,7 @@ struct VoiceStatusLine: View {
                 if case .downloading(let received, let total) = status {
                     ProgressView(value: Double(received), total: Double(max(total, 1)))
                         .frame(width: 100)
-                        .accessibilityLabel("Installation de la voix")
+                        .accessibilityLabel("Voice installation")
                         .accessibilityValue(SettingFormat.percent(Float(received) / Float(max(total, 1))))
                 }
                 Text(status.text)
@@ -58,9 +58,9 @@ struct VoiceStatusLine: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("etat-voix")
                 if status.canRetry {
-                    Button("Réessayer") { Task { await model.installDefaultVoice() } }
+                    Button("Retry") { Task { await model.installDefaultVoice() } }
                         .buttonStyle(.notion)
-                        .accessibilityLabel("Réessayer l'installation de la voix")
+                        .accessibilityLabel("Retry installing the voice")
                         .accessibilityIdentifier("reessayer-voix")
                 }
             }

@@ -115,11 +115,11 @@ impl TtsEngine for LazyEngine {
 
     fn name(&self) -> String {
         match &*self.shared.state.locked() {
-            State::Loading => format!("{} · chargement…", self.shared.label),
+            State::Loading => crate::tr!(en = "{} · loading…", fr = "{} · chargement…", self.shared.label),
             State::Ready(engine) => engine.name(),
             // L'échec est nommé : l'utilisateur doit savoir pourquoi la voix
             // n'est pas celle qu'il attendait.
-            State::Failed(_) => format!("{} (repli)", self.shared.fallback.name()),
+            State::Failed(_) => crate::tr!(en = "{} (fallback)", fr = "{} (repli)", self.shared.fallback.name()),
         }
     }
 
@@ -130,7 +130,7 @@ impl TtsEngine for LazyEngine {
                 .shared
                 .fallback
                 .open_session()
-                .map_err(|e| anyhow!("moteur et repli indisponibles : {e}")),
+                .map_err(|e| anyhow!(crate::tr!(en = "engine and fallback unavailable: {e}", fr = "moteur et repli indisponibles : {e}"))),
         }
     }
 

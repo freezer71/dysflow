@@ -21,16 +21,16 @@ pub struct Page {
 /// Rend le texte du document, une entrée par page.
 pub fn pages(path: &Path) -> Result<Vec<Page>> {
     let mut doc =
-        Document::load(path).with_context(|| format!("lecture de {}", path.display()))?;
+        Document::load(path).with_context(|| crate::tr!(en = "reading {}", fr = "lecture de {}", path.display()))?;
     // Un PDF « protégé » sans mot de passe s'ouvre avec une chaîne vide ; les
     // autres ne s'ouvriront pas, et mieux vaut le dire que rendre un document
     // vide.
     if doc.is_encrypted() && doc.decrypt("").is_err() {
-        bail!("{} est protégé par un mot de passe", path.display());
+        bail!(crate::tr!(en = "{} is protected by a password", fr = "{} est protégé par un mot de passe", path.display()));
     }
     let numbered: Vec<(u32, ObjectId)> = doc.get_pages().into_iter().collect();
     if numbered.is_empty() {
-        bail!("{} ne contient aucune page lisible", path.display());
+        bail!(crate::tr!(en = "{} contains no readable page", fr = "{} ne contient aucune page lisible", path.display()));
     }
     let numbers: Vec<ObjectId> = numbered.iter().map(|(_, id)| *id).collect();
     // D'un seul passage, les polices ne se lisent qu'une fois pour tout le
@@ -46,7 +46,7 @@ pub fn pages(path: &Path) -> Result<Vec<Page>> {
                 {
                     let mut sink = PlainTextOutput::new(&mut text);
                     if let Err(err) = output_doc_page(&doc, &mut sink, *number) {
-                        failures.push(format!("page {number} : {err}"));
+                        failures.push(crate::tr!(en = "page {number}: {err}", fr = "page {number} : {err}"));
                         text.clear();
                     }
                 }
@@ -55,7 +55,12 @@ pub fn pages(path: &Path) -> Result<Vec<Page>> {
             .collect(),
     };
     if failures.len() == out.len() {
-        bail!("{} : aucune page ne se lit ({})", path.display(), failures.join(" ; "));
+        bail!(crate::tr!(
+            en = "{}: no page can be read ({})",
+            fr = "{} : aucune page ne se lit ({})",
+            path.display(),
+            failures.join(crate::tr!("; ", " ; ")),
+        ));
     }
 
     // Une page sans couche texte n'est pas vide : son contenu est une image.
@@ -228,17 +233,21 @@ fn recognise_scanned(
                         return Ok(());
                     };
                     let image = image::load_from_memory(bytes)
-                        .with_context(|| format!("image de la page {}", index + 1))?;
+                        .with_context(|| crate::tr!(en = "image of page {}", fr = "image de la page {}", index + 1))?;
                     let page = engine.read(&image)?;
                     done.lock()
-                        .map_err(|_| anyhow::anyhow!("fil de reconnaissance interrompu"))?
+                        .map_err(|_| anyhow::anyhow!(crate::tr!("recognition thread interrupted", "fil de reconnaissance interrompu")))?
                         .push((*index, page));
                 }
             }));
         }
         for handle in handles {
             handle.join().map_err(|_| {
-                anyhow::anyhow!("reconnaissance de {} interrompue", path.display())
+                anyhow::anyhow!(crate::tr!(
+                    en = "recognition of {} interrupted",
+                    fr = "reconnaissance de {} interrompue",
+                    path.display(),
+                ))
             })??;
         }
         Ok(())
@@ -246,7 +255,7 @@ fn recognise_scanned(
 
     for (index, page) in done
         .into_inner()
-        .map_err(|_| anyhow::anyhow!("fil de reconnaissance interrompu"))?
+        .map_err(|_| anyhow::anyhow!(crate::tr!("recognition thread interrupted", "fil de reconnaissance interrompu")))?
     {
         out[index] = page;
     }
@@ -276,10 +285,11 @@ fn recognise_scanned(
         return Ok(());
     }
     if scanned.len() == out.len() {
-        bail!(
-            "{} est un document scanné : ce binaire a été compilé sans l'option `ocr`",
-            path.display()
-        );
+        bail!(crate::tr!(
+            en = "{} is a scanned document: this binary was built without the `ocr` option",
+            fr = "{} est un document scanné : ce binaire a été compilé sans l'option `ocr`",
+            path.display(),
+        ));
     }
     for i in scanned {
         out[i].lines.push(format!(

@@ -80,32 +80,32 @@ struct PanelContent: View {
 struct HelpOverlay: View {
     let theme: Theme
     static let rows: [(String, String)] = [
-        ("Espace", "Lecture / pause"),
-        ("← →", "Phrase précédente / suivante"),
-        ("↑ ↓", "Ligne précédente / suivante"),
-        ("Début", "Revenir au début"),
-        ("n p", "Titre suivant / précédent"),
-        ("/ ⌘F", "Rechercher"),
-        ("N P", "Résultat suivant / précédent"),
-        ("t", "Sommaire"),
-        ("e", "Modifier le texte"),
-        ("+ −", "Vitesse"),
-        ("⌘C", "Copier la sélection, sinon la phrase"),
-        ("⌘V", "Lire le presse-papiers"),
-        ("⌘O", "Ouvrir un fichier"),
-        ("⌘M", "Réduire / agrandir"),
-        ("⌘W", "Fermer (la lecture s'arrête)"),
-        ("Échap", "Fermer la recherche ou le sommaire, sinon fermer"),
-        ("?", "Cette aide"),
-        ("⌘,", "Réglages"),
+        (String(localized: "Space", comment: "Key name"), String(localized: "Play / pause")),
+        ("← →", String(localized: "Previous / next sentence")),
+        ("↑ ↓", String(localized: "Previous / next line")),
+        (String(localized: "Home", comment: "Key name"), String(localized: "Back to the start")),
+        ("n p", String(localized: "Next / previous heading")),
+        ("/ ⌘F", String(localized: "Search")),
+        ("N P", String(localized: "Next / previous result")),
+        ("t", String(localized: "Contents")),
+        ("e", String(localized: "Edit the text")),
+        ("+ −", String(localized: "Speed")),
+        ("⌘C", String(localized: "Copy the selection, or else the sentence")),
+        ("⌘V", String(localized: "Read the clipboard")),
+        ("⌘O", String(localized: "Open a file")),
+        ("⌘M", String(localized: "Collapse / expand")),
+        ("⌘W", String(localized: "Close (reading stops)")),
+        (String(localized: "Esc", comment: "Key name"), String(localized: "Close search or contents, otherwise close")),
+        ("?", String(localized: "This help")),
+        ("⌘,", String(localized: "Settings")),
     ]
 
     /// Ce qui ferme vraiment l'aide.
-    static let footer = "? ou Échap pour fermer"
+    static let footer = String(localized: "? or Esc to close")
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Raccourcis")
+            Text("Shortcuts")
                 .font(.system(size: 14, weight: .semibold))
                 .accessibilityAddTraits(.isHeader)
             // Entière si elle tient, sinon elle défile dans la place laissée.
@@ -156,7 +156,7 @@ enum PanelStatus {
 
 /// L'invitation du lecteur vide, et un raccourci tel qu'il s'écrit.
 enum PanelInvitation {
-    static let text = "Collez un texte (⌘V) ou déposez un fichier"
+    static let text = String(localized: "Paste some text (⌘V) or drop in a file")
 
     /// Le raccourci tel qu'il s'écrit (« ⌃⌥Espace »). La bibliothèque nomme
     /// la barre d'espace dans la langue de l'app, qui peut retomber sur
@@ -165,7 +165,7 @@ enum PanelInvitation {
     static func keys(_ shortcut: KeyboardShortcuts.Shortcut) -> String {
         var keys = shortcut.description
         if shortcut.key == .space, keys.hasSuffix("Space") {
-            keys = String(keys.dropLast("Space".count)) + "Espace"
+            keys = String(keys.dropLast("Space".count)) + String(localized: "Space", comment: "Key name")
         }
         return keys
     }

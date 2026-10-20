@@ -55,7 +55,7 @@ final class StreamingDictationEngine: DictationEngine {
             try await runner.prepare(directory: directory)
             return try await runner.withModel { model in
                 guard let streaming = model as? StreamingSpeechModel else {
-                    throw DictationError.failed("ce modèle ne dicte pas au fil de la parole")
+                    throw DictationError.failed(String(localized: "this model doesn’t dictate as you speak"))
                 }
                 return streaming.makeSession(language: language)
             }
@@ -66,7 +66,7 @@ final class StreamingDictationEngine: DictationEngine {
             session = try await load.value
         } catch {
             if generation == id { await cancel() }
-            throw DictationError.failed("le modèle ne se charge pas : \(error.localizedDescription)")
+            throw DictationError.failed(String(localized: "the model won’t load: \(error.localizedDescription)"))
         }
         // Fini ou annulé pendant le chargement : `finish` fait le reste.
         guard generation == id else { return }

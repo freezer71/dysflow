@@ -41,7 +41,10 @@ pub fn sample_text(language: &str) -> &'static str {
 }
 
 /// Refus d'un aperçu sans sortie audio.
-pub const AUDIO_MISSING: &str = "sortie audio indisponible : aucun aperçu possible";
+pub const AUDIO_MISSING: crate::i18n::Tr = crate::i18n::Tr::new(
+    "audio output unavailable: no preview possible",
+    "sortie audio indisponible : aucun aperçu possible",
+);
 
 /// Lance l'aperçu des réglages en cours sur la phrase d'exemple : le
 /// précédent est coupé, un refus s'explique, la lecture se met en pause pour
@@ -56,12 +59,12 @@ pub fn start(
     previewer.cancel();
     player.stop_preview();
     if !player.is_available() {
-        return Err(AUDIO_MISSING.to_string());
+        return Err(AUDIO_MISSING.get().to_string());
     }
     player.pause();
     previewer
         .request(sample_text(language).to_string(), config.tts_params_in(language), label)
-        .map_err(|err| format!("aperçu impossible : {err}"))
+        .map_err(|err| crate::tr!(en = "preview failed: {err}", fr = "aperçu impossible : {err}"))
 }
 
 struct Request {
@@ -113,13 +116,13 @@ impl Previewer {
         self.generation += 1;
         self.requests
             .as_ref()
-            .ok_or_else(|| "le moteur d'aperçu s'est arrêté".to_string())?
+            .ok_or_else(|| crate::tr!("the preview engine has stopped", "le moteur d'aperçu s'est arrêté").to_string())?
             .send(Request {
                 generation: self.generation,
                 text,
                 params,
             })
-            .map_err(|_| "le moteur d'aperçu s'est arrêté".to_string())?;
+            .map_err(|_| crate::tr!("the preview engine has stopped", "le moteur d'aperçu s'est arrêté").to_string())?;
         self.label = label;
         self.started = Some(Instant::now());
         Ok(())
@@ -190,7 +193,7 @@ fn worker(engine: Arc<dyn TtsEngine>, requests: Receiver<Request>, results: Send
                 Err(err) => {
                     let outcome = Outcome {
                         generation: request.generation,
-                        audio: Err(format!("ouverture de session : {err}")),
+                        audio: Err(crate::tr!(en = "opening a session: {err}", fr = "ouverture de session : {err}")),
                     };
                     if results.send(outcome).is_err() {
                         return;
@@ -207,7 +210,7 @@ fn worker(engine: Arc<dyn TtsEngine>, requests: Receiver<Request>, results: Send
             .map_err(|e| e.to_string())
             .and_then(|pcm| {
                 if pcm.is_empty() {
-                    Err("aucun échantillon produit".to_string())
+                    Err(crate::tr!("no samples produced", "aucun échantillon produit").to_string())
                 } else {
                     Ok(pcm)
                 }

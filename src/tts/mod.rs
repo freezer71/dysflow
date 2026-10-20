@@ -140,7 +140,7 @@ pub struct Cancelled;
 
 impl std::fmt::Display for Cancelled {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("synthèse abandonnée")
+        f.write_str(crate::tr!("synthesis cancelled", "synthèse abandonnée"))
     }
 }
 
@@ -231,9 +231,10 @@ pub fn build_engine_with(
     let note = if settings.model_path.trim().is_empty() {
         None
     } else {
-        Some(format!(
-            "modèle « {} » non pris en charge — voix du système (installez Kokoro)",
-            if settings.family.is_empty() { settings.model_path.as_str() } else { settings.family.as_str() }
+        Some(crate::tr!(
+            en = "model “{}” not supported — system voice (install Kokoro)",
+            fr = "modèle « {} » non pris en charge — voix du système (installez Kokoro)",
+            if settings.family.is_empty() { settings.model_path.as_str() } else { settings.family.as_str() },
         ))
     };
     (Arc::new(system::SystemEngine::new()), note)
@@ -250,18 +251,26 @@ fn build_text_engine(
     let Some(compute) = text else {
         return (
             fallback,
-            Some(format!("Calcul Metal indisponible — {} ne tourne que dans l'app", package.display_name)),
+            Some(crate::tr!(
+                en = "Metal compute unavailable — {} only runs in the app",
+                fr = "Calcul Metal indisponible — {} ne tourne que dans l'app",
+                package.display_name.get(),
+            )),
         );
     };
     let main = std::path::Path::new(&settings.model_path);
     let dir = main.parent().filter(|_| main.is_file()).map(std::path::Path::to_path_buf);
     let Some(dir) = dir else {
         // L'app ne garde que le moteur : la raison doit y rester lisible.
-        let note = format!("{} n'est pas installé — voir les réglages", package.display_name);
+        let note = crate::tr!(
+            en = "{} is not installed — see the settings",
+            fr = "{} n'est pas installé — voir les réglages",
+            package.display_name.get(),
+        );
         return (fallback::explained(fallback, note.clone()), Some(note));
     };
     let repli = Arc::clone(&fallback);
-    let engine = lazy::LazyEngine::spawn(package.display_name.to_string(), 1, fallback, move || {
+    let engine = lazy::LazyEngine::spawn(package.display_name.get().to_string(), 1, fallback, move || {
         let engine = text_compute::TextComputeEngine::load(compute, package, &dir, repli)?;
         Ok(Arc::new(engine) as Arc<dyn TtsEngine>)
     })
@@ -277,7 +286,10 @@ fn build_kokoro(
 ) -> (Arc<dyn TtsEngine>, Option<String>) {
     let fallback = fallback::fallback_engine(settings);
     let Some(dir) = crate::models::kokoro_dir(&settings.model_path) else {
-        return (fallback, Some("Kokoro n'est pas installé — voir l'onglet Modèles".to_string()));
+        return (
+            fallback,
+            Some(crate::tr!("Kokoro is not installed — see the Models tab", "Kokoro n'est pas installé — voir l'onglet Modèles").to_string()),
+        );
     };
     let backend = match kokoro_backend(settings, &dir, mlx) {
         Ok(backend) => backend,
@@ -305,12 +317,20 @@ fn kokoro_backend(
         #[cfg(not(feature = "kokoro-onnx"))]
         {
             let _ = dir;
-            return Err("Kokoro int8 : binaire compilé sans `kokoro-onnx`".to_string());
+            return Err(crate::tr!(
+                "Kokoro int8: binary built without `kokoro-onnx`",
+                "Kokoro int8 : binaire compilé sans `kokoro-onnx`"
+            )
+            .to_string());
         }
     }
     match mlx {
         Some(backend) => Ok(backend as Arc<dyn kokoro::KokoroBackend>),
-        None => Err("Calcul Metal indisponible — Kokoro MLX ne tourne que dans l'app, sur la puce graphique".to_string()),
+        None => Err(crate::tr!(
+            "Metal compute unavailable — Kokoro MLX only runs in the app, on the GPU",
+            "Calcul Metal indisponible — Kokoro MLX ne tourne que dans l'app, sur la puce graphique"
+        )
+        .to_string()),
     }
 }
 

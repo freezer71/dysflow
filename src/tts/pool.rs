@@ -609,7 +609,7 @@ fn worker_loop(shared: Arc<Shared>) {
                         &shared,
                         job.id,
                         job.generation,
-                        Err(format!("ouverture de session : {err}")),
+                        Err(crate::tr!(en = "opening a session: {err}", fr = "ouverture de session : {err}")),
                     );
                     continue;
                 }
@@ -730,7 +730,7 @@ fn synthesize(
     let outcome = session.synthesize_cancellable(text, words, params, cancel);
     shared.state.locked().busy += started.elapsed();
     match outcome {
-        Ok(s) if s.pcm.is_empty() => Err(Stop::Failed("aucun échantillon produit".to_string())),
+        Ok(s) if s.pcm.is_empty() => Err(Stop::Failed(crate::tr!("no samples produced", "aucun échantillon produit").to_string())),
         Ok(s) => Ok(s),
         Err(e) if super::is_cancelled(&e) => Err(Stop::Cancelled),
         Err(e) => Err(Stop::Failed(e.to_string())),

@@ -79,7 +79,7 @@ final class PanelController {
         let host = NSHostingView(rootView: PanelContent(controller: self))
         window.contentView = host
         host.setAccessibilityIdentifier("lecteur")
-        host.setAccessibilityLabel("Lecteur")
+        host.setAccessibilityLabel(String(localized: "Reader"))
         // Toute fermeture (⌘W, close(), performClose:) passe par `close()`.
         let guardian = PanelCloseGuard { [weak self] in self?.close() }
         closeGuard = guardian
@@ -368,7 +368,7 @@ final class PanelController {
         let play = resume && resumeAfterEditing
         if draft != draftOrigin, !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             model.reopen(edited: draft, play: play)
-            flash("Texte modifié")
+            flash(String(localized: "Text edited"))
         } else if play {
             model.send(.togglePlay)
         }
@@ -388,7 +388,7 @@ final class PanelController {
         let s = model.snapshot
         guard s.hasDocument else { return }
         guard let target = lines.target(word: model.word, sentence: s.sentence, delta: delta) else {
-            flash("Aucune ligne de ce côté")
+            flash(String(localized: "No line that way"))
             return
         }
         model.send(.seekToWord(sentence: target.sentence, word: target.word))
@@ -410,7 +410,7 @@ final class PanelController {
     private func updateIdentifier() {
         let mini = mode == .mini
         window.contentView?.setAccessibilityIdentifier(mini ? "lecteur-mini" : "lecteur")
-        window.contentView?.setAccessibilityLabel(mini ? "Lecteur réduit" : "Lecteur")
+        window.contentView?.setAccessibilityLabel(mini ? String(localized: "Mini reader") : String(localized: "Reader"))
     }
 }
 

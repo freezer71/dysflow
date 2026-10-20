@@ -23,9 +23,9 @@ pub(super) fn render_reader(frame: &mut Frame, app: &App, area: Rect) {
     let doc = app.doc();
     if doc.is_empty() {
         let message = if app.input_complete() {
-            "Aucun contenu lisible dans l'entrée."
+            crate::tr!("Nothing readable in the input.", "Aucun contenu lisible dans l'entrée.")
         } else {
-            "En attente du flux…"
+            crate::tr!("Waiting for the stream…", "En attente du flux…")
         };
         frame.render_widget(
             Paragraph::new(message).style(Style::default().fg(DIM)),

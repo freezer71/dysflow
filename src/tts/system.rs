@@ -81,15 +81,18 @@ impl Default for SystemEngine {
 impl TtsEngine for SystemEngine {
     fn name(&self) -> String {
         match self.backend {
-            Some(Backend::MacosSay) => "système (say)".to_string(),
-            Some(Backend::EspeakNg) => "système (espeak-ng)".to_string(),
-            None => "aucun".to_string(),
+            Some(Backend::MacosSay) => crate::tr!("system (say)", "système (say)").to_string(),
+            Some(Backend::EspeakNg) => crate::tr!("system (espeak-ng)", "système (espeak-ng)").to_string(),
+            None => crate::tr!("none", "aucun").to_string(),
         }
     }
 
     fn open_session(&self) -> Result<Box<dyn TtsSession>> {
         let backend = self.backend.ok_or_else(|| {
-            anyhow!("aucune synthèse système trouvée (ni `say` ni `espeak-ng`)")
+            anyhow!(crate::tr!(
+                "no system speech found (neither `say` nor `espeak-ng`)",
+                "aucune synthèse système trouvée (ni `say` ni `espeak-ng`)"
+            ))
         })?;
         Ok(Box::new(SystemSession { backend }))
     }
@@ -160,7 +163,7 @@ fn retry_once(mut attempt: impl FnMut() -> Result<SayAttempt>) -> Result<PcmBuff
             SayAttempt::Glitch(why) => glitch = why,
         }
     }
-    Err(anyhow!("`say` a raté deux fois de suite : {glitch}"))
+    Err(anyhow!(crate::tr!(en = "`say` failed twice in a row: {glitch}", fr = "`say` a raté deux fois de suite : {glitch}")))
 }
 
 fn say_once(text: &str, params: &TtsParams) -> Result<SayAttempt> {
@@ -178,7 +181,7 @@ fn say_once(text: &str, params: &TtsParams) -> Result<SayAttempt> {
 /// Une sortie quasi vide pour un texte qui a de quoi être dit est un raté.
 fn judge(text: &str, pcm: PcmBuffer) -> SayAttempt {
     if has_speakable(text) && pcm.duration < MIN_SPOKEN {
-        return SayAttempt::Glitch(format!("sortie quasi vide ({:?})", pcm.duration));
+        return SayAttempt::Glitch(crate::tr!(en = "almost empty output ({:?})", fr = "sortie quasi vide ({:?})", pcm.duration));
     }
     SayAttempt::Spoken(pcm)
 }
@@ -223,7 +226,7 @@ fn run_with_deadline(mut cmd: Command, deadline: Duration) -> Result<Option<Stri
     let program = cmd.get_program().to_string_lossy().into_owned();
     let mut child = cmd
         .spawn()
-        .with_context(|| format!("échec du lancement de `{program}`"))?;
+        .with_context(|| crate::tr!(en = "failed to start `{program}`", fr = "échec du lancement de `{program}`"))?;
     let (tx, rx) = std::sync::mpsc::channel();
     if let Some(mut pipe) = child.stderr.take() {
         crate::sync::spawn_named("sillage-stderr", move || {
@@ -238,12 +241,12 @@ fn run_with_deadline(mut cmd: Command, deadline: Duration) -> Result<Option<Stri
         Err(RecvTimeoutError::Timeout) => {
             let _ = child.kill();
             let _ = child.wait();
-            return Ok(Some(format!("bloqué plus de {deadline:?}")));
+            return Ok(Some(crate::tr!(en = "stuck for more than {deadline:?}", fr = "bloqué plus de {deadline:?}")));
         }
     };
-    let status = child.wait().with_context(|| format!("attente de `{program}`"))?;
+    let status = child.wait().with_context(|| crate::tr!(en = "waiting for `{program}`", fr = "attente de `{program}`"))?;
     if !status.success() {
-        return Err(anyhow!("`{program}` a échoué : {}", stderr.trim()));
+        return Err(anyhow!(crate::tr!(en = "`{program}` failed: {}", fr = "`{program}` a échoué : {}", stderr.trim())));
     }
     Ok(None)
 }
@@ -278,14 +281,14 @@ fn run_espeak(text: &str, params: &TtsParams, out: &Path) -> Result<()> {
 /// Décode un WAV en échantillons flottants, quel que soit son format source.
 fn decode_wav(path: &Path) -> Result<PcmBuffer> {
     let reader = hound::WavReader::open(path)
-        .with_context(|| format!("lecture de {}", path.display()))?;
+        .with_context(|| crate::tr!(en = "reading {}", fr = "lecture de {}", path.display()))?;
     let spec = reader.spec();
 
     let samples: Vec<f32> = match spec.sample_format {
         hound::SampleFormat::Float => reader
             .into_samples::<f32>()
             .collect::<Result<Vec<_>, _>>()
-            .context("décodage des échantillons flottants")?,
+            .context(crate::tr!("decoding float samples", "décodage des échantillons flottants"))?,
         hound::SampleFormat::Int => {
             // Normalise vers [-1, 1] selon la profondeur réelle.
             let scale = 1.0 / (1i64 << (spec.bits_per_sample - 1)) as f32;
@@ -293,12 +296,12 @@ fn decode_wav(path: &Path) -> Result<PcmBuffer> {
                 .into_samples::<i32>()
                 .map(|s| s.map(|v| v as f32 * scale))
                 .collect::<Result<Vec<_>, _>>()
-                .context("décodage des échantillons entiers")?
+                .context(crate::tr!("decoding integer samples", "décodage des échantillons entiers"))?
         }
     };
 
     if samples.is_empty() {
-        return Err(anyhow!("la synthèse n'a produit aucun échantillon"));
+        return Err(anyhow!(crate::tr!("the synthesis produced no samples", "la synthèse n'a produit aucun échantillon")));
     }
     Ok(PcmBuffer::new(samples, spec.sample_rate, spec.channels))
 }

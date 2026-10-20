@@ -17,6 +17,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// premier.
     private let formerDefaults: Void = FormerDefaults.adopt()
 
+    /// La langue de l'app, donnée au moteur Rust avant qu'il ne serve quoi
+    /// que ce soit : initialisée juste après les anciens réglages, avant les
+    /// services et toute vue (`SillageApp` crée ce délégué avant d'évaluer
+    /// ses scènes). `preferredLocalizations` est la langue que macOS a
+    /// choisie parmi celles de l'app (`en`, `fr`) : un Mac en allemand donne
+    /// `en`, et les textes du moteur (catalogue des modèles, erreurs)
+    /// suivent toujours l'interface.
+    private let interfaceLanguage: Void = setInterfaceLanguage(tag: UILanguage.tag)
+
     /// Ce que les scènes SwiftUI lisent (`.environment(services)`).
     let services = AppServices()
 
@@ -89,7 +98,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 do {
                     try await model.openFile(url)
                 } catch {
-                    model.message = "Impossible d'ouvrir « \(url.lastPathComponent) »"
+                    model.message = String(localized: "Can’t open “\(url.lastPathComponent)”")
                 }
                 panel.show()
             }
@@ -104,7 +113,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         chooser.allowedContentTypes = OpenableFiles.types
         chooser.allowsMultipleSelection = false
         chooser.canChooseDirectories = false
-        chooser.message = "Choisissez un texte, un PDF ou une image à lire"
+        chooser.message = String(localized: "Choose a text, a PDF or an image to read")
         chooser.level = NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue + 1)
         NSApp.activate()
         chooser.begin { [weak self] response in
@@ -515,6 +524,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         KeyboardShortcuts.onKeyUp(for: .showPanel) { [unowned self] in self.panel.toggleVisibility() }
     }
 
+    // xcstrings: garder (texte d'exemple lu à voix haute, en français)
     static let sample = """
     # Les monades
 
