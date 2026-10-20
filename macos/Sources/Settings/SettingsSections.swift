@@ -427,9 +427,9 @@ struct DictationSection: View {
         let trialRunning = AppDelegate.shared?.micTrial?.isRunning ?? false
         let all = Self.rows(rows, chosen: chosen)
         SettingsGroup(title: String(localized: "Dictation")) {
-            // La table ne garde que ce qui est là ou en route ; le reste est
-            // dans la bibliothèque des modèles.
-            ModelsTable(rows: ModelTable.shortlist(all, download: model.snapshot.download), model: model,
+            // Tous les modèles, comme la table des voix ; la bibliothèque
+            // sert à chercher et filtrer.
+            ModelsTable(rows: all, model: model,
                         fallback: Self.fallback,
                         isUsed: { Self.isUsed($0, chosen: chosen) },
                         use: { row in use(row) },
