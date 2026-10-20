@@ -50,8 +50,9 @@ enum Permission: CaseIterable {
     var state: State {
         switch self {
         case .accessibility:
-            // Le ⌘V de la dictée demande aussi le droit d'envoyer des touches.
-            return AXIsProcessTrusted() && CGPreflightPostEventAccess() ? .granted : .notAsked
+            // Elle suffit au ⌘V de la dictée. Exiger en plus
+            // `CGPreflightPostEventAccess()` obligeait à relancer sillage.
+            return AXIsProcessTrusted() ? .granted : .notAsked
         case .microphone:
             switch AVCaptureDevice.authorizationStatus(for: .audio) {
             case .authorized: return .granted
@@ -75,13 +76,10 @@ enum Permission: CaseIterable {
             // Une case cochée pour une autre construction de sillage ne vaut
             // pas pour celle-ci : elle s'efface, puis macOS repose sa question.
             if !AXIsProcessTrusted() { Self.reset("Accessibility") }
-            if !CGPreflightPostEventAccess() { Self.reset("PostEvent") }
             // Inscrit sillage dans la liste et ouvre le volet : il n'y a plus
             // qu'à cocher.
             let options = ["AXTrustedCheckOptionPrompt": true] as CFDictionary
             _ = AXIsProcessTrustedWithOptions(options)
-            // Ici, à la demande, plutôt qu'au premier ⌘V de la dictée.
-            if !CGPreflightPostEventAccess() { _ = CGRequestPostEventAccess() }
             NSWorkspace.shared.open(settingsURL)
         case .microphone:
             // Refusé : effacé, macOS peut reposer sa question.

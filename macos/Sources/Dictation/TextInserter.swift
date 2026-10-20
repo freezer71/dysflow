@@ -56,9 +56,9 @@ enum CopyReason: Equatable {
 struct TextInserter {
     let pasteboard: PasteboardWriting
     let keys: PasteKeystroke
-    /// L'Accessibilité, et le droit d'envoyer des touches, sans rien
-    /// demander : sans eux, macOS ouvrirait sa demande au moment du ⌘V.
-    var trusted: () -> Bool = { AXIsProcessTrusted() && CGPreflightPostEventAccess() }
+    /// L'Accessibilité, sans rien demander : elle vaut aussi pour le ⌘V,
+    /// et se relit dès qu'elle est accordée (pas besoin de relancer).
+    var trusted: () -> Bool = { AXIsProcessTrusted() }
     var secureInput: () -> Bool = { IsSecureEventInputEnabled() }
     /// Une fenêtre de sillage a le clavier, ou sillage est au premier plan.
     var ownAppHasKeyboard: () -> Bool = {
