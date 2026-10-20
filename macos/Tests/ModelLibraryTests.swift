@@ -127,24 +127,4 @@ final class ModelLibraryTests: XCTestCase {
         XCTAssertTrue(ModelLibrary.accessibilityLabel(leftover, .failed("réseau"))
             .hasSuffix("échec du téléchargement : réseau, téléchargement incomplet, 120 Mo sur le disque"))
     }
-
-    /// La table de la section ne garde que la dictée de macOS, les modèles
-    /// installés, l'utilisé, et celui qui se télécharge ou a échoué.
-    func testTheDictationTableKeepsOnlyWhatIsThereOrOnItsWay() {
-        let rows = sample()
-        XCTAssertEqual(ModelTable.shortlist(rows, download: nil).map(\.id),
-                       ["system-dictation", "whisper_large_v3_turbo_4bit", "parakeet_tdt_v3",
-                        "voxtral_realtime_4bit"])
-        let running = DownloadView(id: "cohere_transcribe_8bit", received: 10, total: 100, failed: nil)
-        XCTAssertTrue(ModelTable.shortlist(rows, download: running).map(\.id).contains("cohere_transcribe_8bit"))
-        let failed = DownloadView(id: "qwen3_asr_06b_8bit", received: 0, total: 100, failed: "réseau")
-        XCTAssertTrue(ModelTable.shortlist(rows, download: failed).map(\.id).contains("qwen3_asr_06b_8bit"))
-        let cancelled = DownloadView(id: "qwen3_asr_06b_8bit", received: 0, total: 100,
-                                     failed: ModelTable.cancelled)
-        XCTAssertFalse(ModelTable.shortlist(rows, download: cancelled).map(\.id).contains("qwen3_asr_06b_8bit"),
-                       "annulé : retour dans la bibliothèque")
-        // Le modèle choisi reste visible, même s'il n'est plus sur le disque.
-        let gone = sample(chosen: "nemotron_35_asr_streaming_8bit")
-        XCTAssertTrue(ModelTable.shortlist(gone, download: nil).map(\.id).contains("nemotron_35_asr_streaming_8bit"))
-    }
 }

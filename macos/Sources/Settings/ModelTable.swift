@@ -108,21 +108,6 @@ enum ModelTable {
             ?? .initial(row.name.first.map { String($0).uppercased() } ?? "?")
     }
 
-    /// Les lignes que la table de la dictée garde, dans leur ordre : la
-    /// dictée de macOS, les modèles installés, celui qui est utilisé (même
-    /// s'il n'est plus là : son repli se lit sous la table), et celui qui se
-    /// télécharge ou a échoué (son message reste lisible). Les autres sont
-    /// dans la bibliothèque des modèles : la table reste courte.
-    static func shortlist(_ rows: [VoiceModel], download: DownloadView?) -> [VoiceModel] {
-        rows.filter { row in
-            if row.system || row.installed || row.active { return true }
-            switch state(row, download: download) {
-            case .downloading, .failed: return true
-            case .system, .notInstalled, .installed: return false
-            }
-        }
-    }
-
     /// « Voix de macOS » est féminin, un modèle masculin : deux clés au même
     /// texte anglais (la clé féminine porte « (feminine) » et sa valeur
     /// anglaise reste « in use »), pour que le français accorde.
