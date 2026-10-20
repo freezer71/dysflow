@@ -82,6 +82,31 @@ targets:
       - target: KokoroMLX
         embed: true
       - sdk: MediaPlayer.framework
+    # « Ouvrir avec » du Finder : les types d'OpenableFiles. En second choix
+    # (Alternate), sillage ne prend pas la place de l'app par défaut. Xcode
+    # fusionne ce fichier avec les clés INFOPLIST_KEY_* ci-dessous.
+    info:
+      path: Generated/Info.plist
+      properties:
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: Document
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes:
+              - net.daringfireball.markdown
+              - public.plain-text
+              - public.text
+              - com.adobe.pdf
+              - public.image
+        # Le Markdown n'a pas toujours de type déclaré sur le Mac : sans lui,
+        # un .md ne proposerait pas sillage.
+        UTImportedTypeDeclarations:
+          - UTTypeIdentifier: net.daringfireball.markdown
+            UTTypeDescription: Markdown
+            UTTypeConformsTo: [public.plain-text]
+            UTTypeTagSpecification:
+              public.filename-extension: [md, markdown]
+              public.mime-type: [text/markdown]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: fr.sillage.app
