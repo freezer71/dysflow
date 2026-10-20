@@ -255,6 +255,8 @@ impl Config {
         self.voice.speed = finite(self.voice.speed, defaults.voice.speed).clamp(0.5, 3.0);
         self.voice.pitch = finite(self.voice.pitch, defaults.voice.pitch).clamp(-1.0, 1.0);
         self.voice.volume = finite(self.voice.volume, defaults.voice.volume).clamp(0.0, 2.0);
+        // Un modèle déplacé de `sillon` vers `sillage` (`paths::adopt`).
+        self.engine.model_path = crate::paths::relocated(&self.engine.model_path);
         self.engine.threads = self.engine.threads.clamp(1, 64);
         self.engine.sessions = self.engine.sessions.min(16);
         self.engine.prefetch = self.engine.prefetch.clamp(2, 64);
