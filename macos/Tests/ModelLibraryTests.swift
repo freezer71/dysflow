@@ -113,13 +113,13 @@ final class ModelLibraryTests: XCTestCase {
         let rows = sample(chosen: "parakeet_tdt_v3")
         let cohere = rows.first { $0.id == "cohere_transcribe_8bit" }!
         XCTAssertEqual(ModelLibrary.accessibilityLabel(cohere, .notInstalled),
-                       "Cohere Transcribe, Cohere, Français, anglais, non installé, 600 Mo à télécharger, Vitesse 15 %, Justesse 96 %")
+                       "Cohere Transcribe, Cohere, Français, anglais, Vitesse 15 %, Justesse 96 %, non installé, 600 Mo à télécharger")
         XCTAssertEqual(ModelLibrary.accessibilityLabel(cohere, .downloading(0.25)),
-                       "Cohere Transcribe, Cohere, Français, anglais, téléchargement 25 %, Vitesse 15 %, Justesse 96 %")
+                       "Cohere Transcribe, Cohere, Français, anglais, Vitesse 15 %, Justesse 96 %, téléchargement 25 %")
         var parakeet = rows.first { $0.id == "parakeet_tdt_v3" }!
         parakeet.diskBytes = 2_500_000_000
         XCTAssertEqual(ModelLibrary.accessibilityLabel(parakeet, .installed),
-                       "Parakeet v3, NVIDIA, Français, anglais, installé, 2,5 Go, utilisé, Vitesse 100 %, Justesse 95 %")
+                       "Parakeet v3, NVIDIA, Français, anglais, Vitesse 100 %, Justesse 95 %, installé, 2,5 Go, utilisé")
         let mac = rows.first { $0.system }!
         XCTAssertEqual(ModelLibrary.accessibilityLabel(mac, .system),
                        "\(mac.name), Apple, Français, anglais, sur ce Mac")
