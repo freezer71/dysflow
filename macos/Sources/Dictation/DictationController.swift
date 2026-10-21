@@ -81,6 +81,9 @@ final class DictationController {
     /// Le micro est déjà pris (un essai du micro, dans les réglages) : la
     /// raison, dite à la place de la dictée ; `nil` : libre.
     @ObservationIgnored var busy: @MainActor () -> String? = { nil }
+    /// Le moteur qui transcrit et le repli à dire (`RoutingDictationEngine`) :
+    /// la fenêtre le nomme.
+    @ObservationIgnored var running: @MainActor () -> (engine: RoutingDictationEngine.Running, notice: String?)? = { nil }
     /// Durée d'un mot passager ; une erreur reste plus longtemps.
     @ObservationIgnored var noticeDuration: Duration = .milliseconds(1800)
     @ObservationIgnored var failureDuration: Duration = .seconds(4)

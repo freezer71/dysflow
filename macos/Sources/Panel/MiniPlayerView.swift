@@ -65,6 +65,9 @@ struct MiniPlayerBar: View {
             }
             // Désactivés sans document, pas cachés : la barre garde sa forme.
             MiniControlsRow(model: model, transportEnabled: s.hasDocument, send: perform)
+            ModelLine(snapshot: s, color: Color(nsColor: theme.chrome))
+                .frame(maxWidth: .infinity, alignment: .center)
+                .frame(height: 14)
         }
         .font(.system(size: 13))
         .foregroundStyle(Color(nsColor: theme.chrome))

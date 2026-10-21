@@ -237,7 +237,16 @@ pub fn build_engine_with(
             if settings.family.is_empty() { settings.model_path.as_str() } else { settings.family.as_str() },
         ))
     };
-    (Arc::new(system::SystemEngine::new()), note)
+    match note {
+        Some(note) => (fallback::explained(Arc::new(system::SystemEngine::new()), note.clone()), Some(note)),
+        None => (Arc::new(system::SystemEngine::new()), None),
+    }
+}
+
+/// La voix de repli, et la raison, gardée aussi dans le moteur : l'app ne
+/// garde que lui (`Readiness::Fallback`), la raison ne doit pas s'y perdre.
+fn noted(fallback: Arc<dyn TtsEngine>, note: String) -> (Arc<dyn TtsEngine>, Option<String>) {
+    (fallback::explained(fallback, note.clone()), Some(note))
 }
 
 /// Un modèle à texte (Qwen3, Magpie) : le calcul de l'app, le dossier du
@@ -249,25 +258,22 @@ fn build_text_engine(
 ) -> (Arc<dyn TtsEngine>, Option<String>) {
     let fallback = fallback::fallback_engine(settings);
     let Some(compute) = text else {
-        return (
-            fallback,
-            Some(crate::tr!(
-                en = "Metal compute unavailable — {} only runs in the app",
-                fr = "Calcul Metal indisponible — {} ne tourne que dans l'app",
-                package.display_name.get(),
-            )),
+        let note = crate::tr!(
+            en = "Metal compute unavailable — {} only runs in the app",
+            fr = "Calcul Metal indisponible — {} ne tourne que dans l'app",
+            package.display_name.get(),
         );
+        return noted(fallback, note);
     };
     let main = std::path::Path::new(&settings.model_path);
     let dir = main.parent().filter(|_| main.is_file()).map(std::path::Path::to_path_buf);
     let Some(dir) = dir else {
-        // L'app ne garde que le moteur : la raison doit y rester lisible.
         let note = crate::tr!(
             en = "{} is not installed — see the settings",
             fr = "{} n'est pas installé — voir les réglages",
             package.display_name.get(),
         );
-        return (fallback::explained(fallback, note.clone()), Some(note));
+        return noted(fallback, note);
     };
     let repli = Arc::clone(&fallback);
     let engine = lazy::LazyEngine::spawn(package.display_name.get().to_string(), 1, fallback, move || {
@@ -286,14 +292,12 @@ fn build_kokoro(
 ) -> (Arc<dyn TtsEngine>, Option<String>) {
     let fallback = fallback::fallback_engine(settings);
     let Some(dir) = crate::models::kokoro_dir(&settings.model_path) else {
-        return (
-            fallback,
-            Some(crate::tr!("Kokoro is not installed — see the Models tab", "Kokoro n'est pas installé — voir l'onglet Modèles").to_string()),
-        );
+        let note = crate::tr!("Kokoro is not installed — see the Models tab", "Kokoro n'est pas installé — voir l'onglet Modèles");
+        return noted(fallback, note.to_string());
     };
     let backend = match kokoro_backend(settings, &dir, mlx) {
         Ok(backend) => backend,
-        Err(reason) => return (fallback, Some(reason)),
+        Err(reason) => return noted(fallback, reason),
     };
     let repli = Arc::clone(&fallback);
     let engine = lazy::LazyEngine::spawn("Kokoro".to_string(), 1, fallback, move || {
@@ -422,8 +426,12 @@ mod tests {
     #[test]
     fn kokoro_without_its_files_falls_back_and_says_why() {
         let settings = kokoro_settings("/nulle/part/kokoro-v1_0.safetensors");
-        let (_, note) = build_engine_with(EnginePreference::Auto, &settings, &AppCompute::default());
-        assert!(note.unwrap().contains("Kokoro n'est pas installé"));
+        let (engine, note) = build_engine_with(EnginePreference::Auto, &settings, &AppCompute::default());
+        let note = note.unwrap();
+        assert!(note.contains("Kokoro n'est pas installé"));
+        // L'app ne garde que le moteur : il dit lui-même le repli.
+        assert_eq!(engine.readiness(), Readiness::Fallback(note));
+        assert!(engine.name().contains("(repli)"), "{}", engine.name());
     }
 
     #[test]

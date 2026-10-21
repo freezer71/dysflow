@@ -482,6 +482,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // La pause part toujours : le moteur l'ignore voix au repos, et
         // l'instantané peut être en retard (rien n'est relu en arrière-plan).
         controller.willStart = { [weak model] in model?.send(.pause) }
+        controller.running = { [weak engine] in
+            engine?.running.map { ($0, engine?.fallbackNotice) }
+        }
         let trial = MicTrialController(
             make: { [weak model, weak engine] id in
                 Dictation.makeTrialEngine(id: id,

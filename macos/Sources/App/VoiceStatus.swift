@@ -70,3 +70,38 @@ struct VoiceStatusLine: View {
         }
     }
 }
+
+/// Le modèle qui lit, toujours nommé : un repli ne passe pas inaperçu.
+enum ModelName {
+    /// Ce qui parle (« Kokoro · MLX », « système (say) (repli) ») ; au repos,
+    /// le modèle choisi.
+    static func text(_ s: Snapshot) -> String {
+        String(localized: "Model: \(s.engine.isEmpty ? s.model : s.engine)")
+    }
+
+    /// Le modèle choisi ne lit pas : la voix du système le remplace, ou rien ne sort.
+    static func isFallback(_ s: Snapshot) -> Bool {
+        switch s.voice {
+        case .fallback, .unavailable: true
+        case .resting, .loading, .ready: false
+        }
+    }
+}
+
+/// La ligne du modèle, dans le lecteur et le mini-lecteur : en couleur
+/// d'erreur pendant un repli.
+struct ModelLine: View {
+    let snapshot: Snapshot
+    var color: Color = Palette.muted
+
+    var body: some View {
+        let fallback = ModelName.isFallback(snapshot)
+        Text(ModelName.text(snapshot))
+            .lineLimit(1)
+            .truncationMode(.middle)
+            .font(.system(size: 11, weight: fallback ? .semibold : .regular))
+            .foregroundStyle(fallback ? ErrorStyle.color : color)
+            .help(ModelName.text(snapshot))
+            .accessibilityIdentifier("modele-utilise")
+    }
+}

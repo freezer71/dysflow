@@ -79,4 +79,27 @@ final class VoiceInstallTests: XCTestCase {
         XCTAssertNil(model.voiceSetupError)
         XCTAssertEqual(said.count, 2, "une réussite ne dit rien")
     }
+
+    /// Le modèle est toujours nommé : ce qui parle, sinon le modèle choisi.
+    func testTheModelIsAlwaysNamed() {
+        var s = Snapshot.sample(voice: .resting)
+        s.engine = ""
+        s.model = "Kokoro"
+        XCTAssertTrue(ModelName.text(s).contains("Kokoro"), "au repos : le modèle choisi")
+        XCTAssertFalse(ModelName.isFallback(s))
+        s.voice = .ready
+        s.engine = "Kokoro · MLX"
+        XCTAssertTrue(ModelName.text(s).contains("Kokoro · MLX"), "ce qui parle")
+        XCTAssertFalse(ModelName.isFallback(s))
+    }
+
+    /// Un repli se voit : la voix du système nommée, en couleur d'erreur.
+    func testAFallbackIsShown() {
+        var s = Snapshot.sample(voice: .fallback(reason: "Metal indisponible"))
+        s.engine = "système (say) (repli)"
+        XCTAssertTrue(ModelName.text(s).contains("système (say) (repli)"))
+        XCTAssertTrue(ModelName.isFallback(s))
+        s.voice = .unavailable(reason: "aucune session")
+        XCTAssertTrue(ModelName.isFallback(s))
+    }
 }

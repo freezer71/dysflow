@@ -136,7 +136,7 @@ pub fn voice_traits(family: &str, id: &str) -> (&'static str, &'static str) {
     }
 }
 
-fn model_label(family: &str) -> String {
+pub(crate) fn model_label(family: &str) -> String {
     match family {
         "kokoro" => "Kokoro".to_string(),
         "qwen3_tts_06b_base_8bit" => "Qwen3 0.6B".to_string(),

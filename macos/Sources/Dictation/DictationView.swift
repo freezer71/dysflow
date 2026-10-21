@@ -1,7 +1,8 @@
 import SwiftUI
 
 /// La fenêtre de dictée : une petite carte sobre en bas de l'écran. En
-/// haut, l'icône de l'application où le texte ira, au centre huit barres
+/// haut, l'icône de l'application où le texte ira et le modèle qui
+/// transcrit (la dictée de macOS en repli, en couleur d'erreur), au centre huit barres
 /// fines qui suivent la voix, à droite le délai du dernier texte et la
 /// mémoire occupée ; dessous,
 /// les derniers mots entendus sur deux lignes (les provisoires plus pâles),
@@ -34,8 +35,16 @@ struct DictationView: View {
                         VoiceBars(feed: controller.spectrum, phase: controller.phase, theme: theme)
                     }
                 }
-                TargetIcon(target: controller.target)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                HStack(spacing: 6) {
+                    TargetIcon(target: controller.target)
+                    if let running = controller.running() {
+                        DictationModelName(engine: running.engine, notice: running.notice, theme: theme)
+                    }
+                }
+                // Jusqu'aux barres, sans les recouvrir.
+                .frame(width: (DictationMetrics.width - 2 * DictationMetrics.padding - VoiceBars.span) / 2 - 6,
+                       alignment: .leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 if showStats {
                     DictationStats(latency: controller.latency, memory: controller.memory, theme: theme)
                         .frame(maxWidth: .infinity, alignment: .trailing)
@@ -72,6 +81,29 @@ struct TargetIcon: View {
         .frame(width: 14, height: 14)
         .help(target.map { String(localized: "Typing into \($0.name)") } ?? "")
         .accessibilityLabel(target.map { String(localized: "Typing into \($0.name)") } ?? String(localized: "Typing"))
+    }
+}
+
+/// Le modèle qui transcrit, à côté de l'icône ; la dictée de macOS mise
+/// à la place du modèle choisi, en couleur d'erreur, la raison au survol.
+struct DictationModelName: View {
+    let engine: RoutingDictationEngine.Running
+    let notice: String?
+    let theme: Theme
+
+    static func text(_ engine: RoutingDictationEngine.Running) -> String {
+        engine.fallback ? String(localized: "\(engine.name) (fallback)") : engine.name
+    }
+
+    var body: some View {
+        Text(Self.text(engine))
+            .font(.system(size: 10, weight: engine.fallback ? .semibold : .medium))
+            .foregroundStyle(engine.fallback ? ErrorStyle.color : Color(nsColor: theme.chrome).opacity(0.8))
+            .lineLimit(1)
+            .truncationMode(.tail)
+            .help(notice ?? engine.name)
+            .accessibilityLabel(notice ?? String(localized: "Model: \(engine.name)"))
+            .accessibilityIdentifier("modele-dictee")
     }
 }
 
@@ -142,6 +174,8 @@ struct VoiceBars: View {
     static let gap: CGFloat = 3
     static let rest: CGFloat = 4
     static let tallest: CGFloat = 16
+    /// La largeur des huit barres.
+    static let span = CGFloat(count) * width + CGFloat(count - 1) * gap
 
     var body: some View {
         let live = phase == .listening
@@ -161,8 +195,7 @@ struct VoiceBars: View {
                 canvas.fill(path, with: .color(Color(nsColor: theme.text).opacity(live ? 0.9 : 0.4)))
             }
         }
-        .frame(width: CGFloat(Self.count) * Self.width + CGFloat(Self.count - 1) * Self.gap,
-               height: Self.tallest)
+        .frame(width: Self.span, height: Self.tallest)
         .accessibilityHidden(true)
     }
 

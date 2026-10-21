@@ -35,6 +35,8 @@ struct ReaderView: View {
                 ReaderStatusLine(line: PanelStatus.line(message: model.message, snapshot: model.snapshot),
                                  color: Color(nsColor: style.theme.chrome))
                     .padding(.horizontal, 4)
+                ModelLine(snapshot: model.snapshot, color: Color(nsColor: style.theme.chrome))
+                    .padding(.horizontal, 4)
                 VoiceStatusLine(model: model, color: Color(nsColor: style.theme.chrome))
                     .padding(.horizontal, 4)
             }

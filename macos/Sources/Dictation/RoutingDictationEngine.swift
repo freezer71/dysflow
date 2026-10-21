@@ -14,6 +14,15 @@ final class RoutingDictationEngine: DictationEngine {
     /// « Parakeet v3 indisponible : dictée de macOS » ; `nil` quand le modèle
     /// choisi a démarré (ou que c'est la dictée de macOS).
     private(set) var fallbackNotice: String?
+    /// Le moteur de la dictée en cours, que la fenêtre de dictée nomme ;
+    /// `nil` avant la première dictée.
+    private(set) var running: Running?
+
+    struct Running: Equatable {
+        var name: String
+        /// La dictée de macOS remplace le modèle choisi.
+        var fallback: Bool
+    }
 
     @ObservationIgnored private let system: DictationEngine?
     @ObservationIgnored private let chosen: () -> String
@@ -52,6 +61,7 @@ final class RoutingDictationEngine: DictationEngine {
         let id = chosen()
         guard id != DictationModel.system else {
             fallbackNotice = nil
+            running = Running(name: DictationModel.label(id), fallback: false)
             try await startSystem(locale: locale, events: events, instead: nil, token: mine)
             return
         }
@@ -61,6 +71,7 @@ final class RoutingDictationEngine: DictationEngine {
         }
         try await retire(keeping: engine, token: mine)
         active = engine
+        running = Running(name: DictationModel.label(id), fallback: false)
         do {
             try await engine.start(locale: locale, events: events)
         } catch {
@@ -101,7 +112,10 @@ final class RoutingDictationEngine: DictationEngine {
     /// `instead` : le modèle qui manque (le repli est dit).
     private func startSystem(locale: Locale, events: @escaping @MainActor @Sendable (DictationEvent) -> Void,
                              instead missing: String?, token mine: Int) async throws {
-        if let missing { fallbackNotice = String(localized: "\(DictationModel.label(missing)) unavailable: macOS dictation") }
+        if let missing {
+            fallbackNotice = String(localized: "\(DictationModel.label(missing)) unavailable: macOS dictation")
+            running = Running(name: DictationModel.label(DictationModel.system), fallback: true)
+        }
         guard let system else {
             active = nil
             throw DictationError.failed(String(localized: "\(DictationModel.label(missing ?? "")) unavailable"))

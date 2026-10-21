@@ -45,6 +45,16 @@
         }
       }
     },
+    "%@ (fallback)" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ (repli)"
+          }
+        }
+      }
+    },
     "%@ (up to %lld)" : {
       "localizations" : {
         "en" : {
@@ -1706,6 +1716,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Bibliothèque des modèles"
+          }
+        }
+      }
+    },
+    "Model: %@" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modèle : %@"
           }
         }
       }
