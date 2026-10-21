@@ -130,7 +130,7 @@ touche de modification seule, ou une combinaison.
 
 | Modèle | Taille |
 |---|---|
-| Parakeet v3 | 2,5 Go |
+| Parakeet v3 | 908 Mo |
 | Phonon-2 | 164 Mo |
 | Whisper tiny · small · large-v3-turbo | 23 Mo · 140 Mo · 464 Mo |
 | Canary 1b-v2 | 1,1 Go |

@@ -45,6 +45,16 @@
         }
       }
     },
+    "%@ (fallback)" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ (repli)"
+          }
+        }
+      }
+    },
     "%@ (up to %lld)" : {
       "localizations" : {
         "en" : {
@@ -57,6 +67,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%1$@ sur %2$lld au plus"
+          }
+        }
+      }
+    },
+    "%@ ignores this setting: it guesses the language on its own." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ ignore ce réglage : il devine la langue seul."
           }
         }
       }
@@ -192,6 +212,36 @@
         }
       }
     },
+    "%@%% of words wrong on FLEURS French (Open ASR leaderboard, 21 Oct 2026)" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ %% de mots faux sur FLEURS en français (classement Open ASR, 21 oct. 2026)"
+          }
+        }
+      }
+    },
+    "%@%% of words wrong on FLEURS French (Whisper paper, 2022: not on the Open ASR leaderboard)" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ %% de mots faux sur FLEURS en français (article de Whisper, 2022 : absent du classement Open ASR)"
+          }
+        }
+      }
+    },
+    "%@%% of words wrong, English average (Open ASR leaderboard, 21 Oct 2026). No French figure is published" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ %% de mots faux, moyenne en anglais (classement Open ASR, 21 oct. 2026). Aucun chiffre publié en français"
+          }
+        }
+      }
+    },
     "%@× speed" : {
       "comment" : "VoiceOver: playback speed",
       "localizations" : {
@@ -310,6 +360,22 @@
         }
       }
     },
+    "%lld× real time on a server GPU (H200, Open ASR leaderboard, 21 Oct 2026): %lld%% of the fastest. Not measured on a Mac" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld× real time on a server GPU (H200, Open ASR leaderboard, 21 Oct 2026): %2$lld%% of the fastest. Not measured on a Mac"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld× le temps réel sur un GPU de serveur (H200, classement Open ASR, 21 oct. 2026) : %lld %% du plus rapide. Pas mesuré sur un Mac"
+          }
+        }
+      }
+    },
     "%u" : {
 
     },
@@ -409,6 +475,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Précision"
+          }
+        }
+      }
+    },
+    "Accuracy %lld%%" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Justesse %lld %%"
+          }
+        }
+      }
+    },
+    "Accuracy (English) %lld%%" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Justesse (anglais) %lld %%"
           }
         }
       }
@@ -969,6 +1055,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Langue de la dictée"
+          }
+        }
+      }
+    },
+    "Dictation microphone" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Micro de la dictée"
           }
         }
       }
@@ -1580,6 +1676,16 @@
         }
       }
     },
+    "Mac microphone with Bluetooth headphones" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Micro du Mac avec des écouteurs Bluetooth"
+          }
+        }
+      }
+    },
     "Man" : {
       "localizations" : {
         "fr" : {
@@ -1706,6 +1812,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Bibliothèque des modèles"
+          }
+        }
+      }
+    },
+    "Model: %@" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modèle : %@"
           }
         }
       }
@@ -2007,6 +2123,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Autorisations"
+          }
+        }
+      }
+    },
+    "Phonon-2 is trained for English: French may come out as English. Parakeet v3 is better at French." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Phonon-2 est entraîné pour l'anglais : le français peut sortir en anglais. Parakeet v3 est meilleur en français."
           }
         }
       }
@@ -2342,12 +2468,12 @@
         }
       }
     },
-    "Recognized on your Mac: nothing leaves it. Parakeet and Voxtral detect it on their own" : {
+    "Recognized on your Mac: nothing leaves it." : {
       "localizations" : {
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Reconnue sur votre Mac : rien n'en sort. Parakeet et Voxtral la reconnaissent seuls"
+            "value" : "Reconnue sur votre Mac : rien n'en sort."
           }
         }
       }
@@ -2804,6 +2930,16 @@
         }
       }
     },
+    "Speed %lld%%" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vitesse %lld %%"
+          }
+        }
+      }
+    },
     "Speed (+ −)" : {
       "localizations" : {
         "fr" : {
@@ -2944,6 +3080,16 @@
         }
       }
     },
+    "System input" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Entrée du système"
+          }
+        }
+      }
+    },
     "System voice as a fallback: %@" : {
       "localizations" : {
         "fr" : {
@@ -3070,6 +3216,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "La langue s'installe : %lld %%"
+          }
+        }
+      }
+    },
+    "The microphone of Bluetooth headphones switches them to call mode: music cuts out and comes back muffled. The Mac microphone avoids it" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le micro d'écouteurs Bluetooth les fait passer en mode appel : la musique se coupe et revient étouffée. Le micro du Mac l'évite"
           }
         }
       }

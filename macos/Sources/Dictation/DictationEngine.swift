@@ -108,6 +108,27 @@ enum DictationModel {
         default: id.isEmpty ? String(localized: "The dictation model") : id
         }
     }
+
+    /// Les modèles qui n'ont pas d'entrée pour la langue : ils la devinent
+    /// (Parakeet v3, Phonon-2, Voxtral), ou ne savent que l'anglais
+    /// (Parakeet v2). Le réglage « Langue » ne leur parvient pas.
+    static func ignoresLanguage(_ id: String) -> Bool {
+        ["parakeet_tdt_v3", "phonon_2", "voxtral_realtime_4bit", "parakeet_tdt_v2"].contains(id)
+    }
+
+    /// Ce que dit la ligne « Langue » : le modèle choisi la suit, ou l'ignore.
+    static func languageDetail(_ id: String) -> String {
+        let local = String(localized: "Recognized on your Mac: nothing leaves it.")
+        guard ignoresLanguage(id) else { return local }
+        return local + " " + String(localized: "\(label(id)) ignores this setting: it guesses the language on its own.")
+    }
+
+    /// Un modèle mal fait pour la langue choisie : Phonon-2, réentraîné pour
+    /// l'anglais, tire le français vers l'anglais.
+    static func languageWarning(_ id: String, language: DictationLanguage) -> String? {
+        guard id == "phonon_2", language == .french else { return nil }
+        return String(localized: "Phonon-2 is trained for English: French may come out as English. Parakeet v3 is better at French.")
+    }
 }
 
 /// La dictée demande la reconnaissance de la parole de macOS 26

@@ -420,6 +420,8 @@ pub struct Snapshot {
     pub voice: VoiceState,
     /// Nom du moteur qui parle (« Kokoro · MLX »), vide au repos.
     pub engine: String,
+    /// Le modèle de lecture choisi (« Kokoro »), même au repos.
+    pub model: String,
     pub status: String,
     pub search: Option<SearchState>,
     pub skipped: u32,
@@ -1083,6 +1085,7 @@ fn snapshot_of(s: view::Snapshot) -> Snapshot {
             view::VoiceState::Unavailable { reason } => VoiceState::Unavailable { reason },
         },
         engine: s.engine,
+        model: s.model,
         status: s.status,
         search: s.search.map(|q| SearchState {
             query: q.query,

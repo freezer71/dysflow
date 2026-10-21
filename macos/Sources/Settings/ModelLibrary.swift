@@ -121,6 +121,7 @@ enum ModelLibrary {
             parts.append(String(localized: "incomplete download, \(ModelTable.bytes(row.diskBytes)) on disk"))
         }
         if row.active { parts.append(ModelTable.used(row)) }
+        if let score = ModelScore.of(row.id) { parts.append(ModelScoreLine.spoken(score)) }
         return parts.joined(separator: ", ")
     }
 }

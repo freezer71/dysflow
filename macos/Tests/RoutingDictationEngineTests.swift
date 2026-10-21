@@ -16,6 +16,7 @@ final class RoutingDictationEngineTests: XCTestCase {
         try await router.start(locale: Locale(identifier: "fr-FR")) { _ in }
         XCTAssertEqual(system.started, 1)
         XCTAssertNil(router.fallbackNotice)
+        XCTAssertEqual(router.running, .init(name: DictationModel.label(DictationModel.system), fallback: false))
     }
 
     func testAMissingModelFallsBackToTheSystemAndSaysSo() async throws {
@@ -24,6 +25,9 @@ final class RoutingDictationEngineTests: XCTestCase {
         try await router.start(locale: Locale(identifier: "fr-FR")) { _ in }
         XCTAssertEqual(system.started, 1)
         XCTAssertNotNil(router.fallbackNotice)
+        // La fenêtre de dictée nomme le remplaçant, en repli.
+        XCTAssertEqual(router.running, .init(name: DictationModel.label(DictationModel.system), fallback: true))
+        XCTAssertTrue(DictationModelName.text(router.running!).contains(DictationModel.label(DictationModel.system)))
     }
 
     func testTheChosenModelIsUsed() async throws {
@@ -33,6 +37,7 @@ final class RoutingDictationEngineTests: XCTestCase {
         try await router.start(locale: Locale(identifier: "fr-FR")) { _ in }
         XCTAssertEqual(parakeet.started, 1)
         XCTAssertEqual(system.started, 0)
+        XCTAssertEqual(router.running, .init(name: "Parakeet v3", fallback: false))
     }
 }
 
@@ -90,6 +95,7 @@ final class RoutingDictationEngineRaceTests: XCTestCase {
         XCTAssertEqual(system.started, 1)
         XCTAssertEqual(a.cancelled, 1)
         XCTAssertNotNil(router.fallbackNotice)
+        XCTAssertEqual(router.running?.fallback, true, "un chargement raté se voit dans la fenêtre")
         await router.finish()
         XCTAssertEqual(system.finished, 1)
         XCTAssertEqual(a.finished, 0)

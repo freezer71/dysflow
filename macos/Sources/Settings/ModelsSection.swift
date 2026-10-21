@@ -156,6 +156,7 @@ struct ModelsTable: View {
                         .foregroundStyle(Palette.muted)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+                ModelScoreLine(id: row.id)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .accessibilityHidden(true)
@@ -226,6 +227,7 @@ struct ModelsTable: View {
         if state != .installed, ModelTable.canRemove(row, state) {
             parts.append(String(localized: "incomplete download, \(ModelTable.bytes(row.diskBytes)) on disk"))
         }
+        if let score = ModelScore.of(row.id) { parts.append(ModelScoreLine.spoken(score)) }
         return parts.joined(separator: ", ")
     }
 

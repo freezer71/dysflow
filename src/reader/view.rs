@@ -63,6 +63,9 @@ pub struct Snapshot {
     /// Nom du moteur qui parle (« Kokoro · MLX »), vide au repos : l'état
     /// « prête » ne dit pas lequel.
     pub engine: String,
+    /// Le modèle de lecture choisi dans les réglages (« Kokoro », « voix du
+    /// système »), même au repos : `engine` dit ce qui parle vraiment.
+    pub model: String,
     /// Message d'état du lecteur.
     pub status: String,
     pub search: Option<SearchState>,
@@ -145,6 +148,14 @@ pub struct DocView {
     pub blocks: Vec<BlockView>,
 }
 
+/// Le nom du modèle de lecture choisi : la voix du système sans modèle.
+fn configured_model(config: &crate::config::Config) -> String {
+    if config.engine_preference() == crate::tts::EnginePreference::System || config.engine.family.is_empty() {
+        return crate::tr!("system voice", "voix du système").to_string();
+    }
+    super::library::model_label(&config.engine.family)
+}
+
 pub fn snapshot(reader: &Reader) -> Snapshot {
     let voice = match (reader.is_resting(), reader.engine()) {
         (true, _) | (_, None) => VoiceState::Resting,
@@ -160,6 +171,7 @@ pub fn snapshot(reader: &Reader) -> Snapshot {
         (false, Some(engine)) => engine.name(),
         _ => String::new(),
     };
+    let model = configured_model(reader.config());
     let voice = match reader.session().and_then(|app| app.voice_unavailable()) {
         Some(reason) if voice != VoiceState::Resting => VoiceState::Unavailable { reason },
         _ => voice,
@@ -188,6 +200,7 @@ pub fn snapshot(reader: &Reader) -> Snapshot {
             volume: reader.config().voice.volume,
             voice,
             engine,
+            model,
             download: reader.download(),
             preview: reader.preview_view(),
             document_language: reader.document_language().cloned(),
@@ -222,6 +235,7 @@ pub fn snapshot(reader: &Reader) -> Snapshot {
         muted: app.player.is_muted(),
         voice,
         engine,
+        model,
         status: app.status().to_string(),
         search: app.search().map(|s| SearchState {
             query: s.query.clone(),
@@ -384,6 +398,27 @@ mod tests {
         assert_eq!(snapshot(&r).engine, SilentEngine.name());
         r.rest();
         assert_eq!(snapshot(&r).engine, "", "au repos, aucun moteur");
+    }
+
+    #[test]
+    fn the_snapshot_names_the_chosen_model_even_at_rest() {
+        // Le nom reste affiché : au repos, c'est le modèle choisi qu'on lit.
+        let mut r = reader_with("Un. Deux.");
+        assert_eq!(snapshot(&r).model, crate::tr!("system voice", "voix du système"), "sans modèle : le système");
+        let mut config = Config::default();
+        config.engine.family = "kokoro".into();
+        config.engine.engine = "auto".into();
+        let mut kokoro = Reader::new(
+            config,
+            Box::new(|_| Arc::new(SilentEngine) as Arc<dyn TtsEngine>),
+            Box::new(|_: &str| Player::silent()),
+            Instant::now(),
+        );
+        assert_eq!(snapshot(&kokoro).model, "Kokoro");
+        kokoro.open_text("Un.", "test", Instant::now());
+        assert_eq!(snapshot(&kokoro).model, "Kokoro");
+        r.rest();
+        assert!(!snapshot(&r).model.is_empty());
     }
 
     /// Un moteur chargé dont aucune session ne s'ouvre.

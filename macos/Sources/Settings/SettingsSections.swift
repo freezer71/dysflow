@@ -382,6 +382,7 @@ struct DictationSection: View {
     @AppStorage(DictationLanguage.defaultsKey) private var language = DictationLanguage.stored().rawValue
     @AppStorage(DictationModel.defaultsKey) private var chosen = DictationModel.stored()
     @AppStorage(DictationStats.defaultsKey) private var showStats = DictationStats.shown()
+    @AppStorage(MicrophoneChoice.defaultsKey) private var microphone = MicrophoneChoice.stored().rawValue
     /// La bibliothèque des modèles est ouverte, en feuille sur la fenêtre.
     @State private var libraryShown = false
 
@@ -476,10 +477,25 @@ struct DictationSection: View {
                               dictating: AppDelegate.shared?.dictation?.holdsMicrophone ?? false)
             }
             DictationShortcutRow(identifier: "raccourci-dictee")
-            SettingRow(title: String(localized: "Language"),
-                       detail: String(localized: "Recognized on your Mac: nothing leaves it. Parakeet and Voxtral detect it on their own")) {
+            SettingRow(title: String(localized: "Language"), detail: DictationModel.languageDetail(chosen)) {
                 PopUpPicker(label: String(localized: "Dictation language"), identifier: "langue-dictee",
                             options: Self.options, selection: $language)
+                    .fixedSize()
+            }
+            if let warning = DictationModel.languageWarning(chosen, language: DictationLanguage(rawValue: language) ?? .french) {
+                Text(warning)
+                    .font(Typo.detail)
+                    .foregroundStyle(ErrorStyle.color)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, Space.inset)
+                    .padding(.vertical, 8)
+                    .accessibilityIdentifier("dictee-langue-avertissement")
+            }
+            SettingRow(title: String(localized: "Microphone"),
+                       detail: String(localized: "The microphone of Bluetooth headphones switches them to call mode: music cuts out and comes back muffled. The Mac microphone avoids it")) {
+                PopUpPicker(label: String(localized: "Dictation microphone"), identifier: "micro-dictee",
+                            options: MicrophoneChoice.allCases.map { (title: $0.label, value: $0.rawValue) },
+                            selection: $microphone)
                     .fixedSize()
             }
             SettingRow(title: String(localized: "Delay and memory"),

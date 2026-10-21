@@ -33,7 +33,7 @@ final class ReaderModesUITests: XCTestCase {
         let mini = app.groups["lecteur-mini"]
         XCTAssertTrue(mini.waitForExistence(timeout: 2), "⌘M : pas de mini")
         let settled = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
-            abs(mini.frame.width - 340) <= 2 && abs(mini.frame.height - 108) <= 2
+            abs(mini.frame.width - 340) <= 2 && abs(mini.frame.height - 128) <= 2
         }, object: nil)
         XCTAssertEqual(XCTWaiter.wait(for: [settled], timeout: 2), .completed, "taille du mini : \(mini.frame.size)")
         XCTAssertEqual(app.buttons["lecture"].label, "Pause", "réduire ne met pas en pause")

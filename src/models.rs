@@ -241,6 +241,8 @@ const MAGPIE_FILES: &[Companion] = &[
     hf(MAGPIE_REPO, MAGPIE_REVISION, "tokenizer/en.json", 29_699),
 ];
 
+const PARAKEET_V3_REPO: &str = "animaslabs/parakeet-tdt-0.6b-v3-mlx-8bit";
+const PARAKEET_V3_REVISION: &str = "18498133db8b4c8753bf98b3c5b6639b2a791be3";
 const PARAKEET_V2_REPO: &str = "mlx-community/parakeet-tdt-0.6b-v2";
 const PARAKEET_V2_REVISION: &str = "8ae155301e23d820d82aa60d24817c900e69e487";
 const NEMOTRON_REPO: &str = "mlx-community/nemotron-3.5-asr-streaming-0.6b-8bit";
@@ -337,22 +339,25 @@ pub const CATALOG: &[ModelPackage] = &[
         family: "parakeet_tdt_v3",
         display_name: Tr::new("Parakeet v3", "Parakeet v3"),
         description: Tr::new("Fast, accurate recognition of twenty-five European languages, on the GPU.", "Reconnaît vite et bien vingt-cinq langues européennes, sur la puce graphique."),
-        precision: Tr::new("bf16", "bf16"),
+        precision: Tr::new("8-bit", "8 bits"),
         languages: &["fr", "en"],
-        repo: "mlx-community/parakeet-tdt-0.6b-v3",
-        revision: "ed2b7e8c15f9aaa0b5772e2efb986255eaef7e15",
+        // Quantifié en 8 bits (908 Mo) : le paquet de mlx-community, en F32,
+        // pesait 2,5 Go pour le même modèle. Même `config.json`, plus sa clé
+        // `quantization`, que le chargeur lit.
+        repo: PARAKEET_V3_REPO,
+        revision: PARAKEET_V3_REVISION,
         file: "model.safetensors",
         languages_label: Tr::new("25 European languages", "25 langues européennes"),
-        bytes: 2_508_288_736,
+        bytes: 908_392_684,
         recommended: true,
         pace: Tr::new("Re-read every 1.5 s", "Relecture toutes les 1,5 s"),
         companions: &[
             Companion {
-                repo: "mlx-community/parakeet-tdt-0.6b-v3",
-                revision: "ed2b7e8c15f9aaa0b5772e2efb986255eaef7e15",
+                repo: PARAKEET_V3_REPO,
+                revision: PARAKEET_V3_REVISION,
                 file: "config.json",
                 dest: "config.json",
-                bytes: 244_093,
+                bytes: 318_494,
             },
         ],
         runtime: Runtime::ParakeetMlx,
@@ -596,13 +601,13 @@ pub const CATALOG: &[ModelPackage] = &[
         id: "qwen3_asr_06b_8bit",
         family: "qwen3_asr_06b_8bit",
         display_name: Tr::new("Qwen3-ASR 0.6B", "Qwen3-ASR 0.6B"),
-        description: Tr::new("Detects the spoken language on its own (30 languages). Writes the text token by token: each re-read takes longer than with Parakeet.", "Reconnaît seul la langue parlée, parmi trente. Écrit le texte jeton par jeton : chaque relecture prend plus de temps qu'avec Parakeet."),
+        description: Tr::new("Writes in the dictation language, among thirty. Writes the text token by token: each re-read takes longer than with Parakeet.", "Écrit dans la langue de la dictée, parmi trente. Écrit le texte jeton par jeton : chaque relecture prend plus de temps qu'avec Parakeet."),
         precision: Tr::new("8-bit", "8 bits"),
         languages: &["fr", "en"],
         repo: QWEN3_ASR_06B_REPO,
         revision: QWEN3_ASR_06B_REVISION,
         file: "model.safetensors",
-        languages_label: Tr::new("30 languages, detected automatically", "30 langues, reconnues seules"),
+        languages_label: Tr::new("30 languages", "30 langues"),
         bytes: 1_006_229_426,
         recommended: false,
         pace: Tr::new("Sliding re-read: 0.4 s of compute for 9 s of speech, 1.5 s for 36 s (M5)", "Relecture glissante : 0,4 s de calcul pour 9 s de parole, 1,5 s pour 36 s (M5)"),
@@ -616,13 +621,13 @@ pub const CATALOG: &[ModelPackage] = &[
         id: "qwen3_asr_17b_4bit",
         family: "qwen3_asr_17b_4bit",
         display_name: Tr::new("Qwen3-ASR 1.7B", "Qwen3-ASR 1.7B"),
-        description: Tr::new("The large Qwen3-ASR, more accurate than the 0.6B, shrunk to 4 bits. Detects the language on its own; the slower of the two to re-read.", "Le grand Qwen3-ASR, plus juste que le 0.6B, réduit à 4 bits. Reconnaît seul la langue ; le plus lent des deux à relire."),
+        description: Tr::new("The large Qwen3-ASR, more accurate than the 0.6B, shrunk to 4 bits. Writes in the dictation language; the slower of the two to re-read.", "Le grand Qwen3-ASR, plus juste que le 0.6B, réduit à 4 bits. Écrit dans la langue de la dictée ; le plus lent des deux à relire."),
         precision: Tr::new("4-bit", "4 bits"),
         languages: &["fr", "en"],
         repo: QWEN3_ASR_17B_REPO,
         revision: QWEN3_ASR_17B_REVISION,
         file: "model.safetensors",
-        languages_label: Tr::new("30 languages, detected automatically", "30 langues, reconnues seules"),
+        languages_label: Tr::new("30 languages", "30 langues"),
         bytes: 1_603_081_617,
         recommended: false,
         pace: Tr::new("Sliding re-read: 0.6 s of compute for 9 s of speech, 2.4 s for 36 s (M5)", "Relecture glissante : 0,6 s de calcul pour 9 s de parole, 2,4 s pour 36 s (M5)"),
@@ -1800,7 +1805,7 @@ mod tests {
     #[test]
     fn dictation_packages_are_pinned_to_their_own_repo() {
         let parakeet = package("parakeet_tdt_v3");
-        assert_eq!(parakeet.total_bytes(), 2_508_288_736 + 244_093);
+        assert_eq!(parakeet.total_bytes(), 908_392_684 + 318_494);
         assert!(parakeet.recommended);
         for p in CATALOG.iter().filter(|p| p.kind == Kind::Dictation) {
             assert_eq!(p.revision.len(), 40, "{}", p.id);

@@ -107,8 +107,8 @@ final class MiniPlayerViewTests: XCTestCase {
         XCTAssertLessThanOrEqual(host.fittingSize.width, MiniPlacement.size.width)
     }
 
-    func testTheBarIs340By108() {
-        XCTAssertEqual(MiniPlacement.size, CGSize(width: 340, height: 108))
+    func testTheBarIs340By128() {
+        XCTAssertEqual(MiniPlacement.size, CGSize(width: 340, height: 128))
     }
 
     /// Le titre de ce qui est lu ; sans document, le nom de l'app.

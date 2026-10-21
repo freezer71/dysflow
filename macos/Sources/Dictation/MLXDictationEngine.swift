@@ -355,9 +355,9 @@ final class CanarySpeech: LoadedSpeechModel {
     }
 }
 
-/// Qwen3-ASR (0.6B et 1.7B) : la langue n'est jamais imposée, le modèle la
-/// reconnaît seul (il écrit « language French<asr_text>… », dont seul le
-/// texte est gardé). `language` est ignoré.
+/// Qwen3-ASR (0.6B et 1.7B) : la langue du réglage est imposée (l'invite
+/// finit par « language French<asr_text> ») ; seule, le modèle la devinait,
+/// et une phrase courte pouvait passer pour une autre langue.
 final class Qwen3ASRSpeech: LoadedSpeechModel {
     private let model: Qwen3ASRModel
     init(_ model: Qwen3ASRModel) {
@@ -366,7 +366,7 @@ final class Qwen3ASRSpeech: LoadedSpeechModel {
 
     func transcribe(_ samples: [Float], language: String) throws -> String {
         SpeechModels.applyLimits()
-        let parameters = model.defaultGenerationParameters.with(language: nil)
+        let parameters = model.defaultGenerationParameters.with(language: language)
         return model.generate(samples: samples, generationParameters: parameters)
             .text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
