@@ -76,24 +76,23 @@ struct ModelScore: Equatable {
     }
 }
 
-/// « ⚡ Vitesse 100 % · ◎ Justesse 95 % » sous le nom d'un modèle de
-/// dictée ; la source au survol. Rien pour un modèle sans chiffre publié.
+/// « ⚡ ▬▬▬ 100 %   ◎ ▬▬▬ 95 % » sous le nom d'un modèle de dictée : une
+/// icône, une barre, le pourcentage ; les mots et la source au survol (et
+/// pour VoiceOver). Largeurs fixes : les barres s'alignent d'une ligne à
+/// l'autre, et une vitesse absente garde sa place. Rien pour un modèle sans
+/// chiffre publié.
 struct ModelScoreLine: View {
     let id: String
 
     var body: some View {
         if let score = ModelScore.of(id) {
-            HStack(spacing: 10) {
-                if let speed = score.speedText {
-                    Label(speed, systemImage: "bolt.fill")
-                        .help(score.speedHelp ?? "")
-                }
-                Label(score.accuracyText, systemImage: "scope")
+            HStack(spacing: 16) {
+                ScoreGauge(symbol: "bolt.fill", value: score.speed, tag: nil)
+                    .help(score.speedHelp ?? "")
+                ScoreGauge(symbol: "scope", value: score.accuracy, tag: score.language == "fr" ? nil : "EN")
                     .help(score.accuracyHelp)
             }
-            .labelStyle(ScoreLabelStyle())
-            .font(Typo.detail.monospacedDigit())
-            .foregroundStyle(Palette.muted)
+            .padding(.top, 2)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(Self.spoken(score))
         }
@@ -104,11 +103,44 @@ struct ModelScoreLine: View {
     }
 }
 
-private struct ScoreLabelStyle: LabelStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        HStack(spacing: 3) {
-            configuration.icon.foregroundStyle(Palette.accent)
-            configuration.title
+/// Une jauge : l'icône, une barre de 0 à 100, le pourcentage ; `nil` : la
+/// place, vide.
+private struct ScoreGauge: View {
+    let symbol: String
+    let value: Int?
+    /// La langue mesurée quand ce n'est pas le français (« EN »).
+    let tag: String?
+
+    static let barWidth: CGFloat = 48
+
+    var body: some View {
+        HStack(spacing: 6) {
+            if let value {
+                Image(systemName: symbol)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(Palette.accent)
+                    .frame(width: 12)
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Palette.muted.opacity(0.25))
+                    Capsule().fill(Palette.accent)
+                        .frame(width: Self.barWidth * CGFloat(min(100, max(0, value))) / 100)
+                }
+                .frame(width: Self.barWidth, height: 4)
+                Text(String(localized: "\(value)%"))
+                    .font(Typo.detail.monospacedDigit())
+                    .foregroundStyle(Palette.muted)
+                    .lineLimit(1)
+                    .frame(width: 40, alignment: .leading)
+                if let tag {
+                    Text(tag)
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(Palette.muted)
+                        .padding(.horizontal, 3)
+                        .overlay(RoundedRectangle(cornerRadius: 3).stroke(Palette.muted.opacity(0.5)))
+                }
+            }
         }
+        .frame(width: 12 + Self.barWidth + 40 + 2 * 6 + 22, alignment: .leading)
+        .fixedSize()
     }
 }
