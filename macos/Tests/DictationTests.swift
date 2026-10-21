@@ -680,3 +680,35 @@ final class DictationLanguageNoteTests: XCTestCase {
         XCTAssertNil(DictationModel.languageWarning("parakeet_tdt_v3", language: .french))
     }
 }
+
+/// Les chiffres publiés : justesse = 100 − mots faux, vitesse = part du plus rapide.
+final class ModelScoreTests: XCTestCase {
+    func testScoresComeFromPublishedFigures() {
+        let parakeet = ModelScore.of("parakeet_tdt_v3")!
+        XCTAssertEqual(parakeet.accuracy, 95)
+        XCTAssertEqual(parakeet.speed, 100)
+        XCTAssertEqual(ModelScore.of("voxtral_realtime_4bit")?.speed, 2)
+        XCTAssertEqual(ModelScore.of("cohere_transcribe_8bit")?.accuracy, 96)
+    }
+
+    func testNothingPublishedShowsNothing() {
+        XCTAssertNil(ModelScore.of(DictationModel.system), "la dictée de macOS : rien de publié")
+        XCTAssertNil(ModelScore.of("whisper_tiny_4bit")?.speed, "Whisper tiny : vitesse non publiée")
+        XCTAssertNil(ModelScore.of("kokoro_82m_mlx"), "pas pour la lecture")
+    }
+
+    func testAnEnglishOnlyFigureSaysSo() {
+        let phonon = ModelScore.of("phonon_2")!
+        XCTAssertEqual(phonon.language, "en")
+        XCTAssertEqual(phonon.accuracyText, "Justesse (anglais) 93 %")
+    }
+
+    /// Chaque modèle de dictée du catalogue a ses chiffres (sauf macOS).
+    func testEveryDictationModelHasAScore() {
+        for id in ["parakeet_tdt_v3", "phonon_2", "whisper_tiny_4bit", "whisper_small_4bit",
+                   "whisper_large_v3_turbo_4bit", "canary_1b_v2_q8", "voxtral_realtime_4bit", "parakeet_tdt_v2",
+                   "nemotron_35_asr_streaming_8bit", "qwen3_asr_06b_8bit", "qwen3_asr_17b_4bit", "cohere_transcribe_8bit"] {
+            XCTAssertNotNil(ModelScore.of(id), id)
+        }
+    }
+}

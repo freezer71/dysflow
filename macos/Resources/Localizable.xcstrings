@@ -212,6 +212,36 @@
         }
       }
     },
+    "%@%% of words wrong on FLEURS French (Open ASR leaderboard, 21 Oct 2026)" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ %% de mots faux sur FLEURS en français (classement Open ASR, 21 oct. 2026)"
+          }
+        }
+      }
+    },
+    "%@%% of words wrong on FLEURS French (Whisper paper, 2022: not on the Open ASR leaderboard)" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ %% de mots faux sur FLEURS en français (article de Whisper, 2022 : absent du classement Open ASR)"
+          }
+        }
+      }
+    },
+    "%@%% of words wrong, English average (Open ASR leaderboard, 21 Oct 2026). No French figure is published" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ %% de mots faux, moyenne en anglais (classement Open ASR, 21 oct. 2026). Aucun chiffre publié en français"
+          }
+        }
+      }
+    },
     "%@× speed" : {
       "comment" : "VoiceOver: playback speed",
       "localizations" : {
@@ -330,6 +360,22 @@
         }
       }
     },
+    "%lld× real time on a server GPU (H200, Open ASR leaderboard, 21 Oct 2026): %lld%% of the fastest. Not measured on a Mac" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld× real time on a server GPU (H200, Open ASR leaderboard, 21 Oct 2026): %2$lld%% of the fastest. Not measured on a Mac"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld× le temps réel sur un GPU de serveur (H200, classement Open ASR, 21 oct. 2026) : %lld %% du plus rapide. Pas mesuré sur un Mac"
+          }
+        }
+      }
+    },
     "%u" : {
 
     },
@@ -429,6 +475,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Précision"
+          }
+        }
+      }
+    },
+    "Accuracy %lld%%" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Justesse %lld %%"
+          }
+        }
+      }
+    },
+    "Accuracy (English) %lld%%" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Justesse (anglais) %lld %%"
           }
         }
       }
@@ -2840,6 +2906,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Vitesse"
+          }
+        }
+      }
+    },
+    "Speed %lld%%" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vitesse %lld %%"
           }
         }
       }

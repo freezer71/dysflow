@@ -253,6 +253,7 @@ private struct ModelLibraryRow: View {
                         .foregroundStyle(Palette.muted)
                         .lineLimit(1)
                 }
+                ModelScoreLine(id: row.id)
                 if !row.summary.isEmpty {
                     Text(row.summary)
                         .font(Typo.detail)
