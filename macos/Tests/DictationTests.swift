@@ -1,3 +1,4 @@
+import CoreAudio
 import XCTest
 @testable import Sillage
 
@@ -710,5 +711,37 @@ final class ModelScoreTests: XCTestCase {
                    "nemotron_35_asr_streaming_8bit", "qwen3_asr_06b_8bit", "qwen3_asr_17b_4bit", "cohere_transcribe_8bit"] {
             XCTAssertNotNil(ModelScore.of(id), id)
         }
+    }
+}
+
+/// Des écouteurs Bluetooth en entrée cèdent au micro du Mac : leur micro
+/// les ferait passer en mode « mains libres » (musique coupée, étouffée).
+final class MicrophoneChoiceTests: XCTestCase {
+    let airpods = AudioInput(id: 1, transport: kAudioDeviceTransportTypeBluetooth)
+    let builtIn = AudioInput(id: 2, transport: kAudioDeviceTransportTypeBuiltIn)
+    let usb = AudioInput(id: 3, transport: kAudioDeviceTransportTypeUSB)
+
+    func testBluetoothInputGivesWayToTheMacMicrophone() {
+        XCTAssertEqual(MicrophoneChoice.builtInOverBluetooth.replacement(defaultInput: airpods, inputs: [airpods, builtIn]),
+                       builtIn)
+    }
+
+    func testOtherInputsAreKept() {
+        XCTAssertNil(MicrophoneChoice.builtInOverBluetooth.replacement(defaultInput: usb, inputs: [usb, builtIn]))
+        XCTAssertNil(MicrophoneChoice.builtInOverBluetooth.replacement(defaultInput: builtIn, inputs: [builtIn]))
+    }
+
+    func testWithoutAMacMicrophoneTheBluetoothOneStays() {
+        XCTAssertNil(MicrophoneChoice.builtInOverBluetooth.replacement(defaultInput: airpods, inputs: [airpods]))
+    }
+
+    func testTheSystemChoiceNeverReplaces() {
+        XCTAssertNil(MicrophoneChoice.system.replacement(defaultInput: airpods, inputs: [airpods, builtIn]))
+    }
+
+    func testTheMacMicrophoneIsTheDefault() {
+        let defaults = UserDefaults(suiteName: "MicrophoneChoiceTests")!
+        defaults.removePersistentDomain(forName: "MicrophoneChoiceTests")
+        XCTAssertEqual(MicrophoneChoice.stored(defaults), .builtInOverBluetooth)
     }
 }

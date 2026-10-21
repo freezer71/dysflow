@@ -59,6 +59,8 @@ final class SystemDictationEngine: DictationEngine {
         let format = ready.format
         let (stream, continuation) = AsyncStream.makeStream(of: AnalyzerInput.self)
         let audio = AVAudioEngine()
+        // Avant le format : des écouteurs Bluetooth cèdent au micro du Mac.
+        MicrophoneChoice.apply(to: audio)
         let node = audio.inputNode
         let natural = node.outputFormat(forBus: 0)
         guard natural.sampleRate > 0, natural.channelCount > 0 else { throw DictationError.noMicrophone }

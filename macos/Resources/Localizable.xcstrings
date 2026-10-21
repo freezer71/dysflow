@@ -1059,6 +1059,16 @@
         }
       }
     },
+    "Dictation microphone" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Micro de la dictée"
+          }
+        }
+      }
+    },
     "Dictation shortcut" : {
       "localizations" : {
         "fr" : {
@@ -1662,6 +1672,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Chargement du modèle…"
+          }
+        }
+      }
+    },
+    "Mac microphone with Bluetooth headphones" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Micro du Mac avec des écouteurs Bluetooth"
           }
         }
       }
@@ -3060,6 +3080,16 @@
         }
       }
     },
+    "System input" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Entrée du système"
+          }
+        }
+      }
+    },
     "System voice as a fallback: %@" : {
       "localizations" : {
         "fr" : {
@@ -3186,6 +3216,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "La langue s'installe : %lld %%"
+          }
+        }
+      }
+    },
+    "The microphone of Bluetooth headphones switches them to call mode: music cuts out and comes back muffled. The Mac microphone avoids it" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le micro d'écouteurs Bluetooth les fait passer en mode appel : la musique se coupe et revient étouffée. Le micro du Mac l'évite"
           }
         }
       }
