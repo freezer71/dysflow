@@ -476,11 +476,19 @@ struct DictationSection: View {
                               dictating: AppDelegate.shared?.dictation?.holdsMicrophone ?? false)
             }
             DictationShortcutRow(identifier: "raccourci-dictee")
-            SettingRow(title: String(localized: "Language"),
-                       detail: String(localized: "Recognized on your Mac: nothing leaves it. Parakeet and Voxtral detect it on their own")) {
+            SettingRow(title: String(localized: "Language"), detail: DictationModel.languageDetail(chosen)) {
                 PopUpPicker(label: String(localized: "Dictation language"), identifier: "langue-dictee",
                             options: Self.options, selection: $language)
                     .fixedSize()
+            }
+            if let warning = DictationModel.languageWarning(chosen, language: DictationLanguage(rawValue: language) ?? .french) {
+                Text(warning)
+                    .font(Typo.detail)
+                    .foregroundStyle(ErrorStyle.color)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, Space.inset)
+                    .padding(.vertical, 8)
+                    .accessibilityIdentifier("dictee-langue-avertissement")
             }
             SettingRow(title: String(localized: "Delay and memory"),
                        detail: String(localized: "In the dictation window: the text delay and the memory the model uses")) {

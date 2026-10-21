@@ -71,6 +71,16 @@
         }
       }
     },
+    "%@ ignores this setting: it guesses the language on its own." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ ignore ce réglage : il devine la langue seul."
+          }
+        }
+      }
+    },
     "%@ isn’t installed: the trial can’t start." : {
       "localizations" : {
         "fr" : {
@@ -2031,6 +2041,16 @@
         }
       }
     },
+    "Phonon-2 is trained for English: French may come out as English. Parakeet v3 is better at French." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Phonon-2 est entraîné pour l'anglais : le français peut sortir en anglais. Parakeet v3 est meilleur en français."
+          }
+        }
+      }
+    },
     "Play" : {
       "localizations" : {
         "fr" : {
@@ -2362,12 +2382,12 @@
         }
       }
     },
-    "Recognized on your Mac: nothing leaves it. Parakeet and Voxtral detect it on their own" : {
+    "Recognized on your Mac: nothing leaves it." : {
       "localizations" : {
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Reconnue sur votre Mac : rien n'en sort. Parakeet et Voxtral la reconnaissent seuls"
+            "value" : "Reconnue sur votre Mac : rien n'en sort."
           }
         }
       }

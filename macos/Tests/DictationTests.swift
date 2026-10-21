@@ -660,3 +660,23 @@ final class ModifierTapTests: XCTestCase {
     }
 }
 
+
+/// La ligne « Langue » dit quand le modèle choisi ne la suit pas.
+final class DictationLanguageNoteTests: XCTestCase {
+    func testModelsThatGuessTheLanguageAreNamed() {
+        for id in ["parakeet_tdt_v3", "phonon_2", "voxtral_realtime_4bit"] {
+            XCTAssertTrue(DictationModel.ignoresLanguage(id), id)
+            XCTAssertTrue(DictationModel.languageDetail(id).contains(DictationModel.label(id)), id)
+        }
+        for id in [DictationModel.system, "nemotron_35_asr_streaming_8bit", "whisper_large_v3_turbo_4bit",
+                   "canary_1b_v2_q8", "cohere_transcribe_8bit", "qwen3_asr_06b_8bit"] {
+            XCTAssertFalse(DictationModel.ignoresLanguage(id), id)
+        }
+    }
+
+    func testPhonon2InFrenchIsWarned() {
+        XCTAssertNotNil(DictationModel.languageWarning("phonon_2", language: .french))
+        XCTAssertNil(DictationModel.languageWarning("phonon_2", language: .english))
+        XCTAssertNil(DictationModel.languageWarning("parakeet_tdt_v3", language: .french))
+    }
+}
