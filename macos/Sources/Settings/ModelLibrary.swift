@@ -111,7 +111,7 @@ enum ModelLibrary {
     static func accessibilityLabel(_ row: VoiceModel, _ state: ModelRowState) -> String {
         var parts = [row.name, ModelTable.maker(row).name, row.languagesLabel].filter { !$0.isEmpty }
         // Ce que vaut le modèle, avant ce qu'il en est sur ce Mac.
-        if let score = ModelScore.of(row.id) { parts.append(ModelScoreLine.spoken(score)) }
+        if let score = ModelScore.of(row.id) { parts.append(score.spoken) }
         switch state {
         case .system: parts.append(String(localized: "on this Mac"))
         case .notInstalled: parts.append(String(localized: "not installed, \(ModelTable.size(row)) to download"))

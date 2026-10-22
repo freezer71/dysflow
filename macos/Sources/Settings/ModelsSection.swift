@@ -218,7 +218,7 @@ struct ModelsTable: View {
     nonisolated static func label(_ row: VoiceModel, _ state: ModelRowState) -> String {
         var parts = [row.name, row.active ? ModelTable.used(row) : ModelTable.notUsed(row)]
         // Ce que vaut le modèle, avant ce qu'il en est sur ce Mac.
-        if let score = ModelScore.of(row.id) { parts.append(ModelScoreLine.spoken(score)) }
+        if let score = ModelScore.of(row.id) { parts.append(score.spoken) }
         switch state {
         case .system: parts.append(String(localized: "on this Mac"))
         case .notInstalled: parts.append(String(localized: "not installed, \(ModelTable.size(row)) to download"))

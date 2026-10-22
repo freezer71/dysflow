@@ -17,7 +17,7 @@ import Speech
 @available(macOS 26, *)
 @MainActor
 final class SystemDictationEngine: DictationEngine {
-    private var audio: AVAudioEngine?
+    private var microphone: MicrophoneStream?
     private var analyzer: SpeechAnalyzer?
     private var input: AsyncStream<AnalyzerInput>.Continuation?
     private var reader: Task<Void, Never>?
@@ -58,26 +58,16 @@ final class SystemDictationEngine: DictationEngine {
         let module = Self.module(ready)
         let format = ready.format
         let (stream, continuation) = AsyncStream.makeStream(of: AnalyzerInput.self)
-        let audio = AVAudioEngine()
-        // Avant le format : des écouteurs Bluetooth cèdent au micro du Mac.
-        MicrophoneChoice.apply(to: audio)
-        let node = audio.inputNode
-        let natural = node.outputFormat(forBus: 0)
-        guard natural.sampleRate > 0, natural.channelCount > 0 else { throw DictationError.noMicrophone }
+        // Des écouteurs Bluetooth en entrée cèdent au micro du Mac.
+        guard let device = MicrophoneChoice.device() else { throw DictationError.noMicrophone }
+        let microphone = try MicrophoneStream(device: device)
+        let natural = microphone.format
         guard let tap = AudioTap(from: natural, to: format, input: continuation,
                                  spectrum: { columns in Task { @MainActor in events(.spectrum(columns)) } })
         else { throw DictationError.failed(String(localized: "unsupported audio format")) }
-        let sink = AVAudioSinkNode(receiverBlock: tap.receiver())
-        audio.attach(sink)
-        audio.connect(node, to: sink, format: natural)
-        audio.prepare()
-        do {
-            try audio.start()
-        } catch {
-            throw DictationError.failed(error.localizedDescription)
-        }
+        try microphone.start(tap.receiver())
         Self.log.info("micro ouvert en \(Int((ContinuousClock.now - began) / .milliseconds(1)), privacy: .public) ms")
-        self.audio = audio
+        self.microphone = microphone
         input = continuation
         events(.listening)
 
@@ -120,8 +110,8 @@ final class SystemDictationEngine: DictationEngine {
 
     private func stopAudio() {
         generation &+= 1
-        audio?.stop()
-        audio = nil
+        microphone?.stop()
+        microphone = nil
         input?.finish()
         input = nil
     }

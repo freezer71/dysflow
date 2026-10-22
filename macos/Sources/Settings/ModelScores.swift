@@ -57,6 +57,11 @@ struct ModelScore: Equatable {
 
     var speedText: String? { speed.map { String(localized: "Speed \($0)%") } }
 
+    /// Ce que VoiceOver dit des deux jauges.
+    var spoken: String {
+        [speedText, accuracyText].compactMap { $0 }.joined(separator: ", ")
+    }
+
     var accuracyHelp: String {
         let wer = wer.formatted(.number.precision(.fractionLength(0...2)).locale(UILanguage.locale))
         switch (source, language) {
@@ -94,13 +99,10 @@ struct ModelScoreLine: View {
             }
             .padding(.top, 2)
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel(Self.spoken(score))
+            .accessibilityLabel(score.spoken)
         }
     }
 
-    static func spoken(_ score: ModelScore) -> String {
-        [score.speedText, score.accuracyText].compactMap { $0 }.joined(separator: ", ")
-    }
 }
 
 /// Une jauge : l'icône, une barre de 0 à 100, le pourcentage ; `nil` : la
