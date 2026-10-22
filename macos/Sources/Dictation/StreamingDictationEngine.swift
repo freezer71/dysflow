@@ -52,7 +52,11 @@ final class StreamingDictationEngine: DictationEngine {
         let runner = runner, directory = directory
         let language = MLXDictationEngine.languageCode(locale)
         let load = Task {
-            try await runner.prepare(directory: directory)
+            if let took = try await runner.prepare(directory: directory, willLoad: {
+                Task { @MainActor in events(.loading) }
+            }) {
+                await MainActor.run { events(.loaded(took)) }
+            }
             return try await runner.withModel { model in
                 guard let streaming = model as? StreamingSpeechModel else {
                     throw DictationError.failed(String(localized: "this model doesn’t dictate as you speak"))

@@ -18,6 +18,10 @@ enum DictationEvent: Equatable, Sendable {
     /// calculs, la voix aussi si elle est chargée), relevée après chaque
     /// relecture. Seuls les modèles MLX la disent.
     case memory(Int)
+    /// Le modèle commence à se charger (il n'était pas en mémoire).
+    case loading
+    /// Le modèle est chargé, en ce temps-là.
+    case loaded(Duration)
 }
 
 enum DictationError: Error, Equatable {

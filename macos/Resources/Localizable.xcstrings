@@ -1816,6 +1816,16 @@
         }
       }
     },
+    "Model loaded in %@" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modèle chargé en %@"
+          }
+        }
+      }
+    },
     "Model: %@" : {
       "localizations" : {
         "fr" : {
@@ -3226,6 +3236,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Le micro d'écouteurs Bluetooth les fait passer en mode appel : la musique se coupe et revient étouffée. Le micro du Mac l'évite"
+          }
+        }
+      }
+    },
+    "The model is loading: %@. Your voice is recorded in the meantime" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le modèle se charge : %@. Votre voix est enregistrée pendant ce temps"
           }
         }
       }

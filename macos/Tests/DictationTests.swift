@@ -165,6 +165,20 @@ final class DictationControllerTests: XCTestCase {
         XCTAssertEqual(engine.started, [Locale(identifier: "fr-FR")])
     }
 
+    /// Le chargement du modèle : un compteur, puis le temps pris ; une
+    /// nouvelle dictée repart de rien.
+    func testTheModelLoadTimeIsShownThenForgotten() async {
+        let c = makeController()
+        c.toggle()
+        _ = await eventuallyTrue { c.phase == .listening }
+        engine.send(.loading)
+        XCTAssertNotNil(c.loadingSince)
+        engine.send(.loaded(.milliseconds(2300)))
+        XCTAssertNil(c.loadingSince)
+        XCTAssertEqual(c.loadTime, .milliseconds(2300))
+        XCTAssertEqual(DictationStats.format(.milliseconds(2300)), "2,3 s")
+    }
+
     func testWhatIsSaidShowsUpWhileSpeaking() async {
         let c = makeController()
         c.toggle()

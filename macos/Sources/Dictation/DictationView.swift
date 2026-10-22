@@ -40,6 +40,7 @@ struct DictationView: View {
                     if let running = controller.running() {
                         DictationModelName(engine: running.engine, notice: running.notice, theme: theme)
                     }
+                    ModelLoadTime(since: controller.loadingSince, took: controller.loadTime, theme: theme)
                 }
                 // Jusqu'aux barres, sans les recouvrir.
                 .frame(width: (DictationMetrics.width - 2 * DictationMetrics.padding - VoiceBars.span) / 2 - 6,
@@ -104,6 +105,48 @@ struct DictationModelName: View {
             .help(notice ?? engine.name)
             .accessibilityLabel(notice ?? String(localized: "Model: \(engine.name)"))
             .accessibilityIdentifier("modele-dictee")
+    }
+}
+
+/// Le chargement du modèle, à côté de son nom : un compteur qui tourne
+/// pendant qu'il se charge (« ⌛ 1,4 s »), puis le temps qu'il a pris.
+/// Rien quand il était déjà en mémoire. Le micro écoute pendant ce temps :
+/// rien de ce qui est dit n'est perdu.
+struct ModelLoadTime: View {
+    let since: Date?
+    let took: Duration?
+    let theme: Theme
+
+    var body: some View {
+        if let since {
+            TimelineView(.periodic(from: since, by: 0.1)) { context in
+                label(.seconds(context.date.timeIntervalSince(since)), loading: true)
+            }
+        } else if let took {
+            label(took, loading: false)
+        }
+    }
+
+    private func label(_ duration: Duration, loading: Bool) -> some View {
+        HStack(spacing: 2) {
+            Image(systemName: "hourglass")
+                .font(.system(size: 8, weight: .semibold))
+            Text(DictationStats.format(duration))
+                .font(.system(size: 10, weight: .medium).monospacedDigit())
+        }
+        .foregroundStyle(Color(nsColor: theme.chrome).opacity(loading ? 1 : 0.8))
+        .lineLimit(1)
+        .fixedSize()
+        .help(Self.help(duration, loading: loading))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Self.help(duration, loading: loading))
+        .accessibilityIdentifier("chargement-modele")
+    }
+
+    static func help(_ duration: Duration, loading: Bool) -> String {
+        let time = DictationStats.format(duration)
+        return loading ? String(localized: "The model is loading: \(time). Your voice is recorded in the meantime")
+            : String(localized: "Model loaded in \(time)")
     }
 }
 
