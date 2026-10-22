@@ -16,7 +16,7 @@ final class MicrophoneCapture: @unchecked Sendable {
                                       channels: 1, interleaved: false)!
 
     private let spectrum: @Sendable ([[Float]]) -> Void
-    private var audio: AVAudioEngine?
+    private var stream: MicrophoneStream?
     private let buffer = OSAllocatedUnfairLock(initialState: Buffer())
 
     /// L'audio par morceaux d'une seconde au plus. Le fil audio n'ajoute
@@ -66,7 +66,7 @@ final class MicrophoneCapture: @unchecked Sendable {
     }
 
     deinit {
-        audio?.stop()
+        stream?.stop()
     }
 
     /// L'autorisation du micro, demandée la première fois ; refusée :
@@ -87,31 +87,20 @@ final class MicrophoneCapture: @unchecked Sendable {
     func start() throws {
         stop()
         buffer.withLock { $0 = Buffer() }
-        let audio = AVAudioEngine()
-        // Avant le format : des écouteurs Bluetooth cèdent au micro du Mac.
-        MicrophoneChoice.apply(to: audio)
-        let node = audio.inputNode
-        let natural = node.outputFormat(forBus: 0)
-        guard natural.sampleRate > 0, natural.channelCount > 0 else { throw DictationError.noMicrophone }
-        guard let tap = MicrophoneTap(from: natural, spectrum: spectrum, append: { [buffer] converted in
+        // Des écouteurs Bluetooth en entrée cèdent au micro du Mac.
+        guard let device = MicrophoneChoice.device() else { throw DictationError.noMicrophone }
+        let stream = try MicrophoneStream(device: device)
+        guard let tap = MicrophoneTap(from: stream.format, spectrum: spectrum, append: { [buffer] converted in
             buffer.withLock { $0.append(converted) }
         }) else { throw DictationError.failed(String(localized: "unsupported audio format")) }
-        let sink = AVAudioSinkNode(receiverBlock: tap.receiver())
-        audio.attach(sink)
-        audio.connect(node, to: sink, format: natural)
-        audio.prepare()
-        do {
-            try audio.start()
-        } catch {
-            throw DictationError.failed(error.localizedDescription)
-        }
-        self.audio = audio
+        try stream.start(tap.receiver())
+        self.stream = stream
     }
 
     /// Ferme le micro ; ce qui est arrivé reste dans le tampon.
     func stop() {
-        audio?.stop()
-        audio = nil
+        stream?.stop()
+        stream = nil
     }
 
     /// Tout l'audio depuis `start` (une copie).

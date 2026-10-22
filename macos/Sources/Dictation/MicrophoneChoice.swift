@@ -32,19 +32,11 @@ enum MicrophoneChoice: String, CaseIterable {
         return inputs.first(where: \.builtIn)
     }
 
-    /// Pose le micro choisi sur le moteur, avant toute lecture de son format
-    /// et avant `start` (le Bluetooth bascule à l'ouverture du flux).
-    /// Un échec laisse l'entrée du système : la dictée marche quand même.
-    @discardableResult
-    static func apply(to engine: AVAudioEngine, choice: MicrophoneChoice = .stored()) -> AudioInput? {
-        guard let device = choice.replacement(defaultInput: AudioInput.systemDefault(), inputs: AudioInput.all())
-        else { return nil }
-        do {
-            try engine.inputNode.auAudioUnit.setDeviceID(device.id)
-            return device
-        } catch {
-            return nil
-        }
+    /// Le micro à ouvrir : le remplaçant, sinon l'entrée du système ; `nil` :
+    /// aucun micro.
+    static func device(choice: MicrophoneChoice = .stored()) -> AudioDeviceID? {
+        let defaultInput = AudioInput.systemDefault()
+        return (choice.replacement(defaultInput: defaultInput, inputs: AudioInput.all()) ?? defaultInput)?.id
     }
 }
 

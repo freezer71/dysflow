@@ -3687,6 +3687,16 @@
         }
       }
     },
+    "microphone unavailable (%d)" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "micro indisponible (%d)"
+          }
+        }
+      }
+    },
     "no dictation model loaded" : {
       "localizations" : {
         "fr" : {
