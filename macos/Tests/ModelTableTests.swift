@@ -177,4 +177,12 @@ final class ModelTableTests: XCTestCase {
         XCTAssertFalse(ModelTable.canUse(used), "déjà utilisé")
     }
 
+
+    /// Le rond choisit un modèle là ; une flèche dit qu'un clic le télécharge.
+    func testTheChoiceShowsWhatAClickDoes() {
+        XCTAssertEqual(ModelsTable.choiceSymbol(row(installed: true, active: true)), "largecircle.fill.circle")
+        XCTAssertEqual(ModelsTable.choiceSymbol(row(installed: true)), "circle")
+        XCTAssertEqual(ModelsTable.choiceSymbol(row(system: true)), "circle")
+        XCTAssertEqual(ModelsTable.choiceSymbol(row()), "arrow.down.circle")
+    }
 }
