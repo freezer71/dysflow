@@ -91,11 +91,11 @@ struct ModelScoreLine: View {
 
     var body: some View {
         if let score = ModelScore.of(id) {
-            HStack(spacing: 16) {
-                ScoreGauge(symbol: "bolt.fill", value: score.speed, tag: nil)
-                    .help(score.speedHelp ?? "")
-                ScoreGauge(symbol: "scope", value: score.accuracy, tag: score.language == "fr" ? nil : "EN")
-                    .help(score.accuracyHelp)
+            // Côte à côte si la colonne le permet, l'une sous l'autre sinon :
+            // la table ne doit jamais dépasser la fenêtre.
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 14) { gauges(score) }
+                VStack(alignment: .leading, spacing: 4) { gauges(score) }
             }
             .padding(.top, 2)
             .accessibilityElement(children: .ignore)
@@ -103,20 +103,35 @@ struct ModelScoreLine: View {
         }
     }
 
+    @ViewBuilder private func gauges(_ score: ModelScore) -> some View {
+        ScoreGauge(symbol: "bolt.fill", value: score.speed, tag: nil, tagSlot: false)
+            .help(score.speedHelp ?? "")
+        ScoreGauge(symbol: "scope", value: score.accuracy, tag: score.language == "fr" ? nil : "EN", tagSlot: true)
+            .help(score.accuracyHelp)
+    }
 }
 
 /// Une jauge : l'icône, une barre de 0 à 100, le pourcentage ; `nil` : la
-/// place, vide.
+/// place, vide. Largeur fixe : les barres s'alignent d'une ligne à l'autre.
 private struct ScoreGauge: View {
     let symbol: String
     let value: Int?
     /// La langue mesurée quand ce n'est pas le français (« EN »).
     let tag: String?
+    /// La place de l'étiquette, réservée même sans elle (justesse).
+    let tagSlot: Bool
 
-    static let barWidth: CGFloat = 48
+    static let barWidth: CGFloat = 40
+    static let percentWidth: CGFloat = 38
+    static let tagWidth: CGFloat = 22
+    static let spacing: CGFloat = 5
+
+    static func width(tagSlot: Bool) -> CGFloat {
+        12 + barWidth + percentWidth + 2 * spacing + (tagSlot ? spacing + tagWidth : 0)
+    }
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: Self.spacing) {
             if let value {
                 Image(systemName: symbol)
                     .font(.system(size: 10, weight: .semibold))
@@ -132,17 +147,19 @@ private struct ScoreGauge: View {
                     .font(Typo.detail.monospacedDigit())
                     .foregroundStyle(Palette.muted)
                     .lineLimit(1)
-                    .frame(width: 40, alignment: .leading)
+                    .fixedSize()
+                    .frame(width: Self.percentWidth, alignment: .leading)
                 if let tag {
                     Text(tag)
                         .font(.system(size: 9, weight: .semibold))
                         .foregroundStyle(Palette.muted)
+                        .lineLimit(1)
+                        .fixedSize()
                         .padding(.horizontal, 3)
                         .overlay(RoundedRectangle(cornerRadius: 3).stroke(Palette.muted.opacity(0.5)))
                 }
             }
         }
-        .frame(width: 12 + Self.barWidth + 40 + 2 * 6 + 22, alignment: .leading)
-        .fixedSize()
+        .frame(width: Self.width(tagSlot: tagSlot), alignment: .leading)
     }
 }

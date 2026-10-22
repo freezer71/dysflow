@@ -58,6 +58,10 @@ final class DictationController {
     /// Le temps de chargement du modèle pour cette dictée ; `nil` : il était
     /// déjà en mémoire (ou ce n'est pas un modèle MLX).
     private(set) var loadTime: Duration?
+    /// Pour le journal (`DictationLog`) : un résultat définitif est arrivé,
+    /// et la longueur du dernier provisoire.
+    @ObservationIgnored private var finalReceived = false
+    @ObservationIgnored private var lastPending = 0
     /// Depuis quand le micro écoute (le chronomètre de la fenêtre).
     private(set) var listeningSince: Date?
     /// Le spectrogramme : lu par le dessin à chaque image, hors observation.
@@ -162,6 +166,8 @@ final class DictationController {
         let id = session
         willStart()
         transcript = Transcript()
+        finalReceived = false
+        lastPending = 0
         latency = nil
         memory = nil
         loadingSince = nil
@@ -201,6 +207,7 @@ final class DictationController {
                 listeningSince = Date()
             }
         case .text(let text, let isFinal):
+            if isFinal { finalReceived = true } else { lastPending = text.count }
             transcript.receive(text, isFinal: isFinal)
         case .spectrum(let columns):
             spectrum.push(columns)
@@ -235,10 +242,16 @@ final class DictationController {
             _ = await closed
             // Le démarrage a échoué pendant ce temps (modèle qui ne se charge
             // pas) : son message reste, rien n'est saisi.
-            guard session == id, phase == .finishing else { return }
+            guard session == id, phase == .finishing else {
+                DictationLog.log.info("saisie : abandonnée (une autre dictée, ou un échec affiché)")
+                return
+            }
             let text = transcript.text
+            DictationLog.log.info("saisie : \(text.count, privacy: .public) caractères (définitif reçu : \(self.finalReceived, privacy: .public), dernier provisoire : \(self.lastPending, privacy: .public) caractères)")
             remember(text)
-            switch await insert(text) {
+            let outcome = await insert(text)
+            DictationLog.log.info("saisie : \(String(describing: outcome), privacy: .public)")
+            switch outcome {
             case .pasted, .nothing:
                 guard session == id else { return }
                 hide()

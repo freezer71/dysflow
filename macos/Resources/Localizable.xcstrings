@@ -1129,6 +1129,22 @@
         }
       }
     },
+    "Download %@ (%@)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Download %1$@ (%2$@)"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Télécharger %@ (%@)"
+          }
+        }
+      }
+    },
     "Download failed: %@" : {
       "localizations" : {
         "fr" : {

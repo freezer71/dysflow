@@ -83,7 +83,10 @@ final class StreamingDictationEngine: DictationEngine {
         // Avant tout : un `finish` arrivé avant l'ouverture du micro arrête
         // aussi le démarrage en cours.
         generation &+= 1
-        guard let capture, let events else { return }
+        guard let capture, let events else {
+            DictationLog.log.error("fin : micro pas encore ouvert, rien à lire")
+            return
+        }
         capture.stop()
         let loop = loop, load = load
         clear()
@@ -97,7 +100,11 @@ final class StreamingDictationEngine: DictationEngine {
             return session.finish()
         }
         releaseCache()
-        guard let text else { return }
+        guard let text else {
+            DictationLog.log.error("fin : la session de flux n'a rien rendu")
+            return
+        }
+        DictationLog.log.info("fin : \(text.count, privacy: .public) caractères (flux)")
         events(.text(text, isFinal: true))
     }
 

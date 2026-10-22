@@ -74,24 +74,37 @@ final class MLXDictationEngine: DictationEngine {
         // Avant tout : un `finish` arrivé avant l'ouverture du micro arrête
         // aussi le démarrage en cours.
         generation &+= 1
-        guard let capture, let events else { return }
+        guard let capture, let events else {
+            DictationLog.log.error("fin : micro pas encore ouvert, rien à lire")
+            return
+        }
         capture.stop()
         let loop = loop, load = load, language = language
         clear()
         // La lecture en cours va au bout (son texte n'est plus montré).
         loop?.cancel()
         await loop?.value
-        guard (try? await load?.value) != nil else { return }
+        guard (try? await load?.value) != nil else {
+            DictationLog.log.error("fin : le modèle ne s'est pas chargé")
+            return
+        }
         // Comme Voxtral : les tampons gardés par MLX pendant la dictée sont
         // rendus, une fois le texte définitif lu.
         defer { releaseCache() }
         let samples = capture.samples()
+        let seconds = Double(samples.count) / MicrophoneCapture.format.sampleRate
         guard samples.count >= Self.minimumSamples else {
+            DictationLog.log.info("fin : audio trop court (\(seconds, format: .fixed(precision: 2), privacy: .public) s)")
             events(.text("", isFinal: true))
             return
         }
-        guard let text = try? await runner.transcribe(samples, language: language) else { return }
-        events(.text(text, isFinal: true))
+        do {
+            let text = try await runner.transcribe(samples, language: language)
+            DictationLog.log.info("fin : \(seconds, format: .fixed(precision: 2), privacy: .public) s d'audio, \(text.count, privacy: .public) caractères")
+            events(.text(text, isFinal: true))
+        } catch {
+            DictationLog.log.error("fin : transcription échouée : \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     /// Rien n'est émis. Une lecture déjà partie sur le GPU va au bout (elle

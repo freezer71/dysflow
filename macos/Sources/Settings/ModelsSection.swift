@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// Une table de modèles : choix, nom, taille, état et action. Des lignes à
+/// Une table de modèles : choix, nom, taille et une petite action (corbeille,
+/// progression). Un clic sur une ligne absente la télécharge. Des lignes à
 /// colonnes fixes plutôt qu'une `Table` : la page des réglages défile déjà,
 /// une `Table` s'y coincerait ; et chaque ligne reste un seul élément pour
 /// VoiceOver. Lecture et dictée partagent la table : chacune dit quelle
@@ -24,7 +25,8 @@ struct ModelsTable: View {
 
     private static let choiceWidth: CGFloat = 22
     private static let sizeWidth: CGFloat = 80
-    private static let actionWidth: CGFloat = 200
+    /// La place à droite : une corbeille, ou la progression et sa croix.
+    private static let actionWidth: CGFloat = 104
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -32,7 +34,7 @@ struct ModelsTable: View {
                 Color.clear.frame(width: Self.choiceWidth + 14 + MakerBadge.size, height: 1)
                 Text("Model").frame(maxWidth: .infinity, alignment: .leading)
                 Text("Size").frame(width: Self.sizeWidth, alignment: .trailing)
-                Text("Status").frame(width: Self.actionWidth, alignment: .leading)
+                Color.clear.frame(width: Self.actionWidth, height: 1)
             }
             .font(Typo.caption)
             .foregroundStyle(Palette.muted)
@@ -108,8 +110,8 @@ struct ModelsTable: View {
         let downloads = ModelTable.downloadsOnClick(row, download: download)
         return HStack(spacing: 14) {
             // Le rond, le nom et la taille : un seul bouton. Installé, il
-            // choisit le modèle ; pas encore là, il le télécharge. Les
-            // actions (Télécharger, Supprimer…) restent à part.
+            // choisit le modèle ; pas encore là, il le télécharge (le rond
+            // devient une flèche). La corbeille et la progression restent à part.
             Button {
                 act {
                     if downloads {
@@ -125,23 +127,24 @@ struct ModelsTable: View {
             }
             .buttonStyle(ModelRowButtonStyle())
             .disabled(!(ModelTable.canUse(row) || downloads))
-            .help(downloads ? "Download \(row.name)" : "")
+            .help(downloads ? String(localized: "Download \(row.name) (\(ModelTable.size(row)))")
+                : state == .notInstalled ? String(localized: "A download is in progress") : "")
             .accessibilityLabel(row.active ? [row.name, ModelTable.used(row)].joined(separator: ", ")
                 : downloads ? String(localized: "Download \(row.name)") : String(localized: "Use \(row.name)"))
             .accessibilityIdentifier("utiliser-\(row.id)")
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 action(row, state)
                 if state != .installed, ModelTable.canRemove(row, state) {
                     removeButton(row)
                 }
             }
-            .frame(width: Self.actionWidth, alignment: .leading)
+            .frame(width: Self.actionWidth, alignment: .trailing)
         }
     }
 
     private func choice(_ row: VoiceModel) -> some View {
         HStack(spacing: 14) {
-            Image(systemName: row.active ? "largecircle.fill.circle" : "circle")
+            Image(systemName: Self.choiceSymbol(row))
                 .foregroundStyle(row.active ? Palette.accent : Palette.muted)
                 .frame(width: Self.choiceWidth)
             MakerBadge(maker: ModelTable.maker(row))
@@ -168,46 +171,38 @@ struct ModelsTable: View {
         }
     }
 
+    /// Le rond (plein : utilisé) ; une flèche pour un modèle à télécharger.
+    nonisolated static func choiceSymbol(_ row: VoiceModel) -> String {
+        if row.active { return "largecircle.fill.circle" }
+        return row.installed || row.system ? "circle" : "arrow.down.circle"
+    }
+
     private func removeButton(_ row: VoiceModel) -> some View {
-        Button("Delete…") { state.confirming = row }
-            .buttonStyle(.notionPlain)
-            .fixedSize()
-            .accessibilityLabel("Delete \(row.name)")
+        IconButton(symbol: "trash", help: String(localized: "Delete \(row.name)")) { state.confirming = row }
             .accessibilityIdentifier("supprimer-\(row.id)")
     }
 
+    /// La petite action de droite. Rien pour la voix de macOS, ni pour un
+    /// modèle à télécharger (un clic sur la ligne suffit).
     @ViewBuilder private func action(_ row: VoiceModel, _ state: ModelRowState) -> some View {
         switch state {
-        case .system:
-            Text(row.active ? ModelTable.usedBadge(row) : String(localized: "On this Mac"))   // la voix de macOS : « Utilisée » (féminin) en français
-                .foregroundStyle(Palette.muted)
-                .accessibilityHidden(true)
-        case .notInstalled:
-            let allowed = ModelTable.canDownload(row, download: model.snapshot.download)
-            Button("Download") { act { try await model.installModel(row.id) } }
-                .buttonStyle(.notion)
-                .disabled(!allowed)
-                .help(allowed ? "" : "A download is in progress")
-                .accessibilityLabel("Download \(row.name)")
-                .accessibilityIdentifier("telecharger-\(row.id)")
+        case .system, .notInstalled:
+            EmptyView()
         case .downloading(let fraction):
-            HStack(spacing: 8) {
-                ProgressView(value: fraction)
-                    .frame(width: 90)
-                    .accessibilityLabel("Downloading \(row.name)")
-                    .accessibilityValue("\(Int(fraction * 100))%")
-                Button("Cancel") { act { try await model.cancelDownload() } }
-                    .buttonStyle(.notionPlain)
-                    .accessibilityLabel("Cancel downloading \(row.name)")
-                    .accessibilityIdentifier("annuler-\(row.id)")
+            ProgressView(value: fraction)
+                .frame(width: 64)
+                .accessibilityLabel("Downloading \(row.name)")
+                .accessibilityValue("\(Int(fraction * 100))%")
+            IconButton(symbol: "xmark.circle.fill", help: String(localized: "Cancel downloading \(row.name)")) {
+                act { try await model.cancelDownload() }
             }
+            .accessibilityIdentifier("annuler-\(row.id)")
         case .failed:
             // Le message s'affiche en entier sous la ligne.
-            Button("Retry") { act { try await model.installModel(row.id) } }
-                .buttonStyle(.notion)
-                .fixedSize()
-                .accessibilityLabel("Retry downloading \(row.name)")
-                .accessibilityIdentifier("telecharger-\(row.id)")
+            IconButton(symbol: "arrow.clockwise", help: String(localized: "Retry downloading \(row.name)")) {
+                act { try await model.installModel(row.id) }
+            }
+            .accessibilityIdentifier("telecharger-\(row.id)")
         case .installed:
             removeButton(row)
         }
@@ -306,5 +301,30 @@ private struct ModelRowButtonBody: View {
             .contentShape(Rectangle())
             .onHover { hovering = $0 }
             .pointingHandCursor()
+    }
+}
+
+/// Un petit bouton d'icône, discret, la bulle d'aide pour nom (VoiceOver le
+/// lit aussi).
+struct IconButton: View {
+    let symbol: String
+    let help: String
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(hovering ? Palette.ink : Palette.muted)
+                .frame(width: 26, height: 26)
+                .background(RoundedRectangle(cornerRadius: 6).fill(hovering ? Palette.hover : .clear))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .pointingHandCursor()
+        .help(help)
+        .accessibilityLabel(help)
     }
 }
