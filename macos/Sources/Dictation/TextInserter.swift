@@ -74,7 +74,9 @@ struct TextInserter {
     func insert(_ text: String) async -> InsertOutcome {
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return .nothing }
+        let front = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "?"
         if let reason = copyReason() {
+            DictationLog.log.info("saisie : copiée (\(String(describing: reason), privacy: .public)), app au premier plan : \(front, privacy: .public)")
             // Un champ de mot de passe : le texte peut en être un.
             pasteboard.write(text, privacy: reason == .secureInput ? .concealed : .normal)
             return .copied(reason)
@@ -83,6 +85,7 @@ struct TextInserter {
         pasteboard.write(text, privacy: .transient)
         let ours = pasteboard.changeCount
         keys.sendPaste()
+        DictationLog.log.info("saisie : ⌘V envoyé à \(front, privacy: .public)")
         try? await Task.sleep(for: restoreDelay)
         // Une copie faite entre-temps par l'utilisateur reste.
         if pasteboard.changeCount == ours { pasteboard.restore(saved) }
