@@ -26,6 +26,19 @@ final class SpeechModelRunnerTests: XCTestCase {
         XCTAssertEqual(clears.count, 0)
     }
 
+    /// Un vrai chargement est annoncé et chronométré ; un modèle déjà là,
+    /// non.
+    func testOnlyARealLoadIsTimed() async throws {
+        final class Count: @unchecked Sendable { var value = 0 }
+        let announced = Count()
+        let runner = SpeechModelRunner(load: { _ in Echo() }, clearCache: {})
+        let first = try await runner.prepare(directory: URL(fileURLWithPath: "/x"), willLoad: { announced.value += 1 })
+        let second = try await runner.prepare(directory: URL(fileURLWithPath: "/x"), willLoad: { announced.value += 1 })
+        XCTAssertNotNil(first)
+        XCTAssertNil(second, "déjà en mémoire : rien à chronométrer")
+        XCTAssertEqual(announced.value, 1)
+    }
+
     /// Un autre dossier : l'ancien modèle est libéré (cache vidé une fois),
     /// puis le nouveau chargé.
     func testAnotherDirectoryReloads() async throws {

@@ -257,7 +257,7 @@ final class MicTrialController {
             if phase == .listening, speechHeard, end.push(columns), !transcript.isEmpty {
                 stop()
             }
-        case .latency, .memory:
+        case .latency, .memory, .loading, .loaded:
             // L'essai mesure ses délais et sa mémoire lui-même
             // (`TrialTimeline`, `TrialMeasure`).
             break

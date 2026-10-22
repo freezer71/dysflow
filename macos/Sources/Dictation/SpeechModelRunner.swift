@@ -105,15 +105,21 @@ final class SpeechModelRunner: @unchecked Sendable {
 
     /// Charge le modèle de `directory`, s'il ne l'est pas déjà. Un autre
     /// dossier remplace l'ancien modèle (libéré avant, cache vidé).
-    func prepare(directory: URL) async throws {
+    /// `willLoad` : juste avant un vrai chargement. Rend sa durée ; `nil` :
+    /// le modèle était déjà là.
+    @discardableResult
+    func prepare(directory: URL, willLoad: @escaping @Sendable () -> Void = {}) async throws -> Duration? {
         touch()
-        try await onQueue { [self] in
+        return try await onQueue { [self] in
             // Sous le verrou : une libération qui l'attendait voit cet usage.
             defer { touch() }
-            if model != nil, self.directory == directory { return }
+            if model != nil, self.directory == directory { return nil }
             if model != nil { unloadLocked() }
+            willLoad()
+            let clock = ContinuousClock(), start = clock.now
             model = try load(directory)
             self.directory = directory
+            return clock.now - start
         }
     }
 

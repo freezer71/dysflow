@@ -49,7 +49,13 @@ final class MLXDictationEngine: DictationEngine {
         events(.listening)
 
         let runner = runner, directory = directory
-        let load = Task { try await runner.prepare(directory: directory) }
+        let load = Task {
+            if let took = try await runner.prepare(directory: directory, willLoad: {
+                Task { @MainActor in events(.loading) }
+            }) {
+                await MainActor.run { events(.loaded(took)) }
+            }
+        }
         self.load = load
         do {
             try await load.value

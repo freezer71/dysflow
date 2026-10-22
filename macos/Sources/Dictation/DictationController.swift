@@ -53,6 +53,11 @@ final class DictationController {
     /// La mémoire de MLX (`DictationEvent.memory`) ; `nil` tant qu'elle
     /// n'est pas relevée, ou sans modèle MLX.
     private(set) var memory: Int?
+    /// Le modèle se charge depuis cette date (`DictationEvent.loading`).
+    private(set) var loadingSince: Date?
+    /// Le temps de chargement du modèle pour cette dictée ; `nil` : il était
+    /// déjà en mémoire (ou ce n'est pas un modèle MLX).
+    private(set) var loadTime: Duration?
     /// Depuis quand le micro écoute (le chronomètre de la fenêtre).
     private(set) var listeningSince: Date?
     /// Le spectrogramme : lu par le dessin à chaque image, hors observation.
@@ -159,6 +164,8 @@ final class DictationController {
         transcript = Transcript()
         latency = nil
         memory = nil
+        loadingSince = nil
+        loadTime = nil
         listeningSince = nil
         spectrum.reset()
         language = currentLanguage()
@@ -201,6 +208,11 @@ final class DictationController {
             latency = delay
         case .memory(let bytes):
             memory = bytes
+        case .loading:
+            loadingSince = Date()
+        case .loaded(let took):
+            loadingSince = nil
+            loadTime = took
         }
     }
 
