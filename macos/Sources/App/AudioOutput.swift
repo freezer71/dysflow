@@ -34,12 +34,13 @@ enum AudioOutputChoices {
         return outputs.system ?? String(localized: "System")
     }
 
-    /// Le symbole de la sortie choisie, pour le bouton du panneau.
+    /// Le symbole de la sortie choisie, pour le bouton du panneau : des
+    /// écouteurs, sinon le symbole AirPlay, jamais un haut-parleur (c'est
+    /// celui du volume, son voisin).
     static func symbol(for chosen: String) -> String {
-        guard !chosen.isEmpty else { return "speaker.wave.2" }
         let name = chosen.lowercased()
         let worn = ["airpods", "casque", "écouteur", "ecouteur", "headphone", "buds", "beats"] // xcstrings: garder
-        return worn.contains { name.contains($0) } ? "headphones" : "hifispeaker"
+        return worn.contains { name.contains($0) } ? "headphones" : "airplayaudio"
     }
 }
 

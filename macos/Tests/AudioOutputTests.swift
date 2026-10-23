@@ -21,9 +21,10 @@ final class AudioOutputTests: XCTestCase {
     }
 
     func testTheButtonShowsWhatTheSoundGoesThrough() {
-        XCTAssertEqual(AudioOutputChoices.symbol(for: ""), "speaker.wave.2")
+        XCTAssertEqual(AudioOutputChoices.symbol(for: ""), "airplayaudio")
         XCTAssertEqual(AudioOutputChoices.symbol(for: "AirPods Pro de Tharsan"), "headphones")
-        XCTAssertEqual(AudioOutputChoices.symbol(for: "Haut-parleurs MacBook Pro"), "hifispeaker")
+        XCTAssertEqual(AudioOutputChoices.symbol(for: "Haut-parleurs MacBook Pro"), "airplayaudio",
+                       "jamais un haut-parleur : c'est le symbole du volume")
     }
 
     /// Le bouton du panneau nomme la sortie : celle choisie, sinon celle du système.

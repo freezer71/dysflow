@@ -276,6 +276,9 @@ pub enum ReaderCommand {
     Start,
     SetSpeed { speed: f32 },
     ChangeSpeed { delta: f32 },
+    /// Le volume de l'app, 0 à 2 (200 %), indépendant du système.
+    SetVolume { volume: f32 },
+    ToggleMute,
     Search { query: String },
     SearchAdvance { delta: i32 },
     SearchCancel,
@@ -296,6 +299,8 @@ impl From<ReaderCommand> for Command {
             ReaderCommand::Start => Command::Start,
             ReaderCommand::SetSpeed { speed } => Command::SetSpeed(speed),
             ReaderCommand::ChangeSpeed { delta } => Command::ChangeSpeed(delta),
+            ReaderCommand::SetVolume { volume } => Command::SetVolume(volume),
+            ReaderCommand::ToggleMute => Command::ToggleMute,
             ReaderCommand::Search { query } => Command::Search(query),
             ReaderCommand::SearchAdvance { delta } => Command::SearchAdvance(delta as isize),
             ReaderCommand::SearchCancel => Command::SearchCancel,
@@ -1286,6 +1291,8 @@ mod tests {
         assert_eq!(Command::from(ReaderCommand::Words { delta: 3 }), Command::Words(3));
         assert_eq!(Command::from(ReaderCommand::SeekTo { sentence: 4 }), Command::SeekTo(4));
         assert_eq!(Command::from(ReaderCommand::SetSpeed { speed: 1.25 }), Command::SetSpeed(1.25));
+        assert_eq!(Command::from(ReaderCommand::SetVolume { volume: 0.6 }), Command::SetVolume(0.6));
+        assert_eq!(Command::from(ReaderCommand::ToggleMute), Command::ToggleMute);
     }
 
     #[test]

@@ -524,7 +524,16 @@ impl App {
     }
 
     pub fn change_volume(&mut self, delta: f32) {
-        let volume = (self.player.volume() + delta).clamp(0.0, 2.0);
+        self.set_volume(self.player.volume() + delta);
+    }
+
+    /// Le volume de l'app seule, celui du système n'y est pour rien. Le
+    /// régler rétablit le son coupé : on veut entendre ce qu'on règle.
+    pub fn set_volume(&mut self, volume: f32) {
+        let volume = if volume.is_finite() { volume.clamp(0.0, 2.0) } else { self.player.volume() };
+        if self.player.is_muted() {
+            self.player.toggle_mute();
+        }
         self.player.set_volume(volume);
         self.config.voice.volume = volume;
         self.notify(&crate::tr!(en = "Volume {:.0}%", fr = "Volume {:.0} %", volume * 100.0));

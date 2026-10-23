@@ -11,6 +11,27 @@ final class BarControlsTests: XCTestCase {
         XCTAssertEqual(SpeedFormat.spoken(1.25), "1,25 fois")
     }
 
+    /// Le volume : son icône suit le niveau, barrée quand le son est coupé.
+    func testTheVolumeButtonShowsTheLevel() {
+        XCTAssertEqual(VolumeFormat.text(1), "100 %")
+        XCTAssertEqual(VolumeFormat.text(0.35), "35 %")
+        XCTAssertEqual(VolumeFormat.symbol(volume: 1, muted: true), "speaker.slash.fill")
+        XCTAssertEqual(VolumeFormat.symbol(volume: 0, muted: false), "speaker.slash.fill")
+        XCTAssertEqual(VolumeFormat.symbol(volume: 0.2, muted: false), "speaker.wave.1.fill")
+        XCTAssertEqual(VolumeFormat.symbol(volume: 0.5, muted: false), "speaker.wave.2.fill")
+        XCTAssertEqual(VolumeFormat.symbol(volume: 1.5, muted: false), "speaker.wave.3.fill")
+    }
+
+    /// Le curseur du volume : la valeur sous le pointeur, au pas de 5 %.
+    func testTheVolumeSliderGivesTheValueUnderThePointer() {
+        XCTAssertEqual(VolumeFormat.value(x: 90, width: 180), 1)
+        XCTAssertEqual(VolumeFormat.value(x: 50, width: 180), 0.55, accuracy: 0.0001, "arrondi au pas de 5 %")
+        XCTAssertEqual(VolumeFormat.value(x: -20, width: 180), 0)
+        XCTAssertEqual(VolumeFormat.value(x: 400, width: 180), 2)
+        XCTAssertEqual(VolumeFormat.value(x: 10, width: 0), 0)
+        XCTAssertEqual(VolumeFormat.snapped(1.98 + 0.05), 2, "borné à 200 %")
+    }
+
     /// Un clic sur la barre : la phrase sous le pointeur, bornée au document.
     func testAClickOnTheTimelineGivesTheSentenceUnderThePointer() {
         XCTAssertEqual(SeekableTimeline.fraction(x: 50, width: 200), 0.25)

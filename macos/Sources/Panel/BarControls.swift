@@ -188,6 +188,157 @@ struct SpeedMenu: View {
     }
 }
 
+/// Le volume de l'app, indépendant de celui du système : 0 à 200 %.
+enum VolumeFormat {
+    static let range: ClosedRange<Float> = 0...2
+    static let step: Float = 0.05
+
+    static func text(_ volume: Float) -> String { String(localized: "\(Int((volume * 100).rounded()))%") }
+
+    /// Le volume sous le pointeur, au pas de 5 %, borné à 0…200 %.
+    static func value(x: CGFloat, width: CGFloat) -> Float {
+        guard width > 0, x.isFinite else { return range.lowerBound }
+        let raw = Float(min(max(x / width, 0), 1)) * range.upperBound
+        return snapped(raw)
+    }
+
+    /// Au pas de 5 %, borné : une touche de VoiceOver avance d'un pas.
+    static func snapped(_ volume: Float) -> Float {
+        min(max((volume / step).rounded() * step, range.lowerBound), range.upperBound)
+    }
+
+    static func symbol(volume: Float, muted: Bool) -> String {
+        if muted || volume <= 0 { return "speaker.slash.fill" }
+        if volume < 0.34 { return "speaker.wave.1.fill" }
+        if volume < 0.67 { return "speaker.wave.2.fill" }
+        return "speaker.wave.3.fill"
+    }
+}
+
+/// Le volume, cliquable : un curseur et « Couper le son » dans une bulle.
+struct VolumeButton: View {
+    let model: ReaderModel
+    @State private var open = false
+    @Environment(\.panelTheme) private var theme
+
+    var body: some View {
+        let s = model.snapshot
+        Button { open.toggle() } label: {
+            Image(systemName: VolumeFormat.symbol(volume: s.volume, muted: s.muted))
+                .font(.system(size: BarButtonMetrics.glyph))
+                // La même largeur quelle que soit l'onde : la barre ne bouge pas.
+                .frame(width: 20)
+        }
+        .buttonStyle(BarButtonStyle(selected: open))
+        .focusable(false)
+        .help("Volume")
+        .accessibilityLabel("Volume")
+        .accessibilityValue(s.muted ? String(localized: "Muted") : VolumeFormat.text(s.volume))
+        .accessibilityIdentifier("volume-lecteur")
+        .popover(isPresented: $open, arrowEdge: .top) {
+            VolumePopover(model: model)
+                .environment(\.panelTheme, theme)
+        }
+    }
+}
+
+private struct VolumePopover: View {
+    let model: ReaderModel
+
+    var body: some View {
+        let s = model.snapshot
+        let shown = s.muted ? 0 : s.volume
+        HStack(spacing: 10) {
+            Button { model.send(.toggleMute) } label: {
+                Image(systemName: VolumeFormat.symbol(volume: s.volume, muted: s.muted))
+                    .font(.system(size: BarButtonMetrics.glyph))
+                    .frame(width: 20)
+            }
+            .buttonStyle(BarButtonStyle())
+            .focusable(false)
+            .help(s.muted ? "Unmute" : "Mute")
+            .accessibilityLabel(s.muted ? "Unmute" : "Mute")
+            .accessibilityIdentifier("couper-son")
+            VolumeSlider(volume: shown,
+                         change: { model.send(.setVolume(volume: $0)) },
+                         commit: { model.send(.setVolume(volume: $0)); model.saveVolume($0) })
+                .frame(width: 180)
+            Text(VolumeFormat.text(shown))
+                .monospacedDigit()
+                .fontWeight(.medium)
+                .frame(minWidth: 44, alignment: .trailing)
+        }
+        .font(.system(size: 13))
+        .padding(12)
+    }
+}
+
+/// Le curseur du volume, dessiné comme la ligne de temps : un trait, la
+/// part réglée, un bouton plein. Pendant le geste il suit le pointeur avec
+/// sa propre valeur ; le moteur, qui répond un tour plus tard, ne le
+/// ramène pas en arrière.
+private struct VolumeSlider: View {
+    /// Le volume du moteur.
+    let volume: Float
+    /// Pendant le geste : le son suit.
+    let change: (Float) -> Void
+    /// Au relâchement, ou d'un pas au clavier : le son suit, et s'enregistre.
+    let commit: (Float) -> Void
+    /// La valeur du geste, gardée jusqu'à ce que le moteur la rende.
+    @State private var held: Float?
+    @State private var dragging = false
+    @Environment(\.panelTheme) private var theme
+
+    private static let knob: CGFloat = 14
+
+    var body: some View {
+        let shown = held ?? volume
+        GeometryReader { geo in
+            let width = geo.size.width
+            let x = width * CGFloat(shown / VolumeFormat.range.upperBound)
+            ZStack(alignment: .leading) {
+                Capsule().fill(Color(nsColor: theme.text).opacity(0.12)).frame(height: 6)
+                Capsule().fill(Color(nsColor: theme.line)).frame(width: x, height: 6)
+                Circle().fill(Color(nsColor: theme.line))
+                    .frame(width: Self.knob, height: Self.knob)
+                    .offset(x: min(max(x - Self.knob / 2, 0), width - Self.knob))
+            }
+            .frame(maxHeight: .infinity)
+            .contentShape(Rectangle())
+            .gesture(DragGesture(minimumDistance: 0)
+                .onChanged { g in
+                    dragging = true
+                    let v = VolumeFormat.value(x: g.location.x, width: width)
+                    guard v != held else { return }
+                    held = v
+                    change(v)
+                }
+                .onEnded { g in
+                    dragging = false
+                    let v = VolumeFormat.value(x: g.location.x, width: width)
+                    held = v
+                    commit(v)
+                })
+            .pointingHandCursor()
+        }
+        .frame(height: 20)
+        .onChange(of: volume) { _, now in
+            // Le moteur a rendu la valeur du geste : il reprend la main.
+            if !dragging, let held, abs(held - now) < 0.001 { self.held = nil }
+        }
+        .accessibilityElement()
+        .accessibilityLabel("Volume")
+        .accessibilityValue(VolumeFormat.text(shown))
+        .accessibilityAdjustableAction { direction in
+            let delta: Float = direction == .increment ? VolumeFormat.step : -VolumeFormat.step
+            let v = VolumeFormat.snapped(shown + delta)
+            held = v
+            commit(v)
+        }
+        .accessibilityIdentifier("curseur-volume")
+    }
+}
+
 /// La sortie audio, cliquable : l'icône de la sortie (écouteurs, enceinte,
 /// sortie du système), la liste au clic, la même que dans les réglages.
 struct OutputMenu: View {

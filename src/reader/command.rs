@@ -17,6 +17,7 @@ pub enum Command {
     End,
     SetSpeed(f32),
     ChangeSpeed(f32),
+    SetVolume(f32),
     ChangeVolume(f32),
     ToggleMute,
     Search(String),
@@ -44,6 +45,7 @@ impl Command {
             Command::End => app.seek_end(),
             Command::SetSpeed(speed) => app.set_speed(speed),
             Command::ChangeSpeed(delta) => app.change_speed(delta),
+            Command::SetVolume(volume) => app.set_volume(volume),
             Command::ChangeVolume(delta) => app.change_volume(delta),
             Command::ToggleMute => app.toggle_mute(),
             // La recherche du terminal se tape touche par touche ; l'interface

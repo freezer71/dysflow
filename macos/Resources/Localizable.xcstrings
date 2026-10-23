@@ -1862,6 +1862,26 @@
         }
       }
     },
+    "Mute" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couper le son"
+          }
+        }
+      }
+    },
+    "Muted" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Son coupé"
+          }
+        }
+      }
+    },
     "Next / previous heading" : {
       "localizations" : {
         "fr" : {
@@ -3446,6 +3466,16 @@
         }
       }
     },
+    "Unmute" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rétablir le son"
+          }
+        }
+      }
+    },
     "Unreadable configuration: config.toml could not be read. Settings still apply, but they are not saved until it is fixed or replaced." : {
       "localizations" : {
         "fr" : {
@@ -3532,6 +3562,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Voix"
+          }
+        }
+      }
+    },
+    "Volume" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Volume"
+          }
+        }
+      }
+    },
+    "Volume not saved: %@" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Volume non enregistré : %@"
           }
         }
       }
