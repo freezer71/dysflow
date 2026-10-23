@@ -127,6 +127,6 @@ final class KokoroWarmUpTests: XCTestCase {
         let uuid = KokoroWarmUp.executableUUID(of: .main)
         XCTAssertNotNil(uuid.flatMap(UUID.init(uuidString:)), "LC_UUID de l'app hôte")
         XCTAssertEqual(KokoroWarmUp.version(of: .main), KokoroWarmUp.version(of: .main))
-        XCTAssertTrue(KokoroWarmUp.version(of: .main).hasPrefix("0.4.2(1)"), KokoroWarmUp.version(of: .main))
+        XCTAssertTrue(KokoroWarmUp.version(of: .main).hasPrefix("0.5.0(1)"), KokoroWarmUp.version(of: .main))
     }
 }

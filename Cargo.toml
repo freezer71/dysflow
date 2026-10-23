@@ -3,7 +3,7 @@ members = [".", "ffi"]
 
 [package]
 name = "sillage"
-version = "0.4.2"
+version = "0.5.0"
 edition = "2021"
 # Le plus haut `rust-version` des crates que sillage compile (Cargo.lock,
 # toutes features : image 0.25.10, darling 0.24…) ; vérifié par la CI (job
