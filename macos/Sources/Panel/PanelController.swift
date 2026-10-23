@@ -112,12 +112,14 @@ final class PanelController {
     // MARK: - Formes
 
     /// Une transition, retenue puis appliquée. Si la fenêtre disparaît, la
-    /// lecture s'arrête.
+    /// lecture s'arrête ; fermée, le lecteur se vide.
     func apply(_ event: DisplayEvent) {
         let before = store.state
         let next = before.applying(event)
         store.state = next
-        if before.hides(next) { stopForClosing() }
+        if before.hides(next) {
+            if event == .close { clearForClosing() } else { stopForClosing() }
+        }
         present(next.current)
     }
 
@@ -130,8 +132,15 @@ final class PanelController {
     /// ⌘W, Échap, le bouton fermer.
     func close() { apply(.close) }
 
-    /// Fermer arrête la lecture : une modification s'applique sans relancer
-    /// la voix, puis la pause. Le document et la position restent.
+    /// Fermer (✕, ⌘W, Échap) vide le lecteur : une modification en cours
+    /// est oubliée, le texte part, rien ne reste à reprendre.
+    private func clearForClosing() {
+        if editing { draft = draftOrigin; finishEditing(resume: false) }
+        model.clear()
+    }
+
+    /// Masquer (⌃⌥S) arrête la lecture : une modification s'applique sans
+    /// relancer la voix, puis la pause. Le document et la position restent.
     ///
     /// La pause part toujours : l'instantané publié ne voit pas un texte
     /// encore en file (voix qui se recharge), dont l'autoplay relancerait la
