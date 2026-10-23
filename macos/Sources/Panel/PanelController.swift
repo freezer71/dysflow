@@ -125,8 +125,17 @@ final class PanelController {
 
     /// ⌃⌥Espace, ⌘V, un fichier, « Afficher le lecteur » : la dernière taille.
     func show() { apply(.show) }
-    /// ⌃⌥S.
-    func toggleVisibility() { apply(.toggleVisibility) }
+    /// ⌃⌥S. Réduite dans le Dock, la fenêtre revient au lieu de se masquer.
+    func toggleVisibility() {
+        if window.isMiniaturized { show(); return }
+        apply(.toggleVisibility)
+    }
+    /// Dans le Dock : la forme ne change pas et la lecture continue ; un
+    /// clic sur la vignette, ⌃⌥Espace ou ⌃⌥S la ramènent.
+    func minimize() {
+        guard mode.isVisible, !window.isMiniaturized else { return }
+        window.miniaturize(nil)
+    }
     /// ⌘M, « Réduire », « Agrandir ».
     func toggleSize() { apply(.toggleSize) }
     /// ⌘W, Échap, le bouton fermer.
@@ -187,6 +196,8 @@ final class PanelController {
         if searchActive { searchActive = false; model.send(.searchCancel) }
         helpVisible = false
         mode = .hidden
+        // Réduite, elle resterait dans le Dock après `orderOut`.
+        if window.isMiniaturized { window.deminiaturize(nil) }
         if window.isVisible { window.orderOut(nil) }
         updatePresence()
         keys.remove()
@@ -300,6 +311,7 @@ final class PanelController {
         case .command(let command): model.send(command)
         case .line(let delta): moveLine(delta)
         case .toggleSize: toggleSize()
+        case .minimize: minimize()
         case .close: close()
         case .escape:
             // Échap : la saisie se valide, puis l'aide, la recherche et le

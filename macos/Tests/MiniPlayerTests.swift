@@ -128,6 +128,7 @@ final class MiniPlayerViewTests: XCTestCase {
         XCTAssertEqual(MiniControlsRow.pasteAction, .paste)
         // « Fermer » fait ce que fait ⌘W : la lecture s'arrête.
         XCTAssertEqual(MiniPlayerBar.closeAction, .close)
+        XCTAssertEqual(MiniPlayerBar.minimizeAction, .minimize, "le Dock, la lecture continue")
     }
 
     func testTheEmptyBarFitsItsHeight() {

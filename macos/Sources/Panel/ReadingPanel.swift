@@ -26,7 +26,7 @@ enum PanelLevel {
 final class ReadingPanel: NSPanel {
     init() {
         super.init(contentRect: NSRect(x: 0, y: 0, width: 720, height: 200),
-                   styleMask: [.nonactivatingPanel, .titled, .closable, .fullSizeContentView, .resizable],
+                   styleMask: [.nonactivatingPanel, .titled, .closable, .miniaturizable, .fullSizeContentView, .resizable],
                    backing: .buffered, defer: false)
         isFloatingPanel = true
         level = .floating
@@ -42,7 +42,8 @@ final class ReadingPanel: NSPanel {
         isOpaque = false
         hasShadow = true
         // Fermable (⌘W, performClose:) pour que la fermeture passe par le
-        // délégué ; les boutons restent cachés.
+        // délégué, réductible dans le Dock (bouton « Réduire dans le
+        // Dock ») ; les boutons du système restent cachés.
         for button in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
             standardWindowButton(button)?.isHidden = true
         }

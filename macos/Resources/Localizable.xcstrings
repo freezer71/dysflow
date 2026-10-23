@@ -844,7 +844,7 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Réduire"
+            "value" : "Passer en mini"
           }
         }
       }
@@ -854,7 +854,7 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Réduire / agrandir"
+            "value" : "Mini / agrandir"
           }
         }
       }
@@ -864,7 +864,7 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Réduire en mini (⌘M)"
+            "value" : "Passer en mini (⌘M)"
           }
         }
       }
@@ -1808,6 +1808,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Lecteur réduit"
+          }
+        }
+      }
+    },
+    "Minimize to Dock" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Réduire dans le Dock"
+          }
+        }
+      }
+    },
+    "Minimize to the Dock, reading continues" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Réduire dans le Dock, la lecture continue"
           }
         }
       }

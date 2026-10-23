@@ -38,6 +38,7 @@ struct MiniPlayerBar: View {
     let perform: (ReaderAction) -> Void
 
     static let closeAction = ReaderAction.close
+    static let minimizeAction = ReaderAction.minimize
 
     var body: some View {
         let s = snapshot
@@ -48,9 +49,16 @@ struct MiniPlayerBar: View {
                 .padding(.horizontal, MiniBarMetrics.closeInset)
                 // Par-dessus : la cible de 32 pt ne grandit pas la rangée.
                 .overlay(alignment: .trailing) {
-                    BarIconButton(symbol: "xmark", label: "Close", help: "Close, reading stops (⌘W)",
-                                  identifier: "fermer-mini") {
-                        perform(Self.closeAction)
+                    HStack(spacing: 0) {
+                        BarIconButton(symbol: "minus", label: "Minimize to Dock",
+                                      help: "Minimize to the Dock, reading continues",
+                                      identifier: "reduire-dock-mini") {
+                            perform(Self.minimizeAction)
+                        }
+                        BarIconButton(symbol: "xmark", label: "Close", help: "Close, reading stops (⌘W)",
+                                      identifier: "fermer-mini") {
+                            perform(Self.closeAction)
+                        }
                     }
                 }
             switch MiniTop.choose(message: message, hasDocument: s.hasDocument) {
@@ -121,8 +129,9 @@ enum MiniBarMetrics {
     static let margin: CGFloat = 14
     /// La largeur réservée de chaque côté : le transport reste centré.
     static let side: CGFloat = 64
-    /// La place du bouton fermer, de chaque côté du titre.
-    static let closeInset: CGFloat = 28
+    /// La place des boutons Réduire dans le Dock et Fermer, de chaque côté
+    /// du titre.
+    static let closeInset: CGFloat = 60
 }
 
 /// Rangée 1 : temps écoulé, timeline, temps restant.
