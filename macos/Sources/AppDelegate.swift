@@ -428,6 +428,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             restDelay: { NowPlaying.restDelay(keepVoiceMinutes: await model.loadSettings().keepVoiceMinutes) },
             refresh: { model.refresh() })
         model.onChange = { snapshot, document in nowPlaying.update(snapshot, document: document) }
+        nowPlaying.readerShown = panel?.mode.isVisible ?? false
+        panel?.onShownChange = { nowPlaying.readerShown = $0 }
         self.nowPlaying = nowPlaying
     }
 
