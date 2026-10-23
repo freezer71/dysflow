@@ -60,8 +60,8 @@ final class PanelControllerTests: XCTestCase {
         XCTAssertTrue(waitUntil { c.model.refresh(); return c.model.snapshot.playing })
         c.announce(c.model.snapshot)  // sans effet si la vue l'a déjà dit
         XCTAssertEqual(posted, ["Lecture"], "« Lecture » dit une fois")
-        // Fermer met en pause et ne dit rien de ce qui suit.
-        c.close()
+        // Masquer (⌃⌥S, le texte reste) met en pause et ne dit rien de ce qui suit.
+        c.toggleVisibility()
         XCTAssertEqual(c.mode, .hidden)
         XCTAssertTrue(waitUntil { c.model.refresh(); return !c.model.snapshot.playing })
         XCTAssertNil(c.announcementText(for: c.model.snapshot), "rien fenêtre masquée")
@@ -443,9 +443,10 @@ final class PanelControllerTests: XCTestCase {
         settle(c)
         XCTAssertEqual(c.model.cadence, .glance)
         XCTAssertFalse(frames.isRunning)
-        c.close()
-        // La pause envoyée garde la seconde le temps de la grâce, puis plus rien.
-        XCTAssertTrue(waitUntil { c.model.cadence == .none }, "fermer met en pause : plus rien ne tourne")
+        // Masqué (⌃⌥S, le texte reste) : la pause envoyée garde la seconde le
+        // temps de la grâce, puis plus rien.
+        c.toggleVisibility()
+        XCTAssertTrue(waitUntil { c.model.cadence == .none }, "masquer met en pause : plus rien ne tourne")
         XCTAssertFalse(frames.isRunning)
         // Les touches média relancent la voix fenêtre masquée : la seconde.
         c.model.send(.togglePlay)
