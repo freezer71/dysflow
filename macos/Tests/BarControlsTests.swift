@@ -15,11 +15,11 @@ final class BarControlsTests: XCTestCase {
     func testTheVolumeButtonShowsTheLevel() {
         XCTAssertEqual(VolumeFormat.text(1), "100 %")
         XCTAssertEqual(VolumeFormat.text(0.35), "35 %")
-        XCTAssertEqual(VolumeFormat.symbol(volume: 1, muted: true), "speaker.slash.fill")
-        XCTAssertEqual(VolumeFormat.symbol(volume: 0, muted: false), "speaker.slash.fill")
-        XCTAssertEqual(VolumeFormat.symbol(volume: 0.2, muted: false), "speaker.wave.1.fill")
-        XCTAssertEqual(VolumeFormat.symbol(volume: 0.5, muted: false), "speaker.wave.2.fill")
-        XCTAssertEqual(VolumeFormat.symbol(volume: 1.5, muted: false), "speaker.wave.3.fill")
+        XCTAssertEqual(VolumeFormat.symbol(volume: 1, muted: true), "speaker.slash")
+        XCTAssertEqual(VolumeFormat.symbol(volume: 0, muted: false), "speaker.slash")
+        XCTAssertEqual(VolumeFormat.symbol(volume: 0.2, muted: false), "speaker.wave.3", "toujours le même dessin")
+        XCTAssertEqual(VolumeFormat.level(0.2), 0.2, accuracy: 0.0001, "les ondes suivent le niveau")
+        XCTAssertEqual(VolumeFormat.level(1.5), 1, "pleines dès 100 %")
     }
 
     /// Le curseur du volume : la valeur sous le pointeur, au pas de 5 %.
