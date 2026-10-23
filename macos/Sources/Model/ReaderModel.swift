@@ -204,6 +204,18 @@ final class ReaderModel {
         wake()
     }
 
+    /// Le lecteur fermé : le texte part, rien ne reste à reprendre. Le
+    /// moteur traite ses demandes dans l'ordre : un texte encore en file
+    /// s'ouvre, puis part.
+    func clear() {
+        message = nil
+        sourceText = nil
+        sourceName = "presse-papiers"
+        pendingResume = nil
+        reader.clear()
+        wake()
+    }
+
     /// Le texte ouvert, tel qu'il est arrivé : le mode édition le reprend.
     /// Nil pour une image (l'OCR) : le document est alors réécrit.
     @ObservationIgnored private(set) var sourceText: String?

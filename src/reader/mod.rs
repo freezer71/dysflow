@@ -423,6 +423,22 @@ impl Reader {
         self.engine = None;
     }
 
+    /// Le lecteur fermé : le texte part, lecture arrêtée, rien ne reste à
+    /// reprendre (ni position, ni texte au repos). La voix reste chargée :
+    /// son délai court comme sans texte.
+    pub fn clear(&mut self, now: Instant) {
+        if let Some(mut app) = self.session.take() {
+            app.player.pause();
+            self.config = app.config.clone();
+        }
+        self.text = None;
+        self.resting_at = None;
+        self.resting_doc = None;
+        self.language = None;
+        self.last_activity = now;
+        self.revision += 1;
+    }
+
     /// Fermeture de l'app : rien de ce qui a été lu ne se perd.
     pub fn close(&mut self) {
         if let Some(app) = self.session.as_mut() {
@@ -721,6 +737,34 @@ mod tests {
         assert_eq!(loads.load(Ordering::SeqCst), 1, "Échap ne recharge pas la voix");
         assert!(r.is_resting());
         assert!(!r.voice_loaded());
+    }
+
+    #[test]
+    fn clearing_leaves_nothing_to_play() {
+        let (mut r, _, t0) = reader(10);
+        r.open_text("Un. Deux.", "a", t0);
+        r.apply(command::Command::Sentences(1), t0);
+        let revision = r.revision();
+        r.clear(t0);
+        assert!(r.session().is_none());
+        assert!(r.text_markdown().is_none());
+        assert!(r.revision() > revision, "le document vide se republie");
+        r.apply(command::Command::TogglePlay, t0);
+        assert!(r.session().is_none(), "lecture : rien ne revient");
+        let s = view::snapshot(&r);
+        assert!(!s.has_document);
+        assert!(!s.playing);
+    }
+
+    #[test]
+    fn clearing_a_resting_text_leaves_nothing_to_wake() {
+        let (mut r, _, t0) = reader(10);
+        r.open_text("Un. Deux.", "a", t0);
+        r.rest();
+        r.clear(t0);
+        r.apply(command::Command::TogglePlay, t0);
+        assert!(r.session().is_none());
+        assert_eq!(view::document(&r).sentence_count, 0);
     }
 
     #[test]

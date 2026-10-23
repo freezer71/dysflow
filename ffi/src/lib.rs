@@ -672,6 +672,11 @@ impl SillageReader {
         self.handle.send(Request::Rest);
     }
 
+    /// Le lecteur fermé : le texte part, rien ne reste à reprendre.
+    pub fn clear(&self) {
+        self.handle.send(Request::Clear);
+    }
+
     pub fn command(&self, command: ReaderCommand) {
         self.handle.send(Request::Command(command.into()));
     }

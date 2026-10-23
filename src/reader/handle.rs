@@ -98,6 +98,7 @@ pub enum Request {
     OpenFile { path: PathBuf, reply: Sender<Result<(), String>> },
     PrepareVoice,
     Rest,
+    Clear,
     Command(Command),
     Ask(Box<dyn FnOnce(&mut Reader) + Send>),
     Shutdown,
@@ -207,6 +208,7 @@ fn handle(reader: &mut Reader, request: Request) -> bool {
         }
         Request::PrepareVoice => reader.prepare_voice(now),
         Request::Rest => reader.rest(),
+        Request::Clear => reader.clear(now),
         Request::Command(command) => reader.apply(command, now),
         Request::Ask(f) => f(reader),
         Request::Shutdown => return false,

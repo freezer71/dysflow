@@ -43,7 +43,7 @@ final class ReaderModesUITests: XCTestCase {
         app.typeKey(" ", modifierFlags: [])
     }
 
-    /// ⌘W : plus rien à l'écran, ni lecteur ni mini ; rouvert, en pause.
+    /// ⌘W : plus rien à l'écran, ni lecteur ni mini ; rouvert, vide et silencieux.
     func testCommandWClosesAndPausesWithoutMini() {
         let app = launch()
         app.typeKey(" ", modifierFlags: [])

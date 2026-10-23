@@ -188,8 +188,9 @@ final class PanelControllerTests: XCTestCase {
         XCTAssertEqual(c.mode, .reader, "Échap a d'abord fermé le sommaire")
     }
 
-    /// ⌘W, Échap ou la fermeture de la fenêtre : masqué et en pause, jamais le mini.
-    func testClosingPausesAndNeverLeavesTheMini() {
+    /// ⌘W, Échap ou la fermeture de la fenêtre : masqué, silencieux et vide,
+    /// jamais le mini.
+    func testClosingEmptiesTheReaderAndNeverLeavesTheMini() {
         for close in [{ (c: PanelController) in c.perform(.close) },
                       { (c: PanelController) in c.perform(.escape) },
                       { (c: PanelController) in c.window.performClose(nil) }] {
@@ -201,6 +202,7 @@ final class PanelControllerTests: XCTestCase {
             XCTAssertFalse(c.window.isVisible)
             XCTAssertEqual(c.model.presence, .hidden)
             XCTAssertTrue(waitUntil { c.model.refresh(); return !c.model.snapshot.playing }, "la lecture continue")
+            XCTAssertTrue(waitUntil { c.model.refresh(); return !c.model.snapshot.hasDocument }, "le texte est resté")
             XCTAssertEqual(c.store.state.current, .hidden)
         }
     }
@@ -216,15 +218,16 @@ final class PanelControllerTests: XCTestCase {
         let long = (1...400).map { "Phrase \($0)." }.joined(separator: " ")
         c.model.open(text: long, source: "test")
         c.close()
-        XCTAssertTrue(waitUntil { c.model.refresh(); return c.model.snapshot.revision == 2 },
-                      "le second texte doit s'ouvrir")
+        XCTAssertTrue(waitUntil { c.model.refresh(); return c.model.snapshot.revision >= 2 && !c.model.snapshot.hasDocument },
+                      "le second texte doit partir aussi")
         try await Task.sleep(for: .milliseconds(500))
         c.model.refresh()
         XCTAssertFalse(c.model.snapshot.playing, "la voix parle fenêtre masquée")
     }
 
-    /// Le document et la position restent : la réouverture reprend là.
-    func testReopeningAfterClosingKeepsThePlace() {
+    /// Rien ne reste après la fermeture : la réouverture montre un lecteur
+    /// vide, et ▶ ne relit pas l'ancien texte.
+    func testReopeningAfterClosingShowsAnEmptyReader() {
         let c = shownPanel("Un. Deux. Trois.")
         c.perform(.command(.sentences(delta: 2)))
         XCTAssertTrue(waitUntil { c.model.refresh(); return c.model.snapshot.sentence == 2 })
@@ -232,7 +235,24 @@ final class PanelControllerTests: XCTestCase {
         c.show()
         settle(c)
         XCTAssertEqual(c.mode, .reader)
+        XCTAssertTrue(waitUntil { c.model.refresh(); return !c.model.snapshot.hasDocument })
+        c.perform(.command(.togglePlay))
+        settle(c)
+        XCTAssertFalse(c.model.snapshot.playing)
+        XCTAssertFalse(c.model.snapshot.hasDocument)
+    }
+
+    /// ⌃⌥S masque sans vider : le document et la position restent.
+    func testHidingKeepsThePlace() {
+        let c = shownPanel("Un. Deux. Trois.")
+        c.perform(.command(.sentences(delta: 2)))
+        XCTAssertTrue(waitUntil { c.model.refresh(); return c.model.snapshot.sentence == 2 })
+        c.toggleVisibility()
+        c.toggleVisibility()
+        settle(c)
+        XCTAssertEqual(c.mode, .reader)
         XCTAssertEqual(c.model.snapshot.sentence, 2)
+        XCTAssertTrue(c.model.snapshot.hasDocument)
     }
 
     /// Toute ouverture rend la dernière taille : le mini fermé revient mini.
@@ -264,9 +284,9 @@ final class PanelControllerTests: XCTestCase {
         XCTAssertTrue(c.window.isVisible)
     }
 
-    /// Une modification en cours au moment de fermer : le texte est gardé,
-    /// la voix reste en pause (elle lisait avant l'édition).
-    func testClosingWhileEditingKeepsTheTextAndStaysPaused() {
+    /// Une modification en cours au moment de fermer : oubliée avec le
+    /// texte, la voix ne repart pas (elle lisait avant l'édition).
+    func testClosingWhileEditingDropsEverythingAndStaysSilent() {
         let c = shownPanel("Un. Deux.")
         c.perform(.command(.togglePlay))
         XCTAssertTrue(waitUntil { c.model.refresh(); return c.model.snapshot.playing })
@@ -275,7 +295,7 @@ final class PanelControllerTests: XCTestCase {
         c.draft = "Trois. Quatre."
         c.close()
         XCTAssertFalse(c.editing)
-        XCTAssertTrue(waitUntil { c.model.refresh(); return c.model.editableText == "Trois. Quatre." })
+        XCTAssertTrue(waitUntil { c.model.refresh(); return !c.model.snapshot.hasDocument })
         RunLoop.main.run(until: Date().addingTimeInterval(0.5))
         c.model.refresh()
         XCTAssertFalse(c.model.snapshot.playing, "la reprise différée ne relance pas la voix")
