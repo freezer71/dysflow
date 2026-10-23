@@ -126,6 +126,8 @@ final class MiniPlayerViewTests: XCTestCase {
         XCTAssertEqual(MiniControlsRow.growAction, .toggleSize)
         // « Coller » fait ce que fait ⌘V.
         XCTAssertEqual(MiniControlsRow.pasteAction, .paste)
+        // « Fermer » fait ce que fait ⌘W : la lecture s'arrête.
+        XCTAssertEqual(MiniPlayerBar.closeAction, .close)
     }
 
     func testTheEmptyBarFitsItsHeight() {

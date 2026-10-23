@@ -2,7 +2,7 @@ import KeyboardShortcuts
 import SwiftUI
 
 /// La barre du mode petit, à la façon d'un mini-lecteur de musique, sur
-/// trois rangées : le titre de ce qui est lu ; la timeline entre le temps
+/// trois rangées : le titre de ce qui est lu, et « Fermer » ; la timeline entre le temps
 /// écoulé et le temps restant ; puis ⏮ ▶ ⏭ par phrase, et « Agrandir ». Contrôles à 13 pt au
 /// moins. Elle lit l'instantané du modèle, à son rythme : rien ne tourne
 /// en pause.
@@ -37,11 +37,22 @@ struct MiniPlayerBar: View {
     let theme: Theme
     let perform: (ReaderAction) -> Void
 
+    static let closeAction = ReaderAction.close
+
     var body: some View {
         let s = snapshot
         VStack(spacing: 6) {
             MiniTitle(title: MiniTitle.text(hasDocument: s.hasDocument, title: model.document.title),
                       color: Color(nsColor: s.hasDocument ? theme.text : theme.chrome))
+                // La même marge des deux côtés : le titre reste centré.
+                .padding(.horizontal, MiniBarMetrics.closeInset)
+                // Par-dessus : la cible de 32 pt ne grandit pas la rangée.
+                .overlay(alignment: .trailing) {
+                    BarIconButton(symbol: "xmark", label: "Close", help: "Close, reading stops (⌘W)",
+                                  identifier: "fermer-mini") {
+                        perform(Self.closeAction)
+                    }
+                }
             switch MiniTop.choose(message: message, hasDocument: s.hasDocument) {
             case .message(let message):
                 // Un message passager prend la place des temps, sans changer
@@ -110,6 +121,8 @@ enum MiniBarMetrics {
     static let margin: CGFloat = 14
     /// La largeur réservée de chaque côté : le transport reste centré.
     static let side: CGFloat = 64
+    /// La place du bouton fermer, de chaque côté du titre.
+    static let closeInset: CGFloat = 28
 }
 
 /// Rangée 1 : temps écoulé, timeline, temps restant.
