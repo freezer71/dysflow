@@ -377,7 +377,14 @@ impl Reader {
         if command == command::Command::Pause && idle {
             return;
         }
+        let speed = matches!(command, command::Command::SetSpeed(_) | command::Command::ChangeSpeed(_));
         self.with_session(now, |app| command.apply(app));
+        // La vitesse du panneau tient au prochain lancement, comme celle des
+        // réglages. Le volume, lui, s'écrit au relâchement du curseur.
+        if speed && self.session.as_ref().is_some_and(|app| app.config.voice.speed != self.config.voice.speed) {
+            self.sync_config();
+            let _ = self.save_config();
+        }
     }
 
     pub fn tick(&mut self, now: Instant) {
@@ -833,6 +840,26 @@ mod tests {
         assert_eq!(r.session().unwrap().player.volume(), 2.0, "borné à 200 %");
         r.apply(command::Command::SetVolume(f32::NAN), t0);
         assert_eq!(r.session().unwrap().player.volume(), 2.0, "une valeur sans sens est ignorée");
+    }
+
+    /// La vitesse choisie dans le panneau (menu, + −, 1 à 4) s'écrit tout
+    /// de suite : elle tient au prochain lancement.
+    #[test]
+    fn a_speed_chosen_in_the_panel_is_saved() {
+        let dir = crate::paths::test_scratch("vitesse-enregistree");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        let (mut r, _, t0) = reader(10);
+        r.set_config_path(Some(path.clone()));
+        r.open_text("Un.", "a", t0);
+        r.apply(command::Command::SetSpeed(1.5), t0);
+        let after_menu = std::fs::read_to_string(&path).unwrap_or_default();
+        r.apply(command::Command::ChangeSpeed(0.25), t0);
+        let after_key = std::fs::read_to_string(&path).unwrap_or_default();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(after_menu.contains("speed = 1.5"), "{after_menu}");
+        assert!(after_key.contains("speed = 1.75"), "{after_key}");
     }
 
     #[test]
