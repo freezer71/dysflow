@@ -820,6 +820,22 @@ mod tests {
     }
 
     #[test]
+    fn the_volume_is_set_at_once_and_brings_the_sound_back() {
+        let (mut r, _, t0) = reader(10);
+        r.open_text("Un.", "a", t0);
+        r.apply(command::Command::ToggleMute, t0);
+        r.apply(command::Command::SetVolume(0.4), t0);
+        let app = r.session().unwrap();
+        assert_eq!(app.player.volume(), 0.4);
+        assert_eq!(app.config.voice.volume, 0.4);
+        assert!(!app.player.is_muted(), "régler le volume rétablit le son");
+        r.apply(command::Command::SetVolume(9.0), t0);
+        assert_eq!(r.session().unwrap().player.volume(), 2.0, "borné à 200 %");
+        r.apply(command::Command::SetVolume(f32::NAN), t0);
+        assert_eq!(r.session().unwrap().player.volume(), 2.0, "une valeur sans sens est ignorée");
+    }
+
+    #[test]
     fn preparing_the_voice_loads_it_once() {
         let (mut r, loads, t0) = reader(10);
         r.prepare_voice(t0);

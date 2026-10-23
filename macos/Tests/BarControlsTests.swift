@@ -11,6 +11,17 @@ final class BarControlsTests: XCTestCase {
         XCTAssertEqual(SpeedFormat.spoken(1.25), "1,25 fois")
     }
 
+    /// Le volume : son icône suit le niveau, barrée quand le son est coupé.
+    func testTheVolumeButtonShowsTheLevel() {
+        XCTAssertEqual(VolumeFormat.text(1), "100 %")
+        XCTAssertEqual(VolumeFormat.text(0.35), "35 %")
+        XCTAssertEqual(VolumeFormat.symbol(volume: 1, muted: true), "speaker.slash.fill")
+        XCTAssertEqual(VolumeFormat.symbol(volume: 0, muted: false), "speaker.slash.fill")
+        XCTAssertEqual(VolumeFormat.symbol(volume: 0.2, muted: false), "speaker.wave.1.fill")
+        XCTAssertEqual(VolumeFormat.symbol(volume: 0.5, muted: false), "speaker.wave.2.fill")
+        XCTAssertEqual(VolumeFormat.symbol(volume: 1.5, muted: false), "speaker.wave.3.fill")
+    }
+
     /// Un clic sur la barre : la phrase sous le pointeur, bornée au document.
     func testAClickOnTheTimelineGivesTheSentenceUnderThePointer() {
         XCTAssertEqual(SeekableTimeline.fraction(x: 50, width: 200), 0.25)

@@ -188,6 +188,82 @@ struct SpeedMenu: View {
     }
 }
 
+/// Le volume de l'app, indépendant de celui du système : 0 à 200 %.
+enum VolumeFormat {
+    static let range: ClosedRange<Float> = 0...2
+    static let step: Float = 0.05
+
+    static func text(_ volume: Float) -> String { String(localized: "\(Int((volume * 100).rounded()))%") }
+
+    static func symbol(volume: Float, muted: Bool) -> String {
+        if muted || volume <= 0 { return "speaker.slash.fill" }
+        if volume < 0.34 { return "speaker.wave.1.fill" }
+        if volume < 0.67 { return "speaker.wave.2.fill" }
+        return "speaker.wave.3.fill"
+    }
+}
+
+/// Le volume, cliquable : un curseur et « Couper le son » dans une bulle.
+struct VolumeButton: View {
+    let model: ReaderModel
+    @State private var open = false
+    @Environment(\.panelTheme) private var theme
+
+    var body: some View {
+        let s = model.snapshot
+        Button { open.toggle() } label: {
+            Image(systemName: VolumeFormat.symbol(volume: s.volume, muted: s.muted))
+                .font(.system(size: BarButtonMetrics.glyph))
+                // La même largeur quelle que soit l'onde : la barre ne bouge pas.
+                .frame(width: 20)
+        }
+        .buttonStyle(BarButtonStyle(selected: open))
+        .focusable(false)
+        .help("Volume")
+        .accessibilityLabel("Volume")
+        .accessibilityValue(s.muted ? String(localized: "Muted") : VolumeFormat.text(s.volume))
+        .accessibilityIdentifier("volume-lecteur")
+        .popover(isPresented: $open, arrowEdge: .top) {
+            VolumePopover(model: model)
+                .environment(\.panelTheme, theme)
+        }
+    }
+}
+
+private struct VolumePopover: View {
+    let model: ReaderModel
+
+    var body: some View {
+        let s = model.snapshot
+        let volume = Binding<Float>(
+            get: { s.muted ? 0 : s.volume },
+            set: { model.send(.setVolume(volume: $0)) })
+        HStack(spacing: 10) {
+            Button { model.send(.toggleMute) } label: {
+                Image(systemName: VolumeFormat.symbol(volume: s.volume, muted: s.muted))
+                    .font(.system(size: BarButtonMetrics.glyph))
+                    .frame(width: 20)
+            }
+            .buttonStyle(BarButtonStyle())
+            .focusable(false)
+            .help(s.muted ? "Unmute" : "Mute")
+            .accessibilityLabel(s.muted ? "Unmute" : "Mute")
+            .accessibilityIdentifier("couper-son")
+            Slider(value: volume, in: VolumeFormat.range, step: VolumeFormat.step)
+                .frame(width: 180)
+                .accessibilityLabel("Volume")
+                .accessibilityValue(VolumeFormat.text(volume.wrappedValue))
+                .accessibilityIdentifier("curseur-volume")
+            Text(VolumeFormat.text(volume.wrappedValue))
+                .monospacedDigit()
+                .fontWeight(.medium)
+                .frame(minWidth: 44, alignment: .trailing)
+        }
+        .font(.system(size: 13))
+        .padding(12)
+    }
+}
+
 /// La sortie audio, cliquable : l'icône de la sortie (écouteurs, enceinte,
 /// sortie du système), la liste au clic, la même que dans les réglages.
 struct OutputMenu: View {
