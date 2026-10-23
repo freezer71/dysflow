@@ -67,16 +67,18 @@ final class ReaderModesUITests: XCTestCase {
         XCTAssertTrue(app.groups["lecteur-mini"].waitForExistence(timeout: 2), "pas rouvert en mini")
     }
 
-    /// Le mini : ⏮ ▶ ⏭ par phrase, « Agrandir » et « Fermer », rien d'autre.
+    /// Le mini : ⏮ ▶ ⏭ par phrase, le volume, la sortie audio, « Agrandir »
+    /// et « Fermer », rien d'autre.
     func testTheMiniMovesBySentenceAndGrows() {
         let app = launch()
         app.typeKey("m", modifierFlags: .command)
         let mini = app.groups["lecteur-mini"]
         XCTAssertTrue(mini.waitForExistence(timeout: 2))
-        for id in ["phrase-precedente", "lecture", "phrase-suivante", "agrandir", "fermer-mini"] {
+        for id in ["phrase-precedente", "lecture", "phrase-suivante", "volume-lecteur", "agrandir", "fermer-mini"] {
             XCTAssertTrue(mini.buttons[id].exists, "\(id) absent du mini")
         }
-        for id in ["mot-precedent", "mot-suivant", "ligne-precedente", "ligne-suivante", "reglages-voix", "sortie-audio"] {
+        XCTAssertTrue(mini.descendants(matching: .any)["sortie-audio-lecteur"].exists, "sortie audio absente du mini")
+        for id in ["mot-precedent", "mot-suivant", "ligne-precedente", "ligne-suivante", "reglages-voix"] {
             XCTAssertFalse(mini.descendants(matching: .any)[id].exists, "\(id) est revenu")
         }
         mini.buttons["agrandir"].click()

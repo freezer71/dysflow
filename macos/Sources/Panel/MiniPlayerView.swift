@@ -163,8 +163,8 @@ struct MiniTimeRow: View {
     }
 }
 
-/// Rangée 2 : « Coller » à gauche, ⏮ ▶ ⏭ par phrase au centre,
-/// « Agrandir » à droite.
+/// Rangée 2 : « Coller » et le volume à gauche, ⏮ ▶ ⏭ par phrase au
+/// centre, la sortie audio et « Agrandir » à droite.
 struct MiniControlsRow: View {
     let model: ReaderModel
     var transportEnabled = true
@@ -178,9 +178,12 @@ struct MiniControlsRow: View {
         HStack(spacing: 0) {
             // La même largeur des deux côtés : le transport reste centré.
             // Coller marche aussi sans document : c'est ainsi qu'on en ouvre un.
-            BarIconButton(symbol: "doc.on.clipboard", label: "Paste",
-                          help: "Read the clipboard (⌘V)", identifier: "coller-mini") {
-                send(Self.pasteAction)
+            HStack(spacing: 0) {
+                BarIconButton(symbol: "doc.on.clipboard", label: "Paste",
+                              help: "Read the clipboard (⌘V)", identifier: "coller-mini") {
+                    send(Self.pasteAction)
+                }
+                VolumeButton(model: model)
             }
             .frame(width: MiniBarMetrics.side, alignment: .leading)
             Spacer(minLength: 0)
@@ -191,9 +194,12 @@ struct MiniControlsRow: View {
             }
             .disabled(!transportEnabled)
             Spacer(minLength: 0)
-            BarIconButton(symbol: "arrow.up.left.and.arrow.down.right", label: "Expand",
-                          help: "Expand the reader (⌘M)", identifier: "agrandir") {
-                send(Self.growAction)
+            HStack(spacing: 0) {
+                OutputMenu(model: model)
+                BarIconButton(symbol: "arrow.up.left.and.arrow.down.right", label: "Expand",
+                              help: "Expand the reader (⌘M)", identifier: "agrandir") {
+                    send(Self.growAction)
+                }
             }
             .frame(width: MiniBarMetrics.side, alignment: .trailing)
         }
