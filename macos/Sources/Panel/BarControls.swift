@@ -69,18 +69,36 @@ struct BarIconButton: View {
     let label: LocalizedStringKey
     let help: LocalizedStringKey
     let identifier: String
+    /// Un bouton de côté, moins marqué que le transport.
+    var secondary = false
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            Image(systemName: symbol)
-                .font(.system(size: BarButtonMetrics.glyph))
+            Image(systemName: symbol).barGlyph(secondary: secondary)
         }
         .buttonStyle(BarButtonStyle())
         .focusable(false)
         .help(help)
         .accessibilityLabel(label)
         .accessibilityIdentifier(identifier)
+    }
+}
+
+extension Image {
+    /// Le glyphe d'un bouton de barre. Secondaire : un cran plus petit et
+    /// plus discret, dans un cadre fixe, pour que des symboles de formes
+    /// différentes (presse-papiers, haut-parleur, AirPlay, flèches) aient
+    /// le même poids.
+    @ViewBuilder
+    func barGlyph(secondary: Bool) -> some View {
+        if secondary {
+            font(.system(size: BarButtonMetrics.secondaryGlyph))
+                .frame(width: BarButtonMetrics.secondaryBox, height: BarButtonMetrics.secondaryBox)
+                .foregroundStyle(.secondary)
+        } else {
+            font(.system(size: BarButtonMetrics.glyph))
+        }
     }
 }
 
@@ -207,27 +225,32 @@ enum VolumeFormat {
         min(max((volume / step).rounded() * step, range.lowerBound), range.upperBound)
     }
 
+    /// Le haut-parleur en contour, comme les autres icônes de la barre :
+    /// toujours le même dessin (et la même largeur), seules ses ondes
+    /// s'allument selon le niveau (`level`).
     static func symbol(volume: Float, muted: Bool) -> String {
-        if muted || volume <= 0 { return "speaker.slash.fill" }
-        if volume < 0.34 { return "speaker.wave.1.fill" }
-        if volume < 0.67 { return "speaker.wave.2.fill" }
-        return "speaker.wave.3.fill"
+        muted || volume <= 0 ? "speaker.slash" : "speaker.wave.3"
     }
+
+    /// La part des ondes allumées : pleine dès 100 %.
+    static func level(_ volume: Float) -> Double { Double(min(max(volume, 0), 1)) }
 }
 
 /// Le volume, cliquable : un curseur et « Couper le son » dans une bulle.
 struct VolumeButton: View {
     let model: ReaderModel
+    var secondary = false
     @State private var open = false
     @Environment(\.panelTheme) private var theme
 
     var body: some View {
         let s = model.snapshot
         Button { open.toggle() } label: {
-            Image(systemName: VolumeFormat.symbol(volume: s.volume, muted: s.muted))
-                .font(.system(size: BarButtonMetrics.glyph))
-                // La même largeur quelle que soit l'onde : la barre ne bouge pas.
-                .frame(width: 20)
+            Image(systemName: VolumeFormat.symbol(volume: s.volume, muted: s.muted),
+                  variableValue: VolumeFormat.level(s.volume))
+                .barGlyph(secondary: secondary)
+                // La même largeur, son coupé ou non : la barre ne bouge pas.
+                .frame(width: secondary ? nil : 22)
         }
         .buttonStyle(BarButtonStyle(selected: open))
         .focusable(false)
@@ -250,9 +273,10 @@ private struct VolumePopover: View {
         let shown = s.muted ? 0 : s.volume
         HStack(spacing: 10) {
             Button { model.send(.toggleMute) } label: {
-                Image(systemName: VolumeFormat.symbol(volume: s.volume, muted: s.muted))
+                Image(systemName: VolumeFormat.symbol(volume: s.volume, muted: s.muted),
+                      variableValue: VolumeFormat.level(s.volume))
                     .font(.system(size: BarButtonMetrics.glyph))
-                    .frame(width: 20)
+                    .frame(width: 22)
             }
             .buttonStyle(BarButtonStyle())
             .focusable(false)
@@ -343,6 +367,7 @@ private struct VolumeSlider: View {
 /// sortie du système), la liste au clic, la même que dans les réglages.
 struct OutputMenu: View {
     let model: ReaderModel
+    var secondary = false
 
     var body: some View {
         let chosen = model.outputDevice
@@ -360,7 +385,7 @@ struct OutputMenu: View {
             }
         } label: {
             Image(systemName: AudioOutputChoices.symbol(for: chosen))
-                .font(.system(size: BarButtonMetrics.glyph))
+                .barGlyph(secondary: secondary)
                 .frame(minWidth: BarButtonMetrics.target, minHeight: BarButtonMetrics.target)
                 .contentShape(Rectangle())
         }

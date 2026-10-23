@@ -179,11 +179,11 @@ struct MiniControlsRow: View {
             // La même largeur des deux côtés : le transport reste centré.
             // Coller marche aussi sans document : c'est ainsi qu'on en ouvre un.
             HStack(spacing: 0) {
-                BarIconButton(symbol: "doc.on.clipboard", label: "Paste",
-                              help: "Read the clipboard (⌘V)", identifier: "coller-mini") {
+                BarIconButton(symbol: "clipboard", label: "Paste",
+                              help: "Read the clipboard (⌘V)", identifier: "coller-mini", secondary: true) {
                     send(Self.pasteAction)
                 }
-                VolumeButton(model: model)
+                VolumeButton(model: model, secondary: true)
             }
             .frame(width: MiniBarMetrics.side, alignment: .leading)
             Spacer(minLength: 0)
@@ -195,9 +195,9 @@ struct MiniControlsRow: View {
             .disabled(!transportEnabled)
             Spacer(minLength: 0)
             HStack(spacing: 0) {
-                OutputMenu(model: model)
+                OutputMenu(model: model, secondary: true)
                 BarIconButton(symbol: "arrow.up.left.and.arrow.down.right", label: "Expand",
-                              help: "Expand the reader (⌘M)", identifier: "agrandir") {
+                              help: "Expand the reader (⌘M)", identifier: "agrandir", secondary: true) {
                     send(Self.growAction)
                 }
             }

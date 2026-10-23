@@ -65,6 +65,9 @@ enum BarButtonMetrics {
     /// La cible de chaque bouton de barre : au moins 32 × 32 pt.
     static let target: CGFloat = 32
     static let glyph: CGFloat = 16
+    /// Les boutons de côté du mini : un cran sous le transport.
+    static let secondaryGlyph: CGFloat = 14
+    static let secondaryBox: CGFloat = 20
     /// Le disque de lecture du mode petit.
     static let disc: CGFloat = 36
     static let discGlyph: CGFloat = 18
