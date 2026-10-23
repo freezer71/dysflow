@@ -232,12 +232,15 @@ struct VolumeButton: View {
 
 private struct VolumePopover: View {
     let model: ReaderModel
+    /// La dernière valeur envoyée : l'instantané du moteur peut avoir un
+    /// tour de retard au relâchement.
+    @State private var sent: Float?
 
     var body: some View {
         let s = model.snapshot
         let volume = Binding<Float>(
             get: { s.muted ? 0 : s.volume },
-            set: { model.send(.setVolume(volume: $0)) })
+            set: { sent = $0; model.send(.setVolume(volume: $0)) })
         HStack(spacing: 10) {
             Button { model.send(.toggleMute) } label: {
                 Image(systemName: VolumeFormat.symbol(volume: s.volume, muted: s.muted))
@@ -249,7 +252,9 @@ private struct VolumePopover: View {
             .help(s.muted ? "Unmute" : "Mute")
             .accessibilityLabel(s.muted ? "Unmute" : "Mute")
             .accessibilityIdentifier("couper-son")
-            Slider(value: volume, in: VolumeFormat.range, step: VolumeFormat.step)
+            Slider(value: volume, in: VolumeFormat.range, step: VolumeFormat.step) { editing in
+                if !editing, let sent { model.saveVolume(sent) }
+            }
                 .frame(width: 180)
                 .accessibilityLabel("Volume")
                 .accessibilityValue(VolumeFormat.text(volume.wrappedValue))

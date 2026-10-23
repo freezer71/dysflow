@@ -327,6 +327,20 @@ final class ReaderModel {
         await audioOutputs.reload()
     }
 
+    /// Enregistre le volume réglé depuis la barre : le curseur l'applique au
+    /// son pendant le geste, l'écriture attend qu'on le relâche.
+    func saveVolume(_ volume: Float) {
+        var patch = SettingsPatch.empty
+        patch.volume = volume
+        Task {
+            do {
+                _ = try await updateSettings(patch)
+            } catch {
+                message = String(localized: "Volume not saved: \(error.localizedDescription)")
+            }
+        }
+    }
+
     /// Choisit la sortie : le son y passe tout de suite et n'en sort plus.
     func chooseOutput(_ name: String) {
         guard name != outputDevice else { return }

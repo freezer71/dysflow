@@ -3576,6 +3576,16 @@
         }
       }
     },
+    "Volume not saved: %@" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Volume non enregistré : %@"
+          }
+        }
+      }
+    },
     "Woman" : {
       "localizations" : {
         "fr" : {
