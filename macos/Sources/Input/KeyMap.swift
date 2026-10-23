@@ -48,6 +48,9 @@ enum ReaderAction: Equatable {
     case close
     /// ⌘M : du lecteur au mini et retour.
     case toggleSize
+    /// Le bouton « Réduire dans le Dock » : la fenêtre part dans le Dock,
+    /// la lecture continue.
+    case minimize
     /// ⌘C : la sélection, sinon la phrase en cours.
     case copy
     /// ⌘V : lire le presse-papiers.

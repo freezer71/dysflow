@@ -154,6 +154,10 @@ struct ReaderHeader: View {
                           identifier: "bouton-reglages") {
                 controller.perform(.openSettings)
             }
+            BarIconButton(symbol: "minus", label: "Minimize to Dock", help: "Minimize to the Dock, reading continues",
+                          identifier: "reduire-dock") {
+                controller.perform(.minimize)
+            }
             BarIconButton(symbol: "xmark", label: "Close", help: "Close, reading stops (⌘W)",
                           identifier: "fermer") {
                 controller.perform(.close)

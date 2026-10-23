@@ -67,14 +67,14 @@ final class ReaderModesUITests: XCTestCase {
         XCTAssertTrue(app.groups["lecteur-mini"].waitForExistence(timeout: 2), "pas rouvert en mini")
     }
 
-    /// Le mini : ⏮ ▶ ⏭ par phrase, le volume, la sortie audio, « Agrandir »
-    /// et « Fermer », rien d'autre.
+    /// Le mini : ⏮ ▶ ⏭ par phrase, le volume, la sortie audio, « Agrandir »,
+    /// « Réduire dans le Dock » et « Fermer », rien d'autre.
     func testTheMiniMovesBySentenceAndGrows() {
         let app = launch()
         app.typeKey("m", modifierFlags: .command)
         let mini = app.groups["lecteur-mini"]
         XCTAssertTrue(mini.waitForExistence(timeout: 2))
-        for id in ["phrase-precedente", "lecture", "phrase-suivante", "volume-lecteur", "agrandir", "fermer-mini"] {
+        for id in ["phrase-precedente", "lecture", "phrase-suivante", "volume-lecteur", "agrandir", "reduire-dock-mini", "fermer-mini"] {
             XCTAssertTrue(mini.buttons[id].exists, "\(id) absent du mini")
         }
         XCTAssertTrue(mini.descendants(matching: .any)["sortie-audio-lecteur"].exists, "sortie audio absente du mini")
