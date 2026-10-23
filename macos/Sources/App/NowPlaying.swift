@@ -15,10 +15,12 @@ struct NowPlayingInfo: Equatable {
     var speed: Double
     var playing: Bool
 
-    /// Rien sans document, ni quand la voix est au repos.
-    static func from(_ s: Snapshot, document: DocView) -> NowPlayingInfo? {
+    /// Rien sans document, ni quand la voix est au repos, ni en pause
+    /// lecteur fermé (fermer met en pause : la lecture est finie).
+    static func from(_ s: Snapshot, document: DocView, readerShown: Bool = true) -> NowPlayingInfo? {
         guard s.hasDocument else { return nil }
         if case .resting = s.voice, !s.playing { return nil }
+        if !readerShown, !s.playing { return nil }
         let speed = Double(s.speed)
         // × vitesse ; `Transport.sentence` fait le ÷ vitesse inverse.
         func content(_ t: Double?) -> Double? { t.flatMap { $0.isFinite ? $0 * speed : nil } }
@@ -65,6 +67,17 @@ final class NowPlaying {
     private var restGeneration = 0
     /// Une par changement d'état : les tests le comptent.
     private(set) var publications = 0
+    /// Le dernier instantané reçu : relu quand le lecteur s'ouvre ou se ferme.
+    private var received: (snapshot: Snapshot, document: DocView)?
+
+    /// Le lecteur est-il affiché ? Posé par le panneau. Fermé en pause, rien
+    /// n'est montré : les touches média reviennent aux autres applications.
+    var readerShown = true {
+        didSet {
+            guard readerShown != oldValue, let received else { return }
+            update(received.snapshot, document: received.document)
+        }
+    }
 
     private struct Key: Equatable {
         var title: String
@@ -106,7 +119,8 @@ final class NowPlaying {
     }
 
     func update(_ s: Snapshot, document: DocView) {
-        guard let info = NowPlayingInfo.from(s, document: document) else {
+        received = (s, document)
+        guard let info = NowPlayingInfo.from(s, document: document, readerShown: readerShown) else {
             clear()
             return
         }

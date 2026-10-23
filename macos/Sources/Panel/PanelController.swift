@@ -25,6 +25,8 @@ final class PanelController {
     @ObservationIgnored let lines = LineNavigator()
 
     private(set) var mode: DisplayMode = .hidden
+    /// Le lecteur s'affiche (vrai) ou se retire (faux) : « À l'écoute » suit.
+    @ObservationIgnored var onShownChange: (@MainActor (Bool) -> Void)?
     /// Réglages de lecture du moteur (interlignage, règle), relus à chaque
     /// ouverture et à chaque réglage écrit.
     var reading = ReadingDisplay()
@@ -164,6 +166,7 @@ final class PanelController {
         model.refresh()
         announcements.reseed(with: model.snapshot)
         keys.install()
+        onShownChange?(true)
     }
 
     /// Masqué : la fenêtre se retire.
@@ -178,6 +181,7 @@ final class PanelController {
         if window.isVisible { window.orderOut(nil) }
         updatePresence()
         keys.remove()
+        onShownChange?(false)
     }
 
     /// La fenêtre entièrement cachée (autres fenêtres, écran verrouillé ou

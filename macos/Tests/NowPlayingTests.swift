@@ -111,6 +111,40 @@ final class NowPlayingTests: XCTestCase {
         XCTAssertEqual(center.writes, writes, "rien à retirer deux fois")
     }
 
+    /// Fermer le lecteur met en pause : l'entrée part, les touches média
+    /// reviennent aux autres applications ; rouvert, elle revient.
+    func testClosingThePausedReaderRemovesTheInfo() {
+        let now = make()
+        now.update(.sample(playing: true), document: doc)
+        now.readerShown = false
+        XCTAssertNotNil(center.nowPlayingInfo, "la pause n'est pas encore arrivée")
+        now.update(.sample(playing: false), document: doc)
+        XCTAssertNil(center.nowPlayingInfo)
+        XCTAssertEqual(center.playbackState, .stopped)
+        XCTAssertFalse(remote.enabled)
+        now.readerShown = true
+        XCTAssertNotNil(center.nowPlayingInfo)
+        XCTAssertEqual(center.playbackState, .paused)
+    }
+
+    /// Déjà en pause, la fermeture ne change rien à l'instantané : elle
+    /// retire l'entrée seule.
+    func testClosingAnAlreadyPausedReaderRemovesTheInfo() {
+        let now = make()
+        now.update(.sample(playing: false), document: doc)
+        XCTAssertNotNil(center.nowPlayingInfo)
+        now.readerShown = false
+        XCTAssertNil(center.nowPlayingInfo)
+    }
+
+    /// Une lecture relancée lecteur fermé (touche média) se montre.
+    func testPlayingWhileTheReaderIsClosedIsShown() {
+        let now = make()
+        now.readerShown = false
+        now.update(.sample(playing: true), document: doc)
+        XCTAssertEqual(center.playbackState, .playing)
+    }
+
     func testMediaCommandsDriveTheReader() throws {
         let now = make()
         current = .sample(playing: false)
