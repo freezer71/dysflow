@@ -121,7 +121,22 @@ export const en: Dico = {
       surtitre: "Everywhere",
       titre: "In all your apps",
       texte: "Wherever there's text, Dysflow reads. Wherever you type, Dysflow writes.",
-      apps: ["Mail", "Safari", "Chrome", "Word", "Pages", "Notes", "Messages", "WhatsApp", "Slack", "Preview", "Claude", "Claude Code", "ChatGPT", "Terminal"],
+      apps: [
+        { nom: "Mail", icone: "mail" },
+        { nom: "Safari", icone: "safari" },
+        { nom: "Chrome", icone: "chrome" },
+        { nom: "Word", icone: "word" },
+        { nom: "Pages", icone: "pages" },
+        { nom: "Notes", icone: "notes" },
+        { nom: "Messages", icone: "messages" },
+        { nom: "WhatsApp", icone: "whatsapp" },
+        { nom: "Slack", icone: "slack" },
+        { nom: "Preview", icone: "apercu" },
+        { nom: "Claude", icone: "claude" },
+        { nom: "Claude Code", icone: "claude-code" },
+        { nom: "ChatGPT", icone: "chatgpt" },
+        { nom: "Terminal", icone: "terminal" },
+      ],
       plus: "And the rest of your Mac",
     },
     manifeste: {
@@ -159,6 +174,10 @@ export const en: Dico = {
       titre: "What people ask",
     },
     faq: [
+      {
+        q: "Which language is it in?",
+        r: "Your Mac's: English or French. This site follows your browser too.",
+      },
       {
         q: "Does it replace speech therapy?",
         r: "No. It's a tool, like glasses.",

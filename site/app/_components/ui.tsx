@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { LienLangue } from "./LienLangue";
 import { chemin, dico, type Lang, type Page } from "../_i18n";
 import { depot } from "../_data/liens";
 import { Confort } from "./Confort";
@@ -60,8 +61,9 @@ function SelecteurLangue({ lang, page }: { lang: Lang; page: Page }) {
       {(["en", "fr"] as const).map((l) => {
         const actif = l === lang;
         return (
-          <Link
+          <LienLangue
             key={l}
+            langue={l}
             href={chemin(l, page)}
             hrefLang={l}
             lang={l}
@@ -69,7 +71,7 @@ function SelecteurLangue({ lang, page }: { lang: Lang; page: Page }) {
             className={`rounded-full px-2.5 py-1 uppercase ${actif ? "bg-carte text-encre" : "text-encre-pale hover:text-encre"}`}
           >
             {l}
-          </Link>
+          </LienLangue>
         );
       })}
     </div>

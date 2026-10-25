@@ -119,7 +119,22 @@ export const fr = {
       surtitre: "Partout",
       titre: "Dans toutes vos applications",
       texte: "Là où il y a du texte, Dysflow lit. Là où on écrit, Dysflow écrit.",
-      apps: ["Mail", "Safari", "Chrome", "Word", "Pages", "Notes", "Messages", "WhatsApp", "Slack", "Aperçu", "Claude", "Claude Code", "ChatGPT", "Terminal"],
+      apps: [
+        { nom: "Mail", icone: "mail" },
+        { nom: "Safari", icone: "safari" },
+        { nom: "Chrome", icone: "chrome" },
+        { nom: "Word", icone: "word" },
+        { nom: "Pages", icone: "pages" },
+        { nom: "Notes", icone: "notes" },
+        { nom: "Messages", icone: "messages" },
+        { nom: "WhatsApp", icone: "whatsapp" },
+        { nom: "Slack", icone: "slack" },
+        { nom: "Aperçu", icone: "apercu" },
+        { nom: "Claude", icone: "claude" },
+        { nom: "Claude Code", icone: "claude-code" },
+        { nom: "ChatGPT", icone: "chatgpt" },
+        { nom: "Terminal", icone: "terminal" },
+      ],
       plus: "Et tout le reste du Mac",
     },
     manifeste: {
@@ -157,6 +172,10 @@ export const fr = {
       titre: "Ce qu'on nous demande",
     },
     faq: [
+      {
+        q: "C'est en quelle langue ?",
+        r: "Celle de votre Mac : français ou anglais. Le site aussi suit votre navigateur.",
+      },
       {
         q: "Ça remplace un orthophoniste ?",
         r: "Non. C'est un outil, comme des lunettes.",

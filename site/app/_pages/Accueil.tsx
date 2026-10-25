@@ -159,9 +159,14 @@ export function Accueil({ lang }: { lang: Lang }) {
         <TitreSection surtitre={d.partout.surtitre} titre={d.partout.titre} texte={d.partout.texte} />
         <ul className="mt-10 flex flex-wrap justify-center gap-2.5">
           {d.partout.apps.map((a) => (
-            <li key={a} className="rounded-full bg-carte px-5 py-2.5 text-lg font-bold">{a}</li>
+            <li key={a.icone} className="flex items-center gap-2.5 rounded-full bg-carte py-2 pl-2 pr-5 text-lg font-bold">
+              {/* Le nom est écrit à côté : l'icône n'a rien à dire de plus. */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={`/apps/${a.icone}.webp`} alt="" width={36} height={36} loading="lazy" className="size-9" />
+              {a.nom}
+            </li>
           ))}
-          <li className="rounded-full bg-citron px-5 py-2.5 text-lg font-bold text-citron-encre">{d.partout.plus}</li>
+          <li className="flex items-center rounded-full bg-citron px-5 py-2.5 text-lg font-bold text-citron-encre">{d.partout.plus}</li>
         </ul>
       </section>
 
