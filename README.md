@@ -1,7 +1,6 @@
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="assets/logo/dysflow-mark-dark.svg">
-  <img src="assets/logo/dysflow-mark.svg" alt="" width="76">
-</picture>
+<!-- L'icône sur sa plaque : lisible sur GitHub clair comme sombre. Une
+     <picture> suit le thème du système, pas celui de GitHub. -->
+<img src="assets/logo/dysflow-app.svg" alt="" width="96">
 
 # dysflow
 
