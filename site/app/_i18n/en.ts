@@ -5,13 +5,13 @@ import type { Dico } from "./fr";
 
 export const en: Dico = {
   meta: {
-    titre: "dysflow — read and write without wearing yourself out, made for dyslexia",
+    titre: "Dysflow — read and write without wearing yourself out, made for dyslexia",
     modele: "%s · dysflow",
     description:
-      "dysflow is made for dyslexic and neurodivergent people who find reading or writing hard: it reads your documents aloud, highlighting every word, and types what you dictate. Free, open source, 100% on your machine.",
+      "Dysflow is made for dyslexic and neurodivergent people who find reading or writing hard: it reads your documents aloud, highlighting every word, and types what you dictate. Free, open source, 100% on your machine.",
   },
   entete: {
-    accueil: "dysflow, home",
+    accueil: "Dysflow, home",
     parcours: "The journey",
     modeles: "Models",
     github: "GitHub",
@@ -45,8 +45,8 @@ export const en: Dico = {
       "100% local",
     ],
     titre: "Your dyslexia doesn't have to hold you back.",
-    intro: "dysflow reads your text aloud. And it writes what you say.",
-    telecharger: "Download dysflow",
+    intro: "Dysflow reads your text aloud. And it writes what you say.",
+    telecharger: "Download Dysflow",
     parcours: {
       surtitre: "The journey",
       titre: "See the difference",
@@ -65,7 +65,7 @@ export const en: Dico = {
         ],
       },
       avec: {
-        titre: "With dysflow",
+        titre: "With Dysflow",
         texte: "The voice reads. Your eyes follow.",
       },
       ecrire: {
@@ -81,8 +81,8 @@ export const en: Dico = {
           "bring your questions: we will",
           "decide together what comes next.",
         ],
-        sans: "Without dysflow",
-        avec: "With dysflow",
+        sans: "Without Dysflow",
+        avec: "With Dysflow",
         groupe: "Choose how to read",
         voix: "The voice reads",
         legendeSans: "Letters move. You reread. You get tired.",
@@ -91,7 +91,7 @@ export const en: Dico = {
       dictee: {
         clavier: "Typed",
         micro: "You speak…",
-        voix: "dysflow wrote",
+        voix: "Dysflow wrote",
         tapee: "Dear Mrs Brown, here is my geografy homwork.",
         dite: "Dear Mrs Brown, here is my geography homework.",
       },
@@ -104,7 +104,7 @@ export const en: Dico = {
         etapes: [
           { texte: "Select the text, or copy it." },
           { texte: "Press the shortcut.", touches: [{ signe: "⌃", nom: "control" }, { signe: "⌥", nom: "option" }, { signe: "␣", nom: "space" }] },
-          { texte: "dysflow reads it aloud." },
+          { texte: "Dysflow reads it aloud." },
         ],
       },
       ecrire: {
@@ -120,7 +120,7 @@ export const en: Dico = {
     partout: {
       surtitre: "Everywhere",
       titre: "In all your apps",
-      texte: "Wherever there's text, dysflow reads. Wherever you type, dysflow writes.",
+      texte: "Wherever there's text, Dysflow reads. Wherever you type, Dysflow writes.",
       apps: ["Mail", "Safari", "Chrome", "Word", "Pages", "Notes", "Messages", "WhatsApp", "Slack", "Preview", "Claude", "Claude Code", "ChatGPT", "Terminal"],
       plus: "And the rest of your Mac",
     },
@@ -185,7 +185,7 @@ export const en: Dico = {
     meta: {
       titre: "The models",
       description:
-        "Every dysflow voice and dictation model: Kokoro, Qwen3-TTS, MagpieTTS, Parakeet, Phonon-2, Whisper, Canary, Voxtral. Sizes, languages, speed, licenses.",
+        "Every Dysflow voice and dictation model: Kokoro, Qwen3-TTS, MagpieTTS, Parakeet, Phonon-2, Whisper, Canary, Voxtral. Sizes, languages, speed, licenses.",
     },
     entete: {
       surtitre: "Models",
@@ -219,17 +219,17 @@ export const en: Dico = {
     ocr: {
       titre: "Text recognition",
       texte:
-        "For images, screenshots and scanned PDFs, dysflow bundles Tesseract with French and English: nothing to install. Pages are recognized in parallel and the result is remembered, so the second opening is instant.",
+        "For images, screenshots and scanned PDFs, Dysflow bundles Tesseract with French and English: nothing to install. Pages are recognized in parallel and the result is remembered, so the second opening is instant.",
     },
     mesures:
       "Measured on an M5 Mac. “Busy x% of the time at 1×”: the share of playback time spent computing the voice; above 100%, playback stutters.",
-    telecharger: "Download dysflow",
+    telecharger: "Download Dysflow",
   },
   telecharger: {
     meta: {
       titre: "Download",
       description:
-        "Install dysflow with one command on Mac and Linux, or download the macOS app as a .dmg.",
+        "Install Dysflow with one command on Mac and Linux, or download the macOS app as a .dmg.",
     },
     version: "Version",
     derniere: "Latest version",
@@ -239,7 +239,7 @@ export const en: Dico = {
       "Picks the right version for your machine",
       "Checks the download's checksum",
       "Installs without an administrator password",
-      "Opens dysflow — the voice installs itself",
+      "Opens Dysflow — the voice installs itself",
     ],
     ou: "or download",
     mac: {

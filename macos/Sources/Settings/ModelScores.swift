@@ -7,7 +7,7 @@ import SwiftUI
 /// normalisation) : https://huggingface.co/spaces/hf-audio/open_asr_leaderboard
 /// — taux de mots faux sur FLEURS fr (`hf-audio/multilingual_evals`), moyenne
 /// anglaise et RTFx sur GPU H200 (`hf-audio/open-asr-leaderboard-results`).
-/// Chiffres des poids d'origine : dysflow en utilise des versions réduites
+/// Chiffres des poids d'origine : Dysflow en utilise des versions réduites
 /// (8 bits, 4 bits).
 struct ModelScore: Equatable {
     /// Taux de mots faux, en %.

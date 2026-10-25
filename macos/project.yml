@@ -83,7 +83,7 @@ targets:
         embed: true
       - sdk: MediaPlayer.framework
     # « Ouvrir avec » du Finder : les types d'OpenableFiles. En second choix
-    # (Alternate), dysflow ne prend pas la place de l'app par défaut. Xcode
+    # (Alternate), Dysflow ne prend pas la place de l'app par défaut. Xcode
     # fusionne ce fichier avec les clés INFOPLIST_KEY_* ci-dessous.
     info:
       path: Generated/Info.plist
@@ -99,7 +99,7 @@ targets:
               - com.adobe.pdf
               - public.image
         # Le Markdown n'a pas toujours de type déclaré sur le Mac : sans lui,
-        # un .md ne proposerait pas dysflow.
+        # un .md ne proposerait pas Dysflow.
         UTImportedTypeDeclarations:
           - UTTypeIdentifier: net.daringfireball.markdown
             UTTypeDescription: Markdown
@@ -115,13 +115,13 @@ targets:
         LD_RUNPATH_SEARCH_PATHS: "@executable_path/../Frameworks"
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_LSUIElement: YES
-        INFOPLIST_KEY_CFBundleDisplayName: dysflow
+        INFOPLIST_KEY_CFBundleDisplayName: Dysflow
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         INFOPLIST_KEY_NSHumanReadableCopyright: ""
         # La dictée : le micro, transcrit sur le Mac (SpeechAnalyzer). En
         # anglais ici ; le français dans Resources/InfoPlist.xcstrings.
-        INFOPLIST_KEY_NSMicrophoneUsageDescription: "dysflow listens to the microphone during dictation, to write what you say. Nothing leaves your Mac."
-        INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: "dysflow transcribes your voice on your Mac during dictation."
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: "Dysflow listens to the microphone during dictation, to write what you say. Nothing leaves your Mac."
+        INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: "Dysflow transcribes your voice on your Mac during dictation."
         # Le compilateur écrit les textes localisables (.stringsdata) :
         # scripts/check-xcstrings.sh en tire les clés exactes du catalogue.
         SWIFT_EMIT_LOC_STRINGS: YES

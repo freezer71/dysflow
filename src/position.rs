@@ -65,7 +65,7 @@ impl PositionStore {
     fn load_from(path: &Path) -> Self {
         let (store, notice) = crate::paths::load_json(path, crate::i18n::Tr::new("reading positions", "positions de lecture"));
         if let Some(notice) = notice {
-            eprintln!("{}", crate::tr!(en = "dysflow: {notice}", fr = "dysflow : {notice}"));
+            eprintln!("{}", crate::tr!(en = "Dysflow: {notice}", fr = "Dysflow : {notice}"));
         }
         store
     }

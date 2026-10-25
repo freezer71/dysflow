@@ -580,22 +580,22 @@ struct PermissionsSection: View {
     }
 }
 
-/// Ouvrir dysflow à la connexion.
+/// Ouvrir Dysflow à la connexion.
 struct StartupSection: View {
     @State private var login = false
 
     var body: some View {
         SettingsGroup(title: String(localized: "Startup")) {
-            SettingRow(title: String(localized: "Open dysflow at login"),
+            SettingRow(title: String(localized: "Open Dysflow at login"),
                        detail: String(localized: "In the menu bar, ready to read")) {
-                Toggle("Open dysflow at login", isOn: $login)
+                Toggle("Open Dysflow at login", isOn: $login)
                     .notionSwitch()
                     .onAppear { login = LoginItem.isEnabled }
                     .onChange(of: login) { _, on in
                         // L'inscription peut être refusée : l'interrupteur dit l'état réel.
                         if LoginItem.isEnabled != on, !LoginItem.set(on) { login = LoginItem.isEnabled }
                     }
-                    .accessibilityLabel("Open dysflow at login")
+                    .accessibilityLabel("Open Dysflow at login")
                     .accessibilityIdentifier("ouvrir-connexion")
             }
         }

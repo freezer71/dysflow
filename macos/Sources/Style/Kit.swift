@@ -403,7 +403,7 @@ struct ValueText: View {
 
 // MARK: - Logo
 
-/// La marque de dysflow : une tête de profil à main levée, et dans le crâne
+/// La marque de Dysflow : une tête de profil à main levée, et dans le crâne
 /// un réseau dont une branche passe le front. Même tracé que
 /// `scripts/logo_gen.py`, sur la même grille de 64.
 struct LogoMark: View {

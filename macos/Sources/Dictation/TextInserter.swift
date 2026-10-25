@@ -38,7 +38,7 @@ enum CopyReason: Equatable {
     case noAccessibility
     /// Saisie sécurisée (mot de passe) : macOS ne laisse rien passer.
     case secureInput
-    /// Le clavier est chez dysflow (le lecteur) : ⌘V y lirait le texte.
+    /// Le clavier est chez Dysflow (le lecteur) : ⌘V y lirait le texte.
     case ownWindow
 
     var message: String {
@@ -60,7 +60,7 @@ struct TextInserter {
     /// et se relit dès qu'elle est accordée (pas besoin de relancer).
     var trusted: () -> Bool = { AXIsProcessTrusted() }
     var secureInput: () -> Bool = { IsSecureEventInputEnabled() }
-    /// Une fenêtre de dysflow a le clavier, ou dysflow est au premier plan.
+    /// Une fenêtre de Dysflow a le clavier, ou Dysflow est au premier plan.
     var ownAppHasKeyboard: () -> Bool = {
         NSApp.keyWindow != nil || NSWorkspace.shared.frontmostApplication?.processIdentifier == getpid()
     }

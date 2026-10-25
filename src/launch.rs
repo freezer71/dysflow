@@ -90,7 +90,7 @@ pub struct Args {
     #[arg(long)]
     pub config: bool,
 
-    /// Met dysflow à jour : installe la dernière version publiée.
+    /// Met Dysflow à jour : installe la dernière version publiée.
     #[arg(long)]
     pub update: bool,
 }
@@ -169,8 +169,8 @@ pub fn command() -> Command {
         })
         .mut_arg("update", |a| {
             a.help(tr!(
-                "Update dysflow: install the latest published version.",
-                "Met dysflow à jour : installe la dernière version publiée."
+                "Update Dysflow: install the latest published version.",
+                "Met Dysflow à jour : installe la dernière version publiée."
             ))
             .help_heading(options)
         })
@@ -187,25 +187,25 @@ pub fn parse_args() -> Args {
 pub fn short_help() -> &'static str {
     tr!(
         "\
-dysflow reads a text aloud, showing it word by word.
+Dysflow reads a text aloud, showing it word by word.
 
 Four ways to read:
   dysflow document.md        a file: markdown, text, PDF, image
   command | dysflow          what a command writes, as it goes
   dysflow --clip             the clipboard
-  the dysflow app (macOS)    ⌃⌥Space reads the selection
+  the Dysflow app (macOS)    ⌃⌥Space reads the selection
 
 Settings: dysflow --config · update: dysflow --update
 All options: dysflow --help
 ",
         "\
-dysflow lit un texte à voix haute, en le montrant mot à mot.
+Dysflow lit un texte à voix haute, en le montrant mot à mot.
 
 Quatre manières de lire :
   dysflow document.md        un fichier : markdown, texte, PDF, image
   commande | dysflow         ce qu'une commande écrit, au fil de l'eau
   dysflow --clip             le presse-papiers
-  l'app dysflow (macOS)      ⌃⌥Espace lit la sélection
+  l'app Dysflow (macOS)      ⌃⌥Espace lit la sélection
 
 Réglages : dysflow --config · mise à jour : dysflow --update
 Toutes les options : dysflow --help

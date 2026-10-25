@@ -269,7 +269,7 @@ final class ReaderModel {
         wake()
     }
 
-    /// Un fichier donné à dysflow (`dysflow fichier.pdf`, « Ouvrir avec ») : le
+    /// Un fichier donné à Dysflow (`dysflow fichier.pdf`, « Ouvrir avec ») : le
     /// moteur l'extrait (PDF, texte, image) et reprend où on s'était arrêté.
     /// L'extraction peut durer : hors du fil principal.
     func openFile(_ url: URL) async throws {

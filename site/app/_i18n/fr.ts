@@ -3,13 +3,13 @@
 
 export const fr = {
   meta: {
-    titre: "dysflow — lire et écrire sans s'épuiser, pour les dyslexiques",
+    titre: "Dysflow — lire et écrire sans s'épuiser, pour les dyslexiques",
     modele: "%s · dysflow",
     description:
-      "dysflow est fait pour les personnes dyslexiques et neuroatypiques à qui lire ou écrire coûte : il lit vos documents à voix haute en surlignant chaque mot, et écrit ce que vous dictez. Gratuit, libre, 100 % sur votre machine.",
+      "Dysflow est fait pour les personnes dyslexiques et neuroatypiques à qui lire ou écrire coûte : il lit vos documents à voix haute en surlignant chaque mot, et écrit ce que vous dictez. Gratuit, libre, 100 % sur votre machine.",
   },
   entete: {
-    accueil: "dysflow, accueil",
+    accueil: "Dysflow, accueil",
     parcours: "Le parcours",
     modeles: "Modèles",
     github: "GitHub",
@@ -43,8 +43,8 @@ export const fr = {
       "100 % local",
     ],
     titre: "Votre dyslexie n'est pas une fatalité.",
-    intro: "dysflow lit vos textes à voix haute. Et il écrit ce que vous dites.",
-    telecharger: "Télécharger dysflow",
+    intro: "Dysflow lit vos textes à voix haute. Et il écrit ce que vous dites.",
+    telecharger: "Télécharger Dysflow",
     parcours: {
       surtitre: "Le parcours",
       titre: "Voyez la différence",
@@ -63,7 +63,7 @@ export const fr = {
         ],
       },
       avec: {
-        titre: "Avec dysflow",
+        titre: "Avec Dysflow",
         texte: "La voix lit. Vos yeux suivent.",
       },
       ecrire: {
@@ -79,8 +79,8 @@ export const fr = {
           "préparer vos questions : nous",
           "déciderons ensemble de la suite.",
         ],
-        sans: "Sans dysflow",
-        avec: "Avec dysflow",
+        sans: "Sans Dysflow",
+        avec: "Avec Dysflow",
         groupe: "Choisir la lecture",
         voix: "La voix lit",
         legendeSans: "Les lettres bougent. On relit. On se fatigue.",
@@ -89,7 +89,7 @@ export const fr = {
       dictee: {
         clavier: "Au clavier",
         micro: "Vous parlez…",
-        voix: "dysflow a écrit",
+        voix: "Dysflow a écrit",
         tapee: "Bonjour madame, je vous envoi mon devoire de géografie.",
         dite: "Bonjour madame, je vous envoie mon devoir de géographie.",
       },
@@ -102,7 +102,7 @@ export const fr = {
         etapes: [
           { texte: "Sélectionnez le texte, ou copiez-le." },
           { texte: "Faites le raccourci.", touches: [{ signe: "⌃", nom: "control" }, { signe: "⌥", nom: "option" }, { signe: "␣", nom: "espace" }] },
-          { texte: "dysflow le lit à voix haute." },
+          { texte: "Dysflow le lit à voix haute." },
         ],
       },
       ecrire: {
@@ -118,7 +118,7 @@ export const fr = {
     partout: {
       surtitre: "Partout",
       titre: "Dans toutes vos applications",
-      texte: "Là où il y a du texte, dysflow lit. Là où on écrit, dysflow écrit.",
+      texte: "Là où il y a du texte, Dysflow lit. Là où on écrit, Dysflow écrit.",
       apps: ["Mail", "Safari", "Chrome", "Word", "Pages", "Notes", "Messages", "WhatsApp", "Slack", "Aperçu", "Claude", "Claude Code", "ChatGPT", "Terminal"],
       plus: "Et tout le reste du Mac",
     },
@@ -183,7 +183,7 @@ export const fr = {
     meta: {
       titre: "Les modèles",
       description:
-        "Toutes les voix et tous les modèles de dictée de dysflow : Kokoro, Qwen3-TTS, MagpieTTS, Parakeet, Phonon-2, Whisper, Canary, Voxtral. Tailles, langues, vitesse, licences.",
+        "Toutes les voix et tous les modèles de dictée de Dysflow : Kokoro, Qwen3-TTS, MagpieTTS, Parakeet, Phonon-2, Whisper, Canary, Voxtral. Tailles, langues, vitesse, licences.",
     },
     entete: {
       surtitre: "Modèles",
@@ -217,17 +217,17 @@ export const fr = {
     ocr: {
       titre: "Reconnaissance de texte",
       texte:
-        "Pour les images, les captures et les PDF photocopiés, dysflow embarque Tesseract avec le français et l'anglais : rien à installer. Les pages sont reconnues en parallèle et le résultat est mémorisé, si bien que la deuxième ouverture est immédiate.",
+        "Pour les images, les captures et les PDF photocopiés, Dysflow embarque Tesseract avec le français et l'anglais : rien à installer. Les pages sont reconnues en parallèle et le résultat est mémorisé, si bien que la deuxième ouverture est immédiate.",
     },
     mesures:
       "Mesures faites sur un Mac M5. « Occupé x % du temps à 1× » : la part du temps de lecture passée à calculer la voix ; au-delà de 100 %, la lecture saccade.",
-    telecharger: "Télécharger dysflow",
+    telecharger: "Télécharger Dysflow",
   },
   telecharger: {
     meta: {
       titre: "Télécharger",
       description:
-        "Installez dysflow en une commande sur Mac et Linux, ou téléchargez l'app macOS en .dmg.",
+        "Installez Dysflow en une commande sur Mac et Linux, ou téléchargez l'app macOS en .dmg.",
     },
     version: "Version",
     derniere: "Dernière version",
@@ -237,7 +237,7 @@ export const fr = {
       "Choisit la bonne version pour votre machine",
       "Vérifie l'empreinte du téléchargement",
       "Installe sans mot de passe administrateur",
-      "Ouvre dysflow — la voix s'installe toute seule",
+      "Ouvre Dysflow — la voix s'installe toute seule",
     ],
     ou: "ou téléchargez",
     mac: {

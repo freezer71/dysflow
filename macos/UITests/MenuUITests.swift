@@ -17,7 +17,7 @@ final class MenuUITests: XCTestCase {
         let titles = app.menuItems.allElementsBoundByIndex.map(\.title).filter { !$0.isEmpty }
             .filter { $0 != "Autoriser la lecture de la sélection…" }
         XCTAssertEqual(titles, ["Lire la sélection", "Ouvrir un fichier…", "Afficher le lecteur",
-                                "Réglages…", "Quitter dysflow"])
+                                "Réglages…", "Quitter Dysflow"])
         app.typeKey(.escape, modifierFlags: [])
     }
 

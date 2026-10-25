@@ -118,7 +118,7 @@ export function Accueil({ lang }: { lang: Lang }) {
         </div>
       </section>
 
-      {/* Le parcours : le même message, lu sans puis avec dysflow */}
+      {/* Le parcours : le même message, lu sans puis avec Dysflow */}
       <section id="parcours" className="mx-auto max-w-6xl scroll-mt-20 px-4 sm:px-6">
         <TitreSection surtitre={p.surtitre} titre={p.titre} />
         <ol className="mt-14">

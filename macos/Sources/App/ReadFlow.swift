@@ -25,7 +25,7 @@ struct ReadFlow {
         case .veto(.secure):
             say(String(localized: "Secure field: nothing is read"))
         case .veto(.ownApp):
-            say(String(localized: "dysflow is in front: select text in another app"))
+            say(String(localized: "Dysflow is in front: select text in another app"))
         case .noSelection, .unsupported:
             await openClipboard()
         }

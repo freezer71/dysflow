@@ -84,7 +84,7 @@ export function Entete({ lang, page }: { lang: Lang; page: Page }) {
       <nav className="mx-auto flex min-h-16 max-w-6xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3 sm:px-6">
         <Link href={chemin(lang, "accueil")} aria-label={d.accueil} className="flex items-center gap-2 text-lg font-extrabold tracking-tight">
           <Logo />
-          dysflow
+          Dysflow
         </Link>
         <div className="ml-auto flex flex-wrap items-center justify-end gap-1 text-[15px] text-encre-douce sm:gap-2">
           <Link href={chemin(lang, "accueil", "parcours")} className="hidden rounded-full px-3 py-1.5 hover:bg-carte-2 hover:text-encre sm:block">
@@ -124,7 +124,7 @@ export function Pied({ lang }: { lang: Lang }) {
       <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-10 text-[15px] text-encre-douce sm:flex-row sm:items-center sm:px-6">
         <div className="flex items-center gap-2 font-bold text-encre">
           <Logo className="size-6" />
-          dysflow
+          Dysflow
         </div>
         <p>{d.licence}</p>
         <div className="flex flex-wrap gap-x-5 gap-y-2 sm:ml-auto">

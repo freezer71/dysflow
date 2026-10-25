@@ -128,7 +128,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         launchedWithFiles = LaunchKind.launchedWithFiles()
     }
 
-    /// dysflow déjà lancé, rouvert depuis le Dock, le Finder, Spotlight ou un
+    /// Dysflow déjà lancé, rouvert depuis le Dock, le Finder, Spotlight ou un
     /// lanceur : le lecteur.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         guard let model else { return false }
@@ -286,7 +286,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 settings.open(SettingsSection.requested(in: arguments))
             }
             // Le seul ⌃⌥S, pour son test d'interface (quitter d'abord le
-            // dysflow installé, qui tiendrait le même raccourci).
+            // Dysflow installé, qui tiendrait le même raccourci).
             if arguments.contains("--ui-testing-raccourcis") { installToggleShortcut() }
             // Le chemin d'un lancement fait à la main, sous les tests.
             if arguments.contains("--ui-testing-lancement-manuel") {
@@ -385,7 +385,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let readGate = ReadGate()
 
     /// « Lire » : la capture d'abord (l'application au premier plan garde le
-    /// clavier pour le ⌘C simulé), puis le panneau, sans activer dysflow.
+    /// clavier pour le ⌘C simulé), puis le panneau, sans activer Dysflow.
     /// `capture` nil : le presse-papiers seul (depuis le menu). En mode
     /// mesure, ni modèle ni panneau : rien à faire (le menu plantait).
     func read(capture: (@MainActor () async -> CaptureOutcome)? = nil) async {

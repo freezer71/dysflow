@@ -33,11 +33,11 @@ struct MenuContent: View {
             }
         }
         Divider()
-        // Pas de `SettingsLink` : il ouvre la fenêtre sans mettre dysflow au
+        // Pas de `SettingsLink` : il ouvre la fenêtre sans mettre Dysflow au
         // premier plan, et elle s'ouvre derrière l'application active.
         Button("Settings…") { SettingsOpener.shared.open() }
             .keyboardShortcut(",")
-        Button("Quit dysflow") { NSApp.terminate(nil) }
+        Button("Quit Dysflow") { NSApp.terminate(nil) }
             .keyboardShortcut("q")
     }
 }

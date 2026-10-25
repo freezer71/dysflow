@@ -1,5 +1,5 @@
 #!/bin/sh
-# Installe dysflow en une commande, depuis la dernière publication GitHub :
+# Installe Dysflow en une commande, depuis la dernière publication GitHub :
 #
 #   curl -fsSL https://dysflow.koumalabs.org/install.sh | sh
 #
@@ -13,7 +13,7 @@
 # relance.
 #
 #   … | sh -s -- --force         réinstalle même si la version est déjà là
-#   … | sh -s -- --uninstall     retire dysflow (--desinstaller marche aussi)
+#   … | sh -s -- --uninstall     retire Dysflow (--desinstaller marche aussi)
 #
 # DYSFLOW_VERSION=0.6.0 : une version précise plutôt que la dernière (0.6.0 ou
 # plus : avant, le lecteur s'appelait sillage, et avant encore sillon).
@@ -59,7 +59,7 @@ echec() { printf '%s%s%s %s\n' "$rouge" "$(t 'Error:' 'Erreur :')" "$fin" "$*" >
 
 # Les anciens noms : sillage (de 0.3.0 à 0.5.0), sillon (jusqu'à 0.2.1). Leur
 # app, leur commande et leur dossier, s'ils viennent d'eux. Leurs modèles et
-# réglages, eux, sont repris par dysflow au premier lancement. Jamais en test
+# réglages, eux, sont repris par Dysflow au premier lancement. Jamais en test
 # (DYSFLOW_APPLICATIONS).
 retirer_anciens() {
     [ -z "${DYSFLOW_APPLICATIONS:-}" ] || return 0
@@ -105,7 +105,7 @@ if [ -n "$DESINSTALLER" ]; then
     fi
     rm -f "$PREFIX/bin/dysflow"
     retirer_anciens
-    printf '%s✓ %s%s\n' "$vert$gras" "$(t 'dysflow is uninstalled.' 'dysflow est désinstallé.')" "$fin" >&2
+    printf '%s✓ %s%s\n' "$vert$gras" "$(t 'Dysflow is uninstalled.' 'Dysflow est désinstallé.')" "$fin" >&2
     printf '%s\n' "$(t "Models and settings stay in $donnees (rm -r to remove them)." "Les modèles et les réglages restent dans $donnees (rm -r pour les retirer).")" >&2
     exit 0
 fi
@@ -118,7 +118,7 @@ command -v tar >/dev/null 2>&1 || echec "$(t 'tar is required' 'tar est nécessa
 if [ -n "${DYSFLOW_VERSION:-}" ]; then
     version=${DYSFLOW_VERSION#v}
     case "$version" in
-    0.[0-5].*) echec "$(t "dysflow starts at 0.6.0 (before, it was called sillage)" "dysflow commence à 0.6.0 (avant, il s'appelait sillage)")" ;;
+    0.[0-5].*) echec "$(t "Dysflow starts at 0.6.0 (before, it was called sillage)" "Dysflow commence à 0.6.0 (avant, il s'appelait sillage)")" ;;
     esac
 else
     tag=$(curl -fsSLI -o /dev/null -w '%{url_effective}' "$DEPOT/releases/latest") \
@@ -157,7 +157,7 @@ elif [ -x "$PREFIX/lib/dysflow/dysflow" ]; then
     installee=$("$PREFIX/lib/dysflow/dysflow" --version 2>/dev/null | cut -d' ' -f2 || true)
 fi
 if [ -n "$installee" ] && [ "$installee" = "$version" ] && [ -z "$FORCER" ]; then
-    printf '%s✓ %s%s\n' "$vert$gras" "$(t "dysflow $version is already up to date." "dysflow $version est déjà à jour.")" "$fin" >&2
+    printf '%s✓ %s%s\n' "$vert$gras" "$(t "Dysflow $version is already up to date." "Dysflow $version est déjà à jour.")" "$fin" >&2
     printf '%s %scurl -fsSL https://dysflow.koumalabs.org/install.sh | sh -s -- --force%s\n' "$(t 'To reinstall anyway:' 'Pour réinstaller quand même :')" "$gras" "$fin" >&2
     exit 0
 fi
@@ -169,7 +169,7 @@ tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT INT TERM
 
 url="$DEPOT/releases/download/v$version/$archive"
-etape "$(t "Downloading dysflow $version ($archive)" "Téléchargement de dysflow $version ($archive)")"
+etape "$(t "Downloading Dysflow $version ($archive)" "Téléchargement de Dysflow $version ($archive)")"
 curl -fL --progress-bar -o "$tmp/$archive" "$url" || echec "$(t "download failed: $url" "téléchargement impossible : $url")"
 curl -fsSL -o "$tmp/$archive.sha256" "$url.sha256" || echec "$(t "checksum not found: $url.sha256" "empreinte introuvable : $url.sha256")"
 
@@ -194,7 +194,7 @@ if [ "$systeme" = Darwin ]; then
         mkdir -p "$apps"
     fi
     if [ -z "${DYSFLOW_APPLICATIONS:-}" ] && pgrep -xq Dysflow; then
-        etape "$(t 'Closing dysflow, which is open' 'Fermeture de dysflow, ouvert')"
+        etape "$(t 'Closing Dysflow, which is open' 'Fermeture de Dysflow, ouvert')"
         osascript -e 'quit app "Dysflow"' >/dev/null 2>&1 || true
         sleep 1
     fi
@@ -224,7 +224,7 @@ if [ "\${1:-}" = --update ]; then
     curl -fsSL https://dysflow.koumalabs.org/install.sh | PREFIX="$PREFIX" sh
     exit
 fi
-[ -d "\$APP" ] || { echo "dysflow: \$APP $introuvable" >&2; exit 1; }
+[ -d "\$APP" ] || { echo "Dysflow: \$APP $introuvable" >&2; exit 1; }
 [ \$# -eq 0 ] && exec open -a "\$APP"
 exec open -a "\$APP" -- "\$@"
 EOF
@@ -248,7 +248,7 @@ else
         || etape "$(t "Warning: Kokoro does not load ($PREFIX/bin/dysflow --check-kokoro); the system voice will be used instead" "Attention : Kokoro ne se charge pas ($PREFIX/bin/dysflow --check-kokoro) ; la voix du système lira")"
 fi
 
-printf '\n%s✓ %s%s\n' "$vert$gras" "$(t "dysflow $version is installed." "dysflow $version est installé.")" "$fin" >&2
+printf '\n%s✓ %s%s\n' "$vert$gras" "$(t "Dysflow $version is installed." "Dysflow $version est installé.")" "$fin" >&2
 case ":$PATH:" in
 *":$PREFIX/bin:"*) ;;
 *)
@@ -257,7 +257,7 @@ case ":$PATH:" in
     ;;
 esac
 if [ "$systeme" = Darwin ]; then
-    printf '\n%s\n' "$(t 'dysflow is open in the menu bar. The Kokoro voice is installed automatically.' 'dysflow est ouvert dans la barre des menus. La voix Kokoro s’installe toute seule.')" >&2
+    printf '\n%s\n' "$(t 'Dysflow is open in the menu bar. The Kokoro voice is installed automatically.' 'Dysflow est ouvert dans la barre des menus. La voix Kokoro s’installe toute seule.')" >&2
     printf '%s %sdysflow document.pdf%s\n' "$(t 'To read a file:' 'Pour lire un fichier :')" "$gras" "$fin" >&2
 else
     printf '\n%s %sdysflow document.md%s   ·   cat notes.md | dysflow\n' "$(t 'To read a file:' 'Pour lire un fichier :')" "$gras" "$fin" >&2

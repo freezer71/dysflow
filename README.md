@@ -2,9 +2,9 @@
      <picture> suit le thème du système, pas celui de GitHub. -->
 <img src="assets/logo/dysflow-app.svg" alt="" width="96">
 
-# dysflow
+# Dysflow
 
-**Lire et écrire, sans s'épuiser.** dysflow est fait pour les personnes
+**Lire et écrire, sans s'épuiser.** Dysflow est fait pour les personnes
 dyslexiques et neuroatypiques, et pour toutes celles à qui lire ou écrire
 demande un gros effort :
 
@@ -26,7 +26,7 @@ Il existe sous deux formes :
 Les deux partagent le même moteur Rust : même découpage, même mise en mots,
 mêmes voix Kokoro.
 
-dysflow s'appelait **sillage** jusqu'à la version 0.5.0, et **sillon**
+Dysflow s'appelait **sillage** jusqu'à la version 0.5.0, et **sillon**
 jusqu'à la 0.2.1. Au premier lancement, il reprend les modèles déjà
 téléchargés, les positions et les réglages de ces anciens noms ;
 `install.sh` retire l'ancienne app et l'ancienne commande.
@@ -211,7 +211,7 @@ aussitôt dans `~/Library/Application Support/dysflow/config.toml`. Un
 
 ## Le terminal (Linux)
 
-Le lecteur au terminal est la version Linux de dysflow. Il marche aussi sur
+Le lecteur au terminal est la version Linux de Dysflow. Il marche aussi sur
 Mac, à côté de l'app.
 
 ```bash

@@ -62,7 +62,7 @@ final class ReadFlowTests: XCTestCase {
     func testOwnAppVetoReadsNothingAndSaysWhy() async {
         await flow(capture: .veto(.ownApp), clipboard: .text("x")).run()
         XCTAssertEqual(log, ["voix", "capture",
-                             "dit:dysflow est au premier plan : sélectionnez dans une autre application",
+                             "dit:Dysflow est au premier plan : sélectionnez dans une autre application",
                              "montre"])
     }
 

@@ -78,7 +78,7 @@ PETITE = dict(trait=4.6, branche=2.4,
 # --- Le mot ---------------------------------------------------------------
 
 def mot(texte, taille):
-    """« dysflow » en Atkinson Hyperlegible, converti en tracés.
+    """« Dysflow » en Atkinson Hyperlegible, converti en tracés.
 
     Le lockup ne doit rien exiger de la machine qui l'affiche : la police est
     celle que le lecteur emploie déjà, mais elle voyage ici sous forme de
@@ -130,12 +130,12 @@ def icone(plaque=ENCRE, encre=CLAIR, reseau=CITRON, **dessin):
 
 def svg(corps, largeur=64, hauteur=64):
     return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {largeur} {hauteur}"'
-            f' width="{largeur}" height="{hauteur}" role="img" aria-label="dysflow">'
+            f' width="{largeur}" height="{hauteur}" role="img" aria-label="Dysflow">'
             f'\n{corps}\n</svg>\n')
 
 
 def lockup(encre=ENCRE, taille=40, gouttiere=8):
-    d, largeur_mot, limites = mot("dysflow", taille)
+    d, largeur_mot, limites = mot("Dysflow", taille)
     # Le mot est calé sur le centre optique de ses propres contours, pas sur
     # sa ligne de base : c'est ce qui l'aligne vraiment avec la marque.
     ligne_de_base = CY - (limites[1] + limites[3]) / 2

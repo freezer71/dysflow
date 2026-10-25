@@ -2,7 +2,7 @@ import AppKit
 import ApplicationServices
 import AVFoundation
 
-/// Les autorisations que dysflow demande à macOS : l'Accessibilité (lire la
+/// Les autorisations que Dysflow demande à macOS : l'Accessibilité (lire la
 /// sélection, saisir la dictée) et le micro (la dictée).
 enum Permission: CaseIterable {
     case accessibility
@@ -51,7 +51,7 @@ enum Permission: CaseIterable {
         switch self {
         case .accessibility:
             // Elle suffit au ⌘V de la dictée. Exiger en plus
-            // `CGPreflightPostEventAccess()` obligeait à relancer dysflow.
+            // `CGPreflightPostEventAccess()` obligeait à relancer Dysflow.
             return AXIsProcessTrusted() ? .granted : .notAsked
         case .microphone:
             switch AVCaptureDevice.authorizationStatus(for: .audio) {
@@ -73,10 +73,10 @@ enum Permission: CaseIterable {
     func request() async {
         switch self {
         case .accessibility:
-            // Une case cochée pour une autre construction de dysflow ne vaut
+            // Une case cochée pour une autre construction de Dysflow ne vaut
             // pas pour celle-ci : elle s'efface, puis macOS repose sa question.
             if !AXIsProcessTrusted() { Self.reset("Accessibility") }
-            // Inscrit dysflow dans la liste et ouvre le volet : il n'y a plus
+            // Inscrit Dysflow dans la liste et ouvre le volet : il n'y a plus
             // qu'à cocher.
             let options = ["AXTrustedCheckOptionPrompt": true] as CFDictionary
             _ = AXIsProcessTrustedWithOptions(options)
@@ -92,7 +92,7 @@ enum Permission: CaseIterable {
         }
     }
 
-    /// Efface ce que macOS a retenu pour dysflow, et pour lui seul, sur une
+    /// Efface ce que macOS a retenu pour Dysflow, et pour lui seul, sur une
     /// autorisation (`tccutil reset`).
     private static func reset(_ service: String) {
         guard let bundle = Bundle.main.bundleIdentifier else { return }

@@ -46,8 +46,8 @@ export const lecture: Modele[] = [
     nom: pareil("Kokoro 82M · MLX"),
     famille: pareil("Kokoro"),
     description: {
-      en: "The dysflow voice. Natural, light, computed by the Mac's GPU. Installed automatically on first launch.",
-      fr: "La voix de dysflow. Naturelle, légère, calculée par la puce graphique du Mac. Installée toute seule au premier lancement.",
+      en: "The Dysflow voice. Natural, light, computed by the Mac's GPU. Installed automatically on first launch.",
+      fr: "La voix de Dysflow. Naturelle, légère, calculée par la puce graphique du Mac. Installée toute seule au premier lancement.",
     },
     taille: { en: "342 MB", fr: "342 Mo" },
     precision: pareil("bf16"),

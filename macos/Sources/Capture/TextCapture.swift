@@ -11,7 +11,7 @@ enum CaptureOutcome: Equatable {
     case noSelection
     /// L'application ne donne pas sa sélection : on peut essayer la source suivante.
     case unsupported
-    /// Interdit : champ de mot de passe, saisie sécurisée, ou dysflow lui-même
+    /// Interdit : champ de mot de passe, saisie sécurisée, ou Dysflow lui-même
     /// au premier plan. Toute la capture s'arrête, rien n'est lu ni copié.
     case veto(Veto)
 }
@@ -20,7 +20,7 @@ enum CaptureOutcome: Equatable {
 enum Veto: Equatable {
     /// Champ de mot de passe ou saisie sécurisée.
     case secure
-    /// dysflow lui-même a le focus ou est au premier plan.
+    /// Dysflow lui-même a le focus ou est au premier plan.
     case ownApp
 }
 
@@ -200,7 +200,7 @@ struct CopySource: TextSource {
     var trusted: () -> Bool = { AXIsProcessTrusted() }
     var timeout: Duration = .milliseconds(250)
     var secureInput: () -> Bool = { IsSecureEventInputEnabled() }
-    /// Vrai si dysflow lui-même est l'application au premier plan : jamais de ⌘C vers soi.
+    /// Vrai si Dysflow lui-même est l'application au premier plan : jamais de ⌘C vers soi.
     var ownAppFrontmost: () -> Bool = {
         NSWorkspace.shared.frontmostApplication?.processIdentifier == getpid()
     }

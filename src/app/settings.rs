@@ -342,8 +342,8 @@ impl App {
         let stats = self.synth.stats();
         (stats.in_flight > 0).then(|| {
             crate::tr!(
-                en = "dysflow: a synthesis is finishing before exiting ({})…",
-                fr = "dysflow : une synthèse se termine avant de rendre la main ({})…",
+                en = "Dysflow: a synthesis is finishing before exiting ({})…",
+                fr = "Dysflow : une synthèse se termine avant de rendre la main ({})…",
                 self.engine_name(),
             )
         })

@@ -2122,12 +2122,12 @@
         }
       }
     },
-    "Open dysflow at login" : {
+    "Open Dysflow at login" : {
       "localizations" : {
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ouvrir dysflow à la connexion"
+            "value" : "Ouvrir Dysflow à la connexion"
           }
         }
       }
@@ -2374,12 +2374,12 @@
         }
       }
     },
-    "Quit dysflow" : {
+    "Quit Dysflow" : {
       "localizations" : {
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Quitter dysflow"
+            "value" : "Quitter Dysflow"
           }
         }
       }
@@ -3426,12 +3426,12 @@
         }
       }
     },
-    "To read selected text in any app, dysflow needs the Accessibility permission. Without it, it only reads what you copy." : {
+    "To read selected text in any app, Dysflow needs the Accessibility permission. Without it, it only reads what you copy." : {
       "localizations" : {
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Pour lire le texte sélectionné dans n'importe quelle application, dysflow a besoin de l'autorisation Accessibilité. Sans elle, il lit seulement ce que vous copiez."
+            "value" : "Pour lire le texte sélectionné dans n'importe quelle application, Dysflow a besoin de l'autorisation Accessibilité. Sans elle, il lit seulement ce que vous copiez."
           }
         }
       }
@@ -3923,22 +3923,22 @@
     "dysflow" : {
       "shouldTranslate" : false
     },
-    "dysflow can’t access the microphone: allow it to dictate" : {
+    "Dysflow can’t access the microphone: allow it to dictate" : {
       "localizations" : {
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "dysflow n'a pas accès au micro : autorisez-le pour dicter"
+            "value" : "Dysflow n'a pas accès au micro : autorisez-le pour dicter"
           }
         }
       }
     },
-    "dysflow is in front: select text in another app" : {
+    "Dysflow is in front: select text in another app" : {
       "localizations" : {
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "dysflow est au premier plan : sélectionnez dans une autre application"
+            "value" : "Dysflow est au premier plan : sélectionnez dans une autre application"
           }
         }
       }
