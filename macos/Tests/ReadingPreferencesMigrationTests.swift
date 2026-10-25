@@ -1,11 +1,11 @@
 import XCTest
-@testable import Sillage
+@testable import Dysflow
 
 /// Police et taille : des préférences vers config.toml, une fois.
 @MainActor
 final class ReadingPreferencesMigrationTests: XCTestCase {
     private func freshDefaults() -> UserDefaults {
-        let name = "sillage.tests.reprise-lecture"
+        let name = "dysflow.tests.reprise-lecture"
         let defaults = UserDefaults(suiteName: name)!
         defaults.removePersistentDomain(forName: name)
         return defaults

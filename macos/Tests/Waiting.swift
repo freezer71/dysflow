@@ -1,5 +1,5 @@
 import Foundation
-@testable import Sillage
+@testable import Dysflow
 
 /// Fait tourner la boucle principale jusqu'à ce que `condition` soit vraie.
 @MainActor

@@ -1,4 +1,4 @@
-@testable import Sillage
+@testable import Dysflow
 
 /// Capacités relevées sur `models::honoured_options`.
 enum Capabilities {
@@ -34,7 +34,7 @@ final class FakeSettingsBackend: SettingsBackend {
         log.append("patch")
         if let failNext {
             self.failNext = nil
-            throw SillageError.Failed(message: failNext)
+            throw DysflowError.Failed(message: failNext)
         }
         if let v = patch.voice { stored.voice = v }
         if let v = patch.speed { stored.speed = v }
@@ -60,7 +60,7 @@ final class FakeSettingsBackend: SettingsBackend {
 
     func previewVoice(in language: String) async throws {
         log.append("écoute \(language)")
-        if let failPreview { throw SillageError.Failed(message: failPreview) }
+        if let failPreview { throw DysflowError.Failed(message: failPreview) }
     }
     func stopPreview() async { log.append("arrêt") }
 }

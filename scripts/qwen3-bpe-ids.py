@@ -7,8 +7,8 @@ mlx-community/Qwen3-TTS-12Hz-0.6B-Base-8bit (révision figée ; mêmes fichiers
 dans le 1.7B CustomVoice), les copie dans macos/Tests/Fixtures (qwen3-*), et
 écrit macos/Tests/Fixtures/qwen3-bpe.json : les ids de chaque phrase.
 
-    HF_HOME=~/Library/Caches/sillage-bench/eval/hf \\
-      ~/Library/Caches/sillage-bench/eval/venv/bin/python -I scripts/qwen3-bpe-ids.py
+    HF_HOME=~/Library/Caches/dysflow-bench/eval/hf \\
+      ~/Library/Caches/dysflow-bench/eval/venv/bin/python -I scripts/qwen3-bpe-ids.py
 """
 import json, os, shutil, tempfile
 import transformers

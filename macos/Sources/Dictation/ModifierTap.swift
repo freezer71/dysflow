@@ -108,7 +108,7 @@ struct ModifierTapDetector {
 }
 
 /// Écoute les modificateurs dans toutes les applications (il faut
-/// l'Accessibilité) et dans sillage, et appelle `onTap` à chaque appui
+/// l'Accessibilité) et dans dysflow, et appelle `onTap` à chaque appui
 /// reconnu. La touche est relue à chaque fois : un réglage changé
 /// s'applique aussitôt. Vit autant que l'app.
 @MainActor

@@ -1,10 +1,10 @@
 import XCTest
-@testable import Sillage
+@testable import Dysflow
 
 final class DisplayModeStoreTests: XCTestCase {
     /// Des préférences à part, vidées : jamais celles de l'utilisateur.
     private func freshDefaults() -> UserDefaults {
-        let name = "sillage.tests.affichage.magasin"
+        let name = "dysflow.tests.affichage.magasin"
         let defaults = UserDefaults(suiteName: name)!
         defaults.removePersistentDomain(forName: name)
         return defaults

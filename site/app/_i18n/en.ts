@@ -5,15 +5,14 @@ import type { Dico } from "./fr";
 
 export const en: Dico = {
   meta: {
-    titre: "sillage — the read-aloud reader you follow with your eyes",
-    modele: "%s · sillage",
+    titre: "dysflow — read and write without wearing yourself out, made for dyslexia",
+    modele: "%s · dysflow",
     description:
-      "sillage reads your documents aloud and highlights every word. Neural voices and dictation, 100% on your machine, free and open source. macOS and Linux.",
+      "dysflow is made for dyslexic and neurodivergent people who find reading or writing hard: it reads your documents aloud, highlighting every word, and types what you dictate. Free, open source, 100% on your machine.",
   },
   entete: {
-    accueil: "sillage, home",
-    avantages: "Benefits",
-    comparaison: "Comparison",
+    accueil: "dysflow, home",
+    parcours: "The journey",
     modeles: "Models",
     github: "GitHub",
     telecharger: "Download",
@@ -25,172 +24,168 @@ export const en: Dico = {
     telecharger: "Download",
     code: "Source code",
   },
-  commande: { copier: "Copy", copie: "Copied ✓" },
-  demo: {
-    fichier: "annual-report.pdf",
-    titre: "Introduction",
-    lignes: [
-      "sillage reads aloud what you",
-      "give it, and shows every word",
-      "the moment it is said.",
-    ],
-    vitesse: "1.25×",
+  evitement: "Skip to content",
+  confort: {
+    bouton: "Comfort",
+    titre: "Reading comfort",
+    modeDys: "Dyslexia mode: turn it all on",
+    reinitialiser: "Back to default",
+    fermer: "Close",
+    police: { titre: "Font", atkinson: "Atkinson", lexend: "Lexend" },
+    taille: { titre: "Text size", normale: "Normal", grande: "Large", tresgrande: "Extra large" },
+    espacement: { titre: "Spacing", normal: "Normal", large: "Wide" },
+    fond: { titre: "Background", creme: "Cream", gris: "Grey", sombre: "Dark" },
+    animations: { titre: "Animations", oui: "On", non: "Off" },
   },
+  commande: { copier: "Copy", copie: "Copied ✓" },
   accueil: {
-    pastilles: ["Free", "Open source", "100% local"],
-    titre: "Listen to your documents. Follow every word.",
-    intro:
-      "sillage reads your PDFs, notes and screenshots aloud, and highlights each word the moment it is said. Natural voices, computed on your machine: nothing goes online, and there is nothing to pay.",
-    telecharger: "Download sillage",
-    github: "See the code on GitHub",
-    commande: "Or with one command, on Mac (Apple silicon) and Linux:",
-    chiffres: [
-      { valeur: "$0", legende: "forever, no subscription" },
-      { valeur: "0 bytes", legende: "of your text sent online" },
-      { valeur: "15×", legende: "faster than speech on a Mac" },
-      { valeur: "#", legende: "voice and dictation models" },
+    pastilles: [
+      "For dyslexia",
+      "Free",
+      "100% local",
     ],
+    titre: "Your dyslexia doesn't have to hold you back.",
+    intro: "dysflow reads your text aloud. And it writes what you say.",
+    telecharger: "Download dysflow",
+    parcours: {
+      surtitre: "The journey",
+      titre: "See the difference",
+      lire: {
+        titre: "Reading, when you're dyslexic",
+        texte: "Try to read this message.",
+        note: "An illustration, not a diagnosis.",
+      },
+      cout: {
+        titre: "What it costs",
+        texte: "It isn't a lack of intelligence.",
+        points: [
+          "You read it three times.",
+          "You're worn out before you understand.",
+          "You end up feeling behind.",
+        ],
+      },
+      avec: {
+        titre: "With dysflow",
+        texte: "The voice reads. Your eyes follow.",
+      },
+      ecrire: {
+        titre: "Write by speaking",
+        texte: "You speak. The text appears.",
+      },
+      simulation: {
+        lignes: [
+          "Hello everyone, tomorrow's",
+          "meeting has been moved to two",
+          "in the afternoon. Please read",
+          "the brief before you come, and",
+          "bring your questions: we will",
+          "decide together what comes next.",
+        ],
+        sans: "Without dysflow",
+        avec: "With dysflow",
+        groupe: "Choose how to read",
+        voix: "The voice reads",
+        legendeSans: "Letters move. You reread. You get tired.",
+        legendeAvec: "Nothing moves. The meaning just arrives.",
+      },
+      dictee: {
+        clavier: "Typed",
+        micro: "You speak…",
+        voix: "dysflow wrote",
+        tapee: "Dear Mrs Brown, here is my geografy homwork.",
+        dite: "Dear Mrs Brown, here is my geography homework.",
+      },
+    },
+    modeEmploi: {
+      surtitre: "How it works",
+      titre: "Two gestures, that's all",
+      lire: {
+        titre: "To read",
+        etapes: [
+          { texte: "Select the text, or copy it." },
+          { texte: "Press the shortcut.", touches: [{ signe: "⌃", nom: "control" }, { signe: "⌥", nom: "option" }, { signe: "␣", nom: "space" }] },
+          { texte: "dysflow reads it aloud." },
+        ],
+      },
+      ecrire: {
+        titre: "To write",
+        etapes: [
+          { texte: "Press the right option key.", touches: [{ signe: "⌥", nom: "option" }] },
+          { texte: "Say what you want." },
+          { texte: "Press it again: the text appears." },
+        ],
+      },
+      note: "You can change the shortcuts in the settings.",
+    },
+    partout: {
+      surtitre: "Everywhere",
+      titre: "In all your apps",
+      texte: "Wherever there's text, dysflow reads. Wherever you type, dysflow writes.",
+      apps: ["Mail", "Safari", "Chrome", "Word", "Pages", "Notes", "Messages", "WhatsApp", "Slack", "Preview", "Claude", "Claude Code", "ChatGPT", "Terminal"],
+      plus: "And the rest of your Mac",
+    },
+    manifeste: {
+      titre: "Don't stay behind.",
+      lignes: [
+        "What you know matters more than your spelling.",
+        "Show the world what you know.",
+      ],
+      texte: "Free. Nothing to sell.",
+    },
     avantagesTitre: {
-      surtitre: "Why sillage",
-      titre: "A reader made to be followed with your eyes",
-      texte:
-        "Most text-to-speech readers just talk. sillage understands what it reads, and shows you where you are.",
+      surtitre: "And also",
+      titre: "Simple, and yours",
     },
     avantages: [
       {
-        titre: "Your text stays with you",
-        texte:
-          "Voices and dictation run on your machine. No account, no server, no quota: a contract, a medical record or a draft never leaves your computer.",
+        titre: "It reads everything",
+        texte: "PDF, scanned letter, photo, screenshot.",
       },
       {
-        titre: "Follow every word with your eyes",
-        texte:
-          "The spoken word gets a highlight, its line a discreet band: the word shows where the voice is, the line shows where to come back to when you look up. Made for dyslexia and long reading.",
+        titre: "At your pace",
+        texte: "Slower, faster, without a break.",
       },
       {
-        titre: "It reads whatever you give it",
-        texte:
-          "Markdown, text, PDF, scanned PDF, screenshot, photo of a page, clipboard, a selection in any app. Scanned pages are recognized in parallel and remembered.",
+        titre: "Nothing leaves your computer",
+        texte: "Everything runs on your machine.",
       },
       {
-        titre: "It doesn't read the formatting",
-        texte:
-          "Never “hash heading” or “dash dash”. A code block is announced, not recited. A table is read column by column: “Route: /users. Method: GET.”",
-      },
-      {
-        titre: "Faster, without the chipmunk voice",
-        texte:
-          "Speed acts on the sound while it plays: the voice speeds up without going shrill, mid-sentence, with no break. Skipping forward and back is instant.",
-      },
-      {
-        titre: "It picks up where you left off",
-        texte:
-          "Your place is remembered on its own — the sentence itself, not a number. It is found again even if the document was edited in the meantime.",
-      },
-      {
-        titre: "Dictation, as a bonus",
-        texte:
-          "A shortcut opens dictation, and the text is typed into the app in front. Parakeet, Whisper, Voxtral, Canary: pick yours, everything stays local.",
-      },
-      {
-        titre: "Truly free software",
-        texte:
-          "Open code under the MIT license, models under open licenses. You can read it, change it, redistribute it. Nobody can take it away from you or make you pay for it.",
+        titre: "Free, forever",
+        texte: "Free software. No subscription.",
       },
     ],
-    pourQui: {
-      surtitre: "Who it's for",
-      titre: "For people who read a lot, and for people who find reading hard.",
-      publics: [
-        {
-          titre: "Dyslexia, ADHD, eye strain",
-          texte:
-            "Listening and following with your eyes at the same time: bimodal reading, with the font of your choice (OpenDyslexic, Atkinson Hyperlegible, Literata).",
-        },
-        {
-          titre: "Students and researchers",
-          texte:
-            "PDFs are rebuilt: headings in the outline, split words rejoined, headers and footers removed. You hear the article, not the page layout.",
-        },
-        {
-          titre: "Developers",
-          texte:
-            "Docs, READMEs, AI answers piped into the terminal: `llm \"…\" | sillage` starts reading before the stream ends.",
-        },
-      ],
+    questionsTitre: {
+      surtitre: "Questions",
+      titre: "What people ask",
     },
-    comparaisonTitre: {
-      surtitre: "Comparison",
-      titre: "Everything the big names do, without the subscription or the cloud",
-      texte:
-        "Commercial readers send your text to their servers and charge for the good voices. sillage does the computing on your machine.",
-    },
-    comparaison: {
-      critere: "Criterion",
-      concurrents: ["sillage", "Speechify", "ElevenReader", "NaturalReader", "Spoken Content (macOS)"],
-      oui: "Yes",
-      non: "No",
-      partiel: "Partly",
-      lignes: [
-        { critere: "Free, with no usage limit", cases: ["@oui", "Limited free tier, then subscription", "Limited free tier, then subscription", "Limited free tier, then subscription", "@oui"] },
-        { critere: "Open source code", cases: ["@oui", "@non", "@non", "@non", "@non"] },
-        { critere: "Your text stays on your machine", cases: ["@oui", "@non", "@non", "@non", "@oui"] },
-        { critere: "Natural neural voices", cases: ["@oui", "@oui", "@oui", "@oui", "@partiel"] },
-        { critere: "Highlights the word being read", cases: ["@oui", "@oui", "@oui", "@oui", "@oui"] },
-        { critere: "Doesn't read markup, code or table borders", cases: ["@oui", "Not specified", "Not specified", "Not specified", "@non"] },
-        { critere: "Scanned page recognition", cases: ["@oui", "@oui", "@oui", "@oui", "@non"] },
-        { critere: "Built-in dictation, offline", cases: ["@oui", "Not specified", "@non", "@non", "@partiel"] },
-        { critere: "Linux version", cases: ["Terminal", "Browser", "Browser", "Browser", "@non"] },
-      ],
-      note: "Based on what the vendors state on their websites, as of October 2026. Spotted a mistake?",
-      noteLien: "Tell us",
-    },
-    modelesTitre: {
-      surtitre: "Models",
-      titre: "The best open models, your pick",
-      texte:
-        "Download, try, delete: you stay in control of quality, speed and disk space.",
-    },
-    lecture: "Reading",
-    dictee: "Dictation",
-    voirModeles: "See all # models",
-    questionsTitre: { surtitre: "Questions", titre: "What people ask" },
     faq: [
       {
+        q: "Does it replace speech therapy?",
+        r: "No. It's a tool, like glasses.",
+      },
+      {
         q: "Is it really free?",
-        r: "Yes, with no strings attached: no account, no ads, no “Pro” version. sillage is free software under the MIT license; the models are downloaded from their public repositories.",
+        r: "Yes. No account, no ads.",
       },
       {
-        q: "Are my documents sent anywhere?",
-        r: "No. Reading, text recognition and dictation are all computed on your machine. The only network access is downloading the models you choose.",
+        q: "Does my text go online?",
+        r: "No. Everything stays on your computer.",
       },
       {
-        q: "Which Mac do I need?",
-        r: "A Mac with Apple silicon (M1 and later). Dictation needs macOS 26. Kokoro, the default voice, takes 342 MB and under 6% of compute time while reading.",
-      },
-      {
-        q: "What about Linux?",
-        r: "The terminal reader runs on Linux x86_64 and ARM64 (glibc 2.39 or later), with the same Kokoro voice and built-in text recognition. The same install command as on Mac installs it.",
-      },
-      {
-        q: "Which languages?",
-        r: "Reading is made for English and French, with a single voice for both. Dictation covers up to 99 languages depending on the model you choose.",
-      },
-      {
-        q: "What about Windows?",
-        r: "Not for now. The engine is written in Rust and could be ported: contributions are welcome on GitHub.",
+        q: "Which computer?",
+        r: "A Mac with Apple silicon. On Linux, in the terminal.",
       },
     ],
     final: {
-      titre: "Your next document: listen to it.",
-      texte: "Free, open, and installed with one command.",
+      titre: "Your next page: listen to it.",
+      texte: "Free. Installed in a minute.",
     },
   },
   modeles: {
     meta: {
       titre: "The models",
       description:
-        "Every sillage voice and dictation model: Kokoro, Qwen3-TTS, MagpieTTS, Parakeet, Phonon-2, Whisper, Canary, Voxtral. Sizes, languages, speed, licenses.",
+        "Every dysflow voice and dictation model: Kokoro, Qwen3-TTS, MagpieTTS, Parakeet, Phonon-2, Whisper, Canary, Voxtral. Sizes, languages, speed, licenses.",
     },
     entete: {
       surtitre: "Models",
@@ -224,17 +219,17 @@ export const en: Dico = {
     ocr: {
       titre: "Text recognition",
       texte:
-        "For images, screenshots and scanned PDFs, sillage bundles Tesseract with French and English: nothing to install. Pages are recognized in parallel and the result is remembered, so the second opening is instant.",
+        "For images, screenshots and scanned PDFs, dysflow bundles Tesseract with French and English: nothing to install. Pages are recognized in parallel and the result is remembered, so the second opening is instant.",
     },
     mesures:
       "Measured on an M5 Mac. “Busy x% of the time at 1×”: the share of playback time spent computing the voice; above 100%, playback stutters.",
-    telecharger: "Download sillage",
+    telecharger: "Download dysflow",
   },
   telecharger: {
     meta: {
       titre: "Download",
       description:
-        "Install sillage with one command on Mac and Linux, or download the macOS app as a .dmg.",
+        "Install dysflow with one command on Mac and Linux, or download the macOS app as a .dmg.",
     },
     version: "Version",
     derniere: "Latest version",
@@ -244,13 +239,13 @@ export const en: Dico = {
       "Picks the right version for your machine",
       "Checks the download's checksum",
       "Installs without an administrator password",
-      "Opens sillage — the voice installs itself",
+      "Opens dysflow — the voice installs itself",
     ],
     ou: "or download",
     mac: {
       pastille: "Apple silicon",
       texte:
-        "Open the .dmg and drag Sillage into Applications. macOS 14 or later; dictation needs macOS 26.",
+        "Open the .dmg and drag Dysflow into Applications. macOS 14 or later; dictation needs macOS 26.",
       bouton: "Download the .dmg",
       noteAvant: "The app isn't notarized by Apple yet: on first launch, open",
       noteReglages: "System Settings › Privacy & Security",

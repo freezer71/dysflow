@@ -1,5 +1,5 @@
 import Foundation
-@testable import Sillage
+@testable import Dysflow
 
 /// Une horloge qu'on avance à la main : les pauses du `Committer` et du
 /// `SettingsStore` attendent sur elle au lieu du temps réel, et un test qui

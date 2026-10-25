@@ -12,14 +12,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// SwiftUI, le reste en paramètre.
     static private(set) weak var shared: AppDelegate?
 
-    /// Les réglages de sillon (l'ancien nom), repris avant que quoi que ce
-    /// soit ne les lise : première propriété stockée, donc initialisée en
-    /// premier.
+    /// Les réglages des anciens noms (sillage, sillon), repris avant que
+    /// quoi que ce soit ne les lise : première propriété stockée, donc
+    /// initialisée en premier.
     private let formerDefaults: Void = FormerDefaults.adopt()
 
     /// La langue de l'app, donnée au moteur Rust avant qu'il ne serve quoi
     /// que ce soit : initialisée juste après les anciens réglages, avant les
-    /// services et toute vue (`SillageApp` crée ce délégué avant d'évaluer
+    /// services et toute vue (`DysflowApp` crée ce délégué avant d'évaluer
     /// ses scènes). `preferredLocalizations` est la langue que macOS a
     /// choisie parmi celles de l'app (`en`, `fr`) : un Mac en allemand donne
     /// `en`, et les textes du moteur (catalogue des modèles, erreurs)
@@ -35,7 +35,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Hôte des tests unitaires : ni ouverture à la connexion, ni alerte, ni
     /// raccourcis globaux (ils s'inscriraient pour l'app de développement).
     let isUnitTesting = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
-    private(set) var reader: SillageReader!
+    private(set) var reader: DysflowReader!
     /// Le calcul MLX de Kokoro ; jamais avec le lecteur muet des tests.
     private(set) var kokoroCompute: KokoroMLXCompute?
     /// Le calcul MLX des modèles de lecture à texte (Qwen3-TTS, MagpieTTS) ;
@@ -45,8 +45,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private(set) var readerIsSilent = false
 
     /// Sous XCTest (tests unitaires) comme sous les tests d'interface, le
-    /// lecteur est muet et n'écrit rien : jamais ~/.config/sillage ni
-    /// ~/Library/Application Support/sillage.
+    /// lecteur est muet et n'écrit rien : jamais ~/.config/dysflow ni
+    /// ~/Library/Application Support/dysflow.
     nonisolated static func usesSilentReader(arguments: [String], environment: [String: String]) -> Bool {
         isUITestLaunch(arguments) || environment["XCTestConfigurationFilePath"] != nil
     }
@@ -78,7 +78,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var pendingFiles: [URL] = []
     private var launchedWithFiles = false
 
-    /// `sillage fichier.pdf`, « Ouvrir avec », un fichier posé sur l'icône :
+    /// `dysflow fichier.pdf`, « Ouvrir avec », un fichier posé sur l'icône :
     /// le panneau s'ouvre sur lui. Un seul document à la fois : le dernier.
     func application(_ application: NSApplication, open urls: [URL]) {
         let files = urls.filter(\.isFileURL)
@@ -128,7 +128,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         launchedWithFiles = LaunchKind.launchedWithFiles()
     }
 
-    /// sillage déjà lancé, rouvert depuis le Dock, le Finder, Spotlight ou un
+    /// dysflow déjà lancé, rouvert depuis le Dock, le Finder, Spotlight ou un
     /// lanceur : le lecteur.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         guard let model else { return false }
@@ -195,20 +195,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         readerIsSilent = Self.usesSilentReader(arguments: ProcessInfo.processInfo.arguments,
                                                environment: ProcessInfo.processInfo.environment)
         if readerIsSilent {
-            reader = SillageReader.silent()
+            reader = DysflowReader.silent()
         } else {
             Self.exportEspeakLocation()
             let compute = KokoroMLXCompute()
             kokoroCompute = compute
             let text = TextSpeechMLXCompute()
             textCompute = text
-            reader = SillageReader.withMlx(kokoro: compute, text: text)
+            reader = DysflowReader.withMlx(kokoro: compute, text: text)
         }
-        #if DEBUG || SILLAGE_MESURE
+        #if DEBUG || DYSFLOW_MESURE
         // Mode mesure : seul le lecteur et les mesures tournent. Retour avant le
         // modèle, le panneau, les raccourcis, l'ouverture à la connexion et
         // l'accueil ; sans l'argument, rien ne change. Absent de l'app livrée :
-        // `scripts/measure-macos.sh` construit sa propre copie (SILLAGE_MESURE).
+        // `scripts/measure-macos.sh` construit sa propre copie (DYSFLOW_MESURE).
         if ProcessInfo.processInfo.arguments.contains("--measure-charge"), !isUnitTesting {
             Task { @MainActor [reader = reader!, compute = kokoroCompute] in
                 await Measure.charge(reader: reader, compute: compute)
@@ -286,7 +286,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 settings.open(SettingsSection.requested(in: arguments))
             }
             // Le seul ⌃⌥S, pour son test d'interface (quitter d'abord le
-            // sillage installé, qui tiendrait le même raccourci).
+            // dysflow installé, qui tiendrait le même raccourci).
             if arguments.contains("--ui-testing-raccourcis") { installToggleShortcut() }
             // Le chemin d'un lancement fait à la main, sous les tests.
             if arguments.contains("--ui-testing-lancement-manuel") {
@@ -321,13 +321,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// sillage-espeak (la phonétisation de Kokoro) livré dans l'app : le
+    /// dysflow-espeak (la phonétisation de Kokoro) livré dans l'app : le
     /// moteur le trouve par ces variables, posées avant la première voix.
     nonisolated static func exportEspeakLocation(bundle: Bundle = .main) {
-        let helper = bundle.bundleURL.appendingPathComponent("Contents/Helpers/sillage-espeak")
-        setenv("SILLAGE_ESPEAK", helper.path, 1)
+        let helper = bundle.bundleURL.appendingPathComponent("Contents/Helpers/dysflow-espeak")
+        setenv("DYSFLOW_ESPEAK", helper.path, 1)
         if let resources = bundle.resourceURL {
-            setenv("SILLAGE_ESPEAK_DATA", resources.path, 1)
+            setenv("DYSFLOW_ESPEAK_DATA", resources.path, 1)
         }
     }
 
@@ -385,7 +385,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let readGate = ReadGate()
 
     /// « Lire » : la capture d'abord (l'application au premier plan garde le
-    /// clavier pour le ⌘C simulé), puis le panneau, sans activer sillage.
+    /// clavier pour le ⌘C simulé), puis le panneau, sans activer dysflow.
     /// `capture` nil : le presse-papiers seul (depuis le menu). En mode
     /// mesure, ni modèle ni panneau : rien à faire (le menu plantait).
     func read(capture: (@MainActor () async -> CaptureOutcome)? = nil) async {

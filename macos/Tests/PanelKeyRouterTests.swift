@@ -1,6 +1,6 @@
 import AppKit
 import XCTest
-@testable import Sillage
+@testable import Dysflow
 
 /// Ce que le panneau fait d'une touche, selon le focus et l'édition.
 @MainActor

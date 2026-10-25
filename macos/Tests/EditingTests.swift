@@ -1,5 +1,5 @@
 import XCTest
-@testable import Sillage
+@testable import Dysflow
 
 @MainActor
 final class EditingTests: XCTestCase {
@@ -12,10 +12,10 @@ final class EditingTests: XCTestCase {
     }
 
     private func shownPanel(_ text: String) -> PanelController {
-        let name = "sillage.tests.edition"
+        let name = "dysflow.tests.edition"
         let defaults = UserDefaults(suiteName: name)!
         defaults.removePersistentDomain(forName: name)
-        let model = ReaderModel(reader: SillageReader.silent())
+        let model = ReaderModel(reader: DysflowReader.silent())
         model.open(text: text, source: "test")
         XCTAssertTrue(waitUntil { model.refresh(); return model.snapshot.revision == 1 })
         let c = PanelController(model: model, store: DisplayModeStore(defaults: defaults))

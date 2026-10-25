@@ -403,8 +403,8 @@ struct ValueText: View {
 
 // MARK: - Logo
 
-/// La marque de sillage : un « s » d'un seul trait, le sillage que la voix
-/// laisse, et la tête de lecture au bout. Même tracé que
+/// La marque de dysflow : une tête de profil à main levée, et dans le crâne
+/// un réseau dont une branche passe le front. Même tracé que
 /// `scripts/logo_gen.py`, sur la même grille de 64.
 struct LogoMark: View {
     /// Le trait gras des petites tailles (sous 32 pt).
@@ -418,7 +418,16 @@ struct LogoMark: View {
             let shape = LogoShape(small: small)
             context.stroke(shape.furrow, with: .foreground,
                            style: StrokeStyle(lineWidth: shape.stroke, lineCap: .round, lineJoin: .round))
-            context.fill(shape.dot, with: .foreground)
+            // D'une seule encre, le réseau se détache du trait par un liseré
+            // vide, puis se peint par-dessus.
+            var halo = context
+            halo.blendMode = .clear
+            halo.stroke(shape.branches, with: .foreground,
+                        style: StrokeStyle(lineWidth: shape.branch + 3.2, lineCap: .round))
+            halo.fill(shape.nodes(grownBy: 1.6), with: .foreground)
+            context.stroke(shape.branches, with: .foreground,
+                           style: StrokeStyle(lineWidth: shape.branch, lineCap: .round))
+            context.fill(shape.nodes(grownBy: 0), with: .foreground)
         }
         .accessibilityHidden(true)
     }
@@ -433,34 +442,55 @@ struct LogoMark: View {
         let image = renderer.nsImage ?? NSImage(size: NSSize(width: points, height: points))
         image.size = NSSize(width: points, height: points)
         image.isTemplate = true
-        image.accessibilityDescription = "sillage"
+        image.accessibilityDescription = "dysflow"
         return image
     }
 }
 
-/// Le tracé, en points de la grille de 64.
+/// Le tracé, en points de la grille de 64 (celui de `scripts/logo_gen.py`).
 struct LogoShape {
     let furrow: Path
-    let dot: Path
+    let branches: Path
     let stroke: CGFloat
+    let branch: CGFloat
+    /// (x, y, rayon) ; le premier est le centre du réseau.
+    let points: [(CGFloat, CGFloat, CGFloat)]
 
     init(small: Bool) {
-        let (width, gap, stroke, point, play): (CGFloat, CGFloat, CGFloat, CGFloat, CGFloat) =
-            small ? (24, 15, 7, 4.6, 3.4) : (26, 13, 5, 3.4, 3.6)
-        let r = gap / 2
-        let left = 32 - width / 2, right = 32 + width / 2
-        let top = 32 - gap, middle: CGFloat = 32, bottom = 32 + gap
+        stroke = small ? 4.6 : 3.2
+        branch = small ? 2.4 : 1.5
+        points = small
+            ? [(30, 27, 5), (22.5, 20, 2.8), (52, 21.5, 3)]
+            : [(30, 27, 3.8), (22.5, 21, 2), (23.5, 33.5, 1.8), (36, 18.5, 2), (33, 35, 1.7), (52, 21.5, 2.1)]
         var p = Path()
-        p.move(to: CGPoint(x: right, y: top))
-        p.addLine(to: CGPoint(x: left, y: top))
-        p.addArc(center: CGPoint(x: left, y: top + r), radius: r,
-                 startAngle: .degrees(-90), endAngle: .degrees(90), clockwise: true)
-        p.addLine(to: CGPoint(x: right, y: middle))
-        p.addArc(center: CGPoint(x: right, y: middle + r), radius: r,
-                 startAngle: .degrees(-90), endAngle: .degrees(90), clockwise: false)
-        p.addLine(to: CGPoint(x: left + point + play + stroke / 2, y: bottom))
+        p.move(to: CGPoint(x: 23, y: 55))
+        p.addCurve(to: CGPoint(x: 16.5, y: 36), control1: CGPoint(x: 22, y: 49), control2: CGPoint(x: 17, y: 44))
+        p.addCurve(to: CGPoint(x: 34, y: 12.5), control1: CGPoint(x: 15.5, y: 22), control2: CGPoint(x: 24, y: 12.5))
+        p.addCurve(to: CGPoint(x: 45.5, y: 26), control1: CGPoint(x: 42, y: 12.5), control2: CGPoint(x: 46, y: 18.5))
+        p.addCurve(to: CGPoint(x: 44.8, y: 30.5), control1: CGPoint(x: 45.3, y: 27.8), control2: CGPoint(x: 44.3, y: 28.8))
+        p.addCurve(to: CGPoint(x: 49.8, y: 36.3), control1: CGPoint(x: 46, y: 33), control2: CGPoint(x: 49.5, y: 35))
+        p.addCurve(to: CGPoint(x: 46.8, y: 38), control1: CGPoint(x: 50, y: 37.3), control2: CGPoint(x: 48, y: 37.8))
+        p.addCurve(to: CGPoint(x: 46.6, y: 40.8), control1: CGPoint(x: 47.8, y: 39), control2: CGPoint(x: 47.8, y: 40))
+        p.addCurve(to: CGPoint(x: 46.4, y: 43.3), control1: CGPoint(x: 47.6, y: 41.5), control2: CGPoint(x: 47.4, y: 42.6))
+        p.addCurve(to: CGPoint(x: 46.6, y: 46), control1: CGPoint(x: 46, y: 44), control2: CGPoint(x: 46.6, y: 45.2))
+        p.addCurve(to: CGPoint(x: 40, y: 48.4), control1: CGPoint(x: 46.4, y: 48), control2: CGPoint(x: 43, y: 48.6))
+        p.addCurve(to: CGPoint(x: 39.8, y: 55.5), control1: CGPoint(x: 38.6, y: 50.5), control2: CGPoint(x: 39, y: 53))
         furrow = p
-        dot = Path(ellipseIn: CGRect(x: left - point, y: bottom - point, width: point * 2, height: point * 2))
-        self.stroke = stroke
+        var b = Path()
+        let (cx, cy, _) = points[0]
+        for (x, y, _) in points.dropFirst() {
+            b.move(to: CGPoint(x: cx, y: cy))
+            b.addLine(to: CGPoint(x: x, y: y))
+        }
+        branches = b
+    }
+
+    func nodes(grownBy margin: CGFloat) -> Path {
+        var p = Path()
+        for (x, y, r) in points {
+            let radius = r + margin
+            p.addEllipse(in: CGRect(x: x - radius, y: y - radius, width: radius * 2, height: radius * 2))
+        }
+        return p
     }
 }

@@ -1,6 +1,6 @@
 import Foundation
 
-/// L'encodeur BPE de Qwen2 (ByteLevel), écrit pour Sillage à la place de
+/// L'encodeur BPE de Qwen2 (ByteLevel), écrit pour Dysflow à la place de
 /// swift-transformers : `vocab.json`, `merges.txt` et les jetons ajoutés de
 /// `tokenizer_config.json`. Qwen3-TTS encode (le texte à dire) ; Qwen3-ASR
 /// encode son gabarit et décode le texte reconnu (`decode(tokens:)`). Ne lit

@@ -32,7 +32,7 @@ extension MagpieRunner: TextSpeechModel {}
 ///
 /// Abandon : `SynthesisCancel` est consulté avant le calcul (sous le
 /// verrou, après l'attente) puis aux points d'arrêt du modèle ; une
-/// synthèse abandonnée rend `SillageError.Cancelled`, jamais `Failed`, même
+/// synthèse abandonnée rend `DysflowError.Cancelled`, jamais `Failed`, même
 /// si le modèle a levé une erreur après l'abandon.
 final class TextSpeechMLXCompute: TextSpeechCompute, @unchecked Sendable {
     typealias Loader = (URL, String) throws -> TextSpeechModel
@@ -82,22 +82,22 @@ final class TextSpeechMLXCompute: TextSpeechCompute, @unchecked Sendable {
         switch runtime {
         case qwenRuntime: return try Qwen3TTSRunner.load(directory: directory)
         case magpieRuntime: return try MagpieRunner.load(directory: directory)
-        default: throw SillageError.Failed(message: String(localized: "unknown reading engine: \(runtime)"))
+        default: throw DysflowError.Failed(message: String(localized: "unknown reading engine: \(runtime)"))
         }
     }
 
-    /// Le message d'une erreur, sans l'habit de `SillageError.Failed`.
+    /// Le message d'une erreur, sans l'habit de `DysflowError.Failed`.
     static func message(of error: Error) -> String {
-        if case let SillageError.Failed(message) = error { return message }
+        if case let DysflowError.Failed(message) = error { return message }
         return error.localizedDescription
     }
 
     /// Une erreur levée pendant la synthèse, vue par le moteur : abandonnée
     /// (le test le dit, ou le modèle a rendu `Cancelled`), c'est un abandon ;
     /// sinon un échec, avec le message du modèle.
-    static func synthesisError(_ error: Error, cancelled: Bool) -> SillageError {
+    static func synthesisError(_ error: Error, cancelled: Bool) -> DysflowError {
         if cancelled { return .Cancelled }
-        if case SillageError.Cancelled = error { return .Cancelled }
+        if case DysflowError.Cancelled = error { return .Cancelled }
         return .Failed(message: message(of: error))
     }
 
@@ -118,7 +118,7 @@ final class TextSpeechMLXCompute: TextSpeechCompute, @unchecked Sendable {
             } catch {
                 budget.remove(key(modelDir))
                 clearCache()
-                throw SillageError.Failed(message: String(localized: "The reading model won’t load: \(Self.message(of: error))"))
+                throw DysflowError.Failed(message: String(localized: "The reading model won’t load: \(Self.message(of: error))"))
             }
         }
     }
@@ -143,9 +143,9 @@ final class TextSpeechMLXCompute: TextSpeechCompute, @unchecked Sendable {
                     isCancelled: @escaping () -> Bool) throws -> SpeechOutput {
         try gate.run {
             // L'abandon d'abord, après l'attente du verrou.
-            if isCancelled() { throw SillageError.Cancelled }
+            if isCancelled() { throw DysflowError.Cancelled }
             guard let model = loaded[modelDir]?.model else {
-                throw SillageError.Failed(message: String(localized: "reading model not loaded"))
+                throw DysflowError.Failed(message: String(localized: "reading model not loaded"))
             }
             let samples: [Float]?
             do {
@@ -154,7 +154,7 @@ final class TextSpeechMLXCompute: TextSpeechCompute, @unchecked Sendable {
             } catch {
                 throw Self.synthesisError(error, cancelled: isCancelled())
             }
-            guard let samples else { throw SillageError.Cancelled }
+            guard let samples else { throw DysflowError.Cancelled }
             loaded[modelDir]?.warmed = true
             return SpeechOutput(samples: samples, sampleRate: UInt32(model.sampleRate))
         }

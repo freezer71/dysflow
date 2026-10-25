@@ -1,5 +1,5 @@
 import XCTest
-@testable import Sillage
+@testable import Dysflow
 
 final class MLXBudgetTests: XCTestCase {
     final class Recorder: @unchecked Sendable {

@@ -56,7 +56,7 @@ impl LazyEngine {
         });
 
         let worker = Arc::clone(&shared);
-        crate::sync::spawn_named("sillage-chargement-voix", move || {
+        crate::sync::spawn_named("dysflow-chargement-voix", move || {
             let outcome = load();
             let mut state = worker.state.locked();
             *state = match outcome {

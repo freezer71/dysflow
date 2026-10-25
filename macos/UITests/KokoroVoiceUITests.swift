@@ -1,7 +1,7 @@
 import XCTest
 
 /// La section Voix des réglages, et son audit. Lancé à la main,
-/// avec l'accord de l'utilisateur : `-only-testing:SillageUITests/KokoroVoiceUITests`.
+/// avec l'accord de l'utilisateur : `-only-testing:DysflowUITests/KokoroVoiceUITests`.
 /// Le lecteur des tests est muet : `--ui-testing-kokoro` lui prête les
 /// capacités de Kokoro (`UITestStaging`).
 @MainActor

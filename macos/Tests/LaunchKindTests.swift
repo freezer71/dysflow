@@ -1,8 +1,8 @@
 import AppKit
 import XCTest
-@testable import Sillage
+@testable import Dysflow
 
-/// Ce que montre sillage au lancement et à la réouverture.
+/// Ce que montre dysflow au lancement et à la réouverture.
 @MainActor
 final class LaunchKindTests: XCTestCase {
     func testALaunchRightAfterBootCountsAsLogin() {
@@ -44,7 +44,7 @@ final class LaunchKindTests: XCTestCase {
     }
 
     /// Aucune icône de Dock, jamais : `LSUIElement`, et l'app reste accessoire.
-    func testSillageStaysOutOfTheDock() {
+    func testDysflowStaysOutOfTheDock() {
         XCTAssertEqual(Bundle.main.object(forInfoDictionaryKey: "LSUIElement") as? Bool, true)
         XCTAssertEqual(NSApp.activationPolicy(), .accessory)
     }

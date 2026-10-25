@@ -100,7 +100,7 @@ impl Previewer {
     pub fn new(engine: Arc<dyn TtsEngine>) -> Self {
         let (requests, inbox) = mpsc::channel();
         let (outbox, results) = mpsc::channel();
-        let worker = crate::sync::spawn_named("sillage-apercu", move || worker(engine, inbox, outbox));
+        let worker = crate::sync::spawn_named("dysflow-apercu", move || worker(engine, inbox, outbox));
         Self {
             requests: Some(requests),
             results,

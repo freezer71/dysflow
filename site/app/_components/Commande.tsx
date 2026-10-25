@@ -28,7 +28,8 @@ export function Commande({
   return (
     <div className={`flex min-w-0 items-center gap-2 rounded-2xl bg-[#191919] text-white ring-1 ring-white/10 ${grande ? "p-2 pl-5" : "p-1.5 pl-4"}`}>
       <span className="select-none font-mono text-citron" aria-hidden="true">$</span>
-      <code className={`min-w-0 flex-1 overflow-x-auto whitespace-nowrap font-mono ${grande ? "py-2 text-[15px] sm:text-base" : "py-1.5 text-sm"}`}>
+      {/* Défilable, donc atteignable au clavier : les flèches font défiler. */}
+      <code tabIndex={0} className={`min-w-0 flex-1 overflow-x-auto whitespace-nowrap rounded-md font-mono ${grande ? "py-2 text-[15px] sm:text-base" : "py-1.5 text-sm"}`}>
         {texte}
       </code>
       <button

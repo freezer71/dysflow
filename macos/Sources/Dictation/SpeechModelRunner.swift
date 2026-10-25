@@ -45,7 +45,7 @@ final class SpeechModelRunner: @unchecked Sendable {
     private let gate: MLXGate
     private let clearCache: () -> Void
     /// Le travail sous `gate` attend ici, pas sur un fil du pool coopératif.
-    private let queue = DispatchQueue(label: "fr.sillage.dictee.mlx", qos: .userInitiated)
+    private let queue = DispatchQueue(label: "fr.dysflow.dictee.mlx", qos: .userInitiated)
     /// Gardés par `gate`.
     private var model: LoadedSpeechModel?
     private var directory: URL?

@@ -1,11 +1,11 @@
 import XCTest
-@testable import Sillage
+@testable import Dysflow
 
 @MainActor
 final class KokoroWarmUpTests: XCTestCase {
     /// Des préférences à part, vidées : jamais celles de l'utilisateur.
     private func freshDefaults() -> UserDefaults {
-        let name = "sillage.tests.kokoro.preparation"
+        let name = "dysflow.tests.kokoro.preparation"
         let defaults = UserDefaults(suiteName: name)!
         defaults.removePersistentDomain(forName: name)
         return defaults
@@ -100,9 +100,9 @@ final class KokoroWarmUpTests: XCTestCase {
 
     func testEspeakIsLookedForInsideTheApp() {
         AppDelegate.exportEspeakLocation(bundle: .main)
-        let helper = ProcessInfo.processInfo.environment["SILLAGE_ESPEAK"] ?? ""
-        XCTAssertTrue(helper.hasSuffix("Contents/Helpers/sillage-espeak"), helper)
-        XCTAssertNotNil(ProcessInfo.processInfo.environment["SILLAGE_ESPEAK_DATA"])
+        let helper = ProcessInfo.processInfo.environment["DYSFLOW_ESPEAK"] ?? ""
+        XCTAssertTrue(helper.hasSuffix("Contents/Helpers/dysflow-espeak"), helper)
+        XCTAssertNotNil(ProcessInfo.processInfo.environment["DYSFLOW_ESPEAK_DATA"])
     }
 
     /// La fin d'un téléchargement peut faire de Kokoro la voix active
@@ -127,6 +127,6 @@ final class KokoroWarmUpTests: XCTestCase {
         let uuid = KokoroWarmUp.executableUUID(of: .main)
         XCTAssertNotNil(uuid.flatMap(UUID.init(uuidString:)), "LC_UUID de l'app hôte")
         XCTAssertEqual(KokoroWarmUp.version(of: .main), KokoroWarmUp.version(of: .main))
-        XCTAssertTrue(KokoroWarmUp.version(of: .main).hasPrefix("0.5.0(1)"), KokoroWarmUp.version(of: .main))
+        XCTAssertTrue(KokoroWarmUp.version(of: .main).hasPrefix("0.6.0(1)"), KokoroWarmUp.version(of: .main))
     }
 }

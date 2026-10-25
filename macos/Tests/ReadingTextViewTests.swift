@@ -1,5 +1,5 @@
 import XCTest
-@testable import Sillage
+@testable import Dysflow
 
 /// La vue de lecture, hors SwiftUI : ce qu'elle atténue, encre et trace
 /// sous la ligne, sans jamais toucher au texte lui-même.
@@ -182,7 +182,7 @@ final class ReadingTextViewTests: XCTestCase {
     /// Pendant qu'un bloc de code s'annonce, le déjà-lu reste atténué et la
     /// bande se pose sur le bloc ; sans rien à montrer, elle disparaît.
     func testAnnouncedBlockKeepsPastDimmedAndBandsTheBlock() {
-        let r = SillageReader.silent()
+        let r = DysflowReader.silent()
         r.openText(markdown: "Avant.\n\n```rust\nfn a() {\n    b();\n}\n```\n\nAprès.", source: "t")
         XCTAssertTrue(waitUntil { r.snapshot().revision == 1 })
         let d = r.document()

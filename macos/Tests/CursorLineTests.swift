@@ -1,5 +1,5 @@
 import XCTest
-@testable import Sillage
+@testable import Dysflow
 
 /// Le trait sous la ligne lue : du début de la ligne au point de la voix.
 final class CursorLineTests: XCTestCase {

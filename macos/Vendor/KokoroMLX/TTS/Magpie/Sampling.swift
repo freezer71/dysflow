@@ -1,4 +1,4 @@
-// Modifié par Sillage (Apache-2.0 §4(b)) : `import MLXRandom` retiré, fonctions passées en `internal` — voir ORIGINE.md.
+// Modifié par Dysflow (Apache-2.0 §4(b)) : `import MLXRandom` retiré, fonctions passées en `internal` — voir ORIGINE.md.
 import Foundation
 import MLX
 

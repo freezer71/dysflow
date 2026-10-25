@@ -165,7 +165,7 @@ public final class NemotronASRStreamSession {
             if final { done = true }
             return Delta(text: "", tokenIds: [])
         }
-        // Sillage : en cours de flux, pas de tranche entière gelée de plus
+        // Dysflow : en cours de flux, pas de tranche entière gelée de plus
         // depuis la dernière fois → `streamEncodeChunks` ne ferait rien. Le
         // compte des trames gelées se déduit du nombre d'échantillons seul
         // (`frozenMelFrames` sans le mel) : on ne recalcule pas le mel de
@@ -226,7 +226,7 @@ public final class NemotronASRStreamSession {
         return min(totalMel, largestFrozen + 1)
     }
 
-    /// Sillage : `frozenMelFrames` avant tout calcul du mel. Le STFT centré
+    /// Dysflow : `frozenMelFrames` avant tout calcul du mel. Le STFT centré
     /// (`nFft/2` de chaque côté) rend `1 + n/hop` trames pour `n`
     /// échantillons, jamais moins que `largestFrozen + 1` : le minimum de
     /// `frozenMelFrames(totalMel:)` est donc toujours ce second terme.

@@ -239,7 +239,7 @@ private final class CanaryAttention: Module {
         return outProj(attended.transposed(0, 2, 1, 3).reshaped(batch, targetTime, -1))
     }
 
-    /// Sillage : les clés et valeurs de `keyValue`, en têtes ; pour l'attention
+    /// Dysflow : les clés et valeurs de `keyValue`, en têtes ; pour l'attention
     /// croisée, calculées une fois par lecture.
     func keysValues(_ keyValue: MLXArray) -> (keys: MLXArray, values: MLXArray) {
         let batch = keyValue.dim(0)
@@ -249,7 +249,7 @@ private final class CanaryAttention: Module {
         return (k, v)
     }
 
-    /// Sillage : l'attention de `x` sur des clés et valeurs déjà en têtes.
+    /// Dysflow : l'attention de `x` sur des clés et valeurs déjà en têtes.
     func attend(_ x: MLXArray, keys: MLXArray, values: MLXArray, mask: MLXArray? = nil) -> MLXArray {
         let batch = x.dim(0)
         let targetTime = x.dim(1)
@@ -264,7 +264,7 @@ private final class CanaryAttention: Module {
         return outProj(attended.transposed(0, 2, 1, 3).reshaped(batch, targetTime, -1))
     }
 
-    /// Sillage : l'auto-attention de `x` (les nouvelles positions) sur tout
+    /// Dysflow : l'auto-attention de `x` (les nouvelles positions) sur tout
     /// ce que `cache` a gardé, plus elles.
     func attend(_ x: MLXArray, cache: KVCacheSimple, mask: MLXArray? = nil) -> MLXArray {
         let (k, v) = keysValues(x)
@@ -315,7 +315,7 @@ private final class CanaryDecoderBlock: Module {
         return out
     }
 
-    /// Sillage : le même bloc, l'auto-attention par `cache` (seules les
+    /// Dysflow : le même bloc, l'auto-attention par `cache` (seules les
     /// nouvelles positions passent), l'attention croisée sur `cross` déjà
     /// calculées.
     func callAsFunction(
@@ -345,7 +345,7 @@ private final class CanaryDecoderBlock: Module {
     }
 }
 
-/// Sillage : les clés, valeurs et masque de l'attention croisée d'un bloc :
+/// Dysflow : les clés, valeurs et masque de l'attention croisée d'un bloc :
 /// ils ne dépendent que de l'audio, calculés une fois par lecture (le
 /// masque en Float32, converti à chaque pas au type du bloc, comme avant).
 struct CanaryCrossKeysValues {
@@ -354,7 +354,7 @@ struct CanaryCrossKeysValues {
     let mask: MLXArray?
 }
 
-/// Sillage : l'état d'un décodage pas à pas (un cache d'auto-attention et
+/// Dysflow : l'état d'un décodage pas à pas (un cache d'auto-attention et
 /// l'attention croisée de chaque bloc).
 public final class CanaryDecoderState {
     fileprivate let caches: [KVCacheSimple]
@@ -411,14 +411,14 @@ public final class CanaryDecoder: Module {
         return outputProjection(finalNorm(x))
     }
 
-    /// Sillage : un état neuf pour décoder pas à pas sur `encoderOutput`.
+    /// Dysflow : un état neuf pour décoder pas à pas sur `encoderOutput`.
     public func makeState(encoderOutput: MLXArray, encoderMask: MLXArray?) -> CanaryDecoderState {
         CanaryDecoderState(
             caches: blocks.map { _ in KVCacheSimple() },
             cross: blocks.map { $0.crossKeysValues(encoderOutput: encoderOutput, encoderMask: encoderMask) })
     }
 
-    /// Sillage : les logits des seules nouvelles positions `tokens`, qui
+    /// Dysflow : les logits des seules nouvelles positions `tokens`, qui
     /// suivent les `state.offset` déjà décodées. Mêmes calculs que
     /// `callAsFunction` sur toute la suite, dont la dernière position
     /// répétée au-delà de la table (1 024). Plusieurs positions à la fois :
@@ -520,7 +520,7 @@ public final class CanaryModel: Module, STTGenerationModel {
 
         var tokens = promptTokens
         var generated: [Int] = []
-        // Sillage : décodage pas à pas (cache d'auto-attention, attention
+        // Dysflow : décodage pas à pas (cache d'auto-attention, attention
         // croisée calculée une fois) au lieu de repasser toute la suite à
         // chaque jeton. L'invite d'abord, puis un jeton à la fois.
         let state = decoder.makeState(encoderOutput: encoded.hidden, encoderMask: encoded.mask)

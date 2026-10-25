@@ -1,7 +1,7 @@
 import XCTest
 
 /// La table des modèles des sections Voix et Dictée des réglages. Lancé à la main, avec
-/// l'accord de l'utilisateur : `-only-testing:SillageUITests/ModelsUITests`.
+/// l'accord de l'utilisateur : `-only-testing:DysflowUITests/ModelsUITests`.
 /// La ligne « Voix de macOS » vient du moteur lui-même (`voices()`), même
 /// sous le lecteur muet.
 @MainActor

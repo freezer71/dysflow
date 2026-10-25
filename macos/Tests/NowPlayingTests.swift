@@ -1,6 +1,6 @@
 import MediaPlayer
 import XCTest
-@testable import Sillage
+@testable import Dysflow
 
 final class FakeNowPlayingCenter: NowPlayingCenter {
     var nowPlayingInfo: [String: Any]? { didSet { writes += 1 } }
@@ -298,7 +298,7 @@ final class NowPlayingTests: XCTestCase {
     /// × vitesse, `NowPlayingInfo.from`) ramène, glissée sur la timeline, à
     /// la même phrase (÷ vitesse, `Transport.sentence`).
     func testThePublishedPositionScrubsBackToTheSameSentence() throws {
-        let m = ReaderModel(reader: SillageReader.silent())
+        let m = ReaderModel(reader: DysflowReader.silent())
         m.open(text: "Un deux trois quatre. Cinq six. Sept huit neuf dix.", source: "test")
         XCTAssertTrue(waitUntil { m.refresh(); return m.snapshot.revision == 1 })
         let document = m.document

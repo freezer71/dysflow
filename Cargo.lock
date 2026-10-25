@@ -892,6 +892,46 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "92773504d58c093f6de2459af4af33faa518c13451eb8f2b5698ed3d36e7c813"
 
 [[package]]
+name = "dysflow"
+version = "0.6.0"
+dependencies = [
+ "anyhow",
+ "arboard",
+ "cc",
+ "clap",
+ "crossbeam-channel",
+ "crossterm",
+ "dirs",
+ "hound",
+ "image",
+ "libc",
+ "libloading 0.8.9",
+ "ort",
+ "pdf-extract",
+ "pulldown-cmark",
+ "ratatui",
+ "regex",
+ "rodio",
+ "serde",
+ "serde_json",
+ "tesseract-rs",
+ "toml",
+ "unicode-width",
+ "ureq",
+ "whatlang",
+]
+
+[[package]]
+name = "dysflow-ffi"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "dysflow",
+ "thiserror 2.0.20",
+ "uniffi",
+]
+
+[[package]]
 name = "ecb"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3216,46 +3256,6 @@ checksum = "c4db69cba1110affc0e9f7bcd48bbf87b3f4fc7c61fc9155afd4c469eb3d6c1b"
 dependencies = [
  "errno",
  "libc",
-]
-
-[[package]]
-name = "sillage"
-version = "0.5.0"
-dependencies = [
- "anyhow",
- "arboard",
- "cc",
- "clap",
- "crossbeam-channel",
- "crossterm",
- "dirs",
- "hound",
- "image",
- "libc",
- "libloading 0.8.9",
- "ort",
- "pdf-extract",
- "pulldown-cmark",
- "ratatui",
- "regex",
- "rodio",
- "serde",
- "serde_json",
- "tesseract-rs",
- "toml",
- "unicode-width",
- "ureq",
- "whatlang",
-]
-
-[[package]]
-name = "sillage-ffi"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "sillage",
- "thiserror 2.0.20",
- "uniffi",
 ]
 
 [[package]]

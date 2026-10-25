@@ -1,5 +1,5 @@
 import XCTest
-@testable import Sillage
+@testable import Dysflow
 
 /// ⌘, ouvre les réglages par l'action SwiftUI `openSettings`, prise dans
 /// une vue : une demande faite avant que la vue ne l'ait donnée attend.
@@ -41,7 +41,7 @@ final class SettingsOpenerTests: XCTestCase {
 @MainActor
 final class SettingsOpenerSectionTests: XCTestCase {
     private func navigation() -> SettingsNavigation {
-        let name = "sillage.tests.reglages.ouverture"
+        let name = "dysflow.tests.reglages.ouverture"
         let defaults = UserDefaults(suiteName: name)!
         defaults.removePersistentDomain(forName: name)
         return SettingsNavigation(defaults: defaults, dictationSupported: true)

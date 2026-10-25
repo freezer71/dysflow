@@ -3,7 +3,7 @@ import Foundation
 /// Une graine par phrase, la même d'un lancement à l'autre : une phrase
 /// resynthétisée (saut, cache vidé) sonne pareil. FNV-1a 64 bits sur
 /// l'UTF-8 de la forme NFC (`hashValue` change à chaque processus).
-/// Ajout de Sillage.
+/// Ajout de Dysflow.
 public enum StableSeed {
     public static func of(_ text: String) -> UInt64 {
         var hash: UInt64 = 0xcbf2_9ce4_8422_2325

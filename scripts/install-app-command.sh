@@ -1,32 +1,32 @@
 #!/bin/sh
-# Installe la commande `sillage` qui ouvre l'app (scripts/sillage-app.sh) à la
+# Installe la commande `dysflow` qui ouvre l'app (scripts/dysflow-app.sh) à la
 # place du lecteur au terminal.
 #
 #   ./scripts/install-app-command.sh              # ~/.local/bin
 #   PREFIX=/usr/local sudo -E ./scripts/install-app-command.sh
 #   REMPLACER=1 ./scripts/install-app-command.sh  # remplace sans question le lecteur au terminal
 #
-# Pour désinstaller : rm "$PREFIX/bin/sillage"
+# Pour désinstaller : rm "$PREFIX/bin/dysflow"
 set -eu
 cd "$(dirname "$0")/.."
 
 PREFIX="${PREFIX:-$HOME/.local}"
-BIN="$PREFIX/bin/sillage"
+BIN="$PREFIX/bin/dysflow"
 
-# bin/sillage est-il le lecteur au terminal (install.sh : un lien vers
-# ../lib/sillage/sillage, ou le binaire lui-même pour une installation plus
+# bin/dysflow est-il le lecteur au terminal (install.sh : un lien vers
+# ../lib/dysflow/dysflow, ou le binaire lui-même pour une installation plus
 # ancienne) ? Il est remplacé seulement après avertissement.
 terminal=""
 if [ -L "$BIN" ]; then
     case "$(readlink "$BIN")" in
-    *lib/sillage/sillage) terminal=1 ;;
+    *lib/dysflow/dysflow) terminal=1 ;;
     esac
 elif [ -f "$BIN" ] && ! head -c 200 "$BIN" | grep -q "ouvre l'app"; then
     terminal=1
 fi
 if [ -n "$terminal" ]; then
     echo "Attention : $BIN est le lecteur au terminal (install.sh)." >&2
-    echo "La commande de l'app le remplace ; $PREFIX/lib/sillage reste en place (rm -r pour le retirer)." >&2
+    echo "La commande de l'app le remplace ; $PREFIX/lib/dysflow reste en place (rm -r pour le retirer)." >&2
     if [ "${REMPLACER:-}" != 1 ]; then
         answer=""
         if [ -t 0 ]; then
@@ -41,10 +41,10 @@ if [ -n "$terminal" ]; then
             ;;
         esac
     fi
-    # `install` écrirait à travers le lien, dans lib/sillage/sillage.
+    # `install` écrirait à travers le lien, dans lib/dysflow/dysflow.
     rm -f "$BIN"
 fi
 
 mkdir -p "$PREFIX/bin"
-install -m 755 scripts/sillage-app.sh "$BIN"
-echo "Installé : $BIN (ouvre /Applications/Sillage.app)"
+install -m 755 scripts/dysflow-app.sh "$BIN"
+echo "Installé : $BIN (ouvre /Applications/Dysflow.app)"

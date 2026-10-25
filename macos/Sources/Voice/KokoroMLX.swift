@@ -32,7 +32,7 @@ extension KokoroRunner: KokoroForward {}
 /// d'usage (curseur parti, génération changée). Elle est consultée avant le
 /// passage (sous le verrou, après l'attente), après les durées, puis dans le
 /// décodeur (après `encode`, chaque bloc de `decode`, chaque étage du
-/// générateur) ; abandonnée, la synthèse rend `SillageError.Cancelled`, jamais
+/// générateur) ; abandonnée, la synthèse rend `DysflowError.Cancelled`, jamais
 /// `Failed`. Un passage abandonné en route compte dans `calls` et
 /// `forwardSeconds` (il a eu lieu, pour le temps réellement passé) ; un
 /// abandon avant le passage n'y compte pas.
@@ -111,7 +111,7 @@ final class KokoroMLXCompute: KokoroCompute, @unchecked Sendable {
                     directory = modelDir
                 } catch {
                     budget.remove("kokoro")
-                    throw SillageError.Failed(message: String(localized: "Metal compute unavailable: \(error.localizedDescription)"))
+                    throw DysflowError.Failed(message: String(localized: "Metal compute unavailable: \(error.localizedDescription)"))
                 }
             }
             users += 1
@@ -143,7 +143,7 @@ final class KokoroMLXCompute: KokoroCompute, @unchecked Sendable {
     /// (la lecture est partie avant), elle ne fait rien et réussit.
     func warmUp() throws {
         try gate.run {
-            guard forward != nil else { throw SillageError.Failed(message: String(localized: "Kokoro model not loaded")) }
+            guard forward != nil else { throw DysflowError.Failed(message: String(localized: "Kokoro model not loaded")) }
             if kernelsCompiled { return }
             _ = try runLocked(ids: Self.warmUpIds(), style: [Float](repeating: 0, count: 256), isCancelled: nil)
         }
@@ -163,8 +163,8 @@ final class KokoroMLXCompute: KokoroCompute, @unchecked Sendable {
     private func runLocked(ids: [Int64], style: [Float], isCancelled: (() -> Bool)?) throws -> KokoroOutput {
         // L'abandon d'abord : une synthèse inutile pendant une brève
         // libération des poids est un abandon, pas un échec.
-        if isCancelled?() == true { throw SillageError.Cancelled }
-        guard let forward else { throw SillageError.Failed(message: String(localized: "Kokoro model not loaded")) }
+        if isCancelled?() == true { throw DysflowError.Cancelled }
+        guard let forward else { throw DysflowError.Failed(message: String(localized: "Kokoro model not loaded")) }
         counter.withLockUnchecked { synthesized += 1 }
         let debut = DispatchTime.now().uptimeNanoseconds
         let sortie = forward.run(ids: ids.map { Int32(clamping: $0) }, style: style, shouldStop: isCancelled)
@@ -172,7 +172,7 @@ final class KokoroMLXCompute: KokoroCompute, @unchecked Sendable {
         counter.withLockUnchecked { forwardNanos += fait }
         // Abandonné en route : les noyaux de la fin ne sont peut-être pas
         // compilés, la préparation garde son travail.
-        guard let sortie else { throw SillageError.Cancelled }
+        guard let sortie else { throw DysflowError.Cancelled }
         kernelsCompiled = true
         return KokoroOutput(samples: sortie.samples, durations: sortie.durations.map { UInt32(max(0, $0)) })
     }

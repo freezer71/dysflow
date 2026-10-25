@@ -6,12 +6,12 @@ import KokoroMLX
 /// modèle se charge d'un dossier local, lit une seconde de silence d'un bloc,
 /// puis une session de flux en français reçoit la même seconde par blocs de
 /// 80 ms (le pas de la dictée) et se termine sans planter.
-/// Lance le vrai modèle (MLX, Metal) : seulement avec `SILLAGE_STT_MODELS`
-/// (`TEST_RUNNER_SILLAGE_STT_MODELS` pour xcodebuild).
+/// Lance le vrai modèle (MLX, Metal) : seulement avec `DYSFLOW_STT_MODELS`
+/// (`TEST_RUNNER_DYSFLOW_STT_MODELS` pour xcodebuild).
 final class NemotronSmokeTests: XCTestCase {
-    /// `SILLAGE_STT_MODELS` : dossier contenant
+    /// `DYSFLOW_STT_MODELS` : dossier contenant
     /// `nemotron_35_asr_streaming_8bit/` (copie de
-    /// ~/Library/Application Support/sillage/models). Sans lui : ignoré.
+    /// ~/Library/Application Support/dysflow/models). Sans lui : ignoré.
     func testReadsAndStreamsOneSecondOfSilenceWithoutCrashing() throws {
         let model = try NemotronASRModel.fromDirectory(try SmokeModels.folder("nemotron_35_asr_streaming_8bit"))
         let output = model.generate(audio: MLXArray.zeros([16_000]), generationParameters: model.defaultGenerationParameters)

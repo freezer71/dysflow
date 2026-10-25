@@ -1,5 +1,5 @@
 import XCTest
-@testable import Sillage
+@testable import Dysflow
 
 /// La mesure de cadence ne tourne jamais sous les tests (elle charge un
 /// modèle de plusieurs Go) ; on vérifie la règle qui en tire la vitesse tenue

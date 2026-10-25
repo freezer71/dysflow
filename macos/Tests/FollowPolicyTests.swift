@@ -1,5 +1,5 @@
 import XCTest
-@testable import Sillage
+@testable import Dysflow
 
 /// Quand la vue suit-elle la lecture ? Pas pendant que l'on relit en faisant
 /// défiler le texte.

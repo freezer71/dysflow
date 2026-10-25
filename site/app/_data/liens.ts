@@ -1,6 +1,6 @@
 import { cacheLife } from "next/cache";
 
-export const depot = "https://github.com/freezer71/sillage";
+export const depot = "https://github.com/freezer71/dysflow";
 
 // /releases/latest/download/<nom> mène toujours à la dernière publication :
 // les noms des archives ne portent pas la version (release.yml), si bien que
@@ -14,9 +14,9 @@ export const commandeInstallation =
 export const commandeDesinstallation = `${commandeInstallation} -s -- --uninstall`;
 
 export const telechargements = {
-  dmg: `${derniere}/sillage-macos.dmg`,
-  linuxX64: `${derniere}/sillage-linux-x86_64.tar.gz`,
-  linuxArm64: `${derniere}/sillage-linux-aarch64.tar.gz`,
+  dmg: `${derniere}/dysflow-macos.dmg`,
+  linuxX64: `${derniere}/dysflow-linux-x86_64.tar.gz`,
+  linuxArm64: `${derniere}/dysflow-linux-aarch64.tar.gz`,
   publications: `${depot}/releases`,
   sources: `${depot}#lapp-macos`,
 };
@@ -30,7 +30,7 @@ export async function derniereVersion(): Promise<string | null> {
   "use cache";
   cacheLife("hours");
   try {
-    const reponse = await fetch("https://api.github.com/repos/freezer71/sillage/releases/latest", {
+    const reponse = await fetch("https://api.github.com/repos/freezer71/dysflow/releases/latest", {
       headers: { Accept: "application/vnd.github+json" },
     });
     if (!reponse.ok) return null;

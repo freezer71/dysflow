@@ -1,10 +1,10 @@
 import XCTest
-@testable import Sillage
+@testable import Dysflow
 
 @MainActor
 final class AnnouncerTests: XCTestCase {
-    private func setup() -> (SillageReader, DocView) {
-        let r = SillageReader.silent()
+    private func setup() -> (DysflowReader, DocView) {
+        let r = DysflowReader.silent()
         r.openText(markdown: "# A\n\nUn. Deux.\n\n# B\n\nTrois.", source: "t")
         XCTAssertTrue(waitUntil { r.snapshot().revision == 1 })
         return (r, r.document())
@@ -60,7 +60,7 @@ final class AnnouncerTests: XCTestCase {
     }
 
     func testSectionBecomingNilAnnouncesNothing() {
-        var s = SillageReader.silent().snapshot()
+        var s = DysflowReader.silent().snapshot()
         var a = Announcer()
         let doc = DocView(title: "", complete: true, sentenceCount: 0, sections: [], blocks: [])
         s.section = 1
@@ -70,7 +70,7 @@ final class AnnouncerTests: XCTestCase {
     }
 
     func testPlayAndSectionTogetherAnnouncesPlayOnly() {
-        var s = SillageReader.silent().snapshot()
+        var s = DysflowReader.silent().snapshot()
         var a = Announcer()
         let doc = DocView(title: "", complete: true, sentenceCount: 0,
                           sections: [SectionView(id: 2, level: 1, title: "B", firstSentence: 3)], blocks: [])

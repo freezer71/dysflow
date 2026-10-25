@@ -1,4 +1,4 @@
-// Modifié par Sillage (Apache-2.0 §4(b)) : chargement d'un dossier, arrêt `shouldStop`, bornes de longueur, une lecture GPU par trame — voir ORIGINE.md.
+// Modifié par Dysflow (Apache-2.0 §4(b)) : chargement d'un dossier, arrêt `shouldStop`, bornes de longueur, une lecture GPU par trame — voir ORIGINE.md.
 import Foundation
 import MLX
 import MLXNN
@@ -138,7 +138,7 @@ public final class MagpieTTS {
                                      speaker: MagpieSpeaker,
                                      params: MagpieTTSParams,
                                      shouldStop: (() -> Bool)? = nil) throws -> [[Int32]] {
-        // Sillage : au-delà de `max_len`, les plongements de position seraient
+        // Dysflow : au-delà de `max_len`, les plongements de position seraient
         // lus hors table (comportement indéfini dans MLX). `MagpieRunner`
         // découpe le texte avant ; ce test reste la dernière barrière.
         guard textIds.count <= textEncoder.config.maxLen else {
@@ -184,7 +184,7 @@ public final class MagpieTTS {
                 position: position)
             hLast = h
             position += 1
-            // Sillage : pas d'`eval(hLast)` ici ; le pas du décodeur est
+            // Dysflow : pas d'`eval(hLast)` ici ; le pas du décodeur est
             // calculé avec la trame suivante, à son unique lecture.
         }
         return frames
@@ -203,7 +203,7 @@ public final class MagpieTTS {
                                         topK: Int) -> [Int32] {
         let cache = MagpieKVCache()
         var x = localTransformer.inProjection(hLast)
-        // Sillage : les jetons restent sur le GPU d'un livre de codes au
+        // Dysflow : les jetons restent sur le GPU d'un livre de codes au
         // suivant (mêmes opérations, même tirage), lus une seule fois par
         // trame au lieu de huit.
         var tokens = [MLXArray]()

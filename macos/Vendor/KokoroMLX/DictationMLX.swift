@@ -1,9 +1,9 @@
 import Foundation
 @preconcurrency import MLX
 
-/// L'entrée de Sillage pour les modèles de dictée, comme `KokoroRunner` pour
+/// L'entrée de Dysflow pour les modèles de dictée, comme `KokoroRunner` pour
 /// la voix : l'app ne lie pas MLX, elle passe par ici pour l'audio en
-/// tableau, les plafonds et le cache. Ajouté par Sillage, hors des fichiers
+/// tableau, les plafonds et le cache. Ajouté par Dysflow, hors des fichiers
 /// repris. Tout s'appelle sous `MLXGate` (dans l'app).
 public enum DictationMLX {
     /// Les plafonds de MLX : globaux au processus. Posés par `MLXBudget`

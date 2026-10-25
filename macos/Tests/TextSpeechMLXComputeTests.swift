@@ -1,5 +1,5 @@
 import XCTest
-@testable import Sillage
+@testable import Dysflow
 
 /// Un modèle factice : jamais MLX dans les tests unitaires.
 final class FakeTextModel: TextSpeechModel {
@@ -32,7 +32,7 @@ final class TextSpeechMLXComputeTests: XCTestCase {
         TextSpeechMLXCompute(
             loader: { url, runtime in
                 guard runtime == TextSpeechMLXCompute.qwenRuntime || runtime == TextSpeechMLXCompute.magpieRuntime else {
-                    throw SillageError.Failed(message: "inconnu")
+                    throw DysflowError.Failed(message: "inconnu")
                 }
                 loads.count[url.path, default: 0] += 1
                 let model = FakeTextModel(name: url.path)
@@ -81,7 +81,7 @@ final class TextSpeechMLXComputeTests: XCTestCase {
         try c.load(modelDir: "/m/q", runtime: "qwen3_tts_mlx")
         XCTAssertThrowsError(try c.synthesize(modelDir: "/m/q", text: "x", language: "fr", voice: "",
                                               cancel: SynthesisCancel.fixed(cancelled: true))) { error in
-            guard case SillageError.Cancelled = error else { return XCTFail("\(error)") }
+            guard case DysflowError.Cancelled = error else { return XCTFail("\(error)") }
         }
         XCTAssertEqual(loads.models["/m/q"]?.spoken.count, 0, "rien calculé")
     }
@@ -94,18 +94,18 @@ final class TextSpeechMLXComputeTests: XCTestCase {
         var calls = 0
         XCTAssertThrowsError(try c.synthesize(modelDir: "/m/q", text: "x", language: "fr", voice: "",
                                               isCancelled: { calls += 1; return calls > 1 })) { error in
-            guard case SillageError.Cancelled = error else { return XCTFail("\(error)") }
+            guard case DysflowError.Cancelled = error else { return XCTFail("\(error)") }
         }
     }
 
     func testAnUnknownRuntimeFailsWithItsName() {
         let c = compute(Loads())
         XCTAssertThrowsError(try c.load(modelDir: "/m/x", runtime: "autre")) { error in
-            guard case let SillageError.Failed(message) = error else { return XCTFail("\(error)") }
+            guard case let DysflowError.Failed(message) = error else { return XCTFail("\(error)") }
             XCTAssertTrue(message.hasSuffix("inconnu"), message)
-            XCTAssertFalse(message.contains("SillageError"), "pas d'habit d'erreur dans le message : \(message)")
+            XCTAssertFalse(message.contains("DysflowError"), "pas d'habit d'erreur dans le message : \(message)")
         }
-        XCTAssertEqual(TextSpeechMLXCompute.message(of: SillageError.Failed(message: "moteur de lecture inconnu : autre")),
+        XCTAssertEqual(TextSpeechMLXCompute.message(of: DysflowError.Failed(message: "moteur de lecture inconnu : autre")),
                        "moteur de lecture inconnu : autre")
     }
 
@@ -138,9 +138,9 @@ final class TextSpeechMLXComputeTests: XCTestCase {
     func testErrorsOfASynthesisAreMapped() {
         struct Boom: LocalizedError { var errorDescription: String? { "boum" } }
         XCTAssertEqual(TextSpeechMLXCompute.synthesisError(Boom(), cancelled: true), .Cancelled)
-        XCTAssertEqual(TextSpeechMLXCompute.synthesisError(SillageError.Cancelled, cancelled: false), .Cancelled)
+        XCTAssertEqual(TextSpeechMLXCompute.synthesisError(DysflowError.Cancelled, cancelled: false), .Cancelled)
         XCTAssertEqual(TextSpeechMLXCompute.synthesisError(Boom(), cancelled: false), .Failed(message: "boum"))
-        XCTAssertEqual(TextSpeechMLXCompute.synthesisError(SillageError.Failed(message: "voix inconnue"), cancelled: false),
+        XCTAssertEqual(TextSpeechMLXCompute.synthesisError(DysflowError.Failed(message: "voix inconnue"), cancelled: false),
                        .Failed(message: "voix inconnue"))
     }
 

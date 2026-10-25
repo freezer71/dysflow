@@ -1,5 +1,5 @@
 import XCTest
-@testable import Sillage
+@testable import Dysflow
 
 @MainActor
 final class TransportTests: XCTestCase {
@@ -15,7 +15,7 @@ final class TransportTests: XCTestCase {
 
     /// Un vrai document, découpé par le moteur (lecteur muet).
     private func document(_ text: String) -> DocView {
-        let m = ReaderModel(reader: SillageReader.silent())
+        let m = ReaderModel(reader: DysflowReader.silent())
         m.open(text: text, source: "test")
         XCTAssertTrue(waitUntil { m.refresh(); return m.snapshot.revision == 1 })
         return m.document

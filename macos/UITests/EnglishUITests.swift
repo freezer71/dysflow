@@ -3,7 +3,7 @@ import XCTest
 /// L'app en anglais : lancée en anglais, ou dans une langue qu'elle ne
 /// traduit pas (l'allemand), elle parle anglais, sans un mot de français.
 /// Lancé à la main, avec l'accord de l'utilisateur :
-/// `-only-testing:SillageUITests/EnglishUITests`.
+/// `-only-testing:DysflowUITests/EnglishUITests`.
 @MainActor
 final class EnglishUITests: XCTestCase {
     override func setUp() {

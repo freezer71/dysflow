@@ -1,5 +1,5 @@
 import XCTest
-@testable import Sillage
+@testable import Dysflow
 
 /// Un passage avant factice : jamais MLX ni de poids dans les tests. Il
 /// mesure le nombre d'appels simultanés (le calcul doit les sérialiser), et
@@ -115,7 +115,7 @@ final class KokoroMLXComputeTests: XCTestCase {
         let compute = KokoroMLXCompute(loadForward: { _ in throw CocoaError(.fileNoSuchFile) },
                                        clearCache: {}, budget: budget)
         XCTAssertThrowsError(try compute.load(modelDir: "/absent")) { error in
-            guard case SillageError.Failed(let message) = error else { return XCTFail("\(error)") }
+            guard case DysflowError.Failed(let message) = error else { return XCTFail("\(error)") }
             XCTAssertTrue(message.hasPrefix("Calcul Metal indisponible"), message)
         }
         XCTAssertThrowsError(try compute.warmUp(), "rien de chargé")
@@ -222,7 +222,7 @@ final class KokoroMLXComputeTests: XCTestCase {
         // Utile au départ, inutile une fois les durées calculées.
         XCTAssertThrowsError(try compute.synthesize(ids: [0, 43, 0], style: [],
                                                     isCancelled: { asked += 1; return asked > 1 })) { error in
-            guard case SillageError.Cancelled = error else { return XCTFail("\(error)") }
+            guard case DysflowError.Cancelled = error else { return XCTFail("\(error)") }
         }
         XCTAssertEqual(asked, 2, "avant le passage, puis après les durées")
         XCTAssertEqual(factory.forward.observedStopPoints, 1)
@@ -249,7 +249,7 @@ final class KokoroMLXComputeTests: XCTestCase {
         // Avant le passage, durées, encode : utile ; au 1er bloc de decode : plus.
         XCTAssertThrowsError(try compute.synthesize(ids: [0, 43, 0], style: [],
                                                     isCancelled: { asked += 1; return asked > 3 })) { error in
-            guard case SillageError.Cancelled = error else { return XCTFail("\(error)") }
+            guard case DysflowError.Cancelled = error else { return XCTFail("\(error)") }
         }
         XCTAssertEqual(asked, 4)
         XCTAssertEqual(factory.forward.observedStopPoints, 3, "durées, encode, 1er bloc")
@@ -267,7 +267,7 @@ final class KokoroMLXComputeTests: XCTestCase {
         let compute = ForwardFactory().compute()
         XCTAssertThrowsError(try compute.synthesize(ids: [0], style: [],
                                                     cancel: SynthesisCancel.fixed(cancelled: true))) { error in
-            guard case SillageError.Cancelled = error else { return XCTFail("\(error)") }
+            guard case DysflowError.Cancelled = error else { return XCTFail("\(error)") }
         }
     }
 
@@ -297,7 +297,7 @@ final class KokoroMLXComputeTests: XCTestCase {
         try compute.load(modelDir: "/m/kokoro")
         XCTAssertThrowsError(try compute.synthesize(ids: [0, 43, 0], style: [],
                                                     cancel: SynthesisCancel.fixed(cancelled: true))) { error in
-            guard case SillageError.Cancelled = error else { return XCTFail("\(error)") }
+            guard case DysflowError.Cancelled = error else { return XCTFail("\(error)") }
         }
         XCTAssertEqual(factory.forward.observedRuns, 0)
         XCTAssertEqual(compute.calls, 0)

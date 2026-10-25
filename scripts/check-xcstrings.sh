@@ -26,12 +26,12 @@ CATALOGUE=$MACOS/Resources/Localizable.xcstrings
 # La configuration de UIBUILD (Debug) seulement : scripts/build-macos.sh
 # compile Release dans le même build/derived, et le code `#if DEBUG`
 # (Measure.swift…) y manque ; ses clés passeraient pour périmées.
-DERIVED=$MACOS/build/derived/Build/Intermediates.noindex/Sillage.build/Debug/Sillage.build/Objects-normal
+DERIVED=$MACOS/build/derived/Build/Intermediates.noindex/Dysflow.build/Debug/Dysflow.build/Objects-normal
 
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 
-# Les .stringsdata Debug de la cible Sillage : pour chaque fichier de
+# Les .stringsdata Debug de la cible Dysflow : pour chaque fichier de
 # macos/Sources, le plus récent, qui doit l'être plus que le fichier
 # lui-même.
 if [ ! -d "$DERIVED" ]; then

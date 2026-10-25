@@ -1,7 +1,7 @@
 import Carbon.HIToolbox
 import KeyboardShortcuts
 import XCTest
-@testable import Sillage
+@testable import Dysflow
 
 /// L'enregistrement des raccourcis : une touche seule n'est acceptée que si
 /// c'est une touche d'action (modification ou fonction) ; une lettre ou un

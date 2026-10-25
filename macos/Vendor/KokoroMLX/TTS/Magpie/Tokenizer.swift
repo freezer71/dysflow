@@ -1,4 +1,4 @@
-// Modifié par Sillage (Apache-2.0 §4(b)) : français en NFC, langues sans dictionnaire lues lettre à lettre, chinois et japonais retirés — voir ORIGINE.md.
+// Modifié par Dysflow (Apache-2.0 §4(b)) : français en NFC, langues sans dictionnaire lues lettre à lettre, chinois et japonais retirés — voir ORIGINE.md.
 import Foundation
 
 /// Per-language tokenizer config dumped from NeMo's MagpieTTS multilingual
@@ -52,8 +52,8 @@ public struct MagpieTokenizerConfig: Codable, Sendable {
 ///   dropped if `<oov>` is absent — older bundles).
 /// * `pad_with_space` handling per the per-language NeMo config (Mandarin and
 ///   Hindi prepend / append a space).
-/// * Sillage : le japonais, le chinois, l'espagnol et l'allemand (G2P et
-///   dictionnaires non copiés) sont lus caractère par caractère ; Sillage
+/// * Dysflow : le japonais, le chinois, l'espagnol et l'allemand (G2P et
+///   dictionnaires non copiés) sont lus caractère par caractère ; Dysflow
 ///   ne lit Magpie qu'en français et en anglais.
 ///
 /// **What is intentionally simplified.** Each language ships a NeMo G2P /
@@ -169,7 +169,7 @@ public final class MagpieTokenizer {
 
         case .french:
             // byt5_byte tokeniser. NeMo lowercases before encoding.
-            // Sillage : NFC d'abord (un « é » décomposé ferait deux octets).
+            // Dysflow : NFC d'abord (un « é » décomposé ferait deux octets).
             return MagpieByT5Encoder.encode(MagpieRunner.prepare(text).lowercased(), language: .french)
 
         case .italian:
@@ -180,7 +180,7 @@ public final class MagpieTokenizer {
 
         case .hindi, .spanish, .german, .chinese, .japanese:
             // hi : char_hindi tokeniser, Devanagari graphemes verbatim.
-            // Sillage : es, de (dictionnaires IPA), zh, ja (G2P) non copiés :
+            // Dysflow : es, de (dictionnaires IPA), zh, ja (G2P) non copiés :
             // lecture caractère par caractère, comme `prephonemized`.
             return charLookup(text)
         }

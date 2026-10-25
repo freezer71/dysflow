@@ -40,10 +40,11 @@ function Fiche({ m, lang }: { m: Modele; lang: Lang }) {
   );
 }
 
-function Tableau({ modeles, lang }: { modeles: Modele[]; lang: Lang }) {
+function Tableau({ modeles, lang, nom }: { modeles: Modele[]; lang: Lang; nom: string }) {
   const d = dico(lang).modeles.champs;
   return (
-    <div className="mt-8 overflow-x-auto rounded-[22px] bg-carte">
+    // Défilable, donc atteignable au clavier : les flèches font défiler.
+    <div tabIndex={0} role="region" aria-label={nom} className="mt-8 overflow-x-auto rounded-[22px] bg-carte">
       <table className="w-full min-w-[640px] border-collapse text-left text-[15px]">
         <thead className="text-sm text-encre-pale">
           <tr>
@@ -77,6 +78,7 @@ export function Modeles({ lang }: { lang: Lang }) {
           surtitre={d.entete.surtitre}
           titre={d.entete.titre}
           texte={d.entete.texte}
+          principal
         />
 
         <section id="lecture" className="scroll-mt-20 pt-20">
@@ -84,7 +86,7 @@ export function Modeles({ lang }: { lang: Lang }) {
           <p className="mt-2 max-w-2xl text-lg text-encre-douce">
             {d.lecture.texte}
           </p>
-          <Tableau modeles={lecture} lang={lang} />
+          <Tableau modeles={lecture} lang={lang} nom={d.lecture.titre} />
           <div className="mt-6 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
             {lecture.map((m) => (
               <Fiche key={m.id} m={m} lang={lang} />
@@ -97,7 +99,7 @@ export function Modeles({ lang }: { lang: Lang }) {
           <p className="mt-2 max-w-2xl text-lg text-encre-douce">
             {d.dictee.texte}
           </p>
-          <Tableau modeles={dictee} lang={lang} />
+          <Tableau modeles={dictee} lang={lang} nom={d.dictee.titre} />
           <div className="mt-6 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
             {dictee.map((m) => (
               <Fiche key={m.id} m={m} lang={lang} />

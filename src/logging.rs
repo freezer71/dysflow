@@ -19,7 +19,7 @@ static SAVED_STDERR: AtomicI32 = AtomicI32::new(-1);
 
 /// Emplacement du journal de session.
 pub fn log_path() -> Option<PathBuf> {
-    crate::paths::data_dir().map(|d| d.join("sillage.log"))
+    crate::paths::data_dir().map(|d| d.join("dysflow.log"))
 }
 
 /// Garde qui restaure `stderr` lorsqu'elle est libérée.

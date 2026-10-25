@@ -1,4 +1,4 @@
-// Modifié par Sillage (Apache-2.0 §4(b)) : tenseurs 8 bits lâchés au fil de la déquantification — voir ORIGINE.md.
+// Modifié par Dysflow (Apache-2.0 §4(b)) : tenseurs 8 bits lâchés au fil de la déquantification — voir ORIGINE.md.
 import Foundation
 import MLX
 import MLXNN
@@ -118,7 +118,7 @@ public enum MagpieWeightLoader {
                 out[k] = v.asType(.float32)
             }
         }
-        // Sillage : les triplets sont seuls à tenir les tenseurs 8 bits, et
+        // Dysflow : les triplets sont seuls à tenir les tenseurs 8 bits, et
         // chacun est lâché dès sa version Float32 faite : le pic du
         // chargement n'additionne plus tout le fichier 8 bits à tout le
         // Float32.

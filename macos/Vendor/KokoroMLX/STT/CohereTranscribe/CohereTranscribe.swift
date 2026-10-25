@@ -304,7 +304,7 @@ public final class CohereTranscribeModel: Module, STTGenerationModel {
         self._lmHead.wrappedValue = Linear(config.decoder.hiddenSize, config.vocabSize)
     }
 
-    // Sillage : la surcharge `generate(audio:generationParameters:vad:)`
+    // Dysflow : la surcharge `generate(audio:generationParameters:vad:)`
     // (découpage par détection de voix, Silero, MLXAudioVAD) est retirée ;
     // reste le découpage à durée fixe, qu'elle prenait sans VAD.
     public func generate(
@@ -723,7 +723,7 @@ private extension CohereTranscribeModel {
     }
 }
 
-// Sillage : l'extension de l'amont qui servait `StreamingInferenceSession`
+// Dysflow : l'extension de l'amont qui servait `StreamingInferenceSession`
 // (`streamingDecodeTokenIds`, `streamingDecodeText`, d'après
 // `StreamingConfig` de `Sources/MLXAudioSTT/Streaming`, non copié) est
 // retirée : la dictée relit avec `generate`.
@@ -810,5 +810,5 @@ public extension CohereTranscribeModel {
         return model
     }
 
-    // Sillage : `fromPretrained` (téléchargement depuis Hugging Face) retiré.
+    // Dysflow : `fromPretrained` (téléchargement depuis Hugging Face) retiré.
 }

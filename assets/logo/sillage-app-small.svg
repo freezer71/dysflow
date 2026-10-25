@@ -1,7 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="sillage">
-  <rect x="6.25" y="6.25" width="51.5" height="51.5" rx="11.5" fill="#FFFFFF" stroke="#E3E2DE" stroke-width="0.5"/>
-  <g transform="translate(32.0 32.0) scale(0.78) translate(-32.0 -32.0)">
-    <path d="M 44.00 17.00 H 20.00 A 7.50 7.50 0 0 0 20.00 32.00 H 44.00 A 7.50 7.50 0 0 1 44.00 47.00 H 31.50" fill="none" stroke="#191919" stroke-width="7.0" stroke-linecap="round" stroke-linejoin="round"/>
-    <circle cx="20.00" cy="47.00" r="4.6" fill="#191919"/>
-  </g>
-</svg>

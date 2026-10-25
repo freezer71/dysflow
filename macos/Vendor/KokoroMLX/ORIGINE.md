@@ -16,7 +16,7 @@ chaque étage d'upsampling de `KokoroGenerator` (fonction `stopsHere` : MLX
 étant paresseux, l'intermédiaire est évalué puis `shouldStop` consulté).
 S'il dit vrai, le passage rend `nil`. Sans `shouldStop`, ni évaluation ni
 test : le chemin d'origine. `KokoroRunner.swift` est un ajout de
-Sillage.
+Dysflow.
 
 Corrections reprises de mlx-audio Python 0.5.8 (la chaîne du banc
 d'écoute) : le bloc upsample de `AdainResBlock1d` ôte la première trame de
@@ -58,7 +58,7 @@ Tous identiques à l'amont, sauf :
   Phonon-2, plus bas). Reste `fromDirectory(_:computeDType:)`, qui lit un
   dossier local (`config.json` et tous ses `*.safetensors`).
 
-`STT/BaseConfiguration.swift` est un ajout de Sillage : le sous-ensemble de
+`STT/BaseConfiguration.swift` est un ajout de Dysflow : le sous-ensemble de
 `MLXLMCommon.BaseConfiguration` (mlx-swift-lm 3.32.3, MIT, ml-explore — licence jointe : third_party/licences/mlx-swift-lm-LICENSE) que lisent
 les modèles copiés, c'est-à-dire la quantification. Même nom, mêmes membres :
 aucun site d'appel touché.
@@ -67,9 +67,9 @@ Pour vérifier : `diff -r` entre `Sources/MLXAudioSTT/Models/{Nemo,Parakeet}`
 de l'archive `244458d` et `STT/{Nemo,Parakeet}` ne montre que les lignes
 ci-dessus.
 
-## STT : Phonon-2 (ajout de Sillage)
+## STT : Phonon-2 (ajout de Dysflow)
 
-`STT/Parakeet/PhononLoader.swift` est écrit par Sillage : il charge Phonon-2
+`STT/Parakeet/PhononLoader.swift` est écrit par Dysflow : il charge Phonon-2
 (Fermion Research, https://huggingface.co/FermionResearch/Phonon-2, poids
 sous CC-BY-4.0, dérivés de Parakeet TDT 0.6B v3 de NVIDIA) dans le graphe
 Parakeet ci-dessus. L'archive téléchargée (`phonon-2.bps.tar.zst`) est lue
@@ -115,7 +115,7 @@ modèle SentencePiece), ce que fait déjà le chargeur amont : le dépôt
 `Mediform/canary-1b-v2-mlx-q8` se charge tel quel, sans fichier compagnon.
 
 `defaultGenerationParameters` limite la sortie à 200 jetons, trop peu pour une
-longue dictée : Sillage appellera `generate` avec `maxTokens: 1024` (la table
+longue dictée : Dysflow appellera `generate` avec `maxTokens: 1024` (la table
 de positions du décodeur fait 1 024 ; au-delà, la dernière position est
 répétée). `language` (`"fr"`, `"en"`…) sert de langue source et cible : pas de
 détection automatique.
@@ -173,7 +173,7 @@ Changements :
   `WhisperModel` (`buildPromptTokens`, `resolveLanguage`, `decode(tokens:)`) ;
   la lecture de `tokenizer_config.json` / `added_tokens_decoder` est retirée.
 
-Ajout de Sillage : `STT/Whisper/TiktokenDecoder.swift`, avec
+Ajout de Dysflow : `STT/Whisper/TiktokenDecoder.swift`, avec
 - `TiktokenDecoder` : lit `multilingual.tiktoken` (« base64 rang », rangs
   contigus ; la ligne `= 50256` est un jeton vide) et ne fait que ids → texte
   (octets concaténés puis UTF-8). Tout id hors de la table est un jeton
@@ -422,7 +422,7 @@ Changements, fichier par fichier :
   - `Qwen3TTSSpeechTokenizer.swift`, `streamingDecode` : même raison, plus
     de `Memory.clearCache()` après chaque paquet.
 
-Ajouts de Sillage, hors des fichiers repris : `TTS/Qwen3TTS/Qwen2BPETokenizer.swift`
+Ajouts de Dysflow, hors des fichiers repris : `TTS/Qwen3TTS/Qwen2BPETokenizer.swift`
 (Tâche 4 ; ici, `encode(text:allowSpecial:)`), `TTS/StableSeed.swift` (une
 graine par phrase, FNV-1a 64 bits sur l'UTF-8 NFC, stable d'un lancement à
 l'autre) et `TTS/Qwen3TTSRunner.swift` (la porte : vérifie les fichiers avant
@@ -499,7 +499,7 @@ Changements, fichier par fichier :
   espagnol, allemand (dictionnaires non copiés), chinois et japonais (G2P
   non copiés) tombent sur `charLookup(text)`, comme le hindi ;
   `lookupGroups` et `lookupFlatTokens`, qui ne servaient qu'au chinois et au
-  japonais, supprimés. Sillage ne lit Magpie qu'en français et en anglais.
+  japonais, supprimés. Dysflow ne lit Magpie qu'en français et en anglais.
   Deux commentaires corrigés : celui du japonais (plus de translittération)
   et celui de l'anglais (le code fait NFKC, pas le NFD de NeMo).
 - `EnglishG2P.swift` : `Bundle.module` (SPM seulement) →
@@ -507,7 +507,7 @@ Changements, fichier par fichier :
   supprimés ; `MagpieDictG2P` déclaré `@unchecked Sendable` (le dictionnaire
   est écrit une fois sous `NSLock`, puis seulement lu) pour ses `static let`.
 
-Ajout de Sillage, hors des fichiers repris : `TTS/MagpieRunner.swift` (la
+Ajout de Dysflow, hors des fichiers repris : `TTS/MagpieRunner.swift` (la
 porte : voix par id du catalogue, `sofia` si vide ; `en…` → anglais, sinon
 français ; NFC ; graine `StableSeed` ; borne de trames `maxSteps` = 4 par
 octet de texte + 50, sans dépasser `max_len − baked_T − 1`, au lieu des 500
@@ -547,7 +547,7 @@ est retiré (il est calculé avec la trame suivante). Mêmes opérations, même
 ordre des tirages : mêmes codes.
 
 Chaque fichier modifié porte en tête la mention exigée par l'Apache-2.0
-(§4(b)) : « Modifié par Sillage … — voir ORIGINE.md ».
+(§4(b)) : « Modifié par Dysflow … — voir ORIGINE.md ».
 
 Le détail exact : `patches/magpie-mlx.patch` (`diff -ruN`, de l'amont vers
 `TTS/Magpie/`). Pour le refaire : télécharger

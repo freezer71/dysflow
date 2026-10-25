@@ -1,7 +1,7 @@
 import Foundation
 import UniformTypeIdentifiers
 
-/// Ce que sillage ouvre : Markdown, texte, PDF, images.
+/// Ce que dysflow ouvre : Markdown, texte, PDF, images.
 enum OpenableFiles {
     static let types: [UTType] = [markdown("md"), markdown("markdown"), .plainText, .text, .pdf, .image]
 

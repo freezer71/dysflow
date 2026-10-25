@@ -12,7 +12,7 @@ use crate::logging::StderrRedirect;
 use crate::{doc, tr, tts};
 
 #[derive(Parser, Debug, Default)]
-#[command(name = "sillage", version, disable_help_flag = true, disable_version_flag = true)]
+#[command(name = "dysflow", version, disable_help_flag = true, disable_version_flag = true)]
 pub struct Args {
     /// Fichier à lire. En son absence, le contenu est lu sur l'entrée standard.
     pub file: Option<PathBuf>,
@@ -69,7 +69,7 @@ pub struct Args {
     #[arg(long, hide = true)]
     pub show_config: bool,
 
-    /// Vérifie que Kokoro se charge (ONNX Runtime, sillage-espeak et ses
+    /// Vérifie que Kokoro se charge (ONNX Runtime, dysflow-espeak et ses
     /// données) puis quitte.
     #[arg(long, hide = true)]
     pub check_kokoro: bool,
@@ -90,7 +90,7 @@ pub struct Args {
     #[arg(long)]
     pub config: bool,
 
-    /// Met sillage à jour : installe la dernière version publiée.
+    /// Met dysflow à jour : installe la dernière version publiée.
     #[arg(long)]
     pub update: bool,
 }
@@ -169,8 +169,8 @@ pub fn command() -> Command {
         })
         .mut_arg("update", |a| {
             a.help(tr!(
-                "Update sillage: install the latest published version.",
-                "Met sillage à jour : installe la dernière version publiée."
+                "Update dysflow: install the latest published version.",
+                "Met dysflow à jour : installe la dernière version publiée."
             ))
             .help_heading(options)
         })
@@ -182,38 +182,38 @@ pub fn parse_args() -> Args {
     Args::from_arg_matches(&matches).unwrap_or_else(|e| e.exit())
 }
 
-/// Ce que `sillage` lancé seul dans un terminal affiche, avant de rendre la
+/// Ce que `dysflow` lancé seul dans un terminal affiche, avant de rendre la
 /// main : il n'y a rien à lire, mais tout à savoir pour lire.
 pub fn short_help() -> &'static str {
     tr!(
         "\
-sillage reads a text aloud, showing it word by word.
+dysflow reads a text aloud, showing it word by word.
 
 Four ways to read:
-  sillage document.md        a file: markdown, text, PDF, image
-  command | sillage          what a command writes, as it goes
-  sillage --clip             the clipboard
-  the sillage app (macOS)    ⌃⌥Space reads the selection
+  dysflow document.md        a file: markdown, text, PDF, image
+  command | dysflow          what a command writes, as it goes
+  dysflow --clip             the clipboard
+  the dysflow app (macOS)    ⌃⌥Space reads the selection
 
-Settings: sillage --config · update: sillage --update
-All options: sillage --help
+Settings: dysflow --config · update: dysflow --update
+All options: dysflow --help
 ",
         "\
-sillage lit un texte à voix haute, en le montrant mot à mot.
+dysflow lit un texte à voix haute, en le montrant mot à mot.
 
 Quatre manières de lire :
-  sillage document.md        un fichier : markdown, texte, PDF, image
-  commande | sillage         ce qu'une commande écrit, au fil de l'eau
-  sillage --clip             le presse-papiers
-  l'app sillage (macOS)      ⌃⌥Espace lit la sélection
+  dysflow document.md        un fichier : markdown, texte, PDF, image
+  commande | dysflow         ce qu'une commande écrit, au fil de l'eau
+  dysflow --clip             le presse-papiers
+  l'app dysflow (macOS)      ⌃⌥Espace lit la sélection
 
-Réglages : sillage --config · mise à jour : sillage --update
-Toutes les options : sillage --help
+Réglages : dysflow --config · mise à jour : dysflow --update
+Toutes les options : dysflow --help
 "
     )
 }
 
-/// Vrai quand `sillage` est lancé seul dans un terminal : ni fichier, ni
+/// Vrai quand `dysflow` est lancé seul dans un terminal : ni fichier, ni
 /// presse-papiers, ni réglages demandés, et rien qui arrive par un tube.
 pub fn nothing_to_read(args: &Args, stdin_is_terminal: bool) -> bool {
     args.file.is_none() && !args.clip && !args.config && stdin_is_terminal
@@ -752,8 +752,8 @@ mod tests {
 
     #[test]
     fn nothing_to_read_only_from_a_bare_terminal() {
-        assert!(nothing_to_read(&Args::default(), true), "sillage seul, dans un terminal");
-        assert!(!nothing_to_read(&Args::default(), false), "cat notes.md | sillage lit le tube");
+        assert!(nothing_to_read(&Args::default(), true), "dysflow seul, dans un terminal");
+        assert!(!nothing_to_read(&Args::default(), false), "cat notes.md | dysflow lit le tube");
         let file = Args { file: Some("notes.md".into()), ..Args::default() };
         assert!(!nothing_to_read(&file, true));
         let clip = Args { clip: true, ..Args::default() };
@@ -764,7 +764,7 @@ mod tests {
 
     #[test]
     fn the_short_help_names_the_four_ways_to_read() {
-        for way in ["sillage document.md", "| sillage", "sillage --clip", "app", "--config", "--help"] {
+        for way in ["dysflow document.md", "| dysflow", "dysflow --clip", "app", "--config", "--help"] {
             let help = short_help();
             assert!(help.contains(way), "{way} manque :\n{help}");
         }
@@ -804,7 +804,7 @@ mod tests {
     #[test]
     fn hidden_options_are_still_accepted() {
         let args = Args::try_parse_from([
-            "sillage", "--pitch", "0.5", "--language", "en", "--engine", "system", "--sessions", "2",
+            "dysflow", "--pitch", "0.5", "--language", "en", "--engine", "system", "--sessions", "2",
             "--prefetch", "4", "--code-blocks", "skip", "--no-autoplay", "--show-config",
         ])
         .expect("toujours acceptées");

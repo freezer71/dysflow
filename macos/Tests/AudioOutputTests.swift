@@ -1,5 +1,5 @@
 import XCTest
-@testable import Sillage
+@testable import Dysflow
 
 final class AudioOutputTests: XCTestCase {
     private let outputs = AudioOutputsView(devices: ["Haut-parleurs MacBook Pro", "AirPods Pro"],

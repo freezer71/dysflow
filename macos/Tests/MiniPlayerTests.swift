@@ -1,7 +1,7 @@
 import KeyboardShortcuts
 import SwiftUI
 import XCTest
-@testable import Sillage
+@testable import Dysflow
 
 @MainActor
 final class PlaybackTimeTests: XCTestCase {
@@ -36,7 +36,7 @@ final class MiniPlayerViewTests: XCTestCase {
     /// (« 99:59 », « -99:59 », « 10,0× »), tient dans sa fenêtre ; la
     /// timeline garde au moins 30 pt.
     func testTheAssembledBarFitsAtTheWorstValues() {
-        let model = ReaderModel(reader: SillageReader.silent())
+        let model = ReaderModel(reader: DysflowReader.silent())
         model.open(text: "Un. Deux.", source: "test")
         XCTAssertTrue(waitUntil { model.refresh(); return model.snapshot.hasDocument })
         var worst = model.snapshot
@@ -70,7 +70,7 @@ final class MiniPlayerViewTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(BarButtonMetrics.target, 32)
         XCTAssertGreaterThanOrEqual(BarButtonMetrics.disc, 36)
         XCTAssertTrue((16...17).contains(BarButtonMetrics.glyph))
-        let model = ReaderModel(reader: SillageReader.silent())
+        let model = ReaderModel(reader: DysflowReader.silent())
         for view in [AnyView(PlayButton(model: model)),
                      AnyView(TransportButton(item: SentenceTransport.next) { _ in })] {
             let size = NSHostingView(rootView: view).fittingSize
@@ -95,7 +95,7 @@ final class MiniPlayerViewTests: XCTestCase {
         XCTAssertEqual(MiniTop.choose(message: nil, hasDocument: false), .empty)
         XCTAssertEqual(MiniTop.choose(message: "Aucune ligne de ce côté", hasDocument: true),
                        .message("Aucune ligne de ce côté"))
-        let model = ReaderModel(reader: SillageReader.silent())
+        let model = ReaderModel(reader: DysflowReader.silent())
         model.open(text: "Un. Deux.", source: "test")
         XCTAssertTrue(waitUntil { model.refresh(); return model.snapshot.hasDocument })
         let bar = MiniPlayerBar(model: model, snapshot: model.snapshot,
@@ -113,9 +113,9 @@ final class MiniPlayerViewTests: XCTestCase {
 
     /// Le titre de ce qui est lu ; sans document, le nom de l'app.
     func testTheMiniShowsWhatIsRead() {
-        XCTAssertEqual(MiniTitle.text(hasDocument: true, title: "Le sillage"), "Le sillage")
-        XCTAssertEqual(MiniTitle.text(hasDocument: true, title: "  "), "sillage")
-        XCTAssertEqual(MiniTitle.text(hasDocument: false, title: "Le sillage"), "sillage")
+        XCTAssertEqual(MiniTitle.text(hasDocument: true, title: "Le dysflow"), "Le dysflow")
+        XCTAssertEqual(MiniTitle.text(hasDocument: true, title: "  "), "dysflow")
+        XCTAssertEqual(MiniTitle.text(hasDocument: false, title: "Le dysflow"), "dysflow")
     }
 
     /// Le mini avance par phrase, comme le lecteur, et s'agrandit.
@@ -132,7 +132,7 @@ final class MiniPlayerViewTests: XCTestCase {
     }
 
     func testTheEmptyBarFitsItsHeight() {
-        let model = ReaderModel(reader: SillageReader.silent())
+        let model = ReaderModel(reader: DysflowReader.silent())
         let host = NSHostingView(rootView: MiniPlayerView(model: model, theme: .paper) { _ in })
         host.frame = CGRect(origin: .zero, size: MiniPlacement.size)
         host.layoutSubtreeIfNeeded()

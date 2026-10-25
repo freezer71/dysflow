@@ -1,5 +1,5 @@
 import XCTest
-@testable import Sillage
+@testable import Dysflow
 
 /// ↑ ↓ d'une ligne affichée à l'autre : le mot visé est le premier de la
 /// ligne voisine, telle que TextKit 2 l'a vraiment coupée.
@@ -23,7 +23,7 @@ final class LineNavigationTests: XCTestCase {
 
     /// Met le texte en page dans une vue étroite, qui force les retours à la ligne.
     private func lay(_ markdown: String, width: CGFloat = 220) {
-        let r = SillageReader.silent()
+        let r = DysflowReader.silent()
         r.openText(markdown: markdown, source: "t")
         XCTAssertTrue(waitUntil { r.snapshot().revision == 1 })
         layout = DocumentLayout.build(r.document(), style: style)
