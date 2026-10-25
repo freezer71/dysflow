@@ -90,10 +90,15 @@ if [ -z "$SIGNATURE" ] && [ -f .dysflow-signature ]; then
     SIGNATURE=$(head -1 .dysflow-signature)
 fi
 if [ -n "$SIGNATURE" ]; then
+    # Runtime durci, avec les droits de macos/Dysflow.entitlements (le micro) :
+    # la notarisation l'exige. L'horodatage aussi, mais il demande le réseau :
+    # seulement pour un certificat Developer ID, celui qu'on distribue.
+    options=(--force --options runtime --sign "$SIGNATURE")
+    case "$SIGNATURE" in "Developer ID"*) options+=(--timestamp) ;; esac
     # Du plus profond au plus haut : l'aide, le framework, puis l'app.
-    codesign --force --sign "$SIGNATURE" "$APP_BUILT/Contents/Helpers/dysflow-espeak"
-    codesign --force --sign "$SIGNATURE" "$APP_BUILT/Contents/Frameworks/KokoroMLX.framework"
-    codesign --force --sign "$SIGNATURE" "$APP_BUILT"
+    codesign "${options[@]}" "$APP_BUILT/Contents/Helpers/dysflow-espeak"
+    codesign "${options[@]}" "$APP_BUILT/Contents/Frameworks/KokoroMLX.framework"
+    codesign "${options[@]}" --entitlements macos/Dysflow.entitlements "$APP_BUILT"
     codesign --verify --deep --strict "$APP_BUILT"
     echo "Signée : $(codesign -dvv "$APP_BUILT" 2>&1 | sed -n 's/^Authority=//p' | head -1)"
 else
