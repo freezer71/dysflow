@@ -29,4 +29,12 @@ default_view = "icon-view"
 # Les icônes : les centres de scripts/dmg/fond.py.
 icon_size = 128
 text_size = 14
-icon_locations = {nom: (170, 165), "Applications": (470, 165)}
+icon_locations = {
+    nom: (170, 165),
+    "Applications": (470, 165),
+    # Les fichiers cachés du volume, sous les deux icônes : si le Finder
+    # affiche les fichiers cachés (⌘⇧.), ils ne poussent rien ni ne font
+    # défiler la fenêtre. Plus loin, le Finder agrandit la vue jusqu'à eux.
+    ".background.tiff": (170, 165),
+    ".VolumeIcon.icns": (470, 165),
+}
