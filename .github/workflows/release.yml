@@ -97,7 +97,7 @@ jobs:
           xcodebuild -version
       - name: Outils
         run: |
-          brew install xcodegen
+          brew install xcodegen uv
           rustup update stable --no-self-update
           rustup default stable
       - name: Metal Toolchain (noyaux MLX)

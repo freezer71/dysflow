@@ -65,12 +65,16 @@ fi
 # ditto garde les liens symboliques et les signatures des frameworks.
 ditto -c -k --keepParent "$APP" "$zip"
 
-# Le .dmg : l'app et un raccourci vers Applications, côte à côte.
-fond=$(mktemp -d)
-trap 'rm -rf "$fond"' EXIT
-ditto "$APP" "$fond/Dysflow.app"
-ln -s /Applications "$fond/Applications"
-hdiutil create -quiet -volname "Dysflow $version" -srcfolder "$fond" -fs HFS+ -format UDZO -ov "$dmg"
+# Le .dmg : la fenêtre dessinée (assets/dmg, scripts/dmg/fond.py), l'app à
+# gauche, Applications à droite, une flèche entre les deux. dmgbuild écrit
+# la mise en page sans piloter le Finder : elle tient aussi sur la CI.
+if command -v dmgbuild >/dev/null; then
+    dmgbuild=(dmgbuild)
+else
+    dmgbuild=(uvx --from "dmgbuild==1.6.5" dmgbuild)
+fi
+"${dmgbuild[@]}" -s scripts/dmg/reglages.py -D app="$APP" -D fond=assets/dmg/fond.png \
+    -D icone=assets/logo/dysflow.icns "Dysflow $version" "$dmg" >/dev/null
 if [ -n "${DYSFLOW_SIGNATURE:-}" ]; then
     codesign --force --timestamp --sign "$DYSFLOW_SIGNATURE" "$dmg"
 fi
