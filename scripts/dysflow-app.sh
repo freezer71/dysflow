@@ -13,7 +13,7 @@ set -eu
 APP="${DYSFLOW_APP:-/Applications/Dysflow.app}"
 # dysflow --update : la dernière version publiée, par l'installateur officiel.
 if [ "${1:-}" = --update ]; then
-    curl -fsSL https://sillage.koumalabs.org/install.sh | sh
+    curl -fsSL https://dysflow.koumalabs.org/install.sh | sh
     exit
 fi
 if [ ! -d "$APP" ]; then

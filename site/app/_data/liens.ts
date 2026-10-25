@@ -9,7 +9,7 @@ const derniere = `${depot}/releases/latest/download`;
 
 /** La commande d'installation, Mac et Linux (install.sh, à la racine du dépôt). */
 export const commandeInstallation =
-  "curl -fsSL https://sillage.koumalabs.org/install.sh | sh";
+  "curl -fsSL https://dysflow.koumalabs.org/install.sh | sh";
 
 export const commandeDesinstallation = `${commandeInstallation} -s -- --uninstall`;
 

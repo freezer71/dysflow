@@ -36,7 +36,7 @@ téléchargés, les positions et les réglages de ces anciens noms ;
 Sur un Mac à puce Apple comme sous Linux (x86_64, ARM64), une commande :
 
 ```bash
-curl -fsSL https://sillage.koumalabs.org/install.sh | sh
+curl -fsSL https://dysflow.koumalabs.org/install.sh | sh
 ```
 
 Elle prend la dernière publication pour votre système, vérifie son empreinte

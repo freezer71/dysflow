@@ -11,7 +11,7 @@ use std::process::Command;
 use anyhow::{bail, Context, Result};
 
 /// L'installateur, servi par le site depuis la branche main du dépôt.
-pub const INSTALLER: &str = "https://sillage.koumalabs.org/install.sh";
+pub const INSTALLER: &str = "https://dysflow.koumalabs.org/install.sh";
 
 /// Télécharge et lance l'installateur, sortie et erreurs à l'écran.
 pub fn run() -> Result<()> {

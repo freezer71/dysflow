@@ -1,7 +1,7 @@
 #!/bin/sh
 # Installe dysflow en une commande, depuis la dernière publication GitHub :
 #
-#   curl -fsSL https://sillage.koumalabs.org/install.sh | sh
+#   curl -fsSL https://dysflow.koumalabs.org/install.sh | sh
 #
 # Sur un Mac à puce Apple : l'app dans /Applications (ou ~/Applications), et la
 # commande `dysflow` qui l'ouvre. Sous Linux (x86_64, ARM64) : le lecteur au
@@ -158,7 +158,7 @@ elif [ -x "$PREFIX/lib/dysflow/dysflow" ]; then
 fi
 if [ -n "$installee" ] && [ "$installee" = "$version" ] && [ -z "$FORCER" ]; then
     printf '%s✓ %s%s\n' "$vert$gras" "$(t "dysflow $version is already up to date." "dysflow $version est déjà à jour.")" "$fin" >&2
-    printf '%s %scurl -fsSL https://sillage.koumalabs.org/install.sh | sh -s -- --force%s\n' "$(t 'To reinstall anyway:' 'Pour réinstaller quand même :')" "$gras" "$fin" >&2
+    printf '%s %scurl -fsSL https://dysflow.koumalabs.org/install.sh | sh -s -- --force%s\n' "$(t 'To reinstall anyway:' 'Pour réinstaller quand même :')" "$gras" "$fin" >&2
     exit 0
 fi
 if [ -n "$installee" ] && [ "$installee" != "$version" ]; then
@@ -221,7 +221,7 @@ $(t "# The Mac \`dysflow\` command: opens the app, not the terminal.
 # Installée par install.sh. Pour la retirer : rm \"$commande\"")
 APP="\${DYSFLOW_APP:-$apps/Dysflow.app}"
 if [ "\${1:-}" = --update ]; then
-    curl -fsSL https://sillage.koumalabs.org/install.sh | PREFIX="$PREFIX" sh
+    curl -fsSL https://dysflow.koumalabs.org/install.sh | PREFIX="$PREFIX" sh
     exit
 fi
 [ -d "\$APP" ] || { echo "dysflow: \$APP $introuvable" >&2; exit 1; }
@@ -263,4 +263,4 @@ else
     printf '\n%s %sdysflow document.md%s   ·   cat notes.md | dysflow\n' "$(t 'To read a file:' 'Pour lire un fichier :')" "$gras" "$fin" >&2
     printf '%s\n' "$(t 'The Kokoro voice (108 MB) is downloaded automatically the first time you read.' 'La voix Kokoro (108 Mo) se télécharge toute seule à la première lecture.')" >&2
 fi
-printf '%s %scurl -fsSL https://sillage.koumalabs.org/install.sh | sh -s -- --uninstall%s\n' "$(t 'To uninstall:' 'Pour désinstaller :')" "$gras" "$fin" >&2
+printf '%s %scurl -fsSL https://dysflow.koumalabs.org/install.sh | sh -s -- --uninstall%s\n' "$(t 'To uninstall:' 'Pour désinstaller :')" "$gras" "$fin" >&2

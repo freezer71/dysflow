@@ -1,6 +1,6 @@
 import { cacheLife } from "next/cache";
 
-// `curl -fsSL https://sillage.koumalabs.org/install.sh | sh` : le script tel
+// `curl -fsSL https://dysflow.koumalabs.org/install.sh | sh` : le script tel
 // qu'il est sur la branche main du dépôt. Relu sur GitHub au plus une fois
 // par minute (cacheLife « minutes ») : un changement poussé sur main est
 // servi dans la minute — plus les quelques minutes du cache de

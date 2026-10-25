@@ -7,7 +7,7 @@ export type Lang = "en" | "fr";
 export type Page = "accueil" | "modeles" | "telecharger";
 
 /** L'adresse publique du site, base des adresses absolues des métadonnées. */
-export const site = "https://sillage.koumalabs.org";
+export const site = "https://dysflow.koumalabs.org";
 
 const chemins: Record<Lang, Record<Page, string>> = {
   en: { accueil: "/", modeles: "/models", telecharger: "/download" },
