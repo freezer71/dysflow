@@ -125,6 +125,16 @@ html[data-espacement="large"] :is(h1, h2, h3, h4) {
   line-height: 1.25 !important;
 }
 
+/* Le logo : la tête seule sur fond clair, l'icône sur sa plaque en sombre. */
+.logo-sombre,
+html[data-fond="sombre"] .logo-clair {
+  display: none;
+}
+
+html[data-fond="sombre"] .logo-sombre {
+  display: block;
+}
+
 html[data-animations="non"] {
   scroll-behavior: auto;
 }

@@ -7,32 +7,48 @@ import { Confort } from "./Confort";
 /** La marque, redessinée à l'encre du thème (le SVG de `assets/logo`). */
 const reseau = [[22.5, 21, 2], [23.5, 33.5, 1.8], [36, 18.5, 2], [33, 35, 1.7], [52, 21.5, 2.1]];
 
-export function Logo({ className = "size-7" }: { className?: string }) {
+const tete =
+  "M 23 55 C 22 49 17 44 16.5 36 C 15.5 22 24 12.5 34 12.5 C 42 12.5 46 18.5 45.5 26 C 45.3 27.8 44.3 28.8 44.8 30.5 C 46 33 49.5 35 49.8 36.3 C 50 37.3 48 37.8 46.8 38 C 47.8 39 47.8 40 46.6 40.8 C 47.6 41.5 47.4 42.6 46.4 43.3 C 46 44 46.6 45.2 46.6 46 C 46.4 48 43 48.6 40 48.4 C 38.6 50.5 39 53 39.8 55.5";
+
+/** La tête et son réseau. `liseré` cerne le réseau de la couleur de la
+ *  tête, pour qu'il se détache d'un fond clair. */
+function Marque({ encre, liseré }: { encre: string; liseré: number }) {
   return (
-    <svg viewBox="0 0 64 64" className={className} aria-hidden="true">
-      <path
-        d="M 23 55 C 22 49 17 44 16.5 36 C 15.5 22 24 12.5 34 12.5 C 42 12.5 46 18.5 45.5 26 C 45.3 27.8 44.3 28.8 44.8 30.5 C 46 33 49.5 35 49.8 36.3 C 50 37.3 48 37.8 46.8 38 C 47.8 39 47.8 40 46.6 40.8 C 47.6 41.5 47.4 42.6 46.4 43.3 C 46 44 46.6 45.2 46.6 46 C 46.4 48 43 48.6 40 48.4 C 38.6 50.5 39 53 39.8 55.5"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="3.2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      {/* Le réseau en citron, cerné de l'encre pour se détacher d'un fond clair. */}
+    <>
+      <path d={tete} fill="none" stroke={encre} strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" />
       {[
-        { couleur: "currentColor", liseré: 0.7 },
-        { couleur: "var(--citron)", liseré: 0 },
-      ].map(({ couleur, liseré }) => (
-        <g key={couleur} fill={couleur} stroke={couleur} strokeWidth={1.5 + 2 * liseré} strokeLinecap="round">
+        ...(liseré ? [{ couleur: encre, l: liseré }] : []),
+        { couleur: "var(--citron)", l: 0 },
+      ].map(({ couleur, l }) => (
+        <g key={couleur} fill={couleur} stroke={couleur} strokeWidth={1.5 + 2 * l} strokeLinecap="round">
           {reseau.map(([x, y]) => (
             <line key={`${x}-${y}`} x1="30" y1="27" x2={x} y2={y} />
           ))}
           {[[30, 27, 3.8], ...reseau].map(([x, y, r]) => (
-            <circle key={`${x}-${y}`} cx={x} cy={y} r={r + liseré} stroke="none" />
+            <circle key={`${x}-${y}`} cx={x} cy={y} r={r + l} stroke="none" />
           ))}
         </g>
       ))}
-    </svg>
+    </>
+  );
+}
+
+/** Le logo. Sur fond clair, la tête seule, à l'encre. En sombre, l'icône de
+ *  l'app : la tête claire sur sa plaque (`assets/logo/dysflow-app-dark.svg`).
+ *  Les deux sont rendus ; le CSS montre le bon (`.logo-clair`, `.logo-sombre`). */
+export function Logo({ className = "size-7" }: { className?: string }) {
+  return (
+    <>
+      <svg viewBox="0 0 64 64" className={`logo-clair ${className}`} aria-hidden="true">
+        <Marque encre="currentColor" liseré={0.7} />
+      </svg>
+      <svg viewBox="0 0 64 64" className={`logo-sombre ${className}`} aria-hidden="true">
+        <rect x="6.25" y="6.25" width="51.5" height="51.5" rx="11.5" fill="#262625" />
+        <g transform="translate(32 32) scale(0.9) translate(-32 -32)">
+          <Marque encre="#F2F2EF" liseré={0} />
+        </g>
+      </svg>
+    </>
   );
 }
 
