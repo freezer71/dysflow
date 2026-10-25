@@ -2,7 +2,8 @@
 # - le lecteur au terminal pour Linux (x86_64 et ARM64) : scripts/install.sh
 #   assemble le paquet (ocr, kokoro-onnx), l'installe et le vérifie depuis / ;
 #   le dossier dist/ part en archive, avec son empreinte ;
-# - l'app macOS : construite (signature ad hoc), emballée en .zip (pour
+# - l'app macOS : construite (signée Developer ID et notariée si les secrets
+#   MACOS_* et NOTARY_* sont là, sinon ad hoc), emballée en .zip (pour
 #   install.sh à la racine, `curl | sh`) et en .dmg, chacun avec son empreinte.
 name: Release
 
@@ -113,9 +114,43 @@ jobs:
             echo "Le tag $TAG, Cargo.toml ($version) et macos/project.yml ($app) ne concordent pas" >&2
             exit 1
           fi
+      - name: Certificat Developer ID et clé de notarisation
+        # Sans les secrets (une bifurcation du dépôt…), rien ici : l'app est
+        # signée ad hoc, comme avant, et n'est pas notariée.
+        env:
+          CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+          SIGNATURE: ${{ secrets.MACOS_SIGNATURE }}
+          NOTARY_KEY: ${{ secrets.NOTARY_KEY }}
+        run: |
+          if [ -z "$CERT_P12" ] || [ -z "$SIGNATURE" ]; then
+            echo "Pas de certificat : signature ad hoc, sans notarisation"
+            exit 0
+          fi
+          # Un trousseau jetable, ouvert le temps du travail.
+          trousseau="$RUNNER_TEMP/signature.keychain-db"
+          mdp=$(openssl rand -hex 24)
+          printf '%s' "$CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$mdp" "$trousseau"
+          security set-keychain-settings -lut 3600 "$trousseau"
+          security unlock-keychain -p "$mdp" "$trousseau"
+          security import "$RUNNER_TEMP/cert.p12" -k "$trousseau" -P "$CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$mdp" "$trousseau" >/dev/null
+          security list-keychains -d user -s "$trousseau" "$HOME/Library/Keychains/login.keychain-db"
+          rm "$RUNNER_TEMP/cert.p12"
+          security find-identity -v -p codesigning "$trousseau" | grep -q "$SIGNATURE" \
+            || { echo "Le certificat « $SIGNATURE » n'est pas dans MACOS_CERT_P12" >&2; exit 1; }
+          echo "DYSFLOW_SIGNATURE=$SIGNATURE" >> "$GITHUB_ENV"
+          if [ -n "$NOTARY_KEY" ]; then
+            printf '%s' "$NOTARY_KEY" | base64 --decode > "$RUNNER_TEMP/notarisation.p8"
+            echo "NOTARY_KEY_PATH=$RUNNER_TEMP/notarisation.p8" >> "$GITHUB_ENV"
+          fi
       - name: Construction de l'app
         run: ./scripts/build-macos.sh
-      - name: Emballage (.zip et .dmg)
+      - name: Emballage (.zip et .dmg), notarisation
+        env:
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER: ${{ secrets.NOTARY_ISSUER }}
         run: ./scripts/package-macos.sh
       - name: install.sh installe l'archive
         # Le script de la racine, sur l'archive qu'on vient de faire, servie
@@ -129,6 +164,10 @@ jobs:
           DYSFLOW_DEPOT=http://localhost:8765 DYSFLOW_VERSION="${TAG#v}" \
             DYSFLOW_APPLICATIONS="$RUNNER_TEMP/apps" PREFIX="$RUNNER_TEMP/prefix" sh install.sh
           codesign --verify --deep --strict "$RUNNER_TEMP/apps/Dysflow.app"
+          if [ -n "${NOTARY_KEY_PATH:-}" ]; then
+            # Notariée : Gatekeeper l'accepte telle qu'on la télécharge.
+            spctl --assess --type execute -vv "$RUNNER_TEMP/apps/Dysflow.app"
+          fi
           test -x "$RUNNER_TEMP/prefix/bin/dysflow"
       - uses: actions/upload-artifact@v4
         with:
