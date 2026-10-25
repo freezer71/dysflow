@@ -305,10 +305,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         installDictation()
-        // Les raccourcis d'abord : l'alerte d'accessibilité bloque (runModal).
         installShortcuts()
         LoginItem.enableOnFirstLaunch()
-        Onboarding.runIfNeeded()
+        // Le micro et l'Accessibilité, demandés d'emblée s'ils manquent.
+        Task { await Onboarding.runIfNeeded() }
         startKokoro()
         // Lancé avec un fichier : le lecteur sur lui. Lancé à la main : le
         // lecteur. À la connexion : rien.

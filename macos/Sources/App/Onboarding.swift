@@ -1,28 +1,34 @@
 import AppKit
 import ApplicationServices
+import AVFoundation
 
-/// Au premier lancement, dire pourquoi Dysflow demande l'accessibilité, et
-/// mener au bon réglage. Sans elle, le presse-papiers seul.
+/// Au lancement, demander d'emblée ce qui manque : le micro (la question de
+/// macOS), puis l'Accessibilité (macOS inscrit Dysflow et ouvre son volet).
+/// Sans cela, il fallait aller dans les réglages, ou lancer une dictée.
+///
+/// Une fois par version : une nouvelle signature fait oublier à macOS ce qui
+/// était accordé, et la question revient d'elle-même. Mais un refus n'est pas
+/// reposé à chaque lancement ; le menu le rappelle, les réglages y mènent.
 @MainActor
 enum Onboarding {
-    private static let doneKey = "accessibilityExplained"
+    private static let askedKey = "autorisationsDemandeesPourLaVersion"
     private static let remindedKey = "accessibilityReminded"
 
-    static func runIfNeeded() {
-        guard !AXIsProcessTrusted(), !UserDefaults.standard.bool(forKey: doneKey) else { return }
-        UserDefaults.standard.set(true, forKey: doneKey)
-        NSApp.activate()
-        let alert = NSAlert()
-        alert.messageText = String(localized: "Read what you select")
-        alert.informativeText = String(localized: """
-        To read selected text in any app, Dysflow needs the Accessibility \
-        permission. Without it, it only reads what you copy.
-        """)
-        alert.addButton(withTitle: String(localized: "Open System Settings"))
-        alert.addButton(withTitle: String(localized: "Later"))
-        if alert.runModal() == .alertFirstButtonReturn {
-            let options = ["AXTrustedCheckOptionPrompt": true] as CFDictionary
-            _ = AXIsProcessTrustedWithOptions(options)
+    static func runIfNeeded() async {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
+        let defaults = UserDefaults.standard
+        guard defaults.string(forKey: askedKey) != version else { return }
+        let missing = Permission.relevant.filter { $0.state != .granted }
+        guard !missing.isEmpty else { return }
+        defaults.set(version, forKey: askedKey)
+        // Le micro d'abord : sa question est une fenêtre de macOS qu'on attend.
+        // Refusé une fois, il n'est plus redemandé ici.
+        if missing.contains(.microphone), Permission.microphone.state == .notAsked {
+            NSApp.activate()
+            _ = await AVCaptureDevice.requestAccess(for: .audio)
+        }
+        if missing.contains(.accessibility) {
+            await Permission.accessibility.request()
         }
     }
 

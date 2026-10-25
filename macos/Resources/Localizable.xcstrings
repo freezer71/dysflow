@@ -1552,16 +1552,6 @@
         }
       }
     },
-    "Later" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Plus tard"
-          }
-        }
-      }
-    },
     "Latest trials" : {
       "localizations" : {
         "fr" : {
@@ -2092,16 +2082,6 @@
         }
       }
     },
-    "Open System Settings" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ouvrir les réglages"
-          }
-        }
-      }
-    },
     "Open System Settings…" : {
       "localizations" : {
         "fr" : {
@@ -2440,16 +2420,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Lisez la phrase à voix haute : l'essai s'arrête seul quand elle est dite, ou quand vous vous taisez. Le texte reconnu s'affiche ici : il n'est saisi nulle part. Le modèle essayé ne change pas celui de la dictée."
-          }
-        }
-      }
-    },
-    "Read what you select" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Lire ce que vous sélectionnez"
           }
         }
       }
@@ -3422,16 +3392,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "À télécharger"
-          }
-        }
-      }
-    },
-    "To read selected text in any app, Dysflow needs the Accessibility permission. Without it, it only reads what you copy." : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Pour lire le texte sélectionné dans n'importe quelle application, Dysflow a besoin de l'autorisation Accessibilité. Sans elle, il lit seulement ce que vous copiez."
           }
         }
       }
