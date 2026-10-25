@@ -21,7 +21,7 @@ private func floorDiv(_ a: MLXArray, _ b: Int) -> MLXArray {
     return floor(a.asType(.float32) / Float(b)).asType(.int32)
 }
 
-/// Sillage : ce que fait `MLXLMCommon.attentionWithCacheUpdate` pour un
+/// Dysflow : ce que fait `MLXLMCommon.attentionWithCacheUpdate` pour un
 /// cache ordinaire (le seul ici) : le cache reçoit les clés et valeurs de
 /// l'étape, puis l'attention porte sur tout ce qu'il tient. Sans cache,
 /// l'attention sur l'étape seule.
@@ -934,7 +934,7 @@ public class Qwen3ASRTextModel: Module {
         h: MLXArray, cache: KVCache?
     ) -> MLXFast.ScaledDotProductAttentionMaskMode {
         let n = h.dim(1)
-        // Sillage : sans cache quantifié (seul `KVCacheSimple` existe ici),
+        // Dysflow : sans cache quantifié (seul `KVCacheSimple` existe ici),
         // le masque de `MLXLMCommon.createAttentionMask` : causal dès deux
         // positions (aligné à droite sur les clés du cache), aucun sinon.
         _ = cache
@@ -951,7 +951,7 @@ public class Qwen3ASRModel: Module {
     @ModuleInfo(key: "model") var model: Qwen3ASRTextModel
     @ModuleInfo(key: "lm_head") var lmHead: Linear?
 
-    /// Sillage : notre encodeur BPE (`TTS/Qwen3TTS/Qwen2BPETokenizer.swift`)
+    /// Dysflow : notre encodeur BPE (`TTS/Qwen3TTS/Qwen2BPETokenizer.swift`)
     /// au lieu de swift-transformers.
     public var tokenizer: Qwen2BPETokenizer?
 
@@ -1211,7 +1211,7 @@ public class Qwen3ASRModel: Module {
             fatalError("Tokenizer not loaded")
         }
 
-        // Sillage : le gabarit est encodé sans ses `<|audio_pad|>` (des
+        // Dysflow : le gabarit est encodé sans ses `<|audio_pad|>` (des
         // centaines : 13 par seconde d'audio), puis leur id
         // (`audio_token_id`) est inséré tel quel après `<|audio_start|>`.
         // Mêmes ids que l'encodage du gabarit entier (le découpage se fait
@@ -1686,7 +1686,7 @@ public class Qwen3ASRModel: Module {
 
     // MARK: - Model Loading
 
-    /// Sillage : synchrone (l'`async` de l'amont n'attendait que
+    /// Dysflow : synchrone (l'`async` de l'amont n'attendait que
     /// swift-transformers). Le vocabulaire est lu par `Qwen2BPETokenizer`
     /// (`vocab.json`, `merges.txt`, `tokenizer_config.json`) : le chargeur
     /// n'écrit plus de `tokenizer.json` dans le dossier du modèle.

@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct SillageApp: App {
+struct DysflowApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
 
     var body: some Scene {
@@ -12,7 +12,7 @@ struct SillageApp: App {
             // Toujours présente : c'est elle qui donne l'action d'ouverture
             // des réglages, panneau masqué compris.
             Image(nsImage: LogoMark.templateImage())
-                .accessibilityLabel("sillage")
+                .accessibilityLabel("dysflow")
                 .providesSettingsOpener()
         }
         Settings {

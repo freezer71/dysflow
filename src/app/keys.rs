@@ -236,7 +236,7 @@ mod tests {
 
     #[test]
     fn closing_the_settings_with_nothing_to_read_quits() {
-        // `sillage --config` seul : derrière la page, il n'y a rien.
+        // `dysflow --config` seul : derrière la page, il n'y a rien.
         let mut app = app_reading("");
         app.open_config();
         press(&mut app, KeyCode::Esc);

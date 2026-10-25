@@ -1,6 +1,6 @@
 import SwiftUI
 import XCTest
-@testable import Sillage
+@testable import Dysflow
 
 @MainActor
 final class BarControlsTests: XCTestCase {

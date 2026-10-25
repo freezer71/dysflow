@@ -10,10 +10,10 @@ curl -fsSL https://sillage.koumalabs.org/install.sh | sh
 ```
 
 Elle choisit l'archive de votre système, vérifie son empreinte SHA-256 et
-installe sans `sudo` : l'app dans `/Applications` et la commande `sillage` sur
+installe sans `sudo` : l'app dans `/Applications` et la commande `dysflow` sur
 Mac, le lecteur au terminal dans `~/.local` sous Linux.
 
-**Ou, sur Mac, le `.dmg`** ci-dessous : l'ouvrir, glisser Sillage dans
+**Ou, sur Mac, le `.dmg`** ci-dessous : l'ouvrir, glisser Dysflow dans
 Applications. L'app n'est pas encore notariée par Apple : au premier
 lancement, macOS la bloque. Ouvrez *Réglages Système › Confidentialité et
 sécurité* et cliquez sur *Ouvrir quand même* (la commande ci-dessus évite ce

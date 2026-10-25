@@ -12,30 +12,30 @@
 #include <stdlib.h>
 #include <string.h>
 
-static _Thread_local unsigned long long sillage_sonic_heap_calls = 0;
+static _Thread_local unsigned long long dysflow_sonic_heap_calls = 0;
 
-unsigned long long sillage_sonic_heap_calls_on_this_thread(void) {
-    return sillage_sonic_heap_calls;
+unsigned long long dysflow_sonic_heap_calls_on_this_thread(void) {
+    return dysflow_sonic_heap_calls;
 }
 
-static void *sillage_sonic_calloc(size_t num, size_t size) {
-    sillage_sonic_heap_calls++;
+static void *dysflow_sonic_calloc(size_t num, size_t size) {
+    dysflow_sonic_heap_calls++;
     return calloc(num, size);
 }
 
-static void *sillage_sonic_realloc(void *p, size_t size) {
-    sillage_sonic_heap_calls++;
+static void *dysflow_sonic_realloc(void *p, size_t size) {
+    dysflow_sonic_heap_calls++;
     return realloc(p, size);
 }
 
-static void sillage_sonic_free(void *p) {
+static void dysflow_sonic_free(void *p) {
     if (p) {
-        sillage_sonic_heap_calls++;
+        dysflow_sonic_heap_calls++;
     }
     free(p);
 }
 
-#define calloc sillage_sonic_calloc
-#define realloc sillage_sonic_realloc
-#define free sillage_sonic_free
+#define calloc dysflow_sonic_calloc
+#define realloc dysflow_sonic_realloc
+#define free dysflow_sonic_free
 #include "sonic.c"

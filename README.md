@@ -1,13 +1,24 @@
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="assets/logo/sillage-mark-dark.svg">
-  <img src="assets/logo/sillage-mark.svg" alt="" width="76">
+  <source media="(prefers-color-scheme: dark)" srcset="assets/logo/dysflow-mark-dark.svg">
+  <img src="assets/logo/dysflow-mark.svg" alt="" width="76">
 </picture>
 
-# sillage
+# dysflow
 
-Lecteur à voix haute, fait pour être suivi des yeux : il prend un document —
-texte, markdown, PDF, image —, le hiérarchise, et le lit à voix haute avec les
-contrôles d'un lecteur audio. Il existe sous deux formes :
+**Lire et écrire, sans s'épuiser.** dysflow est fait pour les personnes
+dyslexiques et neuroatypiques, et pour toutes celles à qui lire ou écrire
+demande un gros effort :
+
+- **pour lire**, il lit à voix haute ce qu'on lui donne — texte, PDF, courrier
+  scanné, capture d'écran — et surligne chaque mot au moment où il est dit :
+  on écoute, et les yeux suivent sans perdre la ligne ;
+- **pour écrire**, on dicte, et le texte s'écrit dans l'app au premier plan :
+  plus besoin de chercher l'orthographe ni de taper lettre à lettre.
+
+Gratuit, libre, et tout se calcule sur votre machine : rien ne part en ligne.
+Ce n'est pas un soin, c'est un outil de compensation, comme des lunettes.
+
+Il existe sous deux formes :
 
 - **l'app macOS**, avec sa fenêtre, la lecture de la sélection et la dictée ;
 - **le lecteur au terminal**, la version Linux (x86_64, ARM64), qui marche
@@ -16,9 +27,10 @@ contrôles d'un lecteur audio. Il existe sous deux formes :
 Les deux partagent le même moteur Rust : même découpage, même mise en mots,
 mêmes voix Kokoro.
 
-sillage s'appelait **sillon** jusqu'à la version 0.2.1. Au premier lancement,
-il reprend les modèles déjà téléchargés, les positions et les réglages de
-sillon ; `install.sh` retire l'ancienne app et l'ancienne commande.
+dysflow s'appelait **sillage** jusqu'à la version 0.5.0, et **sillon**
+jusqu'à la 0.2.1. Au premier lancement, il reprend les modèles déjà
+téléchargés, les positions et les réglages de ces anciens noms ;
+`install.sh` retire l'ancienne app et l'ancienne commande.
 
 ## Installer
 
@@ -30,18 +42,18 @@ curl -fsSL https://sillage.koumalabs.org/install.sh | sh
 
 Elle prend la dernière publication pour votre système, vérifie son empreinte
 SHA-256 et installe sans `sudo` : sur Mac, l'app dans `/Applications` et la
-commande `sillage` qui l'ouvre ; sous Linux, le lecteur au terminal dans
+commande `dysflow` qui l'ouvre ; sous Linux, le lecteur au terminal dans
 `~/.local`. La voix Kokoro s'installe ensuite toute seule.
 
-**Mettre à jour** : `sillage --update`, ou la même commande relancée. La
+**Mettre à jour** : `dysflow --update`, ou la même commande relancée. La
 dernière version remplace l'installée — modèles et réglages restent — ou le
 script dit qu'elle est déjà là (`sh -s -- --force` pour réinstaller quand
 même). Pour désinstaller,
 la même commande suivie de `-s -- --uninstall` (modèles et réglages
 restent).
 
-Sur Mac, la [publication](https://github.com/freezer71/sillage/releases/latest)
-porte aussi un `.dmg` : glisser Sillage dans Applications. L'app n'est pas
+Sur Mac, la [publication](https://github.com/freezer71/dysflow/releases/latest)
+porte aussi un `.dmg` : glisser Dysflow dans Applications. L'app n'est pas
 encore notariée : au premier lancement, *Réglages Système › Confidentialité et
 sécurité › Ouvrir quand même*.
 
@@ -50,7 +62,7 @@ Pour compiler depuis les sources, voir plus bas.
 ## Ce qu'il fait
 
 - **Lit ce qu'on lui donne.** Dans l'app : un fichier ouvert (⌘O), glissé sur
-  le lecteur ou passé à la commande `sillage`, le presse-papiers (⌘V), la
+  le lecteur ou passé à la commande `dysflow`, le presse-papiers (⌘V), la
   sélection d'une autre app par un raccourci global. Au terminal : un fichier,
   le presse-papiers (`--clip`), ou un flux pipé, lu au fil de l'eau — la
   lecture démarre avant la fin de l'entrée.
@@ -83,17 +95,17 @@ Il faut un Mac à puce Apple, Xcode, [XcodeGen](https://github.com/yonaskolb/Xco
 (`xcodebuild -downloadComponent MetalToolchain`).
 
 ```bash
-./scripts/build-macos.sh                 # macos/build/Release/Sillage.app
-cp -R macos/build/Release/Sillage.app /Applications/
-./scripts/install-app-command.sh         # la commande `sillage`, dans ~/.local/bin
+./scripts/build-macos.sh                 # macos/build/Release/Dysflow.app
+cp -R macos/build/Release/Dysflow.app /Applications/
+./scripts/install-app-command.sh         # la commande `dysflow`, dans ~/.local/bin
 ```
 
-`build-macos.sh` construit sillage-espeak, le moteur Rust et sa liaison Swift
-(`build-ffi.sh`), puis l'app. La commande `sillage` ouvre l'app :
-`sillage document.pdf` ouvre le lecteur sur le document et le lit (reprise à la
-dernière position), `sillage` seul ouvre le lecteur. Si `sillage` était le
+`build-macos.sh` construit dysflow-espeak, le moteur Rust et sa liaison Swift
+(`build-ffi.sh`), puis l'app. La commande `dysflow` ouvre l'app :
+`dysflow document.pdf` ouvre le lecteur sur le document et le lit (reprise à la
+dernière position), `dysflow` seul ouvre le lecteur. Si `dysflow` était le
 lecteur au terminal, le script prévient avant de le remplacer (`REMPLACER=1`
-pour ne pas demander). Pour la retirer, `rm ~/.local/bin/sillage`.
+pour ne pas demander). Pour la retirer, `rm ~/.local/bin/dysflow`.
 
 ### Les voix
 
@@ -110,10 +122,10 @@ reçu. Les modèles se téléchargent, se choisissent et se suppriment dans
 | MagpieTTS 357M | 302 Mo | 9 langues, dont français et anglais |
 
 Tous calculent sur la puce graphique, en MLX. Kokoro porte 30 voix, dont
-`p-fenrir60` (française, recommandée, livrée avec Sillage) et `af_bella`
+`p-fenrir60` (française, recommandée, livrée avec Dysflow) et `af_bella`
 (américaine, recommandée). Sans modèle installé, la voix de macOS lit.
 
-Les modèles vont dans `~/Library/Application Support/sillage/models/<famille>/`.
+Les modèles vont dans `~/Library/Application Support/dysflow/models/<famille>/`.
 
 **La vitesse agit sur le son, à la lecture**, sans changer la hauteur : la
 voix accélère sans monter dans les aigus. La synthèse se fait toujours à 1×,
@@ -125,7 +137,7 @@ moins vite que la parole (÷ √vitesse).
 ### La dictée
 
 Les modèles de dictée se téléchargent dans *Réglages › Dictée* ; aucun n'est
-livré avec Sillage. Le raccourci se règle dans *Dictée* ou *Raccourcis* : une
+livré avec Dysflow. Le raccourci se règle dans *Dictée* ou *Raccourcis* : une
 touche de modification seule, ou une combinaison.
 
 | Modèle | Taille |
@@ -195,30 +207,30 @@ tableau cellule par cellule.
 
 Les réglages vivent dans l'app (⌘,) : *Voix*, *Affichage*, *Dictée*,
 *Raccourcis*, *Autorisations*, *Démarrage*. Chaque changement s'enregistre
-aussitôt dans `~/Library/Application Support/sillage/config.toml`. Un
+aussitôt dans `~/Library/Application Support/dysflow/config.toml`. Un
 `config.toml` illisible n'est jamais réécrit.
 
 ## Le terminal (Linux)
 
-Le lecteur au terminal est la version Linux de sillage. Il marche aussi sur
+Le lecteur au terminal est la version Linux de dysflow. Il marche aussi sur
 Mac, à côté de l'app.
 
 ```bash
-sillage                                      # dit comment lire, puis rend la main
-cat notes.md | sillage
-sillage rapport.md --speed 1.5
-llm "explique-moi les monades" | sillage     # la lecture démarre avant la fin du flux
-sillage --config                             # les réglages
+dysflow                                      # dit comment lire, puis rend la main
+cat notes.md | dysflow
+dysflow rapport.md --speed 1.5
+llm "explique-moi les monades" | dysflow     # la lecture démarre avant la fin du flux
+dysflow --config                             # les réglages
 ```
 
-Lancé sans argument, `sillage` affiche les manières de lire et rend la main.
+Lancé sans argument, `dysflow` affiche les manières de lire et rend la main.
 `s` ouvre les réglages en cours de lecture, `?` l'aide. `--to-markdown` écrit
 le texte extrait d'un PDF ou d'une image sans lancer la lecture.
 
 ### Installation
 
 **Sous Linux (x86_64, ARM64)**, le paquet tout prêt est joint à chaque
-publication GitHub (`sillage-linux-<arch>.tar.gz`, glibc 2.39 ou
+publication GitHub (`dysflow-linux-<arch>.tar.gz`, glibc 2.39 ou
 plus) ; la marche à suivre est dans les notes de la publication. Un tag `v*`
 le construit et le publie (`.github/workflows/release.yml`).
 
@@ -230,26 +242,26 @@ cargo install --path .          # voix du système seule, build en quelques seco
 ```
 
 `install.sh` assemble le paquet (`package.sh`, ci-dessous) et le copie en
-entier dans `$PREFIX/lib/sillage` — le binaire, ONNX Runtime, sillage-espeak et
-ses données, les licences —, puis pose `$PREFIX/bin/sillage`, un lien vers
-`../lib/sillage/sillage` : le binaire suit ce lien pour trouver ses voisins.
+entier dans `$PREFIX/lib/dysflow` — le binaire, ONNX Runtime, dysflow-espeak et
+ses données, les licences —, puis pose `$PREFIX/bin/dysflow`, un lien vers
+`../lib/dysflow/dysflow` : le binaire suit ce lien pour trouver ses voisins.
 `~/.local` par défaut, sans droits ; `PREFIX=/usr/local sudo -E
 ./scripts/install.sh` pour toute la machine. Il vérifie ensuite, depuis la
-racine, que `sillage` démarre et que Kokoro se charge (`sillage --check-kokoro` :
-ONNX Runtime et sillage-espeak, sans le modèle), et dit s'il manque le `bin/` au
+racine, que `dysflow` démarre et que Kokoro se charge (`dysflow --check-kokoro` :
+ONNX Runtime et dysflow-espeak, sans le modèle), et dit s'il manque le `bin/` au
 `PATH`. Modèles et configuration vivent dans le répertoire de données. Pour
-désinstaller, `rm -r $PREFIX/lib/sillage $PREFIX/bin/sillage`.
+désinstaller, `rm -r $PREFIX/lib/dysflow $PREFIX/bin/dysflow`.
 
-Sur Mac, la commande `sillage` est soit le lecteur au terminal, soit celle qui
+Sur Mac, la commande `dysflow` est soit le lecteur au terminal, soit celle qui
 ouvre l'app (`install-app-command.sh`, voir *L'app macOS*). Chacun des deux
 scripts prévient avant de remplacer l'autre, et ne le fait qu'après
-confirmation (ou avec `REMPLACER=1`) ; `$PREFIX/lib/sillage` reste alors, à
+confirmation (ou avec `REMPLACER=1`) ; `$PREFIX/lib/dysflow` reste alors, à
 retirer à la main.
 
 #### Distribuer le binaire
 
 `scripts/package.sh` assemble dans `dist/` le binaire et ce qu'il charge —
-ONNX Runtime et sillage-espeak pour Kokoro —, avec les licences, et vérifie que
+ONNX Runtime et dysflow-espeak pour Kokoro —, avec les licences, et vérifie que
 l'ensemble s'exécute hors de l'arbre de compilation. ONNX Runtime 1.31.0 est
 téléchargé depuis sa publication officielle, empreinte SHA-256 vérifiée, pour
 Linux x86_64 et ARM64 et pour macOS sur Apple Silicon :
@@ -286,15 +298,15 @@ binaire sans `kokoro-onnx`.
 | Kokoro 82M · MLX (app macOS seulement) | 342 Mo | français, anglais | idem |
 
 Le catalogue ne propose **que Kokoro** : une voix française (`p-fenrir60`,
-livrée avec Sillage) et trois anglaises (`af_bella`, recommandée, `am_fenrir`,
+livrée avec Dysflow) et trois anglaises (`af_bella`, recommandée, `am_fenrir`,
 `af_heart`). Sans lui, la voix du système lit. Supertonic 3 et MagpieTTS en
 sont sortis le 14 octobre 2026, et leur moteur, audio.cpp, avec eux : une
 configuration qui les nomme encore fait lire la voix du système, et le dit.
 Le correctif local d'audio.cpp (lecture des GGUF en bloc) est gardé dans
 `patches/`.
 
-Les modèles vont dans `~/.local/share/sillage/models/<famille>/` (sur macOS,
-`~/Library/Application Support/sillage/models/`). Un modèle déjà installé est
+Les modèles vont dans `~/.local/share/dysflow/models/<famille>/` (sur macOS,
+`~/Library/Application Support/dysflow/models/`). Un modèle déjà installé est
 adopté automatiquement au lancement suivant.
 
 Le modèle se charge **en arrière-plan** : l'interface s'ouvre en 0,05 s, le
@@ -433,7 +445,7 @@ sont écrits comme le source des blocs de code.
 ### Configuration
 
 Les réglages tiennent sur **une page** — `s` en cours de lecture, ou
-`sillage --config` :
+`dysflow --config` :
 
 ```
   Réglages   moteur : Kokoro · ONNX
@@ -464,13 +476,13 @@ Le reste du fichier — moteur, fils de calcul, sessions, blocs de code,
 langue, hauteur — ne s'affiche plus : il garde sa valeur, et se règle à la
 main.
 
-Le fichier vit dans `~/.config/sillage/config.toml`, et peut aussi être écrit
-par `sillage --write-config`.
+Le fichier vit dans `~/.config/dysflow/config.toml`, et peut aussi être écrit
+par `dysflow --write-config`.
 
 ```toml
 [engine]
 engine = "auto"           # auto | system
-model_path = "~/Library/Application Support/sillage/models/kokoro/kokoro-v1_0.safetensors"
+model_path = "~/Library/Application Support/dysflow/models/kokoro/kokoro-v1_0.safetensors"
 family = "kokoro"
 threads = 8               # Kokoro au terminal (ONNX Runtime), borné à 4
 sessions = 0              # synthèses simultanées ; 0 = ce que la famille demande
@@ -507,7 +519,7 @@ Les sections `[sampling]` et `[extra]`, et les clés `compute`, `energy`,
 une configuration qui les porte encore s'ouvre sans erreur, et elles
 disparaissent au prochain enregistrement.
 
-`sillage --help` montre les options de tous les jours (`--clip`, `--speed`,
+`dysflow --help` montre les options de tous les jours (`--clip`, `--speed`,
 `--voice`, `--to-markdown`, `--no-cache`, `--config`). Les autres restent
 acceptées : `--pitch`, `--language`, `--engine`, `--model`, `--family`,
 `--sessions`, `--prefetch`, `--code-blocks`, `--no-autoplay`,
@@ -607,11 +619,11 @@ source ──▶ doc ──▶ tts ──▶ audio ──▶ app ──┬──
 - `audio` — file de sortie et position déduite du son réellement joué.
 - `app` — le contrôleur : document, lecture, recherche, page des réglages. Il ne connaît aucun écran.
 - `tui` — rendu ratatui du contrôleur, adaptation des touches.
-- `logging` — détourne les sorties natives vers `sillage.log`.
+- `logging` — détourne les sorties natives vers `dysflow.log`.
 - `reader` et `ffi/` — le lecteur tel que l'app le voit, lié à Swift par UniFFI.
 
 Au terminal, les sorties natives (ONNX Runtime, espeak-ng) sont détournées
-vers `~/.local/share/sillage/sillage.log` : en plein écran, elles
+vers `~/.local/share/dysflow/dysflow.log` : en plein écran, elles
 disloqueraient le rendu. Dans l'app, le calcul MLX (Kokoro, Qwen3, Magpie,
 dictée) est en Swift, dans `macos/Vendor/KokoroMLX`.
 
@@ -630,7 +642,7 @@ sous `#![cfg(feature = "ocr")]`, comme le test du PDF photocopié de
 `tests/pdf_input.rs`. Sans elle, ces chemins ne sont pas *ignorés* — ils
 n'existent pas dans le binaire de test, et rien ne signale leur absence.
 
-Les tests de l'app (`SillageTests`) tournent sur la CI : en local, `xcodebuild
+Les tests de l'app (`DysflowTests`) tournent sur la CI : en local, `xcodebuild
 test` ouvre l'app et prend la main sur le Mac.
 
 Deux sondes ne tournent qu'à la demande, faute d'être vérifiables par une

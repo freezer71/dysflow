@@ -1,10 +1,10 @@
 import XCTest
-@testable import Sillage
+@testable import Dysflow
 
 @MainActor
 final class ReaderModelTests: XCTestCase {
     private func model(_ text: String) -> ReaderModel {
-        let m = ReaderModel(reader: SillageReader.silent())
+        let m = ReaderModel(reader: DysflowReader.silent())
         m.open(text: text, source: "test")
         XCTAssertTrue(waitUntil { m.refresh(); return m.snapshot.revision == 1 })
         return m
@@ -29,7 +29,7 @@ final class ReaderModelTests: XCTestCase {
     /// arrondis (seconde, millième), ils ne republient pas l'instantané — et
     /// ne réévaluent pas toute l'interface — soixante fois par seconde.
     func testPublishedSnapshotIsRoundedToWhatTheScreenShows() {
-        var a = SillageReader.silent().snapshot()
+        var a = DysflowReader.silent().snapshot()
         a.elapsed = 12.31; a.total = 95.2; a.progress = 0.123_41
         var b = a
         b.elapsed = 12.44; b.total = 95.4; b.progress = 0.123_44
@@ -45,7 +45,7 @@ final class ReaderModelTests: XCTestCase {
     /// seconde : ni l'un ni l'autre ne republie l'instantané. Le mot est
     /// publié à part (`word`), pour la seule vue de lecture.
     func testPublishedSnapshotIgnoresTheWordAndItsProgress() {
-        var a = SillageReader.silent().snapshot()
+        var a = DysflowReader.silent().snapshot()
         a.wordProgress = 0.2
         var b = a
         b.wordProgress = 0.7
@@ -114,7 +114,7 @@ final class ReaderModelTickingTests: XCTestCase {
     private let frames = ManualFrames()
 
     private func hiddenModel() -> ReaderModel {
-        let m = ReaderModel(reader: SillageReader.silent(), now: { [unowned self] in self.clock },
+        let m = ReaderModel(reader: DysflowReader.silent(), now: { [unowned self] in self.clock },
                             frames: frames)
         m.open(text: "Un. Deux.", source: "test")
         XCTAssertTrue(waitUntil { m.refresh(); return m.snapshot.revision == 1 })
@@ -198,7 +198,7 @@ final class ReaderModelTickingTests: XCTestCase {
     /// de l'écran, sans jamais relire l'état.
     func testTheGraceEndsWithoutAnyFrame() {
         let silentFrames = ManualFrames()  // jamais d'image
-        let m = ReaderModel(reader: SillageReader.silent(), frames: silentFrames)
+        let m = ReaderModel(reader: DysflowReader.silent(), frames: silentFrames)
         m.open(text: "Un. Deux.", source: "test")
         m.presence = .full
         XCTAssertEqual(m.cadence, .screen, "la grâce d'une commande")

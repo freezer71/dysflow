@@ -6,7 +6,7 @@ import { cacheLife } from "next/cache";
 // servi dans la minute — plus les quelques minutes du cache de
 // raw.githubusercontent.com —, sans qu'une fonction tourne à chaque
 // installation. Le script, lui, va chercher la dernière publication.
-const source = "https://raw.githubusercontent.com/freezer71/sillage/main/install.sh";
+const source = "https://raw.githubusercontent.com/freezer71/dysflow/main/install.sh";
 
 async function script(): Promise<string | null> {
   "use cache";

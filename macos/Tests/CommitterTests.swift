@@ -1,5 +1,5 @@
 import XCTest
-@testable import Sillage
+@testable import Dysflow
 
 /// Attend, en laissant tourner les tâches Swift, que `condition` soit vraie.
 @MainActor

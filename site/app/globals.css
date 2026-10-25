@@ -1,35 +1,51 @@
 @import "tailwindcss";
 
-/* Style « Felt » de l'app : gris neutres, cartes très arrondies sans bordure,
-   action principale à l'encre, vert citron pour ce qui est choisi. */
+/* Style « Felt » de l'app : cartes très arrondies sans bordure, action
+   principale à l'encre, vert citron pour ce qui est choisi. Le fond est
+   crème par défaut : moins éblouissant que le blanc pour qui lit avec effort. */
 :root {
+  color-scheme: light;
+  --fond: #f8f3e6;
+  --carte: #fffbf2;
+  --carte-2: #efe8d6;
+  --encre: #1f1c17;
+  --encre-douce: #4f4a40;
+  --encre-pale: #645e51;
+  --filet: #e2d9c3;
+  --citron: #c6f36b;
+  --citron-encre: #191919;
+  --bande: #eef5d2;
+  --sur-encre: #fffbf2;
+}
+
+/* Les gris neutres d'origine, au choix dans le panneau Confort. */
+html[data-fond="gris"] {
   --fond: #f4f4f2;
   --carte: #ffffff;
   --carte-2: #ebebe8;
   --encre: #191919;
   --encre-douce: #5c5c58;
-  --encre-pale: #8d8d88;
+  --encre-pale: #66665f;
   --filet: #e3e2de;
-  --citron: #c6f36b;
-  --citron-encre: #191919;
   --bande: #eef9d6;
   --sur-encre: #ffffff;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --fond: #121212;
-    --carte: #1d1d1c;
-    --carte-2: #262625;
-    --encre: #f2f2ef;
-    --encre-douce: #b4b4ae;
-    --encre-pale: #85857f;
-    --filet: #2e2e2c;
-    --citron: #c6f36b;
-    --citron-encre: #191919;
-    --bande: #2a3319;
-    --sur-encre: #121212;
-  }
+/* Le sombre, au choix aussi. Il ne suit pas le réglage du système : la
+   crème reste le fond de tous, sauf demande dans le panneau. */
+html[data-fond="sombre"] {
+  color-scheme: dark;
+  --fond: #121212;
+  --carte: #1d1d1c;
+  --carte-2: #262625;
+  --encre: #f2f2ef;
+  --encre-douce: #b4b4ae;
+  --encre-pale: #9a9a93;
+  --filet: #2e2e2c;
+  --citron: #c6f36b;
+  --citron-encre: #191919;
+  --bande: #2a3319;
+  --sur-encre: #121212;
 }
 
 @theme inline {
@@ -60,6 +76,84 @@ body {
 ::selection {
   background: var(--citron);
   color: var(--citron-encre);
+}
+
+/* Les barres de la voix, dans la simulation : elles montent et descendent
+   en décalé, comme un niveau sonore. */
+@keyframes egaliseur {
+  0%, 100% { height: 30%; }
+  50% { height: 100%; }
+}
+
+.egaliseur {
+  height: 30%;
+  animation: egaliseur 0.9s ease-in-out infinite;
+}
+
+/* --- Confort de lecture ---------------------------------------------
+   Les réglages du panneau arrivent en attributs sur <html> (reglages.ts). */
+
+/* Lexend, la police au choix : déclarée par next/font sans préchargement,
+   elle ne se télécharge que si on la choisit. */
+html[data-police="lexend"] body,
+html[data-police="lexend"] .font-sans {
+  font-family: var(--font-lexend), var(--font-atkinson), sans-serif;
+}
+
+/* Tout le site est en rem : agrandir la racine agrandit tout. */
+html[data-taille="grande"] {
+  font-size: 118.75%;
+}
+
+html[data-taille="tresgrande"] {
+  font-size: 137.5%;
+}
+
+/* Plus d'air entre les lettres et les mots, sans aller jusqu'aux maxima de
+   WCAG 1.4.12 : trop d'écart défait le mot. */
+html[data-espacement="large"] body {
+  letter-spacing: 0.05em;
+  word-spacing: 0.12em;
+}
+
+html[data-espacement="large"] :is(p, li, dd, summary) {
+  line-height: 1.8 !important;
+}
+
+/* Les titres gardent un interligne serré : à 1,8, leurs lignes se détachent. */
+html[data-espacement="large"] :is(h1, h2, h3, h4) {
+  line-height: 1.25 !important;
+}
+
+html[data-animations="non"] {
+  scroll-behavior: auto;
+}
+
+html[data-animations="non"] *,
+html[data-animations="non"] *::before,
+html[data-animations="non"] *::after {
+  transition-duration: 0.01ms !important;
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+}
+
+/* Un mot trop long pour la ligne (en très grand texte, sur un téléphone)
+   passe à la ligne plutôt que de faire déborder la page. Le tiret de coupure
+   n'est permis que dans les grands titres : couper un mot gêne qui lit avec
+   effort, et le texte courant tient sans. */
+:is(h1, h2, h3, h4, p, li, summary, dt, dd, th, td) {
+  overflow-wrap: break-word;
+}
+
+:is(h1, h2) {
+  hyphens: auto;
+}
+
+/* Le focus se voit toujours, au clavier : un anneau épais, hors du bord. */
+:focus-visible {
+  outline: 3px solid var(--encre);
+  outline-offset: 3px;
+  border-radius: 8px;
 }
 
 @media (prefers-reduced-motion: reduce) {

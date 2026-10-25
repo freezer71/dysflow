@@ -1,10 +1,10 @@
 import XCTest
-@testable import Sillage
+@testable import Dysflow
 
 @MainActor
 final class SectionMarkersTests: XCTestCase {
     private func doc(_ markdown: String) -> DocView {
-        let r = SillageReader.silent()
+        let r = DysflowReader.silent()
         r.openText(markdown: markdown, source: "t")
         XCTAssertTrue(waitUntil { r.snapshot().revision == 1 })
         return r.document()

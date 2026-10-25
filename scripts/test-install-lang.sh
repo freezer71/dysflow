@@ -3,7 +3,7 @@
 # LC_MESSAGES ou LANG (dans cet ordre, le premier non vide) commence par fr.
 # Ne touche jamais à l'installation réelle : HOME et PREFIX temporaires, et la
 # désinstallation n'est exécutée que sous Linux (sous macOS elle retirerait
-# /Applications/Sillage.app).
+# /Applications/Dysflow.app).
 #
 #   sh scripts/test-install-lang.sh
 set -eu
@@ -56,7 +56,7 @@ if [ "$(uname -s)" = Linux ]; then
     for nom in --uninstall --desinstaller; do
         for langue in en_US.UTF-8 fr_FR.UTF-8; do
             set +e
-            sortie=$(env -i PATH="$PATH" HOME="$tmp/home" PREFIX="$tmp/prefix" SILLAGE_APPLICATIONS="$tmp" LANG="$langue" sh "$racine/install.sh" "$nom" 2>&1)
+            sortie=$(env -i PATH="$PATH" HOME="$tmp/home" PREFIX="$tmp/prefix" DYSFLOW_APPLICATIONS="$tmp" LANG="$langue" sh "$racine/install.sh" "$nom" 2>&1)
             code=$?
             set -e
             case "$langue/$sortie" in

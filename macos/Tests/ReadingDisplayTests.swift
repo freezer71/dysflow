@@ -1,5 +1,5 @@
 import XCTest
-@testable import Sillage
+@testable import Dysflow
 
 /// Le panneau lit des réglages du moteur l'interlignage et la règle.
 final class ReadingDisplayTests: XCTestCase {

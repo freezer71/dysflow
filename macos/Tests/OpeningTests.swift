@@ -1,6 +1,6 @@
 import UniformTypeIdentifiers
 import XCTest
-@testable import Sillage
+@testable import Dysflow
 
 /// Glisser-déposer un fichier sur le lecteur.
 @MainActor
@@ -17,10 +17,10 @@ final class OpeningTests: XCTestCase {
 
     func testADroppedFileGoesToTheApp() {
         var opened: [URL] = []
-        let name = "sillage.tests.affichage.ouverture"
+        let name = "dysflow.tests.affichage.ouverture"
         let defaults = UserDefaults(suiteName: name)!
         defaults.removePersistentDomain(forName: name)
-        let c = PanelController(model: ReaderModel(reader: SillageReader.silent()),
+        let c = PanelController(model: ReaderModel(reader: DysflowReader.silent()),
                                 store: DisplayModeStore(defaults: defaults),
                                 openFile: { opened.append($0) })
         let file = URL(fileURLWithPath: "/tmp/cours.md")

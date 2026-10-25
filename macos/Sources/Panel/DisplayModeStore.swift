@@ -76,7 +76,7 @@ final class DisplayModeStore {
         let testing = info.arguments.contains("--ui-testing")
             || info.environment["XCTestConfigurationFilePath"] != nil
         guard testing else { return .standard }
-        let name = "fr.sillage.tests.affichage"
+        let name = "fr.dysflow.tests.affichage"
         guard let suite = UserDefaults(suiteName: name) else { return .standard }
         suite.removePersistentDomain(forName: name)
         return suite

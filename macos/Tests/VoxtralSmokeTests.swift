@@ -6,14 +6,14 @@ import KokoroMLX
 /// charge d'un dossier local, et une session de flux reçoit 0,5 s de silence
 /// par blocs de 80 ms (un jeton, 1 280 échantillons à 16 kHz) puis se termine
 /// sans planter.
-/// Lance le vrai modèle (MLX, Metal) : seulement avec `SILLAGE_STT_MODELS`
-/// (`TEST_RUNNER_SILLAGE_STT_MODELS` pour xcodebuild).
+/// Lance le vrai modèle (MLX, Metal) : seulement avec `DYSFLOW_STT_MODELS`
+/// (`TEST_RUNNER_DYSFLOW_STT_MODELS` pour xcodebuild).
 final class VoxtralSmokeTests: XCTestCase {
-    /// `SILLAGE_STT_MODELS` : dossier contenant `voxtral_realtime_4bit/` (copie
-    /// de ~/Library/Application Support/sillage/models). Sans lui : ignoré.
+    /// `DYSFLOW_STT_MODELS` : dossier contenant `voxtral_realtime_4bit/` (copie
+    /// de ~/Library/Application Support/dysflow/models). Sans lui : ignoré.
     func testStreamsHalfASecondOfSilenceThenFinishesWithoutCrashing() throws {
-        guard let root = ProcessInfo.processInfo.environment["SILLAGE_STT_MODELS"] else {
-            throw XCTSkip("SILLAGE_STT_MODELS absent")
+        guard let root = ProcessInfo.processInfo.environment["DYSFLOW_STT_MODELS"] else {
+            throw XCTSkip("DYSFLOW_STT_MODELS absent")
         }
         let model = try VoxtralRealtimeModel.fromDirectory(URL(fileURLWithPath: root).appendingPathComponent("voxtral_realtime_4bit"))
         let session = model.makeStreamSession()

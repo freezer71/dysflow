@@ -6,7 +6,7 @@ use std::process::Command;
 fn pasting_text_asks_for_no_recognition() {
     // Le texte du presse-papiers n'a rien à reconnaître. L'exiger quand même
     // fermait la porte à tout binaire construit par défaut — le plus courant.
-    let out = Command::new(env!("CARGO_BIN_EXE_sillage"))
+    let out = Command::new(env!("CARGO_BIN_EXE_dysflow"))
         .args(["--clip", "--to-markdown"])
         // Le refus se cherche dans sa version française : la langue de
         // l'interface est fixée, quelle que soit celle de la machine.

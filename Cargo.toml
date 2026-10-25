@@ -2,15 +2,15 @@
 members = [".", "ffi"]
 
 [package]
-name = "sillage"
-version = "0.5.0"
+name = "dysflow"
+version = "0.6.0"
 edition = "2021"
-# Le plus haut `rust-version` des crates que sillage compile (Cargo.lock,
+# Le plus haut `rust-version` des crates que dysflow compile (Cargo.lock,
 # toutes features : image 0.25.10, darling 0.24…) ; vérifié par la CI (job
 # msrv). Le moteur de l'app (ffi/, par uniffi → cargo_metadata →
 # cargo-platform 0.3.3) demande 1.91.
 rust-version = "1.88"
-description = "Lecteur audio TUI en streaming : lit du markdown pipé ou un fichier, le hiérarchise et le lit à voix haute (Kokoro, ou la voix du système)"
+description = "Lecteur à voix haute et dictée pour les personnes dyslexiques et neuroatypiques : lit un document en surlignant chaque mot (Kokoro, ou la voix du système)"
 license = "MIT"
 
 [dependencies]
@@ -74,7 +74,7 @@ ocr = ["dep:tesseract-rs", "dep:image", "clipboard"]
 kokoro-onnx = ["dep:ort", "dep:libloading"]
 
 [[bin]]
-name = "sillage"
+name = "dysflow"
 path = "src/main.rs"
 
 [profile.release]

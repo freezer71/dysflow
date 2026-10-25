@@ -1,7 +1,7 @@
-//! `sillage --update` : relance l'installateur officiel, qui installe la
+//! `dysflow --update` : relance l'installateur officiel, qui installe la
 //! dernière version publiée — ou dit que celle-ci est déjà là.
 //!
-//! Le binaire installé vit dans `<préfixe>/lib/sillage/sillage` (install.sh,
+//! Le binaire installé vit dans `<préfixe>/lib/dysflow/dysflow` (install.sh,
 //! scripts/install.sh) : ce préfixe est passé à l'installateur, pour mettre à
 //! jour sur place une installation faite ailleurs que dans `~/.local`.
 
@@ -31,13 +31,13 @@ pub fn run() -> Result<()> {
     Ok(())
 }
 
-/// `<préfixe>/lib/sillage/sillage` → `<préfixe>` ; `None` pour un binaire
+/// `<préfixe>/lib/dysflow/dysflow` → `<préfixe>` ; `None` pour un binaire
 /// rangé autrement (`cargo install`, arbre de compilation) : l'installateur
 /// prend alors son préfixe par défaut.
 fn prefix_of(exe: &Path) -> Option<PathBuf> {
     let dir = exe.parent()?;
     let lib = dir.parent()?;
-    let installed = exe.file_name()? == "sillage" && dir.file_name()? == "sillage" && lib.file_name()? == "lib";
+    let installed = exe.file_name()? == "dysflow" && dir.file_name()? == "dysflow" && lib.file_name()? == "lib";
     installed.then(|| lib.parent().map(Path::to_path_buf)).flatten()
 }
 
@@ -48,15 +48,15 @@ mod tests {
     #[test]
     fn the_prefix_comes_from_the_installed_layout() {
         assert_eq!(
-            prefix_of(Path::new("/home/u/.local/lib/sillage/sillage")),
+            prefix_of(Path::new("/home/u/.local/lib/dysflow/dysflow")),
             Some(PathBuf::from("/home/u/.local"))
         );
-        assert_eq!(prefix_of(Path::new("/usr/local/lib/sillage/sillage")), Some(PathBuf::from("/usr/local")));
+        assert_eq!(prefix_of(Path::new("/usr/local/lib/dysflow/dysflow")), Some(PathBuf::from("/usr/local")));
     }
 
     #[test]
     fn another_layout_keeps_the_default_prefix() {
-        assert_eq!(prefix_of(Path::new("/home/u/.cargo/bin/sillage")), None);
-        assert_eq!(prefix_of(Path::new("/src/sillage/target/release/sillage")), None);
+        assert_eq!(prefix_of(Path::new("/home/u/.cargo/bin/dysflow")), None);
+        assert_eq!(prefix_of(Path::new("/src/dysflow/target/release/dysflow")), None);
     }
 }

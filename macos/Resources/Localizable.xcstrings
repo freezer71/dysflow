@@ -2122,12 +2122,12 @@
         }
       }
     },
-    "Open sillage at login" : {
+    "Open dysflow at login" : {
       "localizations" : {
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ouvrir sillage à la connexion"
+            "value" : "Ouvrir dysflow à la connexion"
           }
         }
       }
@@ -2374,12 +2374,12 @@
         }
       }
     },
-    "Quit sillage" : {
+    "Quit dysflow" : {
       "localizations" : {
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Quitter sillage"
+            "value" : "Quitter dysflow"
           }
         }
       }
@@ -3426,12 +3426,12 @@
         }
       }
     },
-    "To read selected text in any app, sillage needs the Accessibility permission. Without it, it only reads what you copy." : {
+    "To read selected text in any app, dysflow needs the Accessibility permission. Without it, it only reads what you copy." : {
       "localizations" : {
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Pour lire le texte sélectionné dans n'importe quelle application, sillage a besoin de l'autorisation Accessibilité. Sans elle, il lit seulement ce que vous copiez."
+            "value" : "Pour lire le texte sélectionné dans n'importe quelle application, dysflow a besoin de l'autorisation Accessibilité. Sans elle, il lit seulement ce que vous copiez."
           }
         }
       }
@@ -3920,25 +3920,25 @@
         }
       }
     },
-    "sillage" : {
+    "dysflow" : {
       "shouldTranslate" : false
     },
-    "sillage can’t access the microphone: allow it to dictate" : {
+    "dysflow can’t access the microphone: allow it to dictate" : {
       "localizations" : {
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "sillage n'a pas accès au micro : autorisez-le pour dicter"
+            "value" : "dysflow n'a pas accès au micro : autorisez-le pour dicter"
           }
         }
       }
     },
-    "sillage is in front: select text in another app" : {
+    "dysflow is in front: select text in another app" : {
       "localizations" : {
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "sillage est au premier plan : sélectionnez dans une autre application"
+            "value" : "dysflow est au premier plan : sélectionnez dans une autre application"
           }
         }
       }

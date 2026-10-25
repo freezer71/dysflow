@@ -2,7 +2,7 @@ import XCTest
 
 /// La fenêtre des réglages : la liste des sections à gauche, la section
 /// choisie à droite ; au clavier et sous l'audit. Lancé à la main, avec
-/// l'accord de l'utilisateur : `-only-testing:SillageUITests/SettingsUITests`.
+/// l'accord de l'utilisateur : `-only-testing:DysflowUITests/SettingsUITests`.
 /// Le parcours au clavier exige « Navigation au clavier » (Réglages Système
 /// › Clavier) et se saute sans elle ; l'audit tourne toujours.
 @MainActor

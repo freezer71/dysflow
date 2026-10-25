@@ -2,17 +2,18 @@
 //!
 //! Un seul nom de répertoire pour la configuration, les données et le cache,
 //! et un seul endroit pour le changer. Le lecteur s'est d'abord appelé
-//! `rs-reader`, puis `sillon` (jusqu'au 18 oct. 2026) : un répertoire d'un
+//! `rs-reader`, puis `sillon` (jusqu'au 18 oct. 2026), puis `sillage`
+//! (jusqu'au 25 oct. 2026) : un répertoire d'un
 //! ancien nom est repris tel quel — les modèles y pèsent des gigaoctets, les
 //! recopier serait absurde, et perdre les positions ne se pardonne pas.
 
 use std::path::{Path, PathBuf};
 
 /// Nom du lecteur, tel qu'il apparaît dans les chemins.
-pub const APP: &str = "sillage";
+pub const APP: &str = "dysflow";
 /// Noms sous lesquels les répertoires ont pu être créés avant, du plus
 /// récent au plus ancien : le premier trouvé est repris.
-const FORMER: &[&str] = &["sillon", "rs-reader"];
+const FORMER: &[&str] = &["sillage", "sillon", "rs-reader"];
 
 /// Configuration : `config.toml`.
 pub fn config_dir() -> Option<PathBuf> {
@@ -59,7 +60,7 @@ pub(crate) fn test_scratch(name: &str) -> PathBuf {
     dir
 }
 
-/// `sillage-tests-<pid>` : créée au premier usage, retirée par `atexit` à la
+/// `dysflow-tests-<pid>` : créée au premier usage, retirée par `atexit` à la
 /// sortie du processus de test. Au même moment, les racines laissées par un
 /// processus mort (test interrompu, plantage) partent aussi.
 #[cfg(test)]
@@ -79,7 +80,7 @@ fn test_base() -> PathBuf {
 }
 
 #[cfg(test)]
-const TEST_PREFIX: &str = "sillage-tests-";
+const TEST_PREFIX: &str = "dysflow-tests-";
 
 /// Retire les racines de test dont le processus n'existe plus.
 #[cfg(test)]
@@ -174,8 +175,8 @@ pub fn save_json<T: serde::Serialize>(path: &Path, value: &T) -> anyhow::Result<
 /// Seul, l'ancien est renommé. Si les deux existent, ce qui manque au
 /// nouveau y est déplacé, sans rien copier ; ce que les deux ont (même nom)
 /// reste dans l'ancien, intact, pour qui voudra y regarder. Un répertoire
-/// `sillage` né avant le renommage (le 18 oct. 2026) laissait sinon dans
-/// `sillon` les modèles téléchargés depuis.
+/// né avant un renommage laissait sinon dans l'ancien les modèles
+/// téléchargés depuis (vu le 20 oct. 2026, entre `sillon` et `sillage`).
 fn adopt(base: &Path) -> PathBuf {
     let current = base.join(APP);
     // `data_dir` est appelé à chaque lecture : une seule reprise par processus.
@@ -287,7 +288,7 @@ mod tests {
 
         let dir = adopt(&base);
 
-        assert_eq!(dir, base.join("sillage"));
+        assert_eq!(dir, base.join("dysflow"));
         assert!(dir.join("models").is_dir(), "les modèles suivent");
         assert!(dir.join("bookmarks.json").is_file(), "les signets suivent");
         assert!(!base.join("rs-reader").exists(), "l'ancien répertoire n'est pas dupliqué");
@@ -297,7 +298,7 @@ mod tests {
     #[test]
     fn what_the_new_directory_lacks_is_moved_from_the_former() {
         let base = scratch();
-        let (old, new) = (base.join("sillon"), base.join("sillage"));
+        let (old, new) = (base.join("sillon"), base.join("dysflow"));
         std::fs::create_dir_all(old.join("models").join("kokoro")).unwrap();
         std::fs::create_dir_all(old.join("models").join("phonon_2")).unwrap();
         std::fs::write(old.join("models").join("kokoro").join("a"), "ancien").unwrap();
@@ -324,7 +325,7 @@ mod tests {
         let base = scratch();
         std::fs::create_dir_all(base.join("rs-reader")).unwrap();
         std::fs::write(base.join("rs-reader").join("positions.json"), "{}").unwrap();
-        std::fs::create_dir_all(base.join("sillage")).unwrap();
+        std::fs::create_dir_all(base.join("dysflow")).unwrap();
 
         let dir = adopt(&base);
 
@@ -336,7 +337,7 @@ mod tests {
     #[test]
     fn a_model_path_in_the_former_directory_follows_the_move() {
         let base = scratch();
-        let moved = base.join("sillage").join("models").join("kokoro");
+        let moved = base.join("dysflow").join("models").join("kokoro");
         std::fs::create_dir_all(&moved).unwrap();
         std::fs::write(moved.join("m.safetensors"), "").unwrap();
         let old = base.join("sillon").join("models").join("kokoro").join("m.safetensors");
@@ -358,7 +359,7 @@ mod tests {
 
         let dir = adopt(&base);
 
-        assert_eq!(dir, base.join("sillage"));
+        assert_eq!(dir, base.join("dysflow"));
         assert!(dir.join("models").is_dir(), "les modèles de sillon suivent");
         assert_eq!(std::fs::read_to_string(dir.join("config.toml")).unwrap(), "sillon", "sillon passe avant");
         assert!(!base.join("sillon").exists(), "sillon n'est pas dupliqué");
@@ -367,10 +368,28 @@ mod tests {
     }
 
     #[test]
+    fn the_sillage_directory_is_adopted_before_sillon() {
+        let base = scratch();
+        std::fs::create_dir_all(base.join("sillage").join("models")).unwrap();
+        std::fs::write(base.join("sillage").join("config.toml"), "sillage").unwrap();
+        std::fs::create_dir_all(base.join("sillon")).unwrap();
+        std::fs::write(base.join("sillon").join("config.toml"), "sillon").unwrap();
+
+        let dir = adopt(&base);
+
+        assert_eq!(dir, base.join("dysflow"));
+        assert!(dir.join("models").is_dir(), "les modèles de sillage suivent");
+        assert_eq!(std::fs::read_to_string(dir.join("config.toml")).unwrap(), "sillage", "sillage passe avant");
+        assert!(!base.join("sillage").exists(), "sillage n'est pas dupliqué");
+        assert!(base.join("sillon").join("config.toml").is_file(), "le doublon du plus ancien reste intact");
+        std::fs::remove_dir_all(&base).ok();
+    }
+
+    #[test]
     fn nothing_is_created_when_neither_exists() {
         let base = scratch();
         let dir = adopt(&base);
-        assert_eq!(dir, base.join("sillage"));
+        assert_eq!(dir, base.join("dysflow"));
         assert!(!dir.exists(), "le répertoire n'est créé qu'à la première écriture");
         std::fs::remove_dir_all(&base).ok();
     }

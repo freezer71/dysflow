@@ -1,7 +1,7 @@
 import AppKit
 import ApplicationServices
 
-/// Au premier lancement, dire pourquoi sillage demande l'accessibilité, et
+/// Au premier lancement, dire pourquoi dysflow demande l'accessibilité, et
 /// mener au bon réglage. Sans elle, le presse-papiers seul.
 @MainActor
 enum Onboarding {
@@ -15,7 +15,7 @@ enum Onboarding {
         let alert = NSAlert()
         alert.messageText = String(localized: "Read what you select")
         alert.informativeText = String(localized: """
-        To read selected text in any app, sillage needs the Accessibility \
+        To read selected text in any app, dysflow needs the Accessibility \
         permission. Without it, it only reads what you copy.
         """)
         alert.addButton(withTitle: String(localized: "Open System Settings"))

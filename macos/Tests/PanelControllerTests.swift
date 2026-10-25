@@ -1,7 +1,7 @@
 import XCTest
 import SwiftUI
 import KeyboardShortcuts
-@testable import Sillage
+@testable import Dysflow
 
 @MainActor
 final class PanelControllerTests: XCTestCase {
@@ -15,7 +15,7 @@ final class PanelControllerTests: XCTestCase {
 
     /// Des préférences à part, vidées : jamais celles de l'utilisateur.
     private func freshDefaults() -> UserDefaults {
-        let name = "sillage.tests.affichage.panneau"
+        let name = "dysflow.tests.affichage.panneau"
         let defaults = UserDefaults(suiteName: name)!
         defaults.removePersistentDomain(forName: name)
         return defaults
@@ -23,11 +23,11 @@ final class PanelControllerTests: XCTestCase {
 
     private func shownPanel(_ text: String, defaults: UserDefaults? = nil,
                             frames: FrameSource? = nil) -> PanelController {
-        let model = ReaderModel(reader: SillageReader.silent(), frames: frames)
+        let model = ReaderModel(reader: DysflowReader.silent(), frames: frames)
         model.open(text: text, source: "test")
         XCTAssertTrue(waitUntil { model.refresh(); return model.snapshot.revision == 1 })
         let c = PanelController(model: model, store: DisplayModeStore(defaults: defaults ?? freshDefaults()))
-        c.pasteboard = NSPasteboard(name: NSPasteboard.Name("fr.sillage.tests.copie"))
+        c.pasteboard = NSPasteboard(name: NSPasteboard.Name("fr.dysflow.tests.copie"))
         controller = c
         c.show()
         settle(c)
@@ -134,7 +134,7 @@ final class PanelControllerTests: XCTestCase {
     func testCommandVAndCommandOGoToTheApp() {
         var pasted = 0
         var chosen = 0
-        let model = ReaderModel(reader: SillageReader.silent())
+        let model = ReaderModel(reader: DysflowReader.silent())
         let c = PanelController(model: model, store: DisplayModeStore(defaults: freshDefaults()),
                                 readClipboard: { pasted += 1 }, chooseFile: { chosen += 1 })
         controller = c

@@ -1,5 +1,5 @@
 import XCTest
-@testable import Sillage
+@testable import Dysflow
 
 /// La précision de l'essai du micro : 100 − taux d'erreur sur les mots,
 /// après normalisation.

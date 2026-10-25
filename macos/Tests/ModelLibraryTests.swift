@@ -1,5 +1,5 @@
 import XCTest
-@testable import Sillage
+@testable import Dysflow
 
 /// La bibliothèque des modèles de dictée : ses filtres, son ordre, ce que
 /// VoiceOver dit d'une ligne, et ce que la table de la section garde.

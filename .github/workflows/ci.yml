@@ -47,18 +47,18 @@ jobs:
       - name: Clippy
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - name: Clippy (Kokoro au terminal)
-        run: cargo clippy -p sillage --all-targets --features kokoro-onnx --locked -- -D warnings
+        run: cargo clippy -p dysflow --all-targets --features kokoro-onnx --locked -- -D warnings
       - name: Paquet et installation du terminal (ocr, kokoro-onnx)
         if: runner.os == 'Linux'
         # install.sh lance package.sh (build --features ocr,kokoro-onnx,
-        # ONNX Runtime vérifié, sillage-espeak), installe sous PREFIX, puis
+        # ONNX Runtime vérifié, dysflow-espeak), installe sous PREFIX, puis
         # vérifie depuis / que le binaire démarre et que Kokoro se charge.
         run: PREFIX="$RUNNER_TEMP/prefix" ./scripts/install.sh
       - name: Paquet joint
         if: runner.os == 'Linux'
         uses: actions/upload-artifact@v4
         with:
-          name: sillage-${{ runner.os }}-${{ runner.arch }}
+          name: dysflow-${{ runner.os }}-${{ runner.arch }}
           path: dist/
           retention-days: 7
 
@@ -72,12 +72,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends libasound2-dev pkg-config cmake clang
       - name: Chaînes Rust du MSRV
-        # 1.88 : rust-version de sillage (Cargo.toml). 1.91 : le moteur de
+        # 1.88 : rust-version de dysflow (Cargo.toml). 1.91 : le moteur de
         # l'app (ffi/, cargo-platform 0.3.3 par uniffi).
         run: rustup toolchain install 1.88 1.91 --profile minimal --no-self-update
       - uses: Swatinem/rust-cache@v2
-      - name: sillage en 1.88, toutes features
-        run: cargo +1.88 check -p sillage --all-features --all-targets --locked
+      - name: dysflow en 1.88, toutes features
+        run: cargo +1.88 check -p dysflow --all-features --all-targets --locked
       - name: Espace de travail en 1.91
         run: cargo +1.91 check --workspace --all-targets --locked
 
@@ -116,20 +116,20 @@ jobs:
             xcodebuild -downloadComponent MetalToolchain
           fi
       - uses: Swatinem/rust-cache@v2
-      - name: sillage-espeak
+      - name: dysflow-espeak
         run: ./scripts/build-espeak.sh
       - name: Moteur et liaison Swift
         id: ffi
         run: ./scripts/build-ffi.sh
       - name: Tests de l'app
-        # Les tests d'interface (SillageUITests) pilotent l'app à l'écran et
+        # Les tests d'interface (DysflowUITests) pilotent l'app à l'écran et
         # demandent l'accès Accessibilité : hors CI.
         working-directory: macos
         run: |
           xcodegen generate
-          xcodebuild -project Sillage.xcodeproj -scheme Sillage \
+          xcodebuild -project Dysflow.xcodeproj -scheme Dysflow \
             -destination 'platform=macOS,arch=arm64' -derivedDataPath build/derived \
-            test -only-testing:SillageTests
+            test -only-testing:DysflowTests
       - name: Textes sans français (catalogue)
         # Bloquant : après la compilation des tests (le script lit les
         # .stringsdata de build/derived), même si les tests ont échoué, du

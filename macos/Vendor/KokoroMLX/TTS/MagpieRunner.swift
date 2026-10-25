@@ -1,8 +1,8 @@
 import Foundation
 @preconcurrency import MLX
 
-/// L'entrée de Sillage pour MagpieTTS (speech-swift, Apache-2.0). Ajout de
-/// Sillage, hors des fichiers repris. Sous `MLXGate` dans l'app : le cache
+/// L'entrée de Dysflow pour MagpieTTS (speech-swift, Apache-2.0). Ajout de
+/// Dysflow, hors des fichiers repris. Sous `MLXGate` dans l'app : le cache
 /// des vocabulaires et la graine de MLX sont partagés.
 ///
 /// Mémoire : les poids 8 bits sont déquantifiés en FP32 au chargement

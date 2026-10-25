@@ -1,5 +1,5 @@
 import XCTest
-@testable import Sillage
+@testable import Dysflow
 
 /// Le scénario de charge ne tourne jamais sous les tests (il parle à voix
 /// haute) ; on vérifie seulement ce dont il dépend : le texte long a assez de
@@ -7,7 +7,7 @@ import XCTest
 @MainActor
 final class MeasureChargeTests: XCTestCase {
     func testTheLongTextHoldsTheJumpTargets() async {
-        let reader = SillageReader.silent()
+        let reader = DysflowReader.silent()
         let avant = reader.snapshot().revision
         reader.openText(markdown: Measure.longText, source: "test-charge")
         let ouvert = await eventuallyTrue { reader.snapshot().revision != avant }
@@ -20,7 +20,7 @@ final class MeasureChargeTests: XCTestCase {
     /// Une voix « prête » d'un autre moteur (un moteur qui ne
     /// sait pas lire le `.safetensors`, muet) ne passe pas pour Kokoro MLX.
     func testOnlyAReadyKokoroMLXVoiceIsAccepted() async {
-        let reader = SillageReader.silent()
+        let reader = DysflowReader.silent()
         reader.openText(markdown: "Un. Deux.", source: "test-kokoro")
         let prete = await eventuallyTrue { reader.snapshot().voice == .ready }
         XCTAssertTrue(prete)

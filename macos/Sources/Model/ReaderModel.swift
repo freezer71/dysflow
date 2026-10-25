@@ -10,7 +10,7 @@ import Observation
 @MainActor
 @Observable
 final class ReaderModel {
-    @ObservationIgnored let reader: SillageReader
+    @ObservationIgnored let reader: DysflowReader
     @ObservationIgnored private let schedule: RefreshSchedule
     static let gracePeriod = RefreshSchedule.gracePeriod
 
@@ -68,7 +68,7 @@ final class ReaderModel {
     /// La sortie audio choisie et les sorties branchées.
     @ObservationIgnored let audioOutputs: AudioOutputs
 
-    init(reader: SillageReader, now: @escaping () -> Date = Date.init,
+    init(reader: DysflowReader, now: @escaping () -> Date = Date.init,
          frames: FrameSource? = nil) {
         self.reader = reader
         schedule = RefreshSchedule(frames: frames ?? DisplayLinkFrames(), now: now)
@@ -269,7 +269,7 @@ final class ReaderModel {
         wake()
     }
 
-    /// Un fichier donné à sillage (`sillage fichier.pdf`, « Ouvrir avec ») : le
+    /// Un fichier donné à dysflow (`dysflow fichier.pdf`, « Ouvrir avec ») : le
     /// moteur l'extrait (PDF, texte, image) et reprend où on s'était arrêté.
     /// L'extraction peut durer : hors du fil principal.
     func openFile(_ url: URL) async throws {

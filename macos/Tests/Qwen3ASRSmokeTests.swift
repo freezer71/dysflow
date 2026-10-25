@@ -6,8 +6,8 @@ import KokoroMLX
 /// 1.7B) se charge d'un dossier local, avec notre vocabulaire BPE, et lit
 /// une seconde de silence sans langue imposée (il la reconnaît seul) sans
 /// planter. Le gabarit garde un `<|audio_pad|>` par jeton audio.
-/// Lance le vrai modèle (MLX, Metal) : seulement avec `SILLAGE_STT_MODELS`
-/// (`TEST_RUNNER_SILLAGE_STT_MODELS` pour xcodebuild).
+/// Lance le vrai modèle (MLX, Metal) : seulement avec `DYSFLOW_STT_MODELS`
+/// (`TEST_RUNNER_DYSFLOW_STT_MODELS` pour xcodebuild).
 final class Qwen3ASRSmokeTests: XCTestCase {
     func testTheSmallModelReadsOneSecondOfSilenceWithoutCrashing() throws {
         try readsSilence("qwen3_asr_06b_8bit")

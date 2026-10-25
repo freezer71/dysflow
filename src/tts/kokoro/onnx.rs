@@ -1,4 +1,4 @@
-//! Kokoro par ONNX Runtime, au terminal (Linux, et `sillage` sous macOS).
+//! Kokoro par ONNX Runtime, au terminal (Linux, et `dysflow` sous macOS).
 //!
 //! `ort` en `load-dynamic` : la bibliothèque est choisie ici, et sa version
 //! vérifiée avant le moindre appel. Le modèle `model_quantized.onnx` (int8)
@@ -26,11 +26,11 @@ const LIBRARY: &str = "libonnxruntime.dylib";
 #[cfg(not(target_os = "macos"))]
 const LIBRARY: &str = "libonnxruntime.so";
 
-/// La bibliothèque ORT : `SILLAGE_ORT_LIB`, à côté du binaire (liens
+/// La bibliothèque ORT : `DYSFLOW_ORT_LIB`, à côté du binaire (liens
 /// symboliques résolus), dans un `lib/` voisin, sinon le nom nu (chemins de
 /// recherche du système).
 pub fn library_path() -> PathBuf {
-    if let Some(path) = std::env::var_os("SILLAGE_ORT_LIB") {
+    if let Some(path) = std::env::var_os("DYSFLOW_ORT_LIB") {
         return explicit_library(path);
     }
     if let Some(dir) = super::phonemes::exe_dir() {
@@ -43,7 +43,7 @@ pub fn library_path() -> PathBuf {
     PathBuf::from(LIBRARY)
 }
 
-/// `SILLAGE_ORT_LIB` : un chemin relatif devient absolu (depuis le dossier
+/// `DYSFLOW_ORT_LIB` : un chemin relatif devient absolu (depuis le dossier
 /// courant), sans quoi `version_of` et `ort`, qui le résout depuis le
 /// binaire, pourraient charger deux fichiers différents ; un nom nu reste nu.
 fn explicit_library(path: std::ffi::OsString) -> PathBuf {
@@ -102,7 +102,7 @@ pub fn check_version(found: &str) -> Result<()> {
 }
 
 /// Vérifie que Kokoro peut se charger : ONNX Runtime trouvé, assez récent et
-/// chargé par `ort`, puis `sillage-espeak` lancé avec ses données sur un mot
+/// chargé par `ort`, puis `dysflow-espeak` lancé avec ses données sur un mot
 /// de chaque langue. Le modèle, téléchargé à part, n'est pas demandé. Rend
 /// une ligne par élément vérifié.
 pub fn check_install() -> Result<String> {
@@ -117,16 +117,16 @@ pub fn check_install() -> Result<String> {
     let mut espeak = EspeakProcess::locate()?;
     for (language, word) in [("fr", "bonjour"), ("en", "hello")] {
         let phonemes =
-            espeak.phonemize(language, &[word.to_string()]).with_context(|| format!("sillage-espeak ({language})"))?;
+            espeak.phonemize(language, &[word.to_string()]).with_context(|| format!("dysflow-espeak ({language})"))?;
         let Some(first) = phonemes.first().filter(|p| !p.trim().is_empty()) else {
             bail!(crate::tr!(
-                en = "sillage-espeak returns no phoneme for “{word}” ({language})",
-                fr = "sillage-espeak ne rend aucun phonème pour « {word} » ({language})"
+                en = "dysflow-espeak returns no phoneme for “{word}” ({language})",
+                fr = "dysflow-espeak ne rend aucun phonème pour « {word} » ({language})"
             ));
         };
         report.push_str(&crate::tr!(
-            en = "sillage-espeak ({language}): {word} → {first}\n",
-            fr = "sillage-espeak ({language}) : {word} → {first}\n"
+            en = "dysflow-espeak ({language}): {word} → {first}\n",
+            fr = "dysflow-espeak ({language}) : {word} → {first}\n"
         ));
     }
     espeak.stop();
@@ -279,11 +279,11 @@ mod tests {
     }
 
     /// Avec ORT ≥ 1.31 et le paquet int8 :
-    /// `SILLAGE_ORT_LIB=… SILLAGE_KOKORO_DIR=… cargo test --features kokoro-onnx --lib onnx -- --ignored`
+    /// `DYSFLOW_ORT_LIB=… DYSFLOW_KOKORO_DIR=… cargo test --features kokoro-onnx --lib onnx -- --ignored`
     #[test]
     #[ignore]
     fn the_int8_model_speaks_with_durations() {
-        let dir = std::path::PathBuf::from(std::env::var("SILLAGE_KOKORO_DIR").expect("SILLAGE_KOKORO_DIR"));
+        let dir = std::path::PathBuf::from(std::env::var("DYSFLOW_KOKORO_DIR").expect("DYSFLOW_KOKORO_DIR"));
         let backend = OrtBackend::new(4);
         backend.load(&dir).unwrap();
         let raw = backend.infer(&[0, 44, 43, 54, 43, 4, 0], &[0.0; 256], &Cancel::never()).unwrap();
@@ -299,7 +299,7 @@ mod tests {
         use std::sync::atomic::{AtomicBool, Ordering};
         use std::sync::Arc;
         use std::time::{Duration, Instant};
-        let dir = std::path::PathBuf::from(std::env::var("SILLAGE_KOKORO_DIR").expect("SILLAGE_KOKORO_DIR"));
+        let dir = std::path::PathBuf::from(std::env::var("DYSFLOW_KOKORO_DIR").expect("DYSFLOW_KOKORO_DIR"));
         let backend = OrtBackend::new(1);
         backend.load(&dir).unwrap();
         let ids: Vec<i64> = std::iter::once(0).chain((0..500).map(|i| [44, 43, 54][i % 3])).chain([0]).collect();

@@ -1,8 +1,8 @@
 import Foundation
 @preconcurrency import MLX
 
-/// L'entrée de Sillage dans ce framework : MLX ne se lie qu'ici, une seule
-/// copie dans l'app. Ajouté par Sillage, hors des fichiers repris.
+/// L'entrée de Dysflow dans ce framework : MLX ne se lie qu'ici, une seule
+/// copie dans l'app. Ajouté par Dysflow, hors des fichiers repris.
 public final class KokoroRunner: @unchecked Sendable {
     private let model: KokoroModel
 

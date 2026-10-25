@@ -1,41 +1,41 @@
 //! Le lecteur, vu de Swift.
 //!
 //! Des types miroirs, aux entiers de taille fixe que UniFFI sait passer, et
-//! un objet `SillageReader` qui garde le fil du lecteur. Aucun état ici : tout
-//! vit dans `sillage::reader`.
+//! un objet `DysflowReader` qui garde le fil du lecteur. Aucun état ici : tout
+//! vit dans `dysflow::reader`.
 
 use std::sync::Arc;
 use std::time::Instant;
 
-use sillage::audio::Player;
-use sillage::config::Config;
-use sillage::reader::command::Command;
-use sillage::reader::handle::{ReaderHandle, Request};
-use sillage::reader::{preview, settings, view, Reader};
-use sillage::tts::kokoro::{self, KokoroBackend, KokoroRaw};
-use sillage::tts::{self, silent::SilentEngine, TtsEngine};
+use dysflow::audio::Player;
+use dysflow::config::Config;
+use dysflow::reader::command::Command;
+use dysflow::reader::handle::{ReaderHandle, Request};
+use dysflow::reader::{preview, settings, view, Reader};
+use dysflow::tts::kokoro::{self, KokoroBackend, KokoroRaw};
+use dysflow::tts::{self, silent::SilentEngine, TtsEngine};
 
 uniffi::setup_scaffolding!();
 
 #[derive(Debug, thiserror::Error, uniffi::Error)]
-pub enum SillageError {
+pub enum DysflowError {
     #[error("{message}")]
     Failed { message: String },
     /// Une synthèse Kokoro abandonnée en route (`SynthesisCancel`) : ni un
     /// échec ni un résultat.
-    #[error("{}", sillage::tr!("synthesis cancelled", "synthèse abandonnée"))]
+    #[error("{}", dysflow::tr!("synthesis cancelled", "synthèse abandonnée"))]
     Cancelled,
 }
 
-fn failed(e: impl ToString) -> SillageError {
-    SillageError::Failed { message: e.to_string() }
+fn failed(e: impl ToString) -> DysflowError {
+    DysflowError::Failed { message: e.to_string() }
 }
 
 /// Une erreur inattendue côté Swift (exception non prévue) devient un échec
 /// ordinaire : UniFFI l'exige des erreurs d'une interface étrangère.
-impl From<uniffi::UnexpectedUniFFICallbackError> for SillageError {
+impl From<uniffi::UnexpectedUniFFICallbackError> for DysflowError {
     fn from(e: uniffi::UnexpectedUniFFICallbackError) -> Self {
-        SillageError::Failed { message: e.reason }
+        DysflowError::Failed { message: e.reason }
     }
 }
 
@@ -56,18 +56,18 @@ impl From<uniffi::UnexpectedUniFFICallbackError> for SillageError {
 ///   ne partent qu'au dernier `release` ;
 /// - `synthesize` consulte `cancel` avant le passage et entre les durées et
 ///   le décodeur, et aux points d'arrêt du décodeur ; s'il dit vrai, elle
-///   s'arrête et rend `SillageError::Cancelled` (jamais `Failed`). Elle ne
+///   s'arrête et rend `DysflowError::Cancelled` (jamais `Failed`). Elle ne
 ///   garde jamais `cancel` au-delà de l'appel (il retient le pool).
 #[uniffi::export(with_foreign)]
 pub trait KokoroCompute: Send + Sync {
-    fn load(&self, model_dir: String) -> Result<(), SillageError>;
-    fn warm_up(&self) -> Result<(), SillageError>;
+    fn load(&self, model_dir: String) -> Result<(), DysflowError>;
+    fn warm_up(&self) -> Result<(), DysflowError>;
     fn synthesize(
         &self,
         ids: Vec<i64>,
         style: Vec<f32>,
         cancel: Arc<SynthesisCancel>,
-    ) -> Result<KokoroOutput, SillageError>;
+    ) -> Result<KokoroOutput, DysflowError>;
     fn release(&self);
 }
 
@@ -147,11 +147,11 @@ impl KokoroBackend for ForeignKokoro {
 ///   préparation : la voix par défaut du modèle) ;
 /// - `synthesize` consulte `cancel` avant et pendant la génération (toutes
 ///   les ~12 trames Qwen, ~20 trames Magpie) ; s'il dit vrai, elle rend
-///   `SillageError::Cancelled` (jamais `Failed`) et ne garde pas `cancel`.
+///   `DysflowError::Cancelled` (jamais `Failed`) et ne garde pas `cancel`.
 #[uniffi::export(with_foreign)]
 pub trait TextSpeechCompute: Send + Sync {
-    fn load(&self, model_dir: String, runtime: String) -> Result<(), SillageError>;
-    fn warm_up(&self, model_dir: String) -> Result<(), SillageError>;
+    fn load(&self, model_dir: String, runtime: String) -> Result<(), DysflowError>;
+    fn warm_up(&self, model_dir: String) -> Result<(), DysflowError>;
     fn synthesize(
         &self,
         model_dir: String,
@@ -159,7 +159,7 @@ pub trait TextSpeechCompute: Send + Sync {
         language: String,
         voice: String,
         cancel: Arc<SynthesisCancel>,
-    ) -> Result<SpeechOutput, SillageError>;
+    ) -> Result<SpeechOutput, DysflowError>;
     fn release(&self, model_dir: String);
 }
 
@@ -175,9 +175,9 @@ struct ForeignText(Arc<dyn TextSpeechCompute>);
 
 /// Une erreur du calcul étranger vue par le moteur : l'abandon reste un
 /// abandon (il ne compte pas vers le repli).
-fn from_foreign(e: SillageError) -> anyhow::Error {
+fn from_foreign(e: DysflowError) -> anyhow::Error {
     match e {
-        SillageError::Cancelled => anyhow::Error::new(tts::Cancelled),
+        DysflowError::Cancelled => anyhow::Error::new(tts::Cancelled),
         e => anyhow::anyhow!(e.to_string()),
     }
 }
@@ -216,7 +216,7 @@ pub fn text_speech_bridge_check(
     compute: Arc<dyn TextSpeechCompute>,
     model_dir: String,
     runtime: String,
-) -> Result<u64, SillageError> {
+) -> Result<u64, DysflowError> {
     use tts::text_compute::TextCompute;
     let backend = ForeignText(compute);
     let dir = std::path::Path::new(&model_dir);
@@ -225,7 +225,7 @@ pub fn text_speech_bridge_check(
     backend.release(dir);
     let raw = raw?;
     if raw.samples.is_empty() || raw.samples.iter().any(|s| !s.is_finite()) {
-        return Err(failed(sillage::tr!("invalid output", "sortie invalide")));
+        return Err(failed(dysflow::tr!("invalid output", "sortie invalide")));
     }
     Ok(raw.samples.len() as u64)
 }
@@ -233,7 +233,7 @@ pub fn text_speech_bridge_check(
 /// Vérifie le pont vers un calcul Kokoro étranger : chargement, trois
 /// jetons, libération, sortie contrôlée. Rend le nombre d'échantillons.
 #[uniffi::export]
-pub fn kokoro_bridge_check(compute: Arc<dyn KokoroCompute>, model_dir: String) -> Result<u64, SillageError> {
+pub fn kokoro_bridge_check(compute: Arc<dyn KokoroCompute>, model_dir: String) -> Result<u64, DysflowError> {
     let backend = ForeignKokoro(compute);
     backend.load(std::path::Path::new(&model_dir)).map_err(failed)?;
     let raw = backend.infer(&[0, 43, 0], &[0.0; 256], &tts::Cancel::never()).map_err(failed);
@@ -599,12 +599,12 @@ pub struct VoiceModel {
 }
 
 #[derive(uniffi::Object)]
-pub struct SillageReader {
+pub struct DysflowReader {
     handle: ReaderHandle,
 }
 
 #[uniffi::export]
-impl SillageReader {
+impl DysflowReader {
     /// Le lecteur réel : configuration de l'utilisateur, voix Kokoro.
     #[uniffi::constructor]
     pub fn new() -> Arc<Self> {
@@ -647,7 +647,7 @@ impl SillageReader {
         self.handle.send(Request::OpenText { markdown, source });
     }
 
-    pub fn open_file(&self, path: String) -> Result<(), SillageError> {
+    pub fn open_file(&self, path: String) -> Result<(), DysflowError> {
         let (reply, answer) = crossbeam_channel_bounded();
         self.handle.send(Request::OpenFile { path: path.into(), reply });
         answer
@@ -660,10 +660,10 @@ impl SillageReader {
     /// reconnu (option `ocr`) s'ouvre. Le presse-papiers n'est jamais relu
     /// ici : l'app a vérifié ce qu'elle passe. Bloque le temps de la
     /// reconnaissance : à appeler hors du fil principal.
-    pub fn open_image(&self, bytes: Vec<u8>) -> Result<(), SillageError> {
-        let markdown = sillage::source::image_bytes(&bytes).map_err(failed)?;
+    pub fn open_image(&self, bytes: Vec<u8>) -> Result<(), DysflowError> {
+        let markdown = dysflow::source::image_bytes(&bytes).map_err(failed)?;
         if markdown.trim().is_empty() {
-            return Err(failed(sillage::tr!("no text recognized in the image", "aucun texte reconnu dans l'image")));
+            return Err(failed(dysflow::tr!("no text recognized in the image", "aucun texte reconnu dans l'image")));
         }
         self.open_text(markdown, "image".into());
         Ok(())
@@ -709,7 +709,7 @@ impl SillageReader {
     }
 
     /// Applique et écrit `config.toml` ; rend les valeurs appliquées.
-    pub fn update_settings(&self, patch: SettingsPatch) -> Result<SettingsView, SillageError> {
+    pub fn update_settings(&self, patch: SettingsPatch) -> Result<SettingsView, DysflowError> {
         let patch = patch_from(patch);
         self.handle
             .ask(move |reader| {
@@ -718,14 +718,14 @@ impl SillageReader {
                     .map(settings_of)
                     .map_err(|e| e.to_string())
             })
-            .ok_or_else(|| failed(sillage::tr!("reader unavailable", "lecteur indisponible")))?
+            .ok_or_else(|| failed(dysflow::tr!("reader unavailable", "lecteur indisponible")))?
             .map_err(failed)
     }
 
     pub fn capabilities(&self) -> ModelCapabilities {
         // Les voix de macOS se relisent ici, hors du fil du lecteur : une
         // voix ajoutée dans Réglages Système apparaît sans relancer l'app.
-        sillage::tts::system_voices::refresh_system_voices();
+        dysflow::tts::system_voices::refresh_system_voices();
         self.handle
             .ask(|reader| {
                 let c = reader.capabilities();
@@ -781,20 +781,20 @@ impl SillageReader {
 
     /// Octets occupés par les modèles que l'app sait charger.
     pub fn models_disk_usage(&self) -> u64 {
-        sillage::models::available_with(true).into_iter().map(sillage::models::installed_bytes).sum()
+        dysflow::models::available_with(true).into_iter().map(dysflow::models::installed_bytes).sum()
     }
 
-    pub fn install_voice(&self, id: String) -> Result<(), SillageError> {
+    pub fn install_voice(&self, id: String) -> Result<(), DysflowError> {
         self.handle
             .ask(move |reader| reader.install_voice(&id).map_err(|e| e.to_string()))
-            .ok_or_else(|| failed(sillage::tr!("reader unavailable", "lecteur indisponible")))?
+            .ok_or_else(|| failed(dysflow::tr!("reader unavailable", "lecteur indisponible")))?
             .map_err(failed)
     }
 
-    pub fn use_voice(&self, id: String) -> Result<(), SillageError> {
+    pub fn use_voice(&self, id: String) -> Result<(), DysflowError> {
         self.handle
             .ask(move |reader| reader.use_voice(&id, Instant::now()).map_err(|e| e.to_string()))
-            .ok_or_else(|| failed(sillage::tr!("reader unavailable", "lecteur indisponible")))?
+            .ok_or_else(|| failed(dysflow::tr!("reader unavailable", "lecteur indisponible")))?
             .map_err(failed)
     }
 
@@ -803,22 +803,22 @@ impl SillageReader {
     }
 
     /// La langue du document gardé (`None` : automatique).
-    pub fn set_document_language(&self, language: Option<String>) -> Result<(), SillageError> {
+    pub fn set_document_language(&self, language: Option<String>) -> Result<(), DysflowError> {
         self.handle
             .ask(move |reader| {
                 reader
                     .set_document_language(language.as_deref(), Instant::now())
                     .map_err(|e| e.to_string())
             })
-            .ok_or_else(|| failed(sillage::tr!("reader unavailable", "lecteur indisponible")))?
+            .ok_or_else(|| failed(dysflow::tr!("reader unavailable", "lecteur indisponible")))?
             .map_err(failed)
     }
 
     /// La phrase d'exemple dans une langue : chaque voix dans la sienne.
-    pub fn preview_voice_in(&self, language: String) -> Result<(), SillageError> {
+    pub fn preview_voice_in(&self, language: String) -> Result<(), DysflowError> {
         self.handle
             .ask(move |reader| reader.preview_voice_in(&language, Instant::now()))
-            .ok_or_else(|| failed(sillage::tr!("reader unavailable", "lecteur indisponible")))?
+            .ok_or_else(|| failed(dysflow::tr!("reader unavailable", "lecteur indisponible")))?
             .map_err(failed)
     }
 
@@ -827,7 +827,7 @@ impl SillageReader {
     /// `system_locale` : la locale du Mac (`fr_FR`), pour la ligne de sa voix
     /// par défaut.
     pub fn voice_library(&self, system_locale: String) -> Vec<LibraryVoice> {
-        sillage::tts::system_voices::refresh_system_voices();
+        dysflow::tts::system_voices::refresh_system_voices();
         self.handle
             .ask(move |reader| {
                 reader
@@ -856,10 +856,10 @@ impl SillageReader {
     /// modèle que l'actif se charge pour l'aperçu (`snapshot.preview.preparing`),
     /// avec le même calcul MLX partagé que la lecture.
     pub fn preview_voice_with(&self, model_id: String, voice: String, text: String, speed: f32)
-        -> Result<(), SillageError> {
+        -> Result<(), DysflowError> {
         self.handle
             .ask(move |reader| reader.preview_voice_with(&model_id, &voice, &text, speed, Instant::now()))
-            .ok_or_else(|| failed(sillage::tr!("reader unavailable", "lecteur indisponible")))?
+            .ok_or_else(|| failed(dysflow::tr!("reader unavailable", "lecteur indisponible")))?
             .map_err(failed)
     }
 
@@ -876,10 +876,10 @@ impl SillageReader {
 
     /// « Passer à Kokoro » : le téléchargement démarre (ou Kokoro devient
     /// actif tout de suite s'il est déjà installé).
-    pub fn accept_voice_offer(&self) -> Result<(), SillageError> {
+    pub fn accept_voice_offer(&self) -> Result<(), DysflowError> {
         self.handle
             .ask(|reader| reader.accept_offer(Instant::now()).map_err(|e| e.to_string()))
-            .ok_or_else(|| failed(sillage::tr!("reader unavailable", "lecteur indisponible")))?
+            .ok_or_else(|| failed(dysflow::tr!("reader unavailable", "lecteur indisponible")))?
             .map_err(failed)
     }
 
@@ -893,19 +893,19 @@ impl SillageReader {
     /// aucun n'est installé ; sinon rien. Idempotente ; sans effet pendant
     /// un téléchargement. La progression : `Snapshot.download`. « Réessayer »
     /// rappelle cette fonction.
-    pub fn ensure_default_voice(&self) -> Result<(), SillageError> {
+    pub fn ensure_default_voice(&self) -> Result<(), DysflowError> {
         self.handle
             .ask(|reader| reader.ensure_default_voice(Instant::now()).map_err(|e| e.to_string()))
-            .ok_or_else(|| failed(sillage::tr!("reader unavailable", "lecteur indisponible")))?
+            .ok_or_else(|| failed(dysflow::tr!("reader unavailable", "lecteur indisponible")))?
             .map_err(failed)
     }
 
     /// « Remplacer » un `config.toml` illisible : une copie est gardée à
     /// côté (`config.toml.illisible`), puis les réglages en cours sont écrits.
-    pub fn replace_unreadable_config(&self) -> Result<(), SillageError> {
+    pub fn replace_unreadable_config(&self) -> Result<(), DysflowError> {
         self.handle
             .ask(|reader| reader.replace_unreadable_config().map_err(|e| e.to_string()))
-            .ok_or_else(|| failed(sillage::tr!("reader unavailable", "lecteur indisponible")))?
+            .ok_or_else(|| failed(dysflow::tr!("reader unavailable", "lecteur indisponible")))?
             .map_err(failed)
     }
 
@@ -927,31 +927,31 @@ impl SillageReader {
             .unwrap_or(Measures { busy_seconds: 0.0, stalls: 0 })
     }
 
-    pub fn cancel_download(&self) -> Result<(), SillageError> {
+    pub fn cancel_download(&self) -> Result<(), DysflowError> {
         self.handle
             .ask(|reader| reader.cancel_download().map_err(|e| e.to_string()))
-            .ok_or_else(|| failed(sillage::tr!("reader unavailable", "lecteur indisponible")))?
+            .ok_or_else(|| failed(dysflow::tr!("reader unavailable", "lecteur indisponible")))?
             .map_err(failed)
     }
 
-    pub fn remove_model(&self, id: String) -> Result<(), SillageError> {
+    pub fn remove_model(&self, id: String) -> Result<(), DysflowError> {
         self.handle
             .ask(move |reader| reader.remove_model(&id).map_err(|e| e.to_string()))
-            .ok_or_else(|| failed(sillage::tr!("reader unavailable", "lecteur indisponible")))?
+            .ok_or_else(|| failed(dysflow::tr!("reader unavailable", "lecteur indisponible")))?
             .map_err(failed)
     }
 
     /// Espace libre du volume des modèles. Ne passe pas par le fil du lecteur.
     pub fn free_space(&self) -> Option<u64> {
-        sillage::models::free_space()
+        dysflow::models::free_space()
     }
 
     /// Le dossier d'un paquet installé (dictée : l'app y charge le modèle).
     /// Ne passe pas par le fil du lecteur.
     pub fn model_directory(&self, id: String) -> Option<String> {
-        let package = sillage::models::available_with(true).into_iter().find(|p| p.id == id)?;
-        sillage::models::is_installed(package)
-            .then(|| sillage::models::install_path(package))
+        let package = dysflow::models::available_with(true).into_iter().find(|p| p.id == id)?;
+        dysflow::models::is_installed(package)
+            .then(|| dysflow::models::install_path(package))
             .flatten()
             .and_then(|p| p.parent().map(|d| d.to_string_lossy().into_owned()))
     }
@@ -960,30 +960,30 @@ impl SillageReader {
     /// pas par le fil du lecteur (environ 2 ms).
     pub fn audio_outputs(&self) -> AudioOutputsView {
         AudioOutputsView {
-            devices: sillage::audio::player::output_devices(),
-            system: sillage::audio::player::system_output(),
+            devices: dysflow::audio::player::output_devices(),
+            system: dysflow::audio::player::system_output(),
         }
     }
 
     /// Le dossier de `config.toml`. Ne passe pas par le fil du lecteur.
     pub fn config_dir(&self) -> Option<String> {
-        sillage::paths::config_dir().map(|d| d.to_string_lossy().into_owned())
+        dysflow::paths::config_dir().map(|d| d.to_string_lossy().into_owned())
     }
 
     /// Vide le cache des documents ; rend les octets libérés.
-    pub fn clear_document_cache(&self) -> Result<u64, SillageError> {
+    pub fn clear_document_cache(&self) -> Result<u64, DysflowError> {
         self.handle
             .ask(|reader| reader.clear_document_cache().map_err(|e| e.to_string()))
-            .ok_or_else(|| failed(sillage::tr!("reader unavailable", "lecteur indisponible")))?
+            .ok_or_else(|| failed(dysflow::tr!("reader unavailable", "lecteur indisponible")))?
             .map_err(failed)
     }
 }
 
 fn crossbeam_channel_bounded() -> (
-    sillage::reader::handle::ReplySender,
-    sillage::reader::handle::ReplyReceiver,
+    dysflow::reader::handle::ReplySender,
+    dysflow::reader::handle::ReplyReceiver,
 ) {
-    sillage::reader::handle::reply_channel()
+    dysflow::reader::handle::reply_channel()
 }
 
 /// Les défauts du moteur (`Config::default`), sans passer par le fil du
@@ -999,14 +999,14 @@ pub fn default_settings() -> SettingsView {
 /// lire le catalogue des modèles.
 #[uniffi::export]
 pub fn set_interface_language(tag: String) {
-    sillage::i18n::set_ui_lang(sillage::i18n::UiLang::from_locale(&tag));
+    dysflow::i18n::set_ui_lang(dysflow::i18n::UiLang::from_locale(&tag));
 }
 
 /// La phrase d'exemple des aperçus, dans `language` (`fr` par défaut) : le
 /// texte que la bibliothèque des voix propose d'abord.
 #[uniffi::export]
 pub fn preview_sample_text(language: String) -> String {
-    sillage::tts::preview::sample_text(&language).to_string()
+    dysflow::tts::preview::sample_text(&language).to_string()
 }
 
 fn settings_of(s: settings::SettingsView) -> SettingsView {
@@ -1199,7 +1199,7 @@ mod tests {
 
     #[test]
     fn a_silent_reader_opens_text_and_follows_commands() {
-        let reader = SillageReader::silent();
+        let reader = DysflowReader::silent();
         reader.open_text("# Titre\n\nUn. Deux.".into(), "test".into());
         let deadline = Instant::now() + Duration::from_secs(5);
         while reader.snapshot().revision != 1 {
@@ -1217,19 +1217,19 @@ mod tests {
 
     /// Le nom que l'outil de mesure exige (`Measure.moteurKokoroMLX`) :
     /// celui du moteur Kokoro sur le calcul de l'app, enveloppé comme dans
-    /// `SillageReader::with_mlx`. Qu'il change, et la mesure refuserait
+    /// `DysflowReader::with_mlx`. Qu'il change, et la mesure refuserait
     /// toute voix : ce test le dit d'abord.
     #[test]
     fn the_kokoro_engine_on_the_app_compute_is_named_kokoro_mlx() {
         struct NoCompute;
         impl KokoroCompute for NoCompute {
-            fn load(&self, _: String) -> Result<(), SillageError> {
+            fn load(&self, _: String) -> Result<(), DysflowError> {
                 Ok(())
             }
-            fn warm_up(&self) -> Result<(), SillageError> {
+            fn warm_up(&self) -> Result<(), DysflowError> {
                 Ok(())
             }
-            fn synthesize(&self, _: Vec<i64>, _: Vec<f32>, _: Arc<SynthesisCancel>) -> Result<KokoroOutput, SillageError> {
+            fn synthesize(&self, _: Vec<i64>, _: Vec<f32>, _: Arc<SynthesisCancel>) -> Result<KokoroOutput, DysflowError> {
                 Ok(KokoroOutput { samples: Vec::new(), durations: Vec::new() })
             }
             fn release(&self) {}
@@ -1259,14 +1259,14 @@ mod tests {
 
     #[test]
     fn bytes_that_are_not_an_image_open_nothing() {
-        let reader = SillageReader::silent();
+        let reader = DysflowReader::silent();
         assert!(reader.open_image(b"pas une image".to_vec()).is_err());
         assert_eq!(reader.snapshot().revision, 0);
     }
 
     #[test]
     fn settings_round_trip_through_a_patch_without_touching_disk() {
-        let reader = SillageReader::silent();
+        let reader = DysflowReader::silent();
         let patch = SettingsPatch { keep_voice_minutes: Some(5), line_spacing: Some(9), ..Default::default() };
         let applied = reader.apply_patch(patch);
         assert_eq!(applied.keep_voice_minutes, 5);
@@ -1277,7 +1277,7 @@ mod tests {
     #[test]
     fn the_silent_reader_writes_and_erases_nothing() {
         let _langue = langue();
-        let reader = SillageReader::silent();
+        let reader = DysflowReader::silent();
         let patch = SettingsPatch { seek_step: Some(7), ..Default::default() };
         assert_eq!(reader.update_settings(patch).expect("rien à écrire").seek_step, 7);
         let err = reader.clear_document_cache().unwrap_err().to_string();
@@ -1298,7 +1298,7 @@ mod tests {
     #[test]
     fn capabilities_and_preview_answer_without_a_model() {
         let _langue = langue();
-        let reader = SillageReader::silent();
+        let reader = DysflowReader::silent();
         let caps = reader.capabilities();
         assert!(caps.voices.is_empty());
         assert_eq!(caps.languages.len(), 7);
@@ -1310,14 +1310,14 @@ mod tests {
 
     #[test]
     fn the_sample_text_is_the_one_of_the_previews() {
-        assert_eq!(preview_sample_text("fr".into()), sillage::tts::preview::sample_text("fr"));
+        assert_eq!(preview_sample_text("fr".into()), dysflow::tts::preview::sample_text("fr"));
         assert!(preview_sample_text("en".into()).starts_with("Hello"));
     }
 
     #[test]
     fn the_voice_library_answers_without_a_model() {
         let _langue = langue();
-        let reader = SillageReader::silent();
+        let reader = DysflowReader::silent();
         // Le lecteur muet ne propose aucun paquet : les voix de macOS seules.
         assert!(reader.voice_library("fr_FR".into()).iter().all(|v| v.model_id == "system" && v.model_label == "macOS"));
         let err = reader.preview_voice_with("system".into(), "Thomas".into(), "  ".into(), 1.0).unwrap_err();
@@ -1331,7 +1331,7 @@ mod tests {
 
     #[test]
     fn the_interface_language_reaches_the_catalogue() {
-        use sillage::i18n::{set_ui_lang, ui_lang, UiLang};
+        use dysflow::i18n::{set_ui_lang, ui_lang, UiLang};
         // Seul test à toucher la langue globale : le lecteur répond sur son
         // propre fil, que la surcharge d'un fil de test n'atteint pas. La
         // langue d'avant revient même si une assertion échoue.
@@ -1343,7 +1343,7 @@ mod tests {
         }
         let _langue = langue();
         let _restaure = Restaure(ui_lang());
-        let reader = SillageReader::silent();
+        let reader = DysflowReader::silent();
         set_interface_language("de_DE".into());
         assert_eq!(ui_lang(), UiLang::En);
         let english = reader.voices();
@@ -1375,10 +1375,10 @@ mod tests {
     }
 
     impl KokoroCompute for FakeCompute {
-        fn load(&self, _model_dir: String) -> Result<(), SillageError> {
+        fn load(&self, _model_dir: String) -> Result<(), DysflowError> {
             Ok(())
         }
-        fn warm_up(&self) -> Result<(), SillageError> {
+        fn warm_up(&self) -> Result<(), DysflowError> {
             Ok(())
         }
         fn synthesize(
@@ -1386,12 +1386,12 @@ mod tests {
             ids: Vec<i64>,
             _style: Vec<f32>,
             cancel: Arc<SynthesisCancel>,
-        ) -> Result<KokoroOutput, SillageError> {
+        ) -> Result<KokoroOutput, DysflowError> {
             if cancel.is_cancelled() {
-                return Err(SillageError::Cancelled);
+                return Err(DysflowError::Cancelled);
             }
             if self.fail {
-                return Err(SillageError::Failed { message: "Calcul Metal indisponible".into() });
+                return Err(DysflowError::Failed { message: "Calcul Metal indisponible".into() });
             }
             Ok(KokoroOutput { samples: vec![0.0; ids.len() * 2 * 600], durations: vec![2; ids.len()] })
         }
@@ -1423,13 +1423,13 @@ mod tests {
     }
 
     impl TextSpeechCompute for FakeText {
-        fn load(&self, _: String, runtime: String) -> Result<(), SillageError> {
+        fn load(&self, _: String, runtime: String) -> Result<(), DysflowError> {
             if self.fail {
-                return Err(SillageError::Failed { message: format!("{runtime} ne se charge pas") });
+                return Err(DysflowError::Failed { message: format!("{runtime} ne se charge pas") });
             }
             Ok(())
         }
-        fn warm_up(&self, _: String) -> Result<(), SillageError> {
+        fn warm_up(&self, _: String) -> Result<(), DysflowError> {
             Ok(())
         }
         fn synthesize(
@@ -1439,9 +1439,9 @@ mod tests {
             _: String,
             _: String,
             cancel: Arc<SynthesisCancel>,
-        ) -> Result<SpeechOutput, SillageError> {
+        ) -> Result<SpeechOutput, DysflowError> {
             if cancel.is_cancelled() {
-                return Err(SillageError::Cancelled);
+                return Err(DysflowError::Cancelled);
             }
             Ok(SpeechOutput { samples: vec![0.25; 22_050], sample_rate: 22_050 })
         }
@@ -1462,7 +1462,7 @@ mod tests {
 
     #[test]
     fn a_text_abandon_crosses_the_bridge_as_an_abandon() {
-        use sillage::tts::text_compute::TextCompute;
+        use dysflow::tts::text_compute::TextCompute;
         let compute = ForeignText(Arc::new(FakeText { fail: false }));
         let err = compute
             .synthesize(std::path::Path::new("/x"), "x", "fr", "sofia", &tts::Cancel::when(|| true))
@@ -1472,7 +1472,7 @@ mod tests {
 
     #[test]
     fn the_language_of_the_document_reaches_the_snapshot() {
-        let reader = SillageReader::silent();
+        let reader = DysflowReader::silent();
         reader.open_text(
             "Monads let you chain computations that carry a context, without handling it by hand at every step.".into(),
             "test".into(),
@@ -1496,7 +1496,7 @@ mod tests {
 
     #[test]
     fn a_voice_per_language_round_trips_and_the_silent_reader_never_migrates() {
-        let reader = SillageReader::silent();
+        let reader = DysflowReader::silent();
         let patch = SettingsPatch {
             voice_for_language: Some(LanguageVoice { language: "en".into(), voice: "am_fenrir".into() }),
             ..Default::default()
@@ -1512,7 +1512,7 @@ mod tests {
         let defaults = default_settings();
         assert_eq!(defaults.reading_font, "literata");
         assert_eq!(defaults.reading_size, 22.0);
-        let reader = SillageReader::silent();
+        let reader = DysflowReader::silent();
         let applied = reader.apply_patch(SettingsPatch {
             reading_font: Some("openDyslexic".into()),
             reading_size: Some(26.0),
@@ -1531,7 +1531,7 @@ mod tests {
     #[test]
     fn the_offer_answers_cross_the_bridge() {
         let _langue = langue();
-        let reader = SillageReader::silent();
+        let reader = DysflowReader::silent();
         assert!(reader.snapshot().offer.is_none());
         let err = reader.accept_voice_offer().unwrap_err().to_string();
         assert!(err.contains("no pending offer"), "{err}");
@@ -1556,7 +1556,7 @@ mod tests {
     #[test]
     fn an_unreadable_config_reaches_the_snapshot() {
         let _langue = langue();
-        let reader = SillageReader::silent();
+        let reader = DysflowReader::silent();
         assert!(!reader.snapshot().config_unreadable);
         let err = reader.replace_unreadable_config().unwrap_err().to_string();
         assert!(err.contains("trial mode"), "{err}");
@@ -1566,7 +1566,7 @@ mod tests {
     /// réelle : rien ne se télécharge, rien n'échoue.
     #[test]
     fn the_silent_reader_never_installs_a_voice() {
-        let reader = SillageReader::silent();
+        let reader = DysflowReader::silent();
         reader.ensure_default_voice().expect("sans effet, sans erreur");
         reader.ensure_default_voice().expect("idempotente");
         assert!(reader.snapshot().download.is_none());
@@ -1578,7 +1578,7 @@ mod tests {
     /// (plus l'avancement dans la phrase) / nombre de phrases ».
     #[test]
     fn progress_is_the_sentence_over_the_sentence_count() {
-        let reader = SillageReader::silent();
+        let reader = DysflowReader::silent();
         reader.open_text("Un. Deux. Trois. Quatre.".into(), "test".into());
         let deadline = Instant::now() + Duration::from_secs(5);
         while reader.snapshot().revision != 1 {

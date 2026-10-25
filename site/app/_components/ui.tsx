@@ -2,20 +2,36 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { chemin, dico, type Lang, type Page } from "../_i18n";
 import { depot } from "../_data/liens";
+import { Confort } from "./Confort";
 
 /** La marque, redessinée à l'encre du thème (le SVG de `assets/logo`). */
+const reseau = [[22.5, 21, 2], [23.5, 33.5, 1.8], [36, 18.5, 2], [33, 35, 1.7], [52, 21.5, 2.1]];
+
 export function Logo({ className = "size-7" }: { className?: string }) {
   return (
     <svg viewBox="0 0 64 64" className={className} aria-hidden="true">
       <path
-        d="M 45 19 H 19 A 6.5 6.5 0 0 0 19 32 H 45 A 6.5 6.5 0 0 1 45 45 H 28.5"
+        d="M 23 55 C 22 49 17 44 16.5 36 C 15.5 22 24 12.5 34 12.5 C 42 12.5 46 18.5 45.5 26 C 45.3 27.8 44.3 28.8 44.8 30.5 C 46 33 49.5 35 49.8 36.3 C 50 37.3 48 37.8 46.8 38 C 47.8 39 47.8 40 46.6 40.8 C 47.6 41.5 47.4 42.6 46.4 43.3 C 46 44 46.6 45.2 46.6 46 C 46.4 48 43 48.6 40 48.4 C 38.6 50.5 39 53 39.8 55.5"
         fill="none"
         stroke="currentColor"
-        strokeWidth="5"
+        strokeWidth="3.2"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
-      <circle cx="19" cy="45" r="3.4" className="fill-[var(--citron)]" stroke="currentColor" strokeWidth="1.2" />
+      {/* Le réseau en citron, cerné de l'encre pour se détacher d'un fond clair. */}
+      {[
+        { couleur: "currentColor", liseré: 0.7 },
+        { couleur: "var(--citron)", liseré: 0 },
+      ].map(({ couleur, liseré }) => (
+        <g key={couleur} fill={couleur} stroke={couleur} strokeWidth={1.5 + 2 * liseré} strokeLinecap="round">
+          {reseau.map(([x, y]) => (
+            <line key={`${x}-${y}`} x1="30" y1="27" x2={x} y2={y} />
+          ))}
+          {[[30, 27, 3.8], ...reseau].map(([x, y, r]) => (
+            <circle key={`${x}-${y}`} cx={x} cy={y} r={r + liseré} stroke="none" />
+          ))}
+        </g>
+      ))}
     </svg>
   );
 }
@@ -48,24 +64,23 @@ export function Entete({ lang, page }: { lang: Lang; page: Page }) {
   const d = dico(lang).entete;
   return (
     <header className="sticky top-0 z-20 border-b border-filet/70 bg-fond/85 backdrop-blur">
-      <nav className="mx-auto flex h-16 max-w-6xl items-center gap-6 px-4 sm:px-6">
+      {/* En très grand texte, l'en-tête passe sur deux rangs plutôt que de déborder. */}
+      <nav className="mx-auto flex min-h-16 max-w-6xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3 sm:px-6">
         <Link href={chemin(lang, "accueil")} aria-label={d.accueil} className="flex items-center gap-2 text-lg font-extrabold tracking-tight">
           <Logo />
-          sillage
+          dysflow
         </Link>
-        <div className="ml-auto flex items-center gap-1 text-[15px] text-encre-douce sm:gap-2">
-          <Link href={chemin(lang, "accueil", "avantages")} className="hidden rounded-full px-3 py-1.5 hover:bg-carte-2 hover:text-encre sm:block">
-            {d.avantages}
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-1 text-[15px] text-encre-douce sm:gap-2">
+          <Link href={chemin(lang, "accueil", "parcours")} className="hidden rounded-full px-3 py-1.5 hover:bg-carte-2 hover:text-encre sm:block">
+            {d.parcours}
           </Link>
-          <Link href={chemin(lang, "accueil", "comparaison")} className="hidden rounded-full px-3 py-1.5 hover:bg-carte-2 hover:text-encre md:block">
-            {d.comparaison}
-          </Link>
-          <Link href={chemin(lang, "modeles")} className="rounded-full px-3 py-1.5 hover:bg-carte-2 hover:text-encre">
+          <Link href={chemin(lang, "modeles")} className="hidden rounded-full px-3 py-1.5 hover:bg-carte-2 hover:text-encre min-[420px]:block">
             {d.modeles}
           </Link>
-          <a href={depot} className="hidden rounded-full px-3 py-1.5 hover:bg-carte-2 hover:text-encre sm:block">
+          <a href={depot} className="hidden rounded-full px-3 py-1.5 hover:bg-carte-2 hover:text-encre lg:block">
             {d.github}
           </a>
+          <Confort libelles={dico(lang).confort} />
           <SelecteurLangue lang={lang} page={page} />
           <Bouton href={chemin(lang, "telecharger")} petit>
             {d.telecharger}
@@ -81,7 +96,7 @@ export function Cadre({ lang, page, children }: { lang: Lang; page: Page; childr
   return (
     <>
       <Entete lang={lang} page={page} />
-      <main className="flex-1">{children}</main>
+      <main id="contenu" tabIndex={-1} className="flex-1 outline-none">{children}</main>
     </>
   );
 }
@@ -93,10 +108,10 @@ export function Pied({ lang }: { lang: Lang }) {
       <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-10 text-[15px] text-encre-douce sm:flex-row sm:items-center sm:px-6">
         <div className="flex items-center gap-2 font-bold text-encre">
           <Logo className="size-6" />
-          sillage
+          dysflow
         </div>
         <p>{d.licence}</p>
-        <div className="flex gap-5 sm:ml-auto">
+        <div className="flex flex-wrap gap-x-5 gap-y-2 sm:ml-auto">
           <Link href={chemin(lang, "modeles")} className="hover:text-encre">{d.modeles}</Link>
           <Link href={chemin(lang, "telecharger")} className="hover:text-encre">{d.telecharger}</Link>
           <a href={depot} className="hover:text-encre">{d.code}</a>
@@ -121,7 +136,7 @@ const variantes = {
 
 /** Un lien en forme de bouton. Interne : `<Link>` ; externe : `<a>`. */
 export function Bouton({ href, children, variante = "encre", petit }: BoutonProps) {
-  const classes = `inline-flex items-center justify-center gap-2 rounded-full font-bold transition ${
+  const classes = `inline-flex max-w-full items-center justify-center gap-2 rounded-full text-center font-bold transition ${
     petit ? "px-4 py-2 text-[15px]" : "px-6 py-3.5 text-base"
   } ${variantes[variante]}`;
   if (href.startsWith("/")) {
@@ -154,11 +169,12 @@ export function Pastille({ children, className = "" }: { children: ReactNode; cl
   );
 }
 
-export function TitreSection({ surtitre, titre, texte }: { surtitre: string; titre: string; texte?: string }) {
+export function TitreSection({ surtitre, titre, texte, principal }: { surtitre: string; titre: string; texte?: string; principal?: boolean }) {
+  const Titre = principal ? "h1" : "h2";
   return (
     <div className="mx-auto max-w-2xl text-center">
       <p className="text-sm font-bold uppercase tracking-[0.14em] text-encre-pale">{surtitre}</p>
-      <h2 className="mt-3 text-balance text-3xl font-extrabold tracking-tight sm:text-4xl">{titre}</h2>
+      <Titre className="mt-3 text-balance text-3xl font-extrabold tracking-tight sm:text-4xl">{titre}</Titre>
       {texte && <p className="mt-4 text-pretty text-lg leading-relaxed text-encre-douce">{texte}</p>}
     </div>
   );

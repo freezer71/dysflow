@@ -85,7 +85,7 @@ struct MicTrialBlock: View {
         .onChange(of: language) { _, _ in trial.refreshLanguage() }
         // La section change ou la fenêtre se ferme : le micro se ferme.
         .onDisappear { trial.cancel() }
-        // Une fenêtre de sillage réduite dans le Dock (les réglages, le plus
+        // Une fenêtre de dysflow réduite dans le Dock (les réglages, le plus
         // souvent) : le micro se ferme.
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.willMiniaturizeNotification)) { _ in
             if trial.isRunning { trial.cancel() }

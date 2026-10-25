@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""La voix française fixe de Qwen3-TTS 0.6B Base, livrée avec Sillage.
+"""La voix française fixe de Qwen3-TTS 0.6B Base, livrée avec Dysflow.
 
 Le x-vector de l'extrait SIWIS expr_chap_s01_0011 (CC-BY-4.0, Idiap / U.
 d'Édimbourg, https://doi.org/10.7488/ds/1705), calculé une fois par
@@ -16,7 +16,7 @@ L'extrait vient de l'archive SiwisFrenchSpeechSynthesisDatabase.zip du DOI,
 fichier SiwisFrenchSpeechSynthesisDatabase/wavs/part5/expr_chap_s01_0011.wav
 (761 502 octets, CRC32 22997c5a) ; le script refuse tout autre fichier.
 
-    HF_HOME=<cache> ~/Library/Caches/sillage-bench/eval/venv/bin/python -I -B \\
+    HF_HOME=<cache> ~/Library/Caches/dysflow-bench/eval/venv/bin/python -I -B \\
       scripts/qwen3-voix-siwis.py <dossier>/expr_chap_s01_0011.wav
 """
 import hashlib

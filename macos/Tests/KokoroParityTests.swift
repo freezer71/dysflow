@@ -1,11 +1,11 @@
 import XCTest
 import MLX
-@testable import Sillage
+@testable import Dysflow
 
 /// Parité du port Swift de Kokoro avec mlx-audio Python, la chaîne du banc
 /// d'écoute : mêmes identifiants, même style, même graine, même son. Lance
-/// le vrai modèle (MLX, Metal) : seulement avec `SILLAGE_KOKORO_DIR`, le
-/// dossier du modèle (`TEST_RUNNER_SILLAGE_KOKORO_DIR` pour xcodebuild).
+/// le vrai modèle (MLX, Metal) : seulement avec `DYSFLOW_KOKORO_DIR`, le
+/// dossier du modèle (`TEST_RUNNER_DYSFLOW_KOKORO_DIR` pour xcodebuild).
 /// Référence : `scripts/kokoro-parite.py`.
 final class KokoroParityTests: XCTestCase {
     struct Reference: Decodable {
@@ -16,8 +16,8 @@ final class KokoroParityTests: XCTestCase {
     }
 
     func testTheSwiftPortSoundsLikeTheBenchChain() throws {
-        guard let dir = ProcessInfo.processInfo.environment["SILLAGE_KOKORO_DIR"] else {
-            throw XCTSkip("SILLAGE_KOKORO_DIR absent : pas de modèle Kokoro")
+        guard let dir = ProcessInfo.processInfo.environment["DYSFLOW_KOKORO_DIR"] else {
+            throw XCTSkip("DYSFLOW_KOKORO_DIR absent : pas de modèle Kokoro")
         }
         let fixture = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
             .appendingPathComponent("Fixtures/kokoro-parite.json")

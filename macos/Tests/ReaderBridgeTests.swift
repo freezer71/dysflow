@@ -1,10 +1,10 @@
 import XCTest
-@testable import Sillage
+@testable import Dysflow
 
 @MainActor
 final class ReaderBridgeTests: XCTestCase {
     func testSilentReaderOpensTextAndMoves() {
-        let reader = SillageReader.silent()
+        let reader = DysflowReader.silent()
         reader.openText(markdown: "# Titre\n\nUn. Deux.", source: "test")
         XCTAssertTrue(waitUntil { reader.snapshot().revision == 1 })
         XCTAssertEqual(reader.document().sentenceCount, 3)

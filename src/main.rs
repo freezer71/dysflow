@@ -1,13 +1,13 @@
-//! `sillage` — lecteur audio en terminal pour du texte pipé ou un fichier.
+//! `dysflow` — lecteur audio en terminal pour du texte pipé ou un fichier.
 
 use anyhow::Result;
 
-use sillage::launch::{self, Launch, Prepared};
-use sillage::tui;
+use dysflow::launch::{self, Launch, Prepared};
+use dysflow::tui;
 
 fn main() -> Result<()> {
     // La langue de l'interface se fixe avant tout texte, aide comprise.
-    sillage::i18n::set_ui_lang(sillage::i18n::UiLang::from_env());
+    dysflow::i18n::set_ui_lang(dysflow::i18n::UiLang::from_env());
     let args = launch::parse_args();
     let Launch::Ready(prepared) = launch::prepare(&args)? else {
         return Ok(());

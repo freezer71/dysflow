@@ -1,5 +1,5 @@
 import XCTest
-@testable import Sillage
+@testable import Dysflow
 
 /// La ligne d'état de la voix : rien quand tout va bien.
 @MainActor
@@ -66,7 +66,7 @@ final class VoiceInstallTests: XCTestCase {
     private struct Refused: LocalizedError { var errorDescription: String? { "disque plein" } }
 
     func testAFailureIsKeptAndSaidEachTimeAndSuccessClearsIt() async {
-        let model = ReaderModel(reader: SillageReader.silent())
+        let model = ReaderModel(reader: DysflowReader.silent())
         var said: [String] = []
         model.announceFailure = { said.append($0) }
         await model.installDefaultVoice { throw Refused() }

@@ -29,7 +29,7 @@ struct TempFile(PathBuf);
 impl TempFile {
     fn new(extension: &str) -> Self {
         let id = COUNTER.fetch_add(1, Ordering::Relaxed);
-        let name = format!("sillage-{}-{}.{}", std::process::id(), id, extension);
+        let name = format!("dysflow-{}-{}.{}", std::process::id(), id, extension);
         TempFile(std::env::temp_dir().join(name))
     }
 
@@ -229,7 +229,7 @@ fn run_with_deadline(mut cmd: Command, deadline: Duration) -> Result<Option<Stri
         .with_context(|| crate::tr!(en = "failed to start `{program}`", fr = "échec du lancement de `{program}`"))?;
     let (tx, rx) = std::sync::mpsc::channel();
     if let Some(mut pipe) = child.stderr.take() {
-        crate::sync::spawn_named("sillage-stderr", move || {
+        crate::sync::spawn_named("dysflow-stderr", move || {
             let mut stderr = String::new();
             let _ = pipe.read_to_string(&mut stderr);
             let _ = tx.send(stderr);

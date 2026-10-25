@@ -5,7 +5,7 @@
 #   FEATURES= ./scripts/build-ffi.sh             # voix du système seule
 #
 # Produit macos/Generated (Swift, en-tête, module, Link.xcconfig) et
-# macos/Libraries (libsillage_ffi.a).
+# macos/Libraries (libdysflow_ffi.a).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -21,7 +21,7 @@ esac
 # Ni par une option du crate ni par une dépendance : `ort` absent du graphe.
 # La garde échoue fermée : seule l'erreur exacte « did not match any packages »
 # prouve l'absence ; tout autre échec de cargo tree refuse la construction.
-if ort_tree=$(cargo tree -p sillage-ffi ${FEATURES:+--features "$FEATURES"} -e normal -i ort 2>&1); then
+if ort_tree=$(cargo tree -p dysflow-ffi ${FEATURES:+--features "$FEATURES"} -e normal -i ort 2>&1); then
     echo "Erreur : ONNX Runtime (ort) entrerait dans l'app :" >&2
     echo "$ort_tree" >&2
     exit 1
@@ -40,14 +40,14 @@ export MACOSX_DEPLOYMENT_TARGET=14.0
 
 # La liaison d'abord : le binaire bindgen recompile le crate sans les options
 # lourdes, et écraserait sinon la bibliothèque finale.
-cargo build --profile app -p sillage-ffi
-cargo run --profile app -p sillage-ffi --features bindgen --bin uniffi-bindgen -- \
-    generate --library target/app/libsillage_ffi.dylib --language swift --out-dir "$GEN"
-mv "$GEN/sillage_ffiFFI.modulemap" "$GEN/module.modulemap"
+cargo build --profile app -p dysflow-ffi
+cargo run --profile app -p dysflow-ffi --features bindgen --bin uniffi-bindgen -- \
+    generate --library target/app/libdysflow_ffi.dylib --language swift --out-dir "$GEN"
+mv "$GEN/dysflow_ffiFFI.modulemap" "$GEN/module.modulemap"
 
-cargo build --profile app -p sillage-ffi ${FEATURES:+--features "$FEATURES"}
-cp target/app/libsillage_ffi.a "$LIB/"
+cargo build --profile app -p dysflow-ffi ${FEATURES:+--features "$FEATURES"}
+cp target/app/libdysflow_ffi.a "$LIB/"
 
-FLAGS="-lsillage_ffi -lc++ -framework CoreAudio -framework AudioToolbox -framework AudioUnit -framework CoreFoundation -framework Security -framework Metal -framework Accelerate"
+FLAGS="-ldysflow_ffi -lc++ -framework CoreAudio -framework AudioToolbox -framework AudioUnit -framework CoreFoundation -framework Security -framework Metal -framework Accelerate"
 echo "OTHER_LDFLAGS = $FLAGS" > "$GEN/Link.xcconfig"
 echo "Liaison prête dans $GEN et $LIB"

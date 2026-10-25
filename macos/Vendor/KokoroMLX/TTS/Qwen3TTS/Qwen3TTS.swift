@@ -70,7 +70,7 @@ public final class Qwen3TTSModel: Module, @unchecked Sendable {
 
     // MARK: - VoiceDesign generation
 
-    /// Sillage : une phrase entière, décodée d'un coup (`streamingDecode` par
+    /// Dysflow : une phrase entière, décodée d'un coup (`streamingDecode` par
     /// paquets de 300 trames) ; ni clonage, ni flux. `speakerEmbedding` : le
     /// x-vector figé d'une voix (Base). `shouldStop` est consulté toutes les
     /// 12 trames (≈ 1 s de son) et avant le décodage : s'il dit vrai,
@@ -130,7 +130,7 @@ public final class Qwen3TTSModel: Module, @unchecked Sendable {
         let codeCache = talker.codePredictor.makeCache()
 
         for step in 0 ..< effectiveMaxTokens {
-            // Sillage : à la place de `Task.checkCancellation()` (appel FFI
+            // Dysflow : à la place de `Task.checkCancellation()` (appel FFI
             // synchrone, pas de tâche à annuler).
             if step % 12 == 0, shouldStop?() == true { throw Qwen3TTSError.stopped }
             // Forward pass through talker
@@ -208,7 +208,7 @@ public final class Qwen3TTSModel: Module, @unchecked Sendable {
             }
             generatedCodebookTokens.append(tokenId)
             generatedCodes.append(allCodes)
-            // Sillage : plus de `Memory.clearCache()` tous les 50 pas : le
+            // Dysflow : plus de `Memory.clearCache()` tous les 50 pas : le
             // cache de MLX est plafonné (`MLXBudget` dans l'app), le vider
             // ne faisait que rendre puis réallouer les mêmes tampons.
         }
@@ -251,7 +251,7 @@ public final class Qwen3TTSModel: Module, @unchecked Sendable {
     }
 
 
-    /// Sillage, correction du port : comme l'officiel (`modeling.py:2118-2122`),
+    /// Dysflow, correction du port : comme l'officiel (`modeling.py:2118-2122`),
     /// le dialecte d'un locuteur (Eric : sichuanais, Dylan : pékinois) ne
     /// remplace la langue que si elle est `chinese` ou `auto`. Le port le
     /// faisait toujours : Eric lisait le français avec l'id d'un dialecte.
@@ -273,7 +273,7 @@ public final class Qwen3TTSModel: Module, @unchecked Sendable {
 
         // Tokenize text with ChatML template
         // `<|im_start|>assistant\n\(text)<|im_end|>\n<|im_start|>assistant\n`.
-        // Sillage : la phrase lue est encodée sans jetons spéciaux (un
+        // Dysflow : la phrase lue est encodée sans jetons spéciaux (un
         // `<|im_end|>` écrit dans un livre est du texte) ; seul le gabarit en
         // a. Mêmes ids que l'amont pour une phrase qui n'en contient pas.
         let tokenIds = tokenizer.encode(text: "<|im_start|>")
@@ -299,7 +299,7 @@ public final class Qwen3TTSModel: Module, @unchecked Sendable {
         if let speaker = speaker {
             guard let spkIdMap = talkerConfig.spkId,
                   let spkIdValue = spkIdMap[speaker.lowercased()] else {
-                // Sillage : l'amont avertissait et parlait sans locuteur.
+                // Dysflow : l'amont avertissait et parlait sans locuteur.
                 throw Qwen3TTSError.unknownVoice(speaker)
             }
             let spkIdArray = MLXArray([Int32(spkIdValue.intValue)]).reshaped(1, 1)
@@ -314,7 +314,7 @@ public final class Qwen3TTSModel: Module, @unchecked Sendable {
         }
 
         // Language ID (`auto` : aucun) — the speaker dialect only overrides
-        // `chinese` / `auto` (Sillage, see `effectiveLanguage`).
+        // `chinese` / `auto` (Dysflow, see `effectiveLanguage`).
         let languageId: Int? = talkerConfig.codecLanguageId?[
             Self.effectiveLanguage(requested: language.lowercased(), dialect: dialectName)
         ]
@@ -336,7 +336,7 @@ public final class Qwen3TTSModel: Module, @unchecked Sendable {
         }
 
         var codecEmbed = talker.getInputEmbeddings()(MLXArray(codecPrefill).reshaped(1, -1))
-        // Sillage : mode x-vector de l'officiel (`x_vector_only`) — sans
+        // Dysflow : mode x-vector de l'officiel (`x_vector_only`) — sans
         // locuteur nommé, le x-vector figé prend la place de l'embedding
         // `spk_id`.
         if speakerEmbed == nil, let speakerEmbedding {
@@ -510,7 +510,7 @@ public final class Qwen3TTSModel: Module, @unchecked Sendable {
 
     // MARK: - Loading
 
-    /// Sillage : synchrone ; lit `config.json`, `model.safetensors` (seul),
+    /// Dysflow : synchrone ; lit `config.json`, `model.safetensors` (seul),
     /// `vocab.json`, `merges.txt`, `tokenizer_config.json` et
     /// `speech_tokenizer/{config.json,model.safetensors}`. N'écrit, ne
     /// modifie ni n'efface rien dans `modelDir`.
@@ -519,7 +519,7 @@ public final class Qwen3TTSModel: Module, @unchecked Sendable {
         let configData = try Data(contentsOf: modelDir.appendingPathComponent("config.json"))
         let config = try JSONDecoder().decode(Qwen3TTSModelConfig.self, from: configData)
 
-        // Sillage : le codec doit être un dossier, vérifié avant de lire les
+        // Dysflow : le codec doit être un dossier, vérifié avant de lire les
         // poids. L'amont effaçait le dossier du modèle s'il ne l'était pas.
         let speechTokenizerPath = modelDir.appendingPathComponent("speech_tokenizer")
         var isDir: ObjCBool = false
@@ -530,7 +530,7 @@ public final class Qwen3TTSModel: Module, @unchecked Sendable {
 
         let model = Qwen3TTSModel(config: config)
 
-        // Sillage : les dictionnaires de poids intermédiaires (le fichier
+        // Dysflow : les dictionnaires de poids intermédiaires (le fichier
         // entier, `speaker_encoder.*` compris, et sa version nettoyée) vivent
         // dans ce bloc seulement : relâchés avant la quantification de
         // l'embedding texte, ils ne gardent pas la copie BF16 en vie à côté
@@ -564,19 +564,19 @@ public final class Qwen3TTSModel: Module, @unchecked Sendable {
             eval(model.talker.parameters())
         }
 
-        // Sillage : l'embedding texte, non quantifié dans les dépôts (622 Mo
+        // Dysflow : l'embedding texte, non quantifié dans les dépôts (622 Mo
         // en BF16), passe en 8 bits au chargement, comme au banc d'écoute.
         quantize(model: model.talker, groupSize: 64, bits: 8, mode: .affine, filter: { path, module in
             path.hasSuffix("text_embedding") && !(module is QuantizedEmbedding)
         })
         eval(model.talker.parameters())
 
-        // Sillage : notre encodeur BPE (pas de swift-transformers, pas de
+        // Dysflow : notre encodeur BPE (pas de swift-transformers, pas de
         // `tokenizer.json` écrit dans le dossier).
         model.tokenizer = try Qwen2BPETokenizer(directory: modelDir)
 
         try loadSpeechTokenizer(model: model, path: speechTokenizerPath)
-        // Sillage : le cache de MLX vidé en fin de chargement (tampons de la
+        // Dysflow : le cache de MLX vidé en fin de chargement (tampons de la
         // copie BF16, des tenseurs `speaker_encoder.*` et de l'encodeur du
         // codec écartés) : le pic du chargement ne reste pas tenu.
         Memory.clearCache()
@@ -589,7 +589,7 @@ public final class Qwen3TTSModel: Module, @unchecked Sendable {
 
         let speechTokenizer = Qwen3TTSSpeechTokenizer(config: tokenizerConfig)
 
-        // Load weights — Sillage : `model.safetensors` seul, sans l'encodeur
+        // Load weights — Dysflow : `model.safetensors` seul, sans l'encodeur
         // (`encoder.*` brut, `encoder_model.*` une fois nettoyé), qui ne sert
         // qu'au clonage : `verify: .all` refuserait ces clés sans module.
         let tokenizerWeights = try MLX.loadArrays(url: path.appendingPathComponent("model.safetensors"))

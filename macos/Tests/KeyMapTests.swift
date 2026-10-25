@@ -1,5 +1,5 @@
 import XCTest
-@testable import Sillage
+@testable import Dysflow
 
 /// La table de la spec 1.5, et rien d'autre.
 final class KeyMapTests: XCTestCase {

@@ -3,15 +3,14 @@
 
 export const fr = {
   meta: {
-    titre: "sillage — le lecteur à voix haute qu'on suit des yeux",
-    modele: "%s · sillage",
+    titre: "dysflow — lire et écrire sans s'épuiser, pour les dyslexiques",
+    modele: "%s · dysflow",
     description:
-      "sillage lit vos documents à voix haute et surligne chaque mot. Voix neurales et dictée 100 % sur votre machine, gratuit et open source. macOS et Linux.",
+      "dysflow est fait pour les personnes dyslexiques et neuroatypiques à qui lire ou écrire coûte : il lit vos documents à voix haute en surlignant chaque mot, et écrit ce que vous dictez. Gratuit, libre, 100 % sur votre machine.",
   },
   entete: {
-    accueil: "sillage, accueil",
-    avantages: "Avantages",
-    comparaison: "Comparaison",
+    accueil: "dysflow, accueil",
+    parcours: "Le parcours",
     modeles: "Modèles",
     github: "GitHub",
     telecharger: "Télécharger",
@@ -23,174 +22,168 @@ export const fr = {
     telecharger: "Télécharger",
     code: "Code source",
   },
-  commande: { copier: "Copier", copie: "Copié ✓" },
-  demo: {
-    fichier: "rapport-annuel.pdf",
-    titre: "Introduction",
-    lignes: [
-      "sillage lit à voix haute ce que",
-      "vous lui donnez, et montre chaque",
-      "mot au moment où il est dit.",
-    ],
-    vitesse: "1,25×",
+  evitement: "Aller au contenu",
+  confort: {
+    bouton: "Confort",
+    titre: "Confort de lecture",
+    modeDys: "Mode dys : tout activer",
+    reinitialiser: "Revenir au réglage de base",
+    fermer: "Fermer",
+    police: { titre: "Police", atkinson: "Atkinson", lexend: "Lexend" },
+    taille: { titre: "Taille du texte", normale: "Normale", grande: "Grande", tresgrande: "Très grande" },
+    espacement: { titre: "Espacement", normal: "Normal", large: "Large" },
+    fond: { titre: "Fond", creme: "Crème", gris: "Gris", sombre: "Sombre" },
+    animations: { titre: "Animations", oui: "Oui", non: "Non" },
   },
+  commande: { copier: "Copier", copie: "Copié ✓" },
   accueil: {
-    pastilles: ["Gratuit", "Open source", "100 % local"],
-    titre: "Écoutez vos documents. Suivez chaque mot.",
-    intro:
-      "sillage lit à voix haute vos PDF, vos notes et vos captures d'écran, et surligne chaque mot au moment où il est dit. Des voix naturelles, calculées sur votre machine : rien ne part en ligne, et rien n'est à payer.",
-    telecharger: "Télécharger sillage",
-    github: "Voir le code sur GitHub",
-    commande: "Ou en une commande, sur Mac (puce Apple) et Linux :",
-    chiffres: [
-      { valeur: "0 €", legende: "pour toujours, sans abonnement" },
-      { valeur: "0 octet", legende: "de vos textes envoyé en ligne" },
-      { valeur: "15×", legende: "plus vite que la parole sur Mac" },
-      { valeur: "#", legende: "modèles de voix et de dictée" },
+    pastilles: [
+      "Pour les dys",
+      "Gratuit",
+      "100 % local",
     ],
+    titre: "Votre dyslexie n'est pas une fatalité.",
+    intro: "dysflow lit vos textes à voix haute. Et il écrit ce que vous dites.",
+    telecharger: "Télécharger dysflow",
+    parcours: {
+      surtitre: "Le parcours",
+      titre: "Voyez la différence",
+      lire: {
+        titre: "Lire, quand on est dys",
+        texte: "Essayez de lire ce message.",
+        note: "Une image, pas un diagnostic.",
+      },
+      cout: {
+        titre: "Ce que ça coûte",
+        texte: "Ce n'est pas un manque d'intelligence.",
+        points: [
+          "On relit trois fois.",
+          "On s'épuise avant de comprendre.",
+          "On finit par se croire derrière.",
+        ],
+      },
+      avec: {
+        titre: "Avec dysflow",
+        texte: "La voix lit. Vos yeux suivent.",
+      },
+      ecrire: {
+        titre: "Écrire en parlant",
+        texte: "Vous parlez. Le texte s'écrit.",
+      },
+      simulation: {
+        lignes: [
+          "Bonjour à tous, la réunion",
+          "de demain est déplacée à",
+          "quatorze heures. Pensez à relire",
+          "le dossier avant de venir, et à",
+          "préparer vos questions : nous",
+          "déciderons ensemble de la suite.",
+        ],
+        sans: "Sans dysflow",
+        avec: "Avec dysflow",
+        groupe: "Choisir la lecture",
+        voix: "La voix lit",
+        legendeSans: "Les lettres bougent. On relit. On se fatigue.",
+        legendeAvec: "Rien ne bouge. Le sens arrive tout seul.",
+      },
+      dictee: {
+        clavier: "Au clavier",
+        micro: "Vous parlez…",
+        voix: "dysflow a écrit",
+        tapee: "Bonjour madame, je vous envoi mon devoire de géografie.",
+        dite: "Bonjour madame, je vous envoie mon devoir de géographie.",
+      },
+    },
+    modeEmploi: {
+      surtitre: "Mode d'emploi",
+      titre: "Deux gestes, c'est tout",
+      lire: {
+        titre: "Pour lire",
+        etapes: [
+          { texte: "Sélectionnez le texte, ou copiez-le." },
+          { texte: "Faites le raccourci.", touches: [{ signe: "⌃", nom: "control" }, { signe: "⌥", nom: "option" }, { signe: "␣", nom: "espace" }] },
+          { texte: "dysflow le lit à voix haute." },
+        ],
+      },
+      ecrire: {
+        titre: "Pour écrire",
+        etapes: [
+          { texte: "Appuyez sur la touche option de droite.", touches: [{ signe: "⌥", nom: "option" }] },
+          { texte: "Dites ce que vous voulez." },
+          { texte: "Réappuyez : le texte s'écrit." },
+        ],
+      },
+      note: "Les raccourcis se changent dans les réglages.",
+    },
+    partout: {
+      surtitre: "Partout",
+      titre: "Dans toutes vos applications",
+      texte: "Là où il y a du texte, dysflow lit. Là où on écrit, dysflow écrit.",
+      apps: ["Mail", "Safari", "Chrome", "Word", "Pages", "Notes", "Messages", "WhatsApp", "Slack", "Aperçu", "Claude", "Claude Code", "ChatGPT", "Terminal"],
+      plus: "Et tout le reste du Mac",
+    },
+    manifeste: {
+      titre: "Ne soyez plus derrière.",
+      lignes: [
+        "Votre savoir compte plus que votre orthographe.",
+        "Montrez au monde ce que vous savez.",
+      ],
+      texte: "Gratuit. Rien à vendre.",
+    },
     avantagesTitre: {
-      surtitre: "Pourquoi sillage",
-      titre: "Un lecteur pensé pour être suivi des yeux",
-      texte:
-        "La plupart des lecteurs vocaux se contentent de parler. sillage comprend ce qu'il lit, et vous montre où vous en êtes.",
+      surtitre: "En plus",
+      titre: "Simple, et à vous",
     },
     avantages: [
       {
-        titre: "Vos textes restent chez vous",
-        texte:
-          "Les voix et la dictée tournent sur votre machine. Pas de compte, pas de serveur, pas de quota : un contrat, un dossier médical ou un brouillon ne quittent jamais votre ordinateur.",
+        titre: "Tout se lit",
+        texte: "PDF, courrier scanné, photo, capture d'écran.",
       },
       {
-        titre: "Chaque mot suivi des yeux",
-        texte:
-          "Le mot dit porte une pastille, sa ligne une bande discrète : le mot dit où en est la voix, la ligne dit où revenir quand on relève les yeux. Pensé pour la dyslexie et la lecture longue.",
+        titre: "À votre rythme",
+        texte: "Plus lent, plus vite, sans couper.",
       },
       {
-        titre: "Il lit tout ce que vous lui donnez",
-        texte:
-          "Markdown, texte, PDF, PDF photocopié, capture d'écran, photo de page, presse-papiers, sélection dans n'importe quelle app. Les pages scannées sont reconnues en parallèle et mémorisées.",
+        titre: "Rien ne sort de chez vous",
+        texte: "Tout se calcule sur votre ordinateur.",
       },
       {
-        titre: "Il ne lit pas le formatage",
-        texte:
-          "Jamais de « dièse titre » ni de « tiret tiret ». Un bloc de code est annoncé, pas récité. Un tableau se lit colonne par colonne : « Route : /users. Méthode : GET. »",
-      },
-      {
-        titre: "Plus vite, sans voix de canard",
-        texte:
-          "La vitesse agit sur le son pendant qu'il sonne : la voix accélère sans monter dans les aigus, au milieu de la phrase, sans coupure. Avance et recul sont immédiats.",
-      },
-      {
-        titre: "Il reprend là où vous étiez",
-        texte:
-          "La position se retient toute seule — la phrase elle-même, pas un numéro. Elle se retrouve même si le document a été retouché entre-temps.",
-      },
-      {
-        titre: "La dictée, en plus",
-        texte:
-          "Un raccourci ouvre la dictée, et le texte s'écrit dans l'app au premier plan. Parakeet, Whisper, Voxtral, Canary : choisissez le vôtre, tout reste local.",
-      },
-      {
-        titre: "Libre, pour de vrai",
-        texte:
-          "Code ouvert sous licence MIT, modèles sous licences ouvertes. Vous pouvez le lire, le modifier, le redistribuer. Personne ne pourra vous le retirer ni le faire payer.",
+        titre: "Gratuit, pour toujours",
+        texte: "Logiciel libre. Pas d'abonnement.",
       },
     ],
-    pourQui: {
-      surtitre: "Pour qui",
-      titre: "Pour ceux qui lisent beaucoup, et pour ceux à qui lire coûte.",
-      publics: [
-        {
-          titre: "Dyslexie, TDAH, fatigue visuelle",
-          texte:
-            "Écouter et suivre des yeux à la fois : la lecture bimodale, avec la police de votre choix (OpenDyslexic, Atkinson Hyperlegible, Literata).",
-        },
-        {
-          titre: "Étudiants et chercheurs",
-          texte:
-            "Les PDF sont reconstruits : titres au sommaire, mots coupés recollés, en-têtes et pieds de page retirés. On écoute l'article, pas la mise en page.",
-        },
-        {
-          titre: "Développeurs",
-          texte:
-            "Documentation, README, réponses d'IA pipées dans le terminal : `llm \"…\" | sillage` démarre la lecture avant la fin du flux.",
-        },
-      ],
+    questionsTitre: {
+      surtitre: "Questions",
+      titre: "Ce qu'on nous demande",
     },
-    comparaisonTitre: {
-      surtitre: "Comparaison",
-      titre: "Tout ce que font les grands, sans l'abonnement ni le cloud",
-      texte:
-        "Les lecteurs commerciaux envoient vos textes à leurs serveurs et font payer les belles voix. sillage fait le calcul chez vous.",
-    },
-    comparaison: {
-      critere: "Critère",
-      // « @oui », « @non » et « @partiel » ne s'affichent pas tels quels :
-      // ce sont les mêmes codes dans les deux langues.
-      concurrents: ["sillage", "Speechify", "ElevenReader", "NaturalReader", "Contenu énoncé (macOS)"],
-      oui: "Oui",
-      non: "Non",
-      partiel: "En partie",
-      lignes: [
-        { critere: "Gratuit, sans limite d'usage", cases: ["@oui", "Gratuit limité, puis abonnement", "Gratuit limité, puis abonnement", "Gratuit limité, puis abonnement", "@oui"] },
-        { critere: "Code source ouvert", cases: ["@oui", "@non", "@non", "@non", "@non"] },
-        { critere: "Vos textes restent sur votre machine", cases: ["@oui", "@non", "@non", "@non", "@oui"] },
-        { critere: "Voix neurales naturelles", cases: ["@oui", "@oui", "@oui", "@oui", "@partiel"] },
-        { critere: "Mot lu surligné", cases: ["@oui", "@oui", "@oui", "@oui", "@oui"] },
-        { critere: "Ne lit ni balisage, ni code, ni bordures de tableau", cases: ["@oui", "Non annoncé", "Non annoncé", "Non annoncé", "@non"] },
-        { critere: "Reconnaissance des pages scannées", cases: ["@oui", "@oui", "@oui", "@oui", "@non"] },
-        { critere: "Dictée intégrée, hors ligne", cases: ["@oui", "Non annoncé", "@non", "@non", "@partiel"] },
-        { critere: "Version Linux", cases: ["Terminal", "Navigateur", "Navigateur", "Navigateur", "@non"] },
-      ],
-      note: "D'après ce que les éditeurs annoncent sur leurs sites, en octobre 2026. Une erreur ?",
-      noteLien: "Dites-le-nous",
-    },
-    modelesTitre: {
-      surtitre: "Modèles",
-      titre: "Les meilleurs modèles ouverts, au choix",
-      texte:
-        "Téléchargez, essayez, supprimez : vous gardez la main sur la qualité, la vitesse et la place disque.",
-    },
-    lecture: "Lecture",
-    dictee: "Dictée",
-    voirModeles: "Voir les # modèles",
-    questionsTitre: { surtitre: "Questions", titre: "Ce qu'on nous demande" },
     faq: [
       {
+        q: "Ça remplace un orthophoniste ?",
+        r: "Non. C'est un outil, comme des lunettes.",
+      },
+      {
         q: "C'est vraiment gratuit ?",
-        r: "Oui, et sans contrepartie : pas de compte, pas de publicité, pas de version « Pro ». sillage est un logiciel libre sous licence MIT ; les modèles se téléchargent depuis leurs dépôts publics.",
+        r: "Oui. Pas de compte, pas de publicité.",
       },
       {
-        q: "Mes documents sont-ils envoyés quelque part ?",
-        r: "Non. La lecture, la reconnaissance de texte et la dictée se calculent sur votre machine. Le seul accès au réseau est le téléchargement des modèles que vous choisissez.",
+        q: "Mes textes partent sur internet ?",
+        r: "Non. Tout reste sur votre ordinateur.",
       },
       {
-        q: "Quel Mac faut-il ?",
-        r: "Un Mac à puce Apple (M1 et suivants). La dictée demande macOS 26. Kokoro, la voix par défaut, occupe 342 Mo et moins de 6 % du temps de calcul pendant la lecture.",
-      },
-      {
-        q: "Et sous Linux ?",
-        r: "Le lecteur au terminal tourne sous Linux x86_64 et ARM64 (glibc 2.39 ou plus), avec la même voix Kokoro et la reconnaissance de texte intégrée. La même commande d'installation que sur Mac l'installe.",
-      },
-      {
-        q: "Quelles langues ?",
-        r: "La lecture est faite pour le français et l'anglais, avec une seule voix pour les deux. La dictée va jusqu'à 99 langues selon le modèle choisi.",
-      },
-      {
-        q: "Et Windows ?",
-        r: "Pas pour l'instant. Le moteur est en Rust et pourrait y être porté : les contributions sont bienvenues sur GitHub.",
+        q: "Sur quel ordinateur ?",
+        r: "Un Mac à puce Apple. Sous Linux, au terminal.",
       },
     ],
     final: {
-      titre: "Votre prochain document, écoutez-le.",
-      texte: "Gratuit, libre, et installé en une commande.",
+      titre: "La prochaine page, écoutez-la.",
+      texte: "Gratuit. Installé en une minute.",
     },
   },
   modeles: {
     meta: {
       titre: "Les modèles",
       description:
-        "Toutes les voix et tous les modèles de dictée de sillage : Kokoro, Qwen3-TTS, MagpieTTS, Parakeet, Phonon-2, Whisper, Canary, Voxtral. Tailles, langues, vitesse, licences.",
+        "Toutes les voix et tous les modèles de dictée de dysflow : Kokoro, Qwen3-TTS, MagpieTTS, Parakeet, Phonon-2, Whisper, Canary, Voxtral. Tailles, langues, vitesse, licences.",
     },
     entete: {
       surtitre: "Modèles",
@@ -224,17 +217,17 @@ export const fr = {
     ocr: {
       titre: "Reconnaissance de texte",
       texte:
-        "Pour les images, les captures et les PDF photocopiés, sillage embarque Tesseract avec le français et l'anglais : rien à installer. Les pages sont reconnues en parallèle et le résultat est mémorisé, si bien que la deuxième ouverture est immédiate.",
+        "Pour les images, les captures et les PDF photocopiés, dysflow embarque Tesseract avec le français et l'anglais : rien à installer. Les pages sont reconnues en parallèle et le résultat est mémorisé, si bien que la deuxième ouverture est immédiate.",
     },
     mesures:
       "Mesures faites sur un Mac M5. « Occupé x % du temps à 1× » : la part du temps de lecture passée à calculer la voix ; au-delà de 100 %, la lecture saccade.",
-    telecharger: "Télécharger sillage",
+    telecharger: "Télécharger dysflow",
   },
   telecharger: {
     meta: {
       titre: "Télécharger",
       description:
-        "Installez sillage en une commande sur Mac et Linux, ou téléchargez l'app macOS en .dmg.",
+        "Installez dysflow en une commande sur Mac et Linux, ou téléchargez l'app macOS en .dmg.",
     },
     version: "Version",
     derniere: "Dernière version",
@@ -244,13 +237,13 @@ export const fr = {
       "Choisit la bonne version pour votre machine",
       "Vérifie l'empreinte du téléchargement",
       "Installe sans mot de passe administrateur",
-      "Ouvre sillage — la voix s'installe toute seule",
+      "Ouvre dysflow — la voix s'installe toute seule",
     ],
     ou: "ou téléchargez",
     mac: {
       pastille: "Puce Apple",
       texte:
-        "Ouvrez le .dmg et glissez Sillage dans Applications. macOS 14 ou plus ; la dictée demande macOS 26.",
+        "Ouvrez le .dmg et glissez Dysflow dans Applications. macOS 14 ou plus ; la dictée demande macOS 26.",
       bouton: "Télécharger le .dmg",
       noteAvant: "L'app n'est pas encore notariée par Apple : au premier lancement, ouvrez",
       noteReglages: "Réglages Système › Confidentialité et sécurité",

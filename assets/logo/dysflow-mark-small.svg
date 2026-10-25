@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="dysflow">
+  <path d="M 23 55 C 22 49 17 44 16.5 36 C 15.5 22 24 12.5 34 12.5 C 42 12.5 46 18.5 45.5 26 C 45.3 27.8 44.3 28.8 44.8 30.5 C 46 33 49.5 35 49.8 36.3 C 50 37.3 48 37.8 46.8 38 C 47.8 39 47.8 40 46.6 40.8 C 47.6 41.5 47.4 42.6 46.4 43.3 C 46 44 46.6 45.2 46.6 46 C 46.4 48 43 48.6 40 48.4 C 38.6 50.5 39 53 39.8 55.5" fill="none" stroke="#191919" stroke-width="4.6" stroke-linecap="round" stroke-linejoin="round"/>
+  <g fill="#191919" stroke="#191919" stroke-linecap="round" stroke-width="3.80">
+    <line x1="30.0" y1="27.0" x2="22.5" y2="20.0"/>
+    <line x1="30.0" y1="27.0" x2="52.0" y2="21.5"/>
+    <circle cx="30.0" cy="27.0" r="5.70" stroke="none"/>
+    <circle cx="22.5" cy="20.0" r="3.50" stroke="none"/>
+    <circle cx="52.0" cy="21.5" r="3.70" stroke="none"/>
+  </g>
+  <g fill="#C6F36B" stroke="#C6F36B" stroke-linecap="round" stroke-width="2.40">
+    <line x1="30.0" y1="27.0" x2="22.5" y2="20.0"/>
+    <line x1="30.0" y1="27.0" x2="52.0" y2="21.5"/>
+    <circle cx="30.0" cy="27.0" r="5.00" stroke="none"/>
+    <circle cx="22.5" cy="20.0" r="2.80" stroke="none"/>
+    <circle cx="52.0" cy="21.5" r="3.00" stroke="none"/>
+  </g>
+</svg>

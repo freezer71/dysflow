@@ -8,13 +8,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "sillage listens to the microphone during dictation, to write what you say. Nothing leaves your Mac."
+            "value" : "dysflow listens to the microphone during dictation, to write what you say. Nothing leaves your Mac."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "sillage écoute le micro pendant la dictée, pour écrire ce que vous dites. Rien ne quitte votre Mac."
+            "value" : "dysflow écoute le micro pendant la dictée, pour écrire ce que vous dites. Rien ne quitte votre Mac."
           }
         }
       }
@@ -26,13 +26,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "sillage transcribes your voice on your Mac during dictation."
+            "value" : "dysflow transcribes your voice on your Mac during dictation."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "sillage transcrit votre voix sur votre Mac pendant la dictée."
+            "value" : "dysflow transcrit votre voix sur votre Mac pendant la dictée."
           }
         }
       }

@@ -1,5 +1,5 @@
 import XCTest
-@testable import Sillage
+@testable import Dysflow
 
 /// Les tests tournent en français (`-AppleLanguages (fr)` du schéma) : le
 /// catalogue donne le français, et l'app l'a dit au moteur au lancement.
@@ -17,7 +17,7 @@ final class LocalizationTests: XCTestCase {
     /// `AppDelegate` a donné la langue de l'app au moteur avant de le créer :
     /// la voix du système porte son nom français.
     func testTheEngineSpeaksTheLanguageOfTheApp() {
-        let system = SillageReader.silent().voices().first(where: \.system)
+        let system = DysflowReader.silent().voices().first(where: \.system)
         XCTAssertEqual(system?.name, "Voix de macOS")
     }
 }

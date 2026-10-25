@@ -1,5 +1,5 @@
 /*
- * sillage-espeak : la phonétisation d'espeak-ng, derrière un protocole binaire.
+ * dysflow-espeak : la phonétisation d'espeak-ng, derrière un protocole binaire.
  *
  * Copyright (C) 2026 Tharsan Vishnukumar
  *
@@ -9,10 +9,10 @@
  * any later version. It is distributed WITHOUT ANY WARRANTY; see the GNU
  * General Public License (COPYING, shipped alongside) for more details.
  *
- * Programme séparé, lié à libespeak-ng (GPL-3.0) : Sillage ne s'y lie pas, il
+ * Programme séparé, lié à libespeak-ng (GPL-3.0) : Dysflow ne s'y lie pas, il
  * le lance et lui parle par ses entrées et sorties standard.
  *
- *   sillage-espeak [DOSSIER]   (DOSSIER contient espeak-ng-data)
+ *   dysflow-espeak [DOSSIER]   (DOSSIER contient espeak-ng-data)
  *
  * Protocole, entiers u32 petit-boutistes ; une trame = u32 longueur + octets.
  *   - au lancement : une trame, le nom de la voix ; réponse : la trame « ok ».
@@ -21,7 +21,7 @@
  *     puis la trame « ok ».
  * Le découpage ne dépend que des longueurs : aucun texte ne peut le déplacer.
  * Toute erreur (voix inconnue, trame trop longue, entrée coupée) termine le
- * programme ; Sillage le relance.
+ * programme ; Dysflow le relance.
  *
  * Les phonèmes viennent d'espeak_TextToPhonemes, comme chez phonemizer (que
  * misaki utilise) : en IPA, les phonèmes de plusieurs lettres liés par U+0361,

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Construit Sillage.app : moteur, liaison, projet, application.
+# Construit Dysflow.app : moteur, liaison, projet, application.
 #
-#   ./scripts/build-macos.sh                  # dans macos/build/Release/Sillage.app
-#   ./scripts/build-macos.sh --mesure         # dans macos/build/Mesure/Sillage.app
+#   ./scripts/build-macos.sh                  # dans macos/build/Release/Dysflow.app
+#   ./scripts/build-macos.sh --mesure         # dans macos/build/Mesure/Dysflow.app
 #
 # --mesure : la même app Release, avec le code de mesure (`--measure`,
-# `--measure-charge`, condition SILLAGE_MESURE) que l'app livrée n'a pas.
+# `--measure-charge`, condition DYSFLOW_MESURE) que l'app livrée n'a pas.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -14,7 +14,7 @@ CONDITIONS=
 case "${1:-}" in
 --mesure)
     SORTIE=Mesure
-    CONDITIONS=SILLAGE_MESURE
+    CONDITIONS=DYSFLOW_MESURE
     ;;
 "") ;;
 *)
@@ -28,8 +28,8 @@ if ! xcrun -sdk macosx metal -v >/dev/null 2>&1; then
     echo "Erreur : Metal Toolchain absent — xcodebuild -downloadComponent MetalToolchain" >&2
     exit 1
 fi
-# sillage-espeak (GPL-3.0) : programme séparé, joint à l'app par le projet.
-if [ ! -x target/espeak/bin/sillage-espeak ] || [ scripts/sillage-espeak.c -nt target/espeak/bin/sillage-espeak ]; then
+# dysflow-espeak (GPL-3.0) : programme séparé, joint à l'app par le projet.
+if [ ! -x target/espeak/bin/dysflow-espeak ] || [ scripts/dysflow-espeak.c -nt target/espeak/bin/dysflow-espeak ]; then
     ./scripts/build-espeak.sh
 fi
 ./scripts/build-ffi.sh
@@ -39,20 +39,20 @@ fi
 python3 -I scripts/third-party-rust.py --check
 cd macos
 xcodegen generate
-# SILLAGE_CONDITIONS n'est lu que par la cible Sillage : les paquets (MLX)
+# DYSFLOW_CONDITIONS n'est lu que par la cible Dysflow : les paquets (MLX)
 # ne se recompilent pas d'une sortie à l'autre.
-xcodebuild -project Sillage.xcodeproj -scheme Sillage -configuration Release \
+xcodebuild -project Dysflow.xcodeproj -scheme Dysflow -configuration Release \
     -destination 'platform=macOS,arch=arm64' -derivedDataPath build/derived \
-    SILLAGE_CONDITIONS="$CONDITIONS" build
-APP=$(find build/derived -name Sillage.app -path "*Release*" -maxdepth 6 | head -1)
+    DYSFLOW_CONDITIONS="$CONDITIONS" build
+APP=$(find build/derived -name Dysflow.app -path "*Release*" -maxdepth 6 | head -1)
 rm -rf "build/$SORTIE" && mkdir -p "build/$SORTIE" && cp -R "$APP" "build/$SORTIE/"
 cd ..
-APP_BUILT=macos/build/$SORTIE/Sillage.app
-if [ ! -x "$APP_BUILT/Contents/Helpers/sillage-espeak" ]; then
-    echo "Erreur : sillage-espeak manque dans l'app (Contents/Helpers)" >&2
+APP_BUILT=macos/build/$SORTIE/Dysflow.app
+if [ ! -x "$APP_BUILT/Contents/Helpers/dysflow-espeak" ]; then
+    echo "Erreur : dysflow-espeak manque dans l'app (Contents/Helpers)" >&2
     exit 1
 fi
-for f in COPYING SOURCE.txt sillage-espeak.c build-espeak.sh; do
+for f in COPYING SOURCE.txt dysflow-espeak.c build-espeak.sh; do
     if [ ! -f "$APP_BUILT/Contents/Resources/espeak-ng/$f" ]; then
         echo "Erreur : $f manque dans l'app (Contents/Resources/espeak-ng, GPL)" >&2
         exit 1
@@ -67,13 +67,13 @@ for f in "${licences[@]}"; do
         exit 1
     fi
 done
-# sillage-espeak embarqué, sur ses données embarquées (trames : u32
+# dysflow-espeak embarqué, sur ses données embarquées (trames : u32
 # petit-boutiste puis octets ; la voix, puis un lot d'une entrée).
 phonemes=$(printf '\005\000\000\000fr-fr\001\000\000\000\010\000\000\000Bonjour.' \
-    | "$APP_BUILT/Contents/Helpers/sillage-espeak" "$APP_BUILT/Contents/Resources" | LC_ALL=C tr -d '\000-\037')
+    | "$APP_BUILT/Contents/Helpers/dysflow-espeak" "$APP_BUILT/Contents/Resources" | LC_ALL=C tr -d '\000-\037')
 case "$phonemes" in
-    *"bɔ̃ʒˈuʁ"*) echo "sillage-espeak embarqué : bɔ̃ʒˈuʁ" ;;
-    *) echo "Erreur : sillage-espeak embarqué ne phonétise pas « Bonjour. »" >&2; exit 1 ;;
+    *"bɔ̃ʒˈuʁ"*) echo "dysflow-espeak embarqué : bɔ̃ʒˈuʁ" ;;
+    *) echo "Erreur : dysflow-espeak embarqué ne phonétise pas « Bonjour. »" >&2; exit 1 ;;
 esac
 if [ -z "$(find "$APP_BUILT" -name '*.metallib' | head -1)" ]; then
     echo "Erreur : aucun metallib dans l'app (noyaux MLX)" >&2
@@ -83,21 +83,21 @@ fi
 # chaque construction est une app nouvelle, et l'Accessibilité et le micro
 # accordés ne valent plus. Signée d'un certificat, l'app est reconnue par
 # son identifiant et ce certificat : ses autorisations restent. Le
-# certificat : $SILLAGE_SIGNATURE, sinon la première ligne de
-# .sillage-signature (hors du dépôt : propre à chaque Mac), sinon ad hoc.
-SIGNATURE=${SILLAGE_SIGNATURE:-}
-if [ -z "$SIGNATURE" ] && [ -f .sillage-signature ]; then
-    SIGNATURE=$(head -1 .sillage-signature)
+# certificat : $DYSFLOW_SIGNATURE, sinon la première ligne de
+# .dysflow-signature (hors du dépôt : propre à chaque Mac), sinon ad hoc.
+SIGNATURE=${DYSFLOW_SIGNATURE:-}
+if [ -z "$SIGNATURE" ] && [ -f .dysflow-signature ]; then
+    SIGNATURE=$(head -1 .dysflow-signature)
 fi
 if [ -n "$SIGNATURE" ]; then
     # Du plus profond au plus haut : l'aide, le framework, puis l'app.
-    codesign --force --sign "$SIGNATURE" "$APP_BUILT/Contents/Helpers/sillage-espeak"
+    codesign --force --sign "$SIGNATURE" "$APP_BUILT/Contents/Helpers/dysflow-espeak"
     codesign --force --sign "$SIGNATURE" "$APP_BUILT/Contents/Frameworks/KokoroMLX.framework"
     codesign --force --sign "$SIGNATURE" "$APP_BUILT"
     codesign --verify --deep --strict "$APP_BUILT"
     echo "Signée : $(codesign -dvv "$APP_BUILT" 2>&1 | sed -n 's/^Authority=//p' | head -1)"
 else
-    echo "Avertissement : signature ad hoc — macOS oubliera l'Accessibilité et le micro à chaque construction (SILLAGE_SIGNATURE ou .sillage-signature)" >&2
+    echo "Avertissement : signature ad hoc — macOS oubliera l'Accessibilité et le micro à chaque construction (DYSFLOW_SIGNATURE ou .dysflow-signature)" >&2
 fi
 echo "--- taille de l'app ---"
 du -sh "$APP_BUILT"

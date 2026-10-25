@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-"""Filtre de charge de Sillage avec la méthode du banc : attente d'une machine
+"""Filtre de charge de Dysflow avec la méthode du banc : attente d'une machine
 calme (load 1 min < 3, sans processus ML, ≥ 40 % de RAM libre), CPU de l'arbre de processus (proc_pid_rusage), GPU
 `ioreg` moins le repos, empreinte physique. Les outils viennent de
 .superpowers/research/eval/light_run.py (non versionné, présent sur la
 machine de mesure). Rien n'est journalisé du texte lu.
 
-  app   : Sillage.app --measure-charge (chemin MLX, critères de la spec)
+  app   : Dysflow.app --measure-charge (chemin MLX, critères de la spec)
   serve : l'exemple kokoro_serve (ORT, Linux) derrière light_run duty
 
 Lancer avec l'interpréteur du banc (numpy, soundfile) :
-  ~/Library/Caches/sillage-bench/light/venv-mlx/bin/python -I scripts/mesure-charge.py app \
-      --app macos/build/Mesure/Sillage.app --out target/runs/sillage-charge.json
+  ~/Library/Caches/dysflow-bench/light/venv-mlx/bin/python -I scripts/mesure-charge.py app \
+      --app macos/build/Mesure/Dysflow.app --out target/runs/dysflow-charge.json
 """
 import argparse, json, os, re, statistics, subprocess, sys, tempfile, threading, time
 
@@ -147,7 +147,7 @@ def stop_app(proc, grace=5):
 def cmd_app(a):
     info = refuse_if_not_calm(a)
     load1 = info["load1"]
-    exe = os.path.join(a.app, "Contents", "MacOS", "Sillage")
+    exe = os.path.join(a.app, "Contents", "MacOS", "Dysflow")
     errfile = open(a.out + ".stderr", "w")
     proc = subprocess.Popen([exe, "--measure-charge"], stdout=subprocess.PIPE, stderr=errfile, text=True)
     smp = None
@@ -219,7 +219,7 @@ def cmd_app(a):
         print(f"{'OK ' if ok else 'NON'} {name}")
     return 0 if all(verdicts.values()) else 1
 
-class SillageServe:
+class DysflowServe:
     """L'exemple kokoro_serve, vu comme un moteur de light_run."""
     def __init__(self, lang, cmd):
         import numpy as np
@@ -238,8 +238,8 @@ class SillageServe:
 
 def cmd_serve(a):
     refuse_if_not_calm(a)
-    LR.load_backend = lambda args: (SillageServe(args.lang, a.serve), {})
-    LR.cmd_duty(argparse.Namespace(backend="sillage_serve", opt=[], lang=a.lang, speeds="1,2", minutes=2,
+    LR.load_backend = lambda args: (DysflowServe(args.lang, a.serve), {})
+    LR.cmd_duty(argparse.Namespace(backend="dysflow_serve", opt=[], lang=a.lang, speeds="1,2", minutes=2,
                                    lookahead_s=10, idle_s=20, baseline_s=20, calm=a.calm,
                                    calm_max_s=a.calm_max_s, out=a.out))
     return 0
@@ -247,13 +247,13 @@ def cmd_serve(a):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("cmd", choices=["app", "serve"])
-    ap.add_argument("--app", default="macos/build/Mesure/Sillage.app")
+    ap.add_argument("--app", default="macos/build/Mesure/Dysflow.app")
     ap.add_argument("--serve", default="target/release/examples/kokoro_serve")
     ap.add_argument("--lang", default="fr")
     ap.add_argument("--calm", type=float, default=LOAD_MAX)
     ap.add_argument("--calm-max-s", type=float, default=600)
     ap.add_argument("--deadline-s", type=float, default=DEADLINE_S)
-    ap.add_argument("--out", default="target/runs/sillage-charge.json")
+    ap.add_argument("--out", default="target/runs/dysflow-charge.json")
     a = ap.parse_args()
     # Les relevés vont sous target/runs par défaut : le dossier peut manquer.
     os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True)

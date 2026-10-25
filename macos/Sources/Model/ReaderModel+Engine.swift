@@ -5,13 +5,13 @@ import Foundation
 /// fil principal (`call`, `tryCall`).
 extension ReaderModel {
     /// Un appel au moteur, hors du fil principal.
-    func call<T: Sendable>(_ body: @escaping @Sendable (SillageReader) -> T) async -> T {
+    func call<T: Sendable>(_ body: @escaping @Sendable (DysflowReader) -> T) async -> T {
         let reader = reader
         return await Task.detached { body(reader) }.value
     }
 
     /// Un appel au moteur qui peut échouer, hors du fil principal.
-    func tryCall<T: Sendable>(_ body: @escaping @Sendable (SillageReader) throws -> T) async throws -> T {
+    func tryCall<T: Sendable>(_ body: @escaping @Sendable (DysflowReader) throws -> T) async throws -> T {
         let reader = reader
         return try await Task.detached { try body(reader) }.value
     }

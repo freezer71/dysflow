@@ -98,7 +98,7 @@ export async function Telecharger({ lang }: { lang: Lang }) {
             {d.miseAJour.texte}
           </p>
           <div className="mt-4">
-            <Commande texte="sillage --update" libelles={libelles} />
+            <Commande texte="dysflow --update" libelles={libelles} />
           </div>
         </section>
 

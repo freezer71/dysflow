@@ -33,7 +33,7 @@ enum DictationError: Error, Equatable {
     var message: String {
         switch self {
         case .microphoneDenied:
-            String(localized: "sillage can’t access the microphone: allow it to dictate")
+            String(localized: "dysflow can’t access the microphone: allow it to dictate")
         case .noMicrophone:
             String(localized: "No microphone connected")
         case .languageUnavailable:

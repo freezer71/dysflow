@@ -86,12 +86,12 @@ final class PhononContainerTests: XCTestCase {
         XCTAssertEqual(values, [-16, -0.5, 0, 15.5, 2, 4, 6, 8])
     }
 
-    /// Fumée du vrai modèle (MLX, Metal) : seulement avec `SILLAGE_STT_MODELS`
-    /// (`TEST_RUNNER_SILLAGE_STT_MODELS` pour xcodebuild), dossier contenant
+    /// Fumée du vrai modèle (MLX, Metal) : seulement avec `DYSFLOW_STT_MODELS`
+    /// (`TEST_RUNNER_DYSFLOW_STT_MODELS` pour xcodebuild), dossier contenant
     /// `phonon_2/phonon-2.bps.tar.zst`. Sans lui : ignoré.
     func testTheRealArchiveLoadsAndTranscribesSilence() throws {
-        guard let root = ProcessInfo.processInfo.environment["SILLAGE_STT_MODELS"] else {
-            throw XCTSkip("SILLAGE_STT_MODELS absent")
+        guard let root = ProcessInfo.processInfo.environment["DYSFLOW_STT_MODELS"] else {
+            throw XCTSkip("DYSFLOW_STT_MODELS absent")
         }
         let model = try ParakeetModel.fromPhonon(URL(fileURLWithPath: root).appendingPathComponent("phonon_2"))
         let output = model.generate(audio: MLXArray.zeros([16_000]), generationParameters: model.defaultGenerationParameters)
