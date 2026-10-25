@@ -114,6 +114,13 @@ jobs:
             echo "Le tag $TAG, Cargo.toml ($version) et macos/project.yml ($app) ne concordent pas" >&2
             exit 1
           fi
+      - name: dmgbuild (empreintes vérifiées)
+        # Avant le trousseau : ce qui s'installe ici ne voit aucun secret, et
+        # chaque paquet doit avoir l'empreinte de scripts/dmg/requirements.txt.
+        run: |
+          uv venv "$RUNNER_TEMP/dmgbuild"
+          VIRTUAL_ENV="$RUNNER_TEMP/dmgbuild" uv pip install --require-hashes -r scripts/dmg/requirements.txt
+          echo "$RUNNER_TEMP/dmgbuild/bin" >> "$GITHUB_PATH"
       - name: Certificat Developer ID et clé de notarisation
         # Sans les secrets (une bifurcation du dépôt…), rien ici : l'app est
         # signée ad hoc, comme avant, et n'est pas notariée.

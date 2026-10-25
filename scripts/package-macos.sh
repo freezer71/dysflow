@@ -68,10 +68,15 @@ ditto -c -k --keepParent "$APP" "$zip"
 # Le .dmg : la fenêtre dessinée (assets/dmg, scripts/dmg/fond.py), l'app à
 # gauche, Applications à droite, une flèche entre les deux. dmgbuild écrit
 # la mise en page sans piloter le Finder : elle tient aussi sur la CI.
+# Sur la CI, dmgbuild est déjà installé, empreintes vérifiées
+# (scripts/dmg/requirements.txt). Ici, on l'installe de la même façon.
 if command -v dmgbuild >/dev/null; then
     dmgbuild=(dmgbuild)
 else
-    dmgbuild=(uvx --from "dmgbuild==1.6.5" dmgbuild)
+    outils=$(mktemp -d)
+    uv venv -q "$outils"
+    VIRTUAL_ENV="$outils" uv pip install -q --require-hashes -r scripts/dmg/requirements.txt
+    dmgbuild=("$outils/bin/dmgbuild")
 fi
 "${dmgbuild[@]}" -s scripts/dmg/reglages.py -D app="$APP" -D fond=assets/dmg/fond.png \
     -D icone=assets/logo/dysflow.icns "Dysflow $version" "$dmg" >/dev/null
