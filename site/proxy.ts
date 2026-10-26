@@ -34,6 +34,8 @@ function prefereLeFrancais(entete: string | null): boolean {
 }
 
 export function proxy(requete: NextRequest) {
+  // Redit ici : sur Cloudflare (OpenNext), le `missing` du `matcher` n'est pas appliqué.
+  if (requete.cookies.has("langue")) return;
   const cible = enFrancais[requete.nextUrl.pathname];
   if (!cible || !prefereLeFrancais(requete.headers.get("accept-language"))) return;
   const url = requete.nextUrl.clone();

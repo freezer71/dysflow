@@ -1,0 +1,12 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	// Le nom doit être celui du Worker relié au dépôt dans le tableau de bord Cloudflare.
+	"name": "dysflow",
+	"main": ".open-next/worker.js",
+	"compatibility_date": "2026-10-26",
+	"compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+	"assets": {
+		"directory": ".open-next/assets",
+		"binding": "ASSETS"
+	}
+}
