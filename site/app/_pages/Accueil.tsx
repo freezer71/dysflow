@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { DemoDictee } from "../_components/DemoDictee";
+import { JsonLd } from "../_components/JsonLd";
 import { Simulation } from "../_components/Simulation";
+import { absolu, logiciel, organisation, siteWeb } from "../_data/schema";
 import { Bouton, Cadre, IconeTelecharger, Pastille, TitreSection } from "../_components/ui";
 import { chemin, dico, type Lang } from "../_i18n";
 
@@ -94,8 +96,27 @@ function Etape({ numero, titre, texte, accent, dernier, children }: {
 export function Accueil({ lang }: { lang: Lang }) {
   const d = dico(lang).accueil;
   const p = d.parcours;
+  const donnees = {
+    "@context": "https://schema.org",
+    "@graph": [
+      organisation,
+      siteWeb(lang),
+      logiciel(lang),
+      {
+        "@type": "FAQPage",
+        "@id": absolu(`${chemin(lang, "accueil")}#questions`),
+        inLanguage: lang,
+        mainEntity: d.faq.map((f) => ({
+          "@type": "Question",
+          name: f.q,
+          acceptedAnswer: { "@type": "Answer", text: f.r },
+        })),
+      },
+    ],
+  };
   return (
     <Cadre lang={lang} page="accueil">
+      <JsonLd donnees={donnees} />
       {/* Accroche */}
       <section className="mx-auto max-w-4xl px-4 pb-20 pt-14 text-center sm:px-6 lg:pt-24">
         <div className="flex flex-wrap justify-center gap-2">
