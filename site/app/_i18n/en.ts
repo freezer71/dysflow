@@ -282,7 +282,8 @@ export const en: Dico = {
     },
     desinstaller: {
       titre: "Uninstall",
-      texte: "The same command, with an option. Your models and settings stay.",
+      texte: "The same command, with an option. The app, its models and its settings go together.",
+      garder: "To keep the models for a reinstall, add",
     },
     compilerAvant: "Prefer to build it yourself?",
     compilerLien: "The instructions are in the README",

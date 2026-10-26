@@ -280,7 +280,8 @@ export const fr = {
     },
     desinstaller: {
       titre: "Désinstaller",
-      texte: "La même commande, avec une option. Vos modèles et vos réglages restent.",
+      texte: "La même commande, avec une option. L'app, les modèles et les réglages partent ensemble.",
+      garder: "Pour garder les modèles en vue d'une réinstallation, ajoutez",
     },
     compilerAvant: "Vous préférez compiler ?",
     compilerLien: "Les instructions sont dans le README",

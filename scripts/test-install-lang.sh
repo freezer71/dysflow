@@ -74,5 +74,29 @@ if [ "$(uname -s)" = Linux ]; then
     done
 fi
 
+# --uninstall retire aussi les modèles, réglages et cache (nom actuel et
+# anciens) ; --keep-data les garde. Seulement sous Linux, comme au-dessus.
+if [ "$(uname -s)" = Linux ]; then
+    for cas in tout garder; do
+        maison="$tmp/maison-$cas"
+        for rep in .config/dysflow .local/share/dysflow/models .local/share/sillage .cache/dysflow; do
+            mkdir -p "$maison/$rep" && echo modele >"$maison/$rep/fichier"
+        done
+        options=--uninstall
+        [ "$cas" = tout ] || options="--uninstall --keep-data"
+        # shellcheck disable=SC2086
+        sortie=$(env -i PATH="$PATH" HOME="$maison" PREFIX="$tmp/prefix" DYSFLOW_APPLICATIONS="$tmp" LANG=fr_FR.UTF-8 sh "$racine/install.sh" $options 2>&1) || true
+        restants=$(find "$maison" -name fichier | wc -l | tr -d ' ')
+        if [ "$cas" = tout ] && [ "$restants" -eq 0 ] && printf '%s' "$sortie" | grep -q "libérés"; then
+            echo "ok   --uninstall retire modèles et réglages"
+        elif [ "$cas" = garder ] && [ "$restants" -eq 4 ] && printf '%s' "$sortie" | grep -q "restent"; then
+            echo "ok   --keep-data garde modèles et réglages"
+        else
+            echo "ECHEC $options : $restants fichier(s) restant(s), sortie : $sortie"
+            echecs=$((echecs + 1))
+        fi
+    done
+fi
+
 [ "$echecs" -eq 0 ] || { echo "$echecs échec(s)"; exit 1; }
 echo "install.sh : langues vérifiées"

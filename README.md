@@ -48,8 +48,9 @@ commande `dysflow` qui l'ouvre ; sous Linux, le lecteur au terminal dans
 dernière version remplace l'installée — modèles et réglages restent — ou le
 script dit qu'elle est déjà là (`sh -s -- --force` pour réinstaller quand
 même). Pour désinstaller,
-la même commande suivie de `-s -- --uninstall` (modèles et réglages
-restent).
+la même commande suivie de `-s -- --uninstall` : l'app, les modèles,
+les réglages et le cache partent. `--uninstall --keep-data` garde
+modèles et réglages.
 
 Sur Mac, la [publication](https://github.com/freezer71/dysflow/releases/latest)
 porte aussi un `.dmg` : glisser Dysflow dans Applications. L'app est signée

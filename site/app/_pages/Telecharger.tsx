@@ -106,6 +106,9 @@ export async function Telecharger({ lang }: { lang: Lang }) {
           <div className="mt-4">
             <Commande texte={commandeDesinstallation} libelles={libelles} />
           </div>
+          <p className="mt-3 text-encre-douce">
+            {d.desinstaller.garder} <code className="font-mono text-encre">--keep-data</code>.
+          </p>
         </section>
 
         <p className="mt-10 text-center text-encre-douce">

@@ -13,7 +13,10 @@
 # relance.
 #
 #   … | sh -s -- --force         réinstalle même si la version est déjà là
-#   … | sh -s -- --uninstall     retire Dysflow (--desinstaller marche aussi)
+#   … | sh -s -- --uninstall     retire Dysflow, ses modèles et ses réglages
+#                                 (--desinstaller marche aussi)
+#   … | sh -s -- --uninstall --keep-data
+#                                 retire Dysflow mais garde modèles et réglages
 #
 # DYSFLOW_VERSION=0.6.0 : une version précise plutôt que la dernière (0.6.0 ou
 # plus : avant, le lecteur s'appelait sillage, et avant encore sillon).
@@ -82,31 +85,74 @@ retirer_anciens() {
     done
 }
 
-# --uninstall (ou --desinstaller) : retire ce que ce script a posé, et rien d'autre (les
-# modèles téléchargés et les réglages restent, pour une réinstallation).
+# --uninstall (ou --desinstaller) : retire ce que ce script a posé, et aussi ce
+# que le lecteur a rangé chez l'utilisateur (modèles, réglages, positions,
+# cache) : les modèles pèsent des gigaoctets, inutile de les laisser derrière
+# une app partie. --keep-data les garde, pour une réinstallation.
 FORCER=""
 DESINSTALLER=""
+GARDER=""
 for option in "$@"; do
     case "$option" in
     --force) FORCER=1 ;;
     --uninstall | --desinstaller) DESINSTALLER=1 ;;
-    *) echec "$(t "unknown option: $option (--force, --uninstall)" "option inconnue : $option (--force, --uninstall)")" ;;
+    --keep-data | --garder-donnees) GARDER=1 ;;
+    *) echec "$(t "unknown option: $option (--force, --uninstall, --keep-data)" "option inconnue : $option (--force, --uninstall, --keep-data)")" ;;
     esac
 done
+
+# Les répertoires du lecteur qui existent, un par ligne : configuration,
+# données (dont les modèles) et cache, sous le nom actuel comme sous les
+# anciens (src/paths.rs). Sous macOS, config et données sont tous deux dans
+# Application Support.
+repertoires_du_lecteur() {
+    if [ "$(uname -s)" = Darwin ]; then
+        set -- "$HOME/Library/Application Support" "$HOME/Library/Caches"
+    else
+        set -- "${XDG_CONFIG_HOME:-$HOME/.config}" "${XDG_DATA_HOME:-$HOME/.local/share}" "${XDG_CACHE_HOME:-$HOME/.cache}"
+    fi
+    for base in "$@"; do
+        for nom in dysflow sillage sillon rs-reader; do
+            if [ -d "$base/$nom" ]; then printf '%s\n' "$base/$nom"; fi
+        done
+    done
+}
 
 if [ -n "$DESINSTALLER" ]; then
     if [ "$(uname -s)" = Darwin ]; then
         osascript -e 'quit app "Dysflow"' >/dev/null 2>&1 || true
         rm -rf /Applications/Dysflow.app "$HOME/Applications/Dysflow.app"
-        donnees="$HOME/Library/Application Support/dysflow"
     else
         rm -rf "$PREFIX/lib/dysflow"
-        donnees="${XDG_DATA_HOME:-$HOME/.local/share}/dysflow"
     fi
     rm -f "$PREFIX/bin/dysflow"
     retirer_anciens
     printf '%s✓ %s%s\n' "$vert$gras" "$(t 'Dysflow is uninstalled.' 'Dysflow est désinstallé.')" "$fin" >&2
-    printf '%s\n' "$(t "Models and settings stay in $donnees (rm -r to remove them)." "Les modèles et les réglages restent dans $donnees (rm -r pour les retirer).")" >&2
+    repertoires=$(repertoires_du_lecteur)
+    if [ -n "$GARDER" ]; then
+        if [ -n "$repertoires" ]; then
+            printf '%s\n%s\n' "$(t 'Models and settings stay in:' 'Les modèles et les réglages restent dans :')" "$repertoires" >&2
+        fi
+        exit 0
+    fi
+    if [ -n "$repertoires" ]; then
+        ko=$(printf '%s\n' "$repertoires" | while IFS= read -r rep; do du -sk "$rep" 2>/dev/null | cut -f1; done | awk '{ s += $1 } END { print s + 0 }')
+        printf '%s\n' "$repertoires" | while IFS= read -r rep; do rm -rf "${rep:?}"; done
+        # 1.2 GB en anglais, 1,2 Go en français.
+        taille=$(awk -v ko="$ko" -v fr="$FR" 'BEGIN {
+            if (ko >= 1048576) { t = sprintf("%.1f %s", ko / 1048576, fr ? "Go" : "GB"); if (fr) sub(/\./, ",", t) }
+            else t = sprintf("%d %s", ko / 1024, fr ? "Mo" : "MB")
+            print t }')
+        printf '%s\n' "$(t "Models, settings and cache removed ($taille freed)." "Modèles, réglages et cache retirés ($taille libérés).")" >&2
+    fi
+    # Les préférences de l'app (UserDefaults) et ce que macOS range à son nom.
+    if [ "$(uname -s)" = Darwin ] && [ -z "${DYSFLOW_APPLICATIONS:-}" ]; then
+        for domaine in fr.dysflow.app fr.sillage.app fr.sillon.app; do
+            defaults delete "$domaine" >/dev/null 2>&1 || true
+            rm -rf "$HOME/Library/Caches/$domaine" "$HOME/Library/HTTPStorages/$domaine" \
+                "$HOME/Library/Saved Application State/$domaine.savedState"
+        done
+    fi
     exit 0
 fi
 
