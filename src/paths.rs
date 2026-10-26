@@ -200,18 +200,38 @@ fn adopt(base: &Path) -> PathBuf {
 
 /// Déplace dans `to` ce qui n'y est pas encore, dossier par dossier ; un
 /// dossier de l'ancien vidé ainsi disparaît.
+///
+/// Ce que `to` a déjà, le lecteur ne le lira plus jamais dans l'ancien : un
+/// modèle en double y part sans être relu (il pèse des centaines de
+/// mégaoctets, et 1,2 Go restaient ainsi dans `sillage`, relevés le 26 oct.
+/// 2026), une autre copie seulement si elle est identique. Une version
+/// différente d'une configuration, de signets ou de positions reste, pour ne
+/// rien perdre.
 fn merge_into(from: &Path, to: &Path) {
+    merge_dir(from, to, false);
+}
+
+fn merge_dir(from: &Path, to: &Path, models: bool) {
     let Ok(entries) = std::fs::read_dir(from) else { return };
     for entry in entries.flatten() {
         let target = to.join(entry.file_name());
         if !target.exists() {
             let _ = std::fs::rename(entry.path(), &target);
         } else if entry.path().is_dir() && target.is_dir() {
-            merge_into(&entry.path(), &target);
+            merge_dir(&entry.path(), &target, models || entry.file_name() == "models");
+        } else if entry.path().is_file() && target.is_file() && (models || same_contents(&entry.path(), &target)) {
+            let _ = std::fs::remove_file(entry.path());
         }
     }
     // N'efface qu'un dossier vide.
     let _ = std::fs::remove_dir(from);
+}
+
+/// Deux fichiers au contenu identique ; au moindre doute (lecture
+/// impossible), non.
+fn same_contents(a: &Path, b: &Path) -> bool {
+    let same_size = matches!((std::fs::metadata(a), std::fs::metadata(b)), (Ok(x), Ok(y)) if x.len() == y.len());
+    same_size && matches!((std::fs::read(a), std::fs::read(b)), (Ok(x), Ok(y)) if x == y)
 }
 
 /// Un chemin écrit dans un répertoire d'un ancien nom (`model_path` de la
@@ -314,9 +334,31 @@ mod tests {
         assert_eq!(std::fs::read_to_string(new.join("models/phonon_2/p")).unwrap(), "phonon", "le modèle manquant suit");
         assert_eq!(std::fs::read_to_string(new.join("config.toml")).unwrap(), "nouveau", "le nouveau n'est pas écrasé");
         assert_eq!(std::fs::read_to_string(new.join("models/kokoro/a")).unwrap(), "nouveau");
-        assert_eq!(std::fs::read_to_string(old.join("config.toml")).unwrap(), "ancien", "le doublon reste dans l'ancien");
-        assert!(old.join("models/kokoro/a").is_file(), "le doublon reste dans l'ancien");
-        assert!(!old.join("models/phonon_2").exists(), "le dossier vidé disparaît");
+        assert_eq!(std::fs::read_to_string(old.join("config.toml")).unwrap(), "ancien", "une version différente reste dans l'ancien");
+        assert!(!old.join("models").exists(), "le modèle en double part, et le dossier vidé avec");
+        std::fs::remove_dir_all(&base).ok();
+    }
+
+    /// Le cas relevé le 26 oct. 2026 : 1,2 Go de modèles restés dans
+    /// `sillage` après la reprise, la même copie étant déjà dans `dysflow`.
+    #[test]
+    fn duplicates_left_in_the_former_directory_are_removed() {
+        let base = scratch();
+        let (old, new) = (base.join("sillage"), base.join("dysflow"));
+        for dir in [&old, &new] {
+            std::fs::create_dir_all(dir.join("models/kokoro/voices")).unwrap();
+            std::fs::write(dir.join("models/kokoro/voices/af_bella.safetensors"), "voix").unwrap();
+            std::fs::write(dir.join("bookmarks.json"), "{}").unwrap();
+        }
+        std::fs::write(old.join("positions.json"), "ancien").unwrap();
+        std::fs::write(new.join("positions.json"), "nouveau").unwrap();
+
+        adopt(&base);
+
+        assert!(new.join("models/kokoro/voices/af_bella.safetensors").is_file(), "le nouveau garde son modèle");
+        assert!(!old.join("models").exists(), "le modèle en double part");
+        assert!(!old.join("bookmarks.json").exists(), "une copie identique part");
+        assert_eq!(std::fs::read_to_string(old.join("positions.json")).unwrap(), "ancien", "une version différente reste");
         std::fs::remove_dir_all(&base).ok();
     }
 
