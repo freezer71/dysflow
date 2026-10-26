@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { slugs } from "./app/_blog/slugs";
 
 // La langue par défaut est celle du navigateur. Les pages anglaises sont à la
 // racine : un visiteur qui préfère le français y arrive, et part vers la même
@@ -12,6 +13,9 @@ const enFrancais: Record<string, string> = {
   "/": "/fr",
   "/models": "/fr/modeles",
   "/download": "/fr/telecharger",
+  "/blog": "/fr/blog",
+  // Chaque article vers sa traduction : les adresses diffèrent d'une langue à l'autre.
+  ...Object.fromEntries(Object.values(slugs).map((s) => [`/blog/${s.en}`, `/fr/blog/${s.fr}`])),
 };
 
 /** Vrai quand le navigateur met le français avant l'anglais. */
@@ -42,5 +46,7 @@ export const config = {
     { source: "/", missing: [{ type: "cookie", key: "langue" }] },
     { source: "/models", missing: [{ type: "cookie", key: "langue" }] },
     { source: "/download", missing: [{ type: "cookie", key: "langue" }] },
+    { source: "/blog", missing: [{ type: "cookie", key: "langue" }] },
+    { source: "/blog/:slug", missing: [{ type: "cookie", key: "langue" }] },
   ],
 };

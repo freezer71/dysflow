@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { LienLangue } from "./LienLangue";
-import { chemin, dico, type Lang, type Page } from "../_i18n";
+import { chemin, cheminsDe, dico, type Chemins, type Lang, type Page } from "../_i18n";
 import { depot } from "../_data/liens";
 import { Confort } from "./Confort";
 
@@ -54,7 +54,7 @@ export function Logo({ className = "size-7" }: { className?: string }) {
 }
 
 /** Le sélecteur de langue : un lien vers la même page dans l'autre langue. */
-function SelecteurLangue({ lang, page }: { lang: Lang; page: Page }) {
+function SelecteurLangue({ lang, chemins }: { lang: Lang; chemins: Chemins }) {
   const d = dico(lang).entete;
   return (
     <div role="group" aria-label={d.langues} className="flex items-center rounded-full bg-carte-2 p-0.5 text-sm font-bold">
@@ -64,7 +64,7 @@ function SelecteurLangue({ lang, page }: { lang: Lang; page: Page }) {
           <LienLangue
             key={l}
             langue={l}
-            href={chemin(l, page)}
+            href={chemins[l]}
             hrefLang={l}
             lang={l}
             aria-current={actif ? "true" : undefined}
@@ -78,7 +78,7 @@ function SelecteurLangue({ lang, page }: { lang: Lang; page: Page }) {
   );
 }
 
-export function Entete({ lang, page }: { lang: Lang; page: Page }) {
+export function Entete({ lang, chemins }: { lang: Lang; chemins: Chemins }) {
   const d = dico(lang).entete;
   return (
     <header className="sticky top-0 z-20 border-b border-filet/70 bg-fond/85 backdrop-blur">
@@ -95,11 +95,14 @@ export function Entete({ lang, page }: { lang: Lang; page: Page }) {
           <Link href={chemin(lang, "modeles")} className="hidden rounded-full px-3 py-1.5 hover:bg-carte-2 hover:text-encre min-[420px]:block">
             {d.modeles}
           </Link>
+          <Link href={chemin(lang, "blog")} className="hidden rounded-full px-3 py-1.5 hover:bg-carte-2 hover:text-encre min-[520px]:block">
+            {d.blog}
+          </Link>
           <a href={depot} className="hidden rounded-full px-3 py-1.5 hover:bg-carte-2 hover:text-encre lg:block">
             {d.github}
           </a>
           <Confort libelles={dico(lang).confort} />
-          <SelecteurLangue lang={lang} page={page} />
+          <SelecteurLangue lang={lang} chemins={chemins} />
           <Bouton href={chemin(lang, "telecharger")} petit>
             {d.telecharger}
           </Bouton>
@@ -109,11 +112,14 @@ export function Entete({ lang, page }: { lang: Lang; page: Page }) {
   );
 }
 
-/** L'en-tête et le corps d'une page : `page` dit quelle page le sélecteur de langue vise. */
-export function Cadre({ lang, page, children }: { lang: Lang; page: Page; children: ReactNode }) {
+/**
+ * L'en-tête et le corps d'une page : `page` dit quelle page le sélecteur de
+ * langue vise — ou, pour un article, ses adresses dans chaque langue.
+ */
+export function Cadre({ lang, page, children }: { lang: Lang; page: Page | Chemins; children: ReactNode }) {
   return (
     <>
-      <Entete lang={lang} page={page} />
+      <Entete lang={lang} chemins={typeof page === "string" ? cheminsDe(page) : page} />
       <main id="contenu" tabIndex={-1} className="flex-1 outline-none">{children}</main>
     </>
   );
@@ -131,6 +137,7 @@ export function Pied({ lang }: { lang: Lang }) {
         <p>{d.licence}</p>
         <div className="flex flex-wrap gap-x-5 gap-y-2 sm:ml-auto">
           <Link href={chemin(lang, "modeles")} className="hover:text-encre">{d.modeles}</Link>
+          <Link href={chemin(lang, "blog")} className="hover:text-encre">{d.blog}</Link>
           <Link href={chemin(lang, "telecharger")} className="hover:text-encre">{d.telecharger}</Link>
           <a href={depot} className="hover:text-encre">{d.code}</a>
         </div>

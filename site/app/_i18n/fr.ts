@@ -12,6 +12,7 @@ export const fr = {
     accueil: "Dysflow, accueil",
     parcours: "Le parcours",
     modeles: "Modèles",
+    blog: "Blog",
     github: "GitHub",
     telecharger: "Télécharger",
     langues: "Langue",
@@ -19,6 +20,7 @@ export const fr = {
   pied: {
     licence: "Logiciel libre, sous licence MIT. Fait en France.",
     modeles: "Modèles",
+    blog: "Blog",
     telecharger: "Télécharger",
     code: "Code source",
   },
@@ -200,7 +202,7 @@ export const fr = {
   },
   modeles: {
     meta: {
-      titre: "Les modèles",
+      titre: "Voix de synthèse et modèles de dictée",
       description:
         "Toutes les voix et tous les modèles de dictée de Dysflow : Kokoro, Qwen3-TTS, MagpieTTS, Parakeet, Phonon-2, Whisper, Canary, Voxtral. Tailles, langues, vitesse, licences.",
     },
@@ -244,7 +246,7 @@ export const fr = {
   },
   telecharger: {
     meta: {
-      titre: "Télécharger",
+      titre: "Télécharger pour Mac et Linux",
       description:
         "Installez Dysflow en une commande sur Mac et Linux, ou téléchargez l'app macOS en .dmg.",
     },
@@ -287,6 +289,27 @@ export const fr = {
     compilerLien: "Les instructions sont dans le README",
     souciAvant: "Un souci ?",
     souciLien: "Ouvrez une issue",
+  },
+  blog: {
+    meta: {
+      titre: "Blog : lire et écrire avec une dyslexie",
+      description:
+        "Conseils concrets et études pour lire et écrire plus facilement avec une dyslexie : synthèse vocale, dictée, polices, documents scannés.",
+    },
+    surtitre: "Blog",
+    titre: "Lire et écrire, sans s'épuiser",
+    texte: "Des conseils concrets, et ce que disent les études. Écrits court, pour être lus — ou écoutés.",
+    lire: "Lire l'article",
+    minutes: "min de lecture",
+    publie: "Publié le",
+    accueil: "Accueil",
+    autres: "À lire aussi",
+    retour: "Tous les articles",
+    flux: "Flux RSS",
+    final: {
+      titre: "Ce texte, vous auriez pu l'écouter.",
+      texte: "Dysflow lit à voix haute et surligne chaque mot. Gratuit, sur votre ordinateur.",
+    },
   },
 } as const;
 

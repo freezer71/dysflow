@@ -14,6 +14,7 @@ export const en: Dico = {
     accueil: "Dysflow, home",
     parcours: "The journey",
     modeles: "Models",
+    blog: "Blog",
     github: "GitHub",
     telecharger: "Download",
     langues: "Language",
@@ -21,6 +22,7 @@ export const en: Dico = {
   pied: {
     licence: "Free software, MIT license. Made in France.",
     modeles: "Models",
+    blog: "Blog",
     telecharger: "Download",
     code: "Source code",
   },
@@ -202,7 +204,7 @@ export const en: Dico = {
   },
   modeles: {
     meta: {
-      titre: "The models",
+      titre: "Text-to-speech voices and dictation models",
       description:
         "Every Dysflow voice and dictation model: Kokoro, Qwen3-TTS, MagpieTTS, Parakeet, Phonon-2, Whisper, Canary, Voxtral. Sizes, languages, speed, licenses.",
     },
@@ -246,7 +248,7 @@ export const en: Dico = {
   },
   telecharger: {
     meta: {
-      titre: "Download",
+      titre: "Download for Mac and Linux",
       description:
         "Install Dysflow with one command on Mac and Linux, or download the macOS app as a .dmg.",
     },
@@ -289,5 +291,26 @@ export const en: Dico = {
     compilerLien: "The instructions are in the README",
     souciAvant: "Got a problem?",
     souciLien: "Open an issue",
+  },
+  blog: {
+    meta: {
+      titre: "Blog: reading and writing with dyslexia",
+      description:
+        "Practical tips and research on reading and writing more easily with dyslexia: text-to-speech, dictation, fonts, scanned documents.",
+    },
+    surtitre: "Blog",
+    titre: "Read and write without wearing yourself out",
+    texte: "Practical tips, and what the research says. Written short, to be read — or listened to.",
+    lire: "Read the article",
+    minutes: "min read",
+    publie: "Published",
+    accueil: "Home",
+    autres: "Read next",
+    retour: "All articles",
+    flux: "RSS feed",
+    final: {
+      titre: "You could have listened to this.",
+      texte: "Dysflow reads aloud and highlights every word. Free, on your own computer.",
+    },
   },
 };
