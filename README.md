@@ -52,9 +52,8 @@ la même commande suivie de `-s -- --uninstall` (modèles et réglages
 restent).
 
 Sur Mac, la [publication](https://github.com/freezer71/dysflow/releases/latest)
-porte aussi un `.dmg` : glisser Dysflow dans Applications. L'app n'est pas
-encore notariée : au premier lancement, *Réglages Système › Confidentialité et
-sécurité › Ouvrir quand même*.
+porte aussi un `.dmg` : glisser Dysflow dans Applications. L'app est signée
+et notariée par Apple : elle s'ouvre sans alerte.
 
 Pour compiler depuis les sources, voir plus bas.
 

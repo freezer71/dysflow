@@ -264,11 +264,7 @@ export const fr = {
       texte:
         "Ouvrez le .dmg et glissez Dysflow dans Applications. macOS 14 ou plus ; la dictée demande macOS 26.",
       bouton: "Télécharger le .dmg",
-      noteAvant: "L'app n'est pas encore notariée par Apple : au premier lancement, ouvrez",
-      noteReglages: "Réglages Système › Confidentialité et sécurité",
-      noteMilieu: "et cliquez sur",
-      noteOuvrir: "Ouvrir quand même",
-      noteApres: ". La commande ci-dessus évite ce détour.",
+      note: "Signée et notariée par Apple : elle s'ouvre sans alerte.",
     },
     linux: {
       pastille: "Terminal",

@@ -266,11 +266,7 @@ export const en: Dico = {
       texte:
         "Open the .dmg and drag Dysflow into Applications. macOS 14 or later; dictation needs macOS 26.",
       bouton: "Download the .dmg",
-      noteAvant: "The app isn't notarized by Apple yet: on first launch, open",
-      noteReglages: "System Settings › Privacy & Security",
-      noteMilieu: "and click",
-      noteOuvrir: "Open Anyway",
-      noteApres: ". The command above skips this detour.",
+      note: "Signed and notarized by Apple: it opens without a warning.",
     },
     linux: {
       pastille: "Terminal",

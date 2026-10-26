@@ -14,10 +14,9 @@ installe sans `sudo` : l'app dans `/Applications` et la commande `dysflow` sur
 Mac, le lecteur au terminal dans `~/.local` sous Linux.
 
 **Ou, sur Mac, le `.dmg`** ci-dessous : l'ouvrir, glisser Dysflow dans
-Applications. L'app n'est pas encore notariée par Apple : au premier
-lancement, macOS la bloque. Ouvrez *Réglages Système › Confidentialité et
-sécurité* et cliquez sur *Ouvrir quand même* (la commande ci-dessus évite ce
-détour).
+Applications. L'app est signée et notariée par Apple : elle s'ouvre sans
+alerte. Au premier lancement, une fenêtre demande le micro et
+l'Accessibilité.
 
 **La voix Kokoro se télécharge toute seule** au premier lancement ; la voix du
 système lit en attendant.

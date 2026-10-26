@@ -58,9 +58,7 @@ export async function Telecharger({ lang }: { lang: Lang }) {
               </Bouton>
             </div>
             <p className="mt-5 text-sm leading-relaxed text-encre-pale">
-              {d.mac.noteAvant} <em>{d.mac.noteReglages}</em> {d.mac.noteMilieu}{" "}
-              <em>{d.mac.noteOuvrir}</em>
-              {d.mac.noteApres}
+              {d.mac.note}
             </p>
           </section>
 
