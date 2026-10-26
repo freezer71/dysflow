@@ -8,9 +8,10 @@
 # /releases/latest/download/<nom> reste la même adresse d'une version à
 # l'autre. L'app doit être construite avant (./scripts/build-macos.sh).
 #
-# Notarisation, si NOTARY_KEY_PATH (la clé .p8 d'App Store Connect),
-# NOTARY_KEY_ID et NOTARY_ISSUER sont donnés : l'app puis le .dmg partent
-# chez Apple, et le feu vert leur est agrafé. Ils s'ouvrent alors sans
+# Notarisation, si NOTARY_PROFILE (un profil du trousseau, enregistré par
+# `xcrun notarytool store-credentials`) ou NOTARY_KEY_PATH (la clé .p8
+# d'App Store Connect), NOTARY_KEY_ID et NOTARY_ISSUER sont donnés : l'app
+# puis le .dmg partent chez Apple, et le feu vert leur est agrafé. Ils s'ouvrent alors sans
 # alerte, même hors ligne. Le .dmg est signé de DYSFLOW_SIGNATURE.
 #
 #   ./scripts/package-macos.sh [chemin/Dysflow.app]
@@ -32,19 +33,22 @@ codesign --verify --deep --strict "$APP"
 # affiche le journal d'Apple (ce qui manque, fichier par fichier).
 notariser() {
     local sortie statut id
-    sortie=$(xcrun notarytool submit "$1" --key "$NOTARY_KEY_PATH" --key-id "$NOTARY_KEY_ID" \
-        --issuer "$NOTARY_ISSUER" --wait --timeout 30m --output-format json)
+    sortie=$(xcrun notarytool submit "$1" "${acces[@]}" --wait --timeout 30m --output-format json)
     statut=$(printf '%s' "$sortie" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("status",""))')
     id=$(printf '%s' "$sortie" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("id",""))')
     echo "Notarisation de $(basename "$1") : $statut ($id)"
     if [ "$statut" != "Accepted" ]; then
-        [ -n "$id" ] && xcrun notarytool log "$id" --key "$NOTARY_KEY_PATH" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER" >&2
+        [ -n "$id" ] && xcrun notarytool log "$id" "${acces[@]}" >&2
         echo "Erreur : notarisation refusée pour $1" >&2
         exit 1
     fi
 }
 notarise=false
-if [ -n "${NOTARY_KEY_PATH:-}" ] && [ -n "${NOTARY_KEY_ID:-}" ] && [ -n "${NOTARY_ISSUER:-}" ]; then
+if [ -n "${NOTARY_PROFILE:-}" ]; then
+    acces=(--keychain-profile "$NOTARY_PROFILE")
+    notarise=true
+elif [ -n "${NOTARY_KEY_PATH:-}" ] && [ -n "${NOTARY_KEY_ID:-}" ] && [ -n "${NOTARY_ISSUER:-}" ]; then
+    acces=(--key "$NOTARY_KEY_PATH" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER")
     notarise=true
 fi
 

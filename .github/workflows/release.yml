@@ -2,9 +2,16 @@
 # - le lecteur au terminal pour Linux (x86_64 et ARM64) : scripts/install.sh
 #   assemble le paquet (ocr, kokoro-onnx), l'installe et le vérifie depuis / ;
 #   le dossier dist/ part en archive, avec son empreinte ;
-# - l'app macOS : construite (signée Developer ID et notariée si les secrets
-#   MACOS_* et NOTARY_* sont là, sinon ad hoc), emballée en .zip (pour
-#   install.sh à la racine, `curl | sh`) et en .dmg, chacun avec son empreinte.
+# - l'app macOS, à la demande seulement (lancement manuel, case « macos ») :
+#   construite (signée Developer ID et notariée si les secrets MACOS_* et
+#   NOTARY_* sont là, sinon ad hoc), emballée en .zip (pour install.sh à la
+#   racine, `curl | sh`) et en .dmg, chacun avec son empreinte.
+#
+# D'habitude, l'app se construit sur le Mac (26 min ici, contre 4 pour
+# Linux) : scripts/release-macos.sh pousse le tag, construit, notarise,
+# attend cette publication Linux, y joint l'app et la marque « dernière ».
+# Sans l'app, la publication n'est pas « dernière » : /releases/latest
+# garde la précédente, complète.
 name: Release
 
 on:
@@ -19,6 +26,10 @@ on:
         description: "Publier sur GitHub (sinon : construire seulement, artefacts joints au passage)"
         type: boolean
         default: true
+      macos:
+        description: "Construire aussi l'app macOS ici (sinon : scripts/release-macos.sh, sur le Mac)"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -84,6 +95,7 @@ jobs:
 
   macos:
     name: App macOS
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.macos }}
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
@@ -187,7 +199,8 @@ jobs:
   publish:
     name: Publication
     needs: [linux, macos]
-    if: ${{ github.event_name != 'workflow_dispatch' || inputs.publier }}
+    # L'app sautée (le cas courant) n'empêche pas la publication.
+    if: ${{ !failure() && !cancelled() && (github.event_name != 'workflow_dispatch' || inputs.publier) }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -203,9 +216,15 @@ jobs:
       - name: Publication GitHub
         env:
           GH_TOKEN: ${{ github.token }}
+          AVEC_MACOS: ${{ needs.macos.result == 'success' }}
         run: |
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" paquets/* --clobber
           else
-            gh release create "$TAG" paquets/* --title "dysflow ${TAG#v}" --notes-file .github/release-notes.md
+            gh release create "$TAG" paquets/* --title "Dysflow ${TAG#v}" \
+              --notes-file .github/release-notes.md --latest=false
+          fi
+          # « Dernière » seulement avec l'app : sinon, release-macos.sh le fait.
+          if [ "$AVEC_MACOS" = true ]; then
+            gh release edit "$TAG" --latest
           fi
