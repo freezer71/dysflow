@@ -192,16 +192,126 @@ fn device_rate(device: &rodio::cpal::Device) -> Option<u32> {
 /// Les sorties audio de la machine, par nom, sans doublon, dans l'ordre du
 /// système.
 pub fn output_devices() -> Vec<String> {
-    use rodio::cpal::traits::{DeviceTrait, HostTrait};
+    use rodio::cpal::traits::DeviceTrait;
     let mut names: Vec<String> = Vec::new();
-    if let Ok(devices) = rodio::cpal::default_host().output_devices() {
-        for name in devices.filter_map(|d| d.name().ok()) {
-            if !names.contains(&name) {
-                names.push(name);
-            }
+    for name in outputs().into_iter().filter_map(|d| d.name().ok()) {
+        if !names.contains(&name) {
+            names.push(name);
         }
     }
     names
+}
+
+/// Les appareils de sortie. Sous macOS, sans en ouvrir aucun : cpal 0.15
+/// ouvre chaque appareil pour en lire les formats, et ouvrir un appareil qui
+/// a aussi un micro (un casque, un appareil virtuel) fait poser à macOS la
+/// question du micro, dès le lancement de l'app.
+fn outputs() -> Vec<rodio::cpal::Device> {
+    use rodio::cpal::traits::HostTrait;
+    let host = rodio::cpal::default_host();
+    #[cfg(target_os = "macos")]
+    if let (Ok(devices), Some(flags)) = (host.devices(), macos_outputs::flags()) {
+        let devices: Vec<_> = devices.collect();
+        // Les deux listes viennent de la même propriété, dans le même ordre ;
+        // un appareil branché entre les deux lectures : la voie de cpal.
+        if devices.len() == flags.len() {
+            return devices
+                .into_iter()
+                .zip(flags)
+                .filter_map(|(d, out)| out.then_some(d))
+                .collect();
+        }
+    }
+    host.output_devices()
+        .map(|d| d.collect())
+        .unwrap_or_default()
+}
+
+/// Les appareils de Core Audio, dans l'ordre où cpal les énumère : ont-ils
+/// un flux de sortie ? Lu dans leurs propriétés, rien n'est ouvert.
+#[cfg(target_os = "macos")]
+mod macos_outputs {
+    use std::ffi::c_void;
+
+    #[repr(C)]
+    struct Address {
+        selector: u32,
+        scope: u32,
+        element: u32,
+    }
+
+    #[link(name = "CoreAudio", kind = "framework")]
+    unsafe extern "C" {
+        fn AudioObjectGetPropertyDataSize(
+            object: u32,
+            address: *const Address,
+            qualifier_size: u32,
+            qualifier: *const c_void,
+            size: *mut u32,
+        ) -> i32;
+        fn AudioObjectGetPropertyData(
+            object: u32,
+            address: *const Address,
+            qualifier_size: u32,
+            qualifier: *const c_void,
+            size: *mut u32,
+            data: *mut c_void,
+        ) -> i32;
+    }
+
+    const fn code(s: &[u8; 4]) -> u32 {
+        u32::from_be_bytes(*s)
+    }
+    const SYSTEM_OBJECT: u32 = 1;
+    const DEVICES: u32 = code(b"dev#");
+    const STREAMS: u32 = code(b"stm#");
+    const SCOPE_GLOBAL: u32 = code(b"glob");
+    const SCOPE_OUTPUT: u32 = code(b"outp");
+
+    fn size(object: u32, address: &Address) -> Option<u32> {
+        let mut size = 0u32;
+        // SAFETY : une adresse valide, aucun qualificatif ; Core Audio écrit
+        // seulement la taille.
+        let status = unsafe {
+            AudioObjectGetPropertyDataSize(object, address, 0, std::ptr::null(), &mut size)
+        };
+        (status == 0).then_some(size)
+    }
+
+    pub fn flags() -> Option<Vec<bool>> {
+        let devices = Address {
+            selector: DEVICES,
+            scope: SCOPE_GLOBAL,
+            element: 0,
+        };
+        let mut bytes = size(SYSTEM_OBJECT, &devices)?;
+        let mut ids = vec![0u32; bytes as usize / std::mem::size_of::<u32>()];
+        // SAFETY : le tampon fait `bytes` octets ; Core Audio n'en écrit pas plus.
+        let status = unsafe {
+            AudioObjectGetPropertyData(
+                SYSTEM_OBJECT,
+                &devices,
+                0,
+                std::ptr::null(),
+                &mut bytes,
+                ids.as_mut_ptr().cast(),
+            )
+        };
+        if status != 0 {
+            return None;
+        }
+        ids.truncate(bytes as usize / std::mem::size_of::<u32>());
+        let streams = Address {
+            selector: STREAMS,
+            scope: SCOPE_OUTPUT,
+            element: 0,
+        };
+        Some(
+            ids.iter()
+                .map(|&id| size(id, &streams).is_some_and(|n| n > 0))
+                .collect(),
+        )
+    }
 }
 
 /// La sortie que macOS (ou le système) choisit en ce moment.
@@ -216,11 +326,8 @@ pub fn output_present(name: &str) -> bool {
 }
 
 fn find_output(name: &str) -> Option<rodio::cpal::Device> {
-    use rodio::cpal::traits::{DeviceTrait, HostTrait};
-    rodio::cpal::default_host()
-        .output_devices()
-        .ok()?
-        .find(|d| d.name().is_ok_and(|n| n == name))
+    use rodio::cpal::traits::DeviceTrait;
+    outputs().into_iter().find(|d| d.name().is_ok_and(|n| n == name))
 }
 
 /// Le message d'une sortie choisie mais absente.
