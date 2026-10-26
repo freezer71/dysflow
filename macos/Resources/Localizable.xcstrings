@@ -589,6 +589,16 @@
         }
       }
     },
+    "All set" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tout est prêt"
+          }
+        }
+      }
+    },
     "Allow" : {
       "localizations" : {
         "fr" : {
@@ -885,6 +895,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Sommaire (t)"
+          }
+        }
+      }
+    },
+    "Continue" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Continuer"
           }
         }
       }
@@ -1187,6 +1207,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Téléchargement de %1$@ : %2$lld %%"
+          }
+        }
+      }
+    },
+    "Dysflow can read and write for you." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dysflow peut lire et écrire pour vous."
+          }
+        }
+      }
+    },
+    "Dysflow needs them to read what you select and write what you dictate. Everything stays on your Mac." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dysflow en a besoin pour lire ce que vous sélectionnez et écrire ce que vous dictez. Tout reste sur votre Mac."
           }
         }
       }
@@ -1548,6 +1588,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Langue"
+          }
+        }
+      }
+    },
+    "Later" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Plus tard"
           }
         }
       }
@@ -2169,6 +2219,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Autorisations"
+          }
+        }
+      }
+    },
+    "Permissions are missing" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il manque des autorisations"
           }
         }
       }
@@ -3422,6 +3482,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Modèle de l'essai"
+          }
+        }
+      }
+    },
+    "Turn on Dysflow in System Settings, then come back here." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Activez Dysflow dans les Réglages Système, puis revenez ici."
           }
         }
       }

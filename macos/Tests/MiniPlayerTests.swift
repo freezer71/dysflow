@@ -113,9 +113,9 @@ final class MiniPlayerViewTests: XCTestCase {
 
     /// Le titre de ce qui est lu ; sans document, le nom de l'app.
     func testTheMiniShowsWhatIsRead() {
-        XCTAssertEqual(MiniTitle.text(hasDocument: true, title: "Le dysflow"), "Le dysflow")
-        XCTAssertEqual(MiniTitle.text(hasDocument: true, title: "  "), "dysflow")
-        XCTAssertEqual(MiniTitle.text(hasDocument: false, title: "Le dysflow"), "dysflow")
+        XCTAssertEqual(MiniTitle.text(hasDocument: true, title: "Le Dysflow"), "Le Dysflow")
+        XCTAssertEqual(MiniTitle.text(hasDocument: true, title: "  "), "Dysflow")
+        XCTAssertEqual(MiniTitle.text(hasDocument: false, title: "Le Dysflow"), "Dysflow")
     }
 
     /// Le mini avance par phrase, comme le lecteur, et s'agrandit.

@@ -12,7 +12,7 @@ struct DysflowApp: App {
             // Toujours présente : c'est elle qui donne l'action d'ouverture
             // des réglages, panneau masqué compris.
             Image(nsImage: LogoMark.templateImage())
-                .accessibilityLabel("dysflow")
+                .accessibilityLabel("Dysflow")
                 .providesSettingsOpener()
         }
         Settings {

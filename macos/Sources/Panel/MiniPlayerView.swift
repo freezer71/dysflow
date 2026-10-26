@@ -108,7 +108,7 @@ struct MiniTitle: View {
     /// Sans document, le nom de l'app.
     static func text(hasDocument: Bool, title: String) -> String {
         let t = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        return hasDocument && !t.isEmpty ? t : "dysflow"
+        return hasDocument && !t.isEmpty ? t : "Dysflow"
     }
 
     var body: some View {

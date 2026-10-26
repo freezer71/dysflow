@@ -442,7 +442,7 @@ struct LogoMark: View {
         let image = renderer.nsImage ?? NSImage(size: NSSize(width: points, height: points))
         image.size = NSSize(width: points, height: points)
         image.isTemplate = true
-        image.accessibilityDescription = "dysflow"
+        image.accessibilityDescription = "Dysflow"
         return image
     }
 }

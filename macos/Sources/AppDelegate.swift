@@ -70,6 +70,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var menuObserver: NSObjectProtocol?
     /// Les sorties audio branchées ou retirées : la liste se relit.
     private var outputWatcher: AudioDeviceWatcher?
+    private let permissionsPrompt = PermissionsPrompt()
     /// Lancé par macOS à l'ouverture de session : rien ne s'impose.
     private var launchedAtLogin = false
 
@@ -307,14 +308,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         installDictation()
         installShortcuts()
         LoginItem.enableOnFirstLaunch()
-        // Le micro et l'Accessibilité, demandés d'emblée s'ils manquent.
-        Task { await Onboarding.runIfNeeded() }
         startKokoro()
         // Lancé avec un fichier : le lecteur sur lui. Lancé à la main : le
         // lecteur. À la connexion : rien.
         if let file = pendingFiles.last {
             pendingFiles = []
             openFile(file)
+        } else if Onboarding.shouldPrompt {
+            // Il manque une autorisation : la fenêtre d'abord, seule. Le
+            // lecteur flotte au-dessus de tout et couvrirait les Réglages
+            // Système ; il vient à la fermeture.
+            Onboarding.prompted()
+            let presentation = LaunchKind.presentation(atLogin: false, withFiles: false,
+                                                       hasDocument: model.snapshot.hasDocument)
+            permissionsPrompt.show { [weak self] in self?.present(presentation) }
         } else {
             present(LaunchKind.presentation(atLogin: launchedAtLogin, withFiles: launchedWithFiles,
                                             hasDocument: model.snapshot.hasDocument))
