@@ -6,7 +6,7 @@ import type { Dico } from "./fr";
 export const en: Dico = {
   meta: {
     titre: "Dysflow — read and write without wearing yourself out, made for dyslexia",
-    modele: "%s · dysflow",
+    modele: "%s · Dysflow",
     description:
       "Dysflow is made for dyslexic and neurodivergent people who find reading or writing hard: it reads your documents aloud, highlighting every word, and types what you dictate. Free, open source, 100% on your machine.",
   },

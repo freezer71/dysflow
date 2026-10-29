@@ -65,7 +65,7 @@ export const nomDuSite = "Dysflow";
  * Les métadonnées d'une page : titre, description, alternatives, et ce que
  * lisent les réseaux (Open Graph, X). Un `openGraph` posé par une page
  * remplace celui de la mise en page en entier : tout est donc redit ici.
- * L'image vient du fichier `opengraph-image` du segment.
+ * L'image est la carte servie à `<page>/og.png` (`app/_og/carte.tsx`).
  * Sans `titre`, c'est le titre par défaut de la langue (l'accueil).
  */
 export function metadonnees(

@@ -4,7 +4,7 @@
 export const fr = {
   meta: {
     titre: "Dysflow — lire et écrire sans s'épuiser, pour les dyslexiques",
-    modele: "%s · dysflow",
+    modele: "%s · Dysflow",
     description:
       "Dysflow est fait pour les personnes dyslexiques et neuroatypiques à qui lire ou écrire coûte : il lit vos documents à voix haute en surlignant chaque mot, et écrit ce que vous dictez. Gratuit, libre, 100 % sur votre machine.",
   },
