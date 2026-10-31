@@ -84,6 +84,13 @@ codegen-units = 1
 panic = "abort"
 strip = true
 
+# Les macros procédurales et scripts de build ne sont pas livrés : ne pas
+# les dépouiller. Avec l'éditeur de liens d'Xcode d'octobre 2026
+# (ld-27106), `strip` corrompt leurs dylibs (« mis-aligned LINKEDIT string
+# pool »), rustc ne peut plus les charger et rend « can't find crate ».
+[profile.release.build-override]
+strip = false
+
 # La bibliothèque de l'app macOS : une panique Rust doit rester une erreur
 # (rattrapée par UniFFI, verrous repris par `sync`), pas arrêter l'app.
 [profile.app]

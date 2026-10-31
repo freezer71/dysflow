@@ -1,7 +1,8 @@
 import SwiftUI
 
-/// Une table de modèles : choix, nom, taille et une petite action (corbeille,
-/// progression). Un clic sur une ligne absente la télécharge. Des lignes à
+/// Une table de modèles : choix, nom, taille et une petite action (croix,
+/// progression), toutes dans le cadre de la ligne : le survol couvre la
+/// ligne entière, actions comprises. Un clic sur une ligne absente la télécharge. Des lignes à
 /// colonnes fixes plutôt qu'une `Table` : la page des réglages défile déjà,
 /// une `Table` s'y coincerait ; et chaque ligne reste un seul élément pour
 /// VoiceOver. Lecture et dictée partagent la table : chacune dit quelle
@@ -25,8 +26,12 @@ struct ModelsTable: View {
 
     private static let choiceWidth: CGFloat = 22
     private static let sizeWidth: CGFloat = 80
-    /// La place à droite : une corbeille, ou la progression et sa croix.
-    private static let actionWidth: CGFloat = 104
+    /// La place à droite, dans le cadre : une ou deux icônes (supprimer,
+    /// annuler, réessayer). La progression prend la place de la taille.
+    private static let actionWidth: CGFloat = 58
+    /// Le cadre d'une ligne déborde d'autant de chaque côté : le texte reste
+    /// aligné sur l'en-tête et les filets.
+    private static let frameInset: CGFloat = 8
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -84,6 +89,8 @@ struct ModelsTable: View {
 
     private func line(_ row: VoiceModel) -> some View {
         let state = ModelTable.state(row, download: model.snapshot.download)
+        let download = model.snapshot.download
+        let actionable = ModelTable.canUse(row) || ModelTable.downloadsOnClick(row, download: download)
         return VStack(alignment: .leading, spacing: 4) {
             columns(row, state)
             // Le message d'échec en entier, sous la ligne, sur toute sa
@@ -97,7 +104,9 @@ struct ModelsTable: View {
                     .accessibilityHidden(true)   // déjà dans l'étiquette de la ligne
             }
         }
-        .padding(.vertical, 10)
+        .padding(.vertical, 8)
+        .modifier(RowFrame(actionable: actionable, inset: Self.frameInset))
+        .padding(.vertical, 3)
         .frame(minHeight: 64)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Self.label(row, state))
@@ -123,7 +132,7 @@ struct ModelsTable: View {
                     }
                 }
             } label: {
-                choice(row)
+                choice(row, state)
             }
             .buttonStyle(ModelRowButtonStyle())
             .disabled(!(ModelTable.canUse(row) || downloads))
@@ -142,7 +151,7 @@ struct ModelsTable: View {
         }
     }
 
-    private func choice(_ row: VoiceModel) -> some View {
+    private func choice(_ row: VoiceModel, _ state: ModelRowState) -> some View {
         HStack(spacing: 14) {
             Image(systemName: Self.choiceSymbol(row))
                 .foregroundStyle(row.active ? Palette.accent : Palette.muted)
@@ -163,11 +172,22 @@ struct ModelsTable: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .accessibilityHidden(true)
-            Text(ModelTable.size(row))
-                .monospacedDigit()
-                .foregroundStyle(Palette.ink)
-                .frame(width: Self.sizeWidth, alignment: .trailing)
-                .accessibilityHidden(true)
+            // Pendant le téléchargement, la progression prend la place de la
+            // taille : la croix d'annulation reste seule à droite.
+            Group {
+                if case .downloading(let fraction) = state {
+                    ProgressView(value: fraction)
+                        .tint(Palette.accent)
+                        .accessibilityLabel("Downloading \(row.name)")
+                        .accessibilityValue("\(Int(fraction * 100))%")
+                } else {
+                    Text(ModelTable.size(row))
+                        .monospacedDigit()
+                        .foregroundStyle(Palette.ink)
+                        .accessibilityHidden(true)
+                }
+            }
+            .frame(width: Self.sizeWidth, alignment: .trailing)
         }
     }
 
@@ -178,7 +198,7 @@ struct ModelsTable: View {
     }
 
     private func removeButton(_ row: VoiceModel) -> some View {
-        IconButton(symbol: "trash", help: String(localized: "Delete \(row.name)")) { state.confirming = row }
+        IconButton(symbol: "xmark", help: String(localized: "Delete \(row.name)")) { state.confirming = row }
             .accessibilityIdentifier("supprimer-\(row.id)")
     }
 
@@ -188,11 +208,7 @@ struct ModelsTable: View {
         switch state {
         case .system, .notInstalled:
             EmptyView()
-        case .downloading(let fraction):
-            ProgressView(value: fraction)
-                .frame(width: 64)
-                .accessibilityLabel("Downloading \(row.name)")
-                .accessibilityValue("\(Int(fraction * 100))%")
+        case .downloading:
             IconButton(symbol: "xmark.circle.fill", help: String(localized: "Cancel downloading \(row.name)")) {
                 act { try await model.cancelDownload() }
             }
@@ -259,7 +275,7 @@ struct MakerBadge: View {
 
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 7).fill(Palette.control)
+            RoundedRectangle(cornerRadius: 5).fill(Palette.control)
             if let logo = maker.logo {
                 Image(logo)
                     .resizable()
@@ -276,9 +292,10 @@ struct MakerBadge: View {
     }
 }
 
-/// La zone de choix d'une ligne de modèle : un fond au survol et la main
-/// quand on peut la choisir ; sinon (pas installé, ou déjà utilisé), rien —
-/// et le texte garde sa couleur (désactivé ne veut pas dire pâle ici).
+/// La zone de choix d'une ligne de modèle : la main quand on peut la
+/// choisir, un léger fondu à l'appui. Le fond de survol est celui du cadre
+/// de la ligne (`RowFrame`), qui couvre aussi les actions. Désactivée (pas
+/// installée, ou déjà utilisée), le texte garde sa couleur.
 struct ModelRowButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         ModelRowButtonBody(configuration: configuration)
@@ -287,20 +304,32 @@ struct ModelRowButtonStyle: ButtonStyle {
 
 private struct ModelRowButtonBody: View {
     let configuration: ButtonStyleConfiguration
-    @State private var hovering = false
     @Environment(\.isEnabled) private var enabled
 
     var body: some View {
         configuration.label
-            .padding(.vertical, 4)
-            .padding(.horizontal, 6)
-            .background(RoundedRectangle(cornerRadius: 8).fill(
-                enabled && configuration.isPressed ? Palette.selected
-                    : (enabled && hovering ? Palette.hover : .clear)))
-            .padding(.horizontal, -6)
+            .opacity(enabled && configuration.isPressed ? 0.7 : 1)
             .contentShape(Rectangle())
+            .pointingHandCursor(enabled)
+    }
+}
+
+/// Le cadre d'une ligne de modèle : un fond net (petit rayon) sur toute la
+/// ligne au survol, actions comprises, si la ligne se choisit ou se
+/// télécharge. Il déborde de `inset` de chaque côté pour que le contenu reste
+/// aligné sur l'en-tête.
+private struct RowFrame: ViewModifier {
+    let actionable: Bool
+    let inset: CGFloat
+    @State private var hovering = false
+
+    func body(content: Content) -> some View {
+        content
+            .padding(.horizontal, inset)
+            .background(RoundedRectangle(cornerRadius: 4)
+                .fill(actionable && hovering ? Palette.hover : .clear))
+            .padding(.horizontal, -inset)
             .onHover { hovering = $0 }
-            .pointingHandCursor()
     }
 }
 
@@ -318,7 +347,7 @@ struct IconButton: View {
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(hovering ? Palette.ink : Palette.muted)
                 .frame(width: 26, height: 26)
-                .background(RoundedRectangle(cornerRadius: 6).fill(hovering ? Palette.hover : .clear))
+                .background(RoundedRectangle(cornerRadius: 4).fill(hovering ? Palette.selected : .clear))
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
