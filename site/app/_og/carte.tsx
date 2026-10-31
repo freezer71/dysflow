@@ -118,6 +118,8 @@ export function cartePage(lang: Lang, page: Page) {
       return carte({ surtitre: d.entete.telecharger, titre: d.telecharger.titre, texte: d.telecharger.intro });
     case "blog":
       return carte({ surtitre: d.blog.surtitre, titre: d.blog.titre, texte: d.blog.texte });
+    case "confidentialite":
+      return carte({ surtitre: d.pied.confidentialite, titre: d.confidentialite.titre, texte: d.confidentialite.intro });
   }
 }
 

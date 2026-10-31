@@ -21,6 +21,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     ["telecharger", 0.9],
     ["modeles", 0.7],
     ["blog", 0.7],
+    ["confidentialite", 0.2],
   ];
   return [
     ...pages.flatMap(([page, priority]) => entrees(cheminsDe(page), { priority })),

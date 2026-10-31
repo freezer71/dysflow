@@ -25,6 +25,7 @@ export const en: Dico = {
     blog: "Blog",
     telecharger: "Download",
     code: "Source code",
+    confidentialite: "Privacy",
   },
   evitement: "Skip to content",
   confort: {
@@ -291,6 +292,68 @@ export const en: Dico = {
     compilerLien: "The instructions are in the README",
     souciAvant: "Got a problem?",
     souciLien: "Open an issue",
+  },
+  confidentialite: {
+    meta: {
+      titre: "Privacy",
+      description:
+        "What the Dysflow website does with your data: anonymous traffic statistics, no ads, and nothing more. The app itself sends nothing.",
+    },
+    titre: "Privacy",
+    intro:
+      "Dysflow needs no account and runs entirely on your computer: the app sends nothing. This page explains what this website, dysflow.koumalabs.org, does with your data when you visit it.",
+    maj: "Last updated: October 31, 2026",
+    responsable: {
+      titre: "Who is responsible",
+      texte:
+        "Tharshan VISHNUKUMAR EI (Kouma Studio), sole proprietorship, SIREN 984 733 204, 5 rue Jean-Baptiste Lully, 77340 Pontault-Combault, France.",
+      contact: "For any question:",
+    },
+    audience: {
+      titre: "Audience measurement",
+      paragraphes: [
+        "We use Moka to measure traffic on dysflow.koumalabs.org. Moka acts as our processor and handles this data only on our behalf.",
+        "Measurement is limited to traffic statistics, built with pseudonymous identifiers stored in the cookies moka_aid (13 months from when it is first set, never extended) and moka_session_id (30 minutes, extended with each page view): pages viewed, referrer, actions tracked on the site (clicks on the download buttons, copying the install command), outbound links, device type, browser, screen size, country, region and city (your IP address is not kept).",
+        "These cookies are used only to produce traffic statistics on our behalf: they don't follow you on other sites and aren't combined with any other data. They are therefore exempt from consent (article 82 of the French Data Protection Act). Measurement is based on our legitimate interest in knowing how the site is used, to improve it (article 6.1.f GDPR).",
+        "Browsing data is kept for 25 months.",
+      ],
+      opposition: "You can opt out of all measurement with the link below.",
+      bouton: "Stop being measured by Moka",
+      desactive: "Measurement is turned off in this browser.",
+      reprendre: "Turn measurement back on",
+    },
+    stockage: {
+      titre: "Cookies and storage",
+      elements: [
+        "moka_aid and moka_session_id: audience measurement, described above.",
+        "langue: set only if you pick a language with the switcher, to show you the site in that language. It holds “en” or “fr” and lasts one year.",
+        "Your comfort settings (font, size, spacing, background, animations) stay in your browser (local storage): they are never sent.",
+        "moka_optout: set in your browser only if you opt out of measurement, to remember it.",
+      ],
+    },
+    hebergement: {
+      titre: "Hosting",
+      paragraphes: [
+        "The site is hosted by Cloudflare, Inc., 101 Townsend St, San Francisco, CA 94107, USA. To serve you the pages and protect the site from abuse, Cloudflare processes your IP address and the technical information your browser sends, as our processor. This transfer to the United States is covered by the EU–US Data Privacy Framework, under which Cloudflare is certified.",
+        "Fonts are served by this site itself: no request is sent to Google.",
+      ],
+    },
+    liens: {
+      titre: "Downloads and links",
+      texte:
+        "The download files and the source code are hosted on GitHub. When you follow a download link or a link to the repository, you leave this site: GitHub then handles your data under",
+      lien: "its own privacy statement",
+    },
+    droits: {
+      titre: "Your rights",
+      paragraphes: [
+        "You can ask to access, correct or erase your data, or to restrict its processing, and you can object to it. We reply within one month.",
+        "Traffic statistics rely on pseudonymous identifiers: without them, we can't find your visits. The simplest way to stop being measured is the link above.",
+      ],
+      ecrire: "To exercise your rights, write to",
+      cnilAvant: "You can also file a complaint with the CNIL, the French data protection authority:",
+      cnilLien: "cnil.fr/fr/plaintes",
+    },
   },
   blog: {
     meta: {

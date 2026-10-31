@@ -23,7 +23,7 @@ export async function Telecharger({ lang }: { lang: Lang }) {
         </div>
 
         <div className="mt-10">
-          <Commande texte={commandeInstallation} libelles={libelles} grande />
+          <Commande texte={commandeInstallation} libelles={libelles} grande objectif="copy_install_command" />
           <ul className="mt-6 grid gap-2 sm:grid-cols-2">
             {d.etapes.map((e) => (
               <li key={e} className="flex items-center gap-3 rounded-2xl bg-carte px-4 py-3 text-[15px]">
@@ -52,7 +52,7 @@ export async function Telecharger({ lang }: { lang: Lang }) {
               {d.mac.texte}
             </p>
             <div className="mt-6">
-              <Bouton href={telechargements.dmg}>
+              <Bouton href={telechargements.dmg} objectif="download">
                 <IconeTelecharger />
                 {d.mac.bouton}
               </Bouton>
@@ -71,11 +71,11 @@ export async function Telecharger({ lang }: { lang: Lang }) {
               {d.linux.texte}
             </p>
             <div className="mt-6 flex flex-wrap gap-3">
-              <Bouton href={telechargements.linuxX64} variante="doux">
+              <Bouton href={telechargements.linuxX64} variante="doux" objectif="download">
                 <IconeTelecharger />
                 x86_64
               </Bouton>
-              <Bouton href={telechargements.linuxArm64} variante="doux">
+              <Bouton href={telechargements.linuxArm64} variante="doux" objectif="download">
                 <IconeTelecharger />
                 ARM64
               </Bouton>

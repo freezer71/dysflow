@@ -140,6 +140,7 @@ export function Pied({ lang }: { lang: Lang }) {
           <Link href={chemin(lang, "blog")} className="hover:text-encre">{d.blog}</Link>
           <Link href={chemin(lang, "telecharger")} className="hover:text-encre">{d.telecharger}</Link>
           <a href={depot} className="hover:text-encre">{d.code}</a>
+          <Link href={chemin(lang, "confidentialite")} className="hover:text-encre">{d.confidentialite}</Link>
         </div>
       </div>
     </footer>
@@ -151,6 +152,8 @@ type BoutonProps = {
   children: ReactNode;
   variante?: "encre" | "citron" | "doux";
   petit?: boolean;
+  /** L'objectif Moka envoyé au clic. */
+  objectif?: string;
 };
 
 const variantes = {
@@ -160,7 +163,7 @@ const variantes = {
 };
 
 /** Un lien en forme de bouton. Interne : `<Link>` ; externe : `<a>`. */
-export function Bouton({ href, children, variante = "encre", petit }: BoutonProps) {
+export function Bouton({ href, children, variante = "encre", petit, objectif }: BoutonProps) {
   const classes = `inline-flex max-w-full items-center justify-center gap-2 rounded-full text-center font-bold transition ${
     petit ? "px-4 py-2 text-[15px]" : "px-6 py-3.5 text-base"
   } ${variantes[variante]}`;
@@ -172,7 +175,7 @@ export function Bouton({ href, children, variante = "encre", petit }: BoutonProp
     );
   }
   return (
-    <a href={href} className={classes}>
+    <a href={href} className={classes} data-moka-goal={objectif}>
       {children}
     </a>
   );

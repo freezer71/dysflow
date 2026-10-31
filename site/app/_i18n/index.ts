@@ -4,14 +4,14 @@ import { fr, type Dico } from "./fr";
 
 export type { Dico };
 export type Lang = "en" | "fr";
-export type Page = "accueil" | "modeles" | "telecharger" | "blog";
+export type Page = "accueil" | "modeles" | "telecharger" | "blog" | "confidentialite";
 
 /** L'adresse publique du site, base des adresses absolues des métadonnées. */
 export const site = "https://dysflow.koumalabs.org";
 
 const chemins: Record<Lang, Record<Page, string>> = {
-  en: { accueil: "/", modeles: "/models", telecharger: "/download", blog: "/blog" },
-  fr: { accueil: "/fr", modeles: "/fr/modeles", telecharger: "/fr/telecharger", blog: "/fr/blog" },
+  en: { accueil: "/", modeles: "/models", telecharger: "/download", blog: "/blog", confidentialite: "/privacy" },
+  fr: { accueil: "/fr", modeles: "/fr/modeles", telecharger: "/fr/telecharger", blog: "/fr/blog", confidentialite: "/fr/confidentialite" },
 };
 
 /** L'adresse d'une page dans une langue, avec une ancre éventuelle (sans `#`). */

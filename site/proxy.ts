@@ -14,6 +14,7 @@ const enFrancais: Record<string, string> = {
   "/models": "/fr/modeles",
   "/download": "/fr/telecharger",
   "/blog": "/fr/blog",
+  "/privacy": "/fr/confidentialite",
   // Chaque article vers sa traduction : les adresses diffèrent d'une langue à l'autre.
   ...Object.fromEntries(Object.values(slugs).map((s) => [`/blog/${s.en}`, `/fr/blog/${s.fr}`])),
 };
@@ -49,6 +50,7 @@ export const config = {
     { source: "/models", missing: [{ type: "cookie", key: "langue" }] },
     { source: "/download", missing: [{ type: "cookie", key: "langue" }] },
     { source: "/blog", missing: [{ type: "cookie", key: "langue" }] },
+    { source: "/privacy", missing: [{ type: "cookie", key: "langue" }] },
     { source: "/blog/:slug", missing: [{ type: "cookie", key: "langue" }] },
   ],
 };

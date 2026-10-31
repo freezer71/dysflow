@@ -23,6 +23,7 @@ export const fr = {
     blog: "Blog",
     telecharger: "Télécharger",
     code: "Code source",
+    confidentialite: "Confidentialité",
   },
   evitement: "Aller au contenu",
   confort: {
@@ -289,6 +290,68 @@ export const fr = {
     compilerLien: "Les instructions sont dans le README",
     souciAvant: "Un souci ?",
     souciLien: "Ouvrez une issue",
+  },
+  confidentialite: {
+    meta: {
+      titre: "Confidentialité",
+      description:
+        "Ce que le site de Dysflow fait de vos données : une mesure de fréquentation anonyme, sans publicité, et rien de plus. L'app, elle, n'envoie rien.",
+    },
+    titre: "Confidentialité",
+    intro:
+      "Dysflow s'utilise sans compte et fonctionne entièrement sur votre ordinateur : l'app n'envoie rien. Cette page dit ce que ce site, dysflow.koumalabs.org, fait de vos données quand vous le visitez.",
+    maj: "Dernière mise à jour : 31 octobre 2026",
+    responsable: {
+      titre: "Qui est responsable",
+      texte:
+        "Tharshan VISHNUKUMAR EI (Kouma Studio), entrepreneur individuel, SIREN 984 733 204, 5 rue Jean-Baptiste Lully, 77340 Pontault-Combault, France.",
+      contact: "Pour toute question :",
+    },
+    audience: {
+      titre: "Mesure d'audience",
+      paragraphes: [
+        "Nous utilisons Moka pour mesurer la fréquentation de dysflow.koumalabs.org. Moka agit en qualité de sous-traitant et traite ces données uniquement pour notre compte.",
+        "La mesure se limite à des statistiques de fréquentation, établies à l'aide d'identifiants pseudonymes stockés dans les cookies moka_aid (13 mois à compter du premier dépôt, sans prolongation) et moka_session_id (30 minutes, prolongées à chaque page vue) : pages vues, provenance, actions suivies sur le site (clics sur les boutons de téléchargement, copie de la commande d'installation), liens sortants, type d'appareil, navigateur, taille d'écran, pays, région et ville (l'adresse IP n'est pas conservée).",
+        "Ces cookies servent uniquement à produire des statistiques de fréquentation pour notre compte : ils ne vous suivent pas sur d'autres sites et ne sont croisés avec aucune autre donnée. Ils sont donc dispensés de consentement (article 82 de la loi Informatique et Libertés). La mesure repose sur notre intérêt légitime à savoir comment le site est utilisé, pour l'améliorer (article 6.1.f du RGPD).",
+        "Les données de navigation sont conservées 25 mois.",
+      ],
+      opposition: "Vous pouvez vous opposer à toute mesure en cliquant sur le lien ci-dessous.",
+      bouton: "Ne plus être mesuré par Moka",
+      desactive: "La mesure est désactivée sur ce navigateur.",
+      reprendre: "Réactiver la mesure",
+    },
+    stockage: {
+      titre: "Cookies et stockage",
+      elements: [
+        "moka_aid et moka_session_id : la mesure d'audience, décrite plus haut.",
+        "langue : posé seulement si vous choisissez une langue avec le sélecteur, pour vous afficher le site dans cette langue. Il contient « en » ou « fr » et dure un an.",
+        "Les réglages de confort (police, taille, espacement, fond, animations) restent dans votre navigateur (stockage local) : ils ne sont jamais envoyés.",
+        "moka_optout : posé dans votre navigateur seulement si vous vous opposez à la mesure, pour s'en souvenir.",
+      ],
+    },
+    hebergement: {
+      titre: "Hébergement",
+      paragraphes: [
+        "Le site est hébergé par Cloudflare, Inc., 101 Townsend St, San Francisco, CA 94107, États-Unis. Pour vous servir les pages et protéger le site contre les abus, Cloudflare traite votre adresse IP et les informations techniques envoyées par votre navigateur, en tant que sous-traitant. Ce transfert vers les États-Unis est encadré par le Data Privacy Framework UE–États-Unis, auquel Cloudflare est certifiée.",
+        "Les polices sont servies par ce site lui-même : aucune requête n'est envoyée à Google.",
+      ],
+    },
+    liens: {
+      titre: "Téléchargements et liens",
+      texte:
+        "Les fichiers à télécharger et le code source sont hébergés sur GitHub. En suivant un lien de téléchargement ou vers le dépôt, vous quittez ce site : GitHub traite alors vos données selon",
+      lien: "sa propre déclaration de confidentialité",
+    },
+    droits: {
+      titre: "Vos droits",
+      paragraphes: [
+        "Vous pouvez demander l'accès à vos données, leur rectification, leur effacement ou la limitation de leur traitement, et vous opposer à leur traitement. Nous répondons dans un délai d'un mois.",
+        "Les statistiques de fréquentation reposent sur des identifiants pseudonymes : sans eux, nous ne pouvons pas retrouver vos visites. Le plus simple pour ne plus être mesuré reste le lien plus haut.",
+      ],
+      ecrire: "Pour exercer vos droits, écrivez à",
+      cnilAvant: "Vous pouvez aussi adresser une réclamation à la CNIL :",
+      cnilLien: "cnil.fr/fr/plaintes",
+    },
   },
   blog: {
     meta: {

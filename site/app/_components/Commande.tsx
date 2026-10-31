@@ -7,11 +7,14 @@ export function Commande({
   texte,
   libelles,
   grande,
+  objectif,
 }: {
   texte: string;
   /** Les mots du bouton, dans la langue de la page. */
   libelles: { copier: string; copie: string };
   grande?: boolean;
+  /** L'objectif Moka envoyé quand on copie la commande. */
+  objectif?: string;
 }) {
   const [copie, setCopie] = useState(false);
 
@@ -35,6 +38,7 @@ export function Commande({
       <button
         type="button"
         onClick={copier}
+        data-moka-goal={objectif}
         className={`shrink-0 rounded-xl font-bold transition ${grande ? "px-4 py-2.5" : "px-3 py-2 text-sm"} ${
           copie ? "bg-citron text-citron-encre" : "bg-white/10 hover:bg-white/20"
         }`}
