@@ -1016,6 +1016,9 @@ pub enum Progress {
     Cancelled,
 }
 
+/// Le tour des fils de téléchargement dans le dossier des modèles (`start_in`).
+static WORKERS: Mutex<()> = Mutex::new(());
+
 /// Téléchargement en cours, annulable.
 pub struct Download {
     pub package: &'static ModelPackage,
@@ -1051,9 +1054,18 @@ impl Download {
         let worker = (Arc::clone(&received), Arc::clone(&outcome), Arc::clone(&cancel));
         crate::sync::spawn_named("dysflow-telechargement", move || {
             let (received, outcome, cancel) = worker;
+            // Un fil à la fois dans le dossier des modèles : une annulation
+            // rend la main tout de suite (`cancel`), mais son fil peut rester
+            // bloqué dans une lecture réseau puis nettoyer. Un téléchargement
+            // relancé entre-temps attend ici, sans quoi ce nettoyage
+            // effacerait ce qu'il vient de recevoir.
+            let _turn = root.is_some().then(|| WORKERS.locked());
             let mut base = 0u64;
             let mut result = Ok(());
             for (url, destination, bytes) in files {
+                if cancel.load(Ordering::Relaxed) {
+                    break;
+                }
                 if size_of(&destination) == Some(bytes) {
                     base += bytes;
                     received.store(base, Ordering::Relaxed);
@@ -1065,18 +1077,21 @@ impl Download {
                 }
                 base += bytes;
             }
-            let state = match result {
-                Ok(()) if cancel.load(Ordering::Relaxed) => {
-                    // Annuler, c'est renoncer : rien ne reste sur le disque.
-                    if let Some(root) = &root {
-                        let _ = remove_in(root, package);
-                    }
-                    Progress::Cancelled
+            let state = if cancel.load(Ordering::Relaxed) {
+                // Annuler, c'est renoncer : rien ne reste sur le disque. Une
+                // lecture qui a échoué après l'annulation n'en fait pas un échec.
+                if let Some(root) = &root {
+                    let _ = remove_in(root, package);
                 }
-                Ok(()) => Progress::Done,
-                Err(err) => Progress::Failed(err.to_string()),
+                Progress::Cancelled
+            } else {
+                match result {
+                    Ok(()) => Progress::Done,
+                    Err(err) => Progress::Failed(err.to_string()),
+                }
             };
-            *outcome.locked() = Some(state);
+            // `cancel` a pu déjà donner l'issue : elle reste « annulé ».
+            outcome.locked().get_or_insert(state);
         });
 
         Ok(Self { package, received, total, outcome, cancel })
@@ -1119,8 +1134,12 @@ impl Download {
         self.cancel.load(Ordering::Relaxed)
     }
 
+    /// Arrête le téléchargement, et le dit fini tout de suite : le fil peut
+    /// rester bloqué dans une lecture réseau (jusqu'au délai de 30 s) avant
+    /// de voir l'arrêt et de nettoyer, l'interface n'a pas à l'attendre.
     pub fn cancel(&self) {
         self.cancel.store(true, Ordering::Relaxed);
+        self.outcome.locked().get_or_insert(Progress::Cancelled);
     }
 
     pub fn is_finished(&self) -> bool {
@@ -2298,9 +2317,78 @@ mod tests {
         download.cancel();
         release_tx.send(()).unwrap();
         assert_eq!(wait(&download), Progress::Cancelled);
+        // L'issue est donnée tout de suite ; le fil nettoie dès qu'il se libère.
+        let started = std::time::Instant::now();
+        while root.join(package.family).exists() {
+            assert!(started.elapsed().as_secs() < 10, "le fil ne nettoie pas");
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
         assert!(!main.exists() && !main.with_extension("part").exists(), "rien ne reste");
         assert!(!root.join(package.family).exists(), "le dossier de famille part aussi");
         assert!(!has_files_in(&root, package), "plus rien à supprimer");
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    /// Un réseau qui cale tient le fil dans une lecture (jusqu'au délai de
+    /// 30 s) : annuler doit quand même finir le téléchargement tout de suite,
+    /// en « annulé » et pas en échec, et le fil nettoie dès qu'il se libère.
+    #[test]
+    fn cancelling_a_stalled_download_ends_it_at_once() {
+        let root = scratch("annulation-bloquee");
+        let package = package("phonon_2");
+        let main = main_path_in(&root, package);
+        let (sent_tx, sent_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let files = files_for(&[(serve_in_two_parts(b"d", b"efgh", sent_tx, release_rx), &main, 5)]);
+        let download = Download::start_in(package, files, Some(root.clone())).unwrap();
+        sent_rx.recv_timeout(std::time::Duration::from_secs(10)).unwrap();
+        let started = std::time::Instant::now();
+        while !matches!(download.progress(), Progress::Running { received, .. } if received >= 1) {
+            assert!(started.elapsed().as_secs() < 10, "pas de progression");
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        // Le serveur se tait : le fil attend dans sa lecture.
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        download.cancel();
+        assert!(download.is_finished(), "annuler finit le téléchargement sans attendre le réseau");
+        assert_eq!(download.progress(), Progress::Cancelled);
+        release_tx.send(()).unwrap();
+        let started = std::time::Instant::now();
+        while root.join(package.family).exists() {
+            assert!(started.elapsed().as_secs() < 10, "le fil ne nettoie pas");
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        assert_eq!(download.progress(), Progress::Cancelled, "l'issue reste « annulé »");
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    /// Relancer le même modèle juste après une annulation : le nouveau
+    /// téléchargement attend que l'ancien fil ait fini de nettoyer, sinon ce
+    /// nettoyage effacerait les fichiers tout juste reçus.
+    #[test]
+    fn a_new_download_waits_for_the_cancelled_one_to_clean_up() {
+        let root = scratch("annulation-relance");
+        let package = package("phonon_2");
+        let main = main_path_in(&root, package);
+        let (sent_tx, sent_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let files = files_for(&[(serve_in_two_parts(b"d", b"efgh", sent_tx, release_rx), &main, 5)]);
+        let first = Download::start_in(package, files, Some(root.clone())).unwrap();
+        sent_rx.recv_timeout(std::time::Duration::from_secs(10)).unwrap();
+        let started = std::time::Instant::now();
+        while !main.with_extension("part").exists() {
+            assert!(started.elapsed().as_secs() < 10, "le .part n'arrive pas");
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        first.cancel();
+        let files = files_for(&[(serve_once(b"defgh"), &main, 5)]);
+        let second = Download::start_in(package, files, Some(root.clone())).unwrap();
+        // Le second ne passe pas devant le nettoyage du premier.
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        assert!(!second.is_finished(), "le second attend l'ancien fil");
+        release_tx.send(()).unwrap();
+        assert_eq!(wait(&second), Progress::Done);
+        assert_eq!(std::fs::read(&main).unwrap(), b"defgh", "le nettoyage de l'annulé n'efface pas le nouveau");
         std::fs::remove_dir_all(&root).ok();
     }
 
