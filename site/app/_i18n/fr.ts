@@ -310,7 +310,7 @@ export const fr = {
     audience: {
       titre: "Mesure d'audience",
       paragraphes: [
-        "Nous utilisons Moka pour mesurer la fréquentation de dysflow.koumalabs.org. Moka agit en qualité de sous-traitant et traite ces données uniquement pour notre compte.",
+        "Nous mesurons la fréquentation de dysflow.koumalabs.org avec Moka, notre propre outil de mesure d'audience, développé et exploité par Kouma Studio. Ces données servent uniquement à nos statistiques : elles ne sont ni vendues ni utilisées à d'autres fins.",
         "La mesure se limite à des statistiques de fréquentation, établies à l'aide d'identifiants pseudonymes stockés dans les cookies moka_aid (13 mois à compter du premier dépôt, sans prolongation) et moka_session_id (30 minutes, prolongées à chaque page vue) : pages vues, provenance, actions suivies sur le site (clics sur les boutons de téléchargement, copie de la commande d'installation), liens sortants, type d'appareil, navigateur, taille d'écran, pays, région et ville (l'adresse IP n'est pas conservée).",
         "Ces cookies servent uniquement à produire des statistiques de fréquentation pour notre compte : ils ne vous suivent pas sur d'autres sites et ne sont croisés avec aucune autre donnée. Ils sont donc dispensés de consentement (article 82 de la loi Informatique et Libertés). La mesure repose sur notre intérêt légitime à savoir comment le site est utilisé, pour l'améliorer (article 6.1.f du RGPD).",
         "Les données de navigation sont conservées 25 mois.",

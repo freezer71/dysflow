@@ -312,7 +312,7 @@ export const en: Dico = {
     audience: {
       titre: "Audience measurement",
       paragraphes: [
-        "We use Moka to measure traffic on dysflow.koumalabs.org. Moka acts as our processor and handles this data only on our behalf.",
+        "We measure traffic on dysflow.koumalabs.org with Moka, our own audience measurement tool, built and run by Kouma Studio. This data is used only for our statistics: it is never sold or used for anything else.",
         "Measurement is limited to traffic statistics, built with pseudonymous identifiers stored in the cookies moka_aid (13 months from when it is first set, never extended) and moka_session_id (30 minutes, extended with each page view): pages viewed, referrer, actions tracked on the site (clicks on the download buttons, copying the install command), outbound links, device type, browser, screen size, country, region and city (your IP address is not kept).",
         "These cookies are used only to produce traffic statistics on our behalf: they don't follow you on other sites and aren't combined with any other data. They are therefore exempt from consent (article 82 of the French Data Protection Act). Measurement is based on our legitimate interest in knowing how the site is used, to improve it (article 6.1.f GDPR).",
         "Browsing data is kept for 25 months.",
