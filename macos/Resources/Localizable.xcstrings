@@ -1211,12 +1211,35 @@
         }
       }
     },
+    "Dysflow" : {
+      "shouldTranslate" : false
+    },
     "Dysflow can read and write for you." : {
       "localizations" : {
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Dysflow peut lire et écrire pour vous."
+          }
+        }
+      }
+    },
+    "Dysflow can’t access the microphone: allow it to dictate" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dysflow n'a pas accès au micro : autorisez-le pour dicter"
+          }
+        }
+      }
+    },
+    "Dysflow is in front: select text in another app" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dysflow est au premier plan : sélectionnez dans une autre application"
           }
         }
       }
@@ -2122,6 +2145,16 @@
         }
       }
     },
+    "Open Dysflow at login" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ouvrir Dysflow à la connexion"
+          }
+        }
+      }
+    },
     "Open File…" : {
       "localizations" : {
         "fr" : {
@@ -2148,16 +2181,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ouvrir un fichier"
-          }
-        }
-      }
-    },
-    "Open Dysflow at login" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ouvrir Dysflow à la connexion"
           }
         }
       }
@@ -3946,29 +3969,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "recommandée"
-          }
-        }
-      }
-    },
-    "dysflow" : {
-      "shouldTranslate" : false
-    },
-    "Dysflow can’t access the microphone: allow it to dictate" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dysflow n'a pas accès au micro : autorisez-le pour dicter"
-          }
-        }
-      }
-    },
-    "Dysflow is in front: select text in another app" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dysflow est au premier plan : sélectionnez dans une autre application"
           }
         }
       }
