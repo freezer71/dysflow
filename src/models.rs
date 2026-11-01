@@ -2376,18 +2376,22 @@ mod tests {
         let first = Download::start_in(package, files, Some(root.clone())).unwrap();
         sent_rx.recv_timeout(std::time::Duration::from_secs(10)).unwrap();
         let started = std::time::Instant::now();
-        while !main.with_extension("part").exists() {
-            assert!(started.elapsed().as_secs() < 10, "le .part n'arrive pas");
+        while !matches!(first.progress(), Progress::Running { received, .. } if received >= 1) {
+            assert!(started.elapsed().as_secs() < 10, "pas de progression");
             std::thread::sleep(std::time::Duration::from_millis(5));
         }
+        // Le serveur se tait : l'ancien fil attend dans sa lecture.
+        std::thread::sleep(std::time::Duration::from_millis(50));
         first.cancel();
         let files = files_for(&[(serve_once(b"defgh"), &main, 5)]);
         let second = Download::start_in(package, files, Some(root.clone())).unwrap();
-        // Le second ne passe pas devant le nettoyage du premier.
-        std::thread::sleep(std::time::Duration::from_millis(200));
-        assert!(!second.is_finished(), "le second attend l'ancien fil");
+        // L'ancien fil se libère pendant que le second attend (ou court).
+        std::thread::sleep(std::time::Duration::from_millis(100));
         release_tx.send(()).unwrap();
         assert_eq!(wait(&second), Progress::Done);
+        // Sans le tour, le nettoyage de l'annulé passerait après et effacerait
+        // le fichier reçu : on lui laisse le temps de le faire.
+        std::thread::sleep(std::time::Duration::from_millis(200));
         assert_eq!(std::fs::read(&main).unwrap(), b"defgh", "le nettoyage de l'annulé n'efface pas le nouveau");
         std::fs::remove_dir_all(&root).ok();
     }
