@@ -59,7 +59,7 @@ struct TextInserter {
     /// L'Accessibilité, sans rien demander : elle vaut aussi pour le ⌘V,
     /// et se relit dès qu'elle est accordée (pas besoin de relancer).
     var trusted: () -> Bool = { AXIsProcessTrusted() }
-    var secureInput: () -> Bool = { IsSecureEventInputEnabled() }
+    var secureInput: () -> Bool = { SecureInput.active() }
     /// Une fenêtre de Dysflow a le clavier, ou Dysflow est au premier plan.
     var ownAppHasKeyboard: () -> Bool = {
         NSApp.keyWindow != nil || NSWorkspace.shared.frontmostApplication?.processIdentifier == getpid()
