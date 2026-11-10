@@ -70,7 +70,7 @@ func readFocusedSelection() -> SelectionReading {
 /// Instantané, et le presse-papiers n'est pas touché.
 struct SelectionSource: TextSource {
     var trusted: () -> Bool = { AXIsProcessTrusted() }
-    var secureInput: () -> Bool = { IsSecureEventInputEnabled() }
+    var secureInput: () -> Bool = { SecureInput.active() }
     var read: () -> SelectionReading = readFocusedSelection
 
     func outcome() async -> CaptureOutcome {
@@ -199,7 +199,7 @@ struct CopySource: TextSource {
     let keys: KeystrokeSender
     var trusted: () -> Bool = { AXIsProcessTrusted() }
     var timeout: Duration = .milliseconds(250)
-    var secureInput: () -> Bool = { IsSecureEventInputEnabled() }
+    var secureInput: () -> Bool = { SecureInput.active() }
     /// Vrai si Dysflow lui-même est l'application au premier plan : jamais de ⌘C vers soi.
     var ownAppFrontmost: () -> Bool = {
         NSWorkspace.shared.frontmostApplication?.processIdentifier == getpid()
