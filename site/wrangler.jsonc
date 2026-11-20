@@ -8,5 +8,10 @@
 	"assets": {
 		"directory": ".open-next/assets",
 		"binding": "ASSETS"
-	}
+	},
+	// Les branches autres que main se déploient en aperçu (`wrangler preview`),
+	// qui exige ce bloc, même vide. La commande de ces branches, dans le
+	// tableau de bord, doit construire avant :
+	// npm ci && npx opennextjs-cloudflare build && npx wrangler preview
+	"previews": {}
 }
