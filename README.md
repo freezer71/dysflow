@@ -226,6 +226,25 @@ Lancé sans argument, `dysflow` affiche les manières de lire et rend la main.
 `s` ouvre les réglages en cours de lecture, `?` l'aide. `--to-markdown` écrit
 le texte extrait d'un PDF ou d'une image sans lancer la lecture.
 
+#### Produire un fichier audio
+
+`-o` (`--output`) écrit le texte en WAV au lieu de le lire, sans écran : c'est
+la porte d'entrée d'un script ou d'un agent. La voix, le débit et la langue
+sont ceux des réglages ; `--voice`, `--speed` et `--language` les changent
+pour cet appel seulement, sans rien enregistrer.
+
+```bash
+echo "Bonjour" | dysflow -o bonjour.wav          # fichier, réglages par défaut
+dysflow rapport.md -o - --speed 2 > rapport.wav  # octets sur la sortie standard
+dysflow --list-voices                            # les voix que --voice accepte
+```
+
+La sortie standard ne reçoit que le WAV (16 bits) ; la voix qui a réellement
+parlé, un éventuel repli et les erreurs passent par la sortie d'erreur. Une
+voix inconnue, un format autre que `.wav` ou un texte vide sortent en erreur
+(code 1). Sur Mac, les voix MLX (Kokoro, Qwen3, Magpie) ne tournent que dans
+l'app : le terminal parle alors avec la voix du système, et le dit.
+
 ### Installation
 
 **Sous Linux (x86_64, ARM64)**, le paquet tout prêt est joint à chaque
@@ -519,7 +538,8 @@ une configuration qui les porte encore s'ouvre sans erreur, et elles
 disparaissent au prochain enregistrement.
 
 `dysflow --help` montre les options de tous les jours (`--clip`, `--speed`,
-`--voice`, `--to-markdown`, `--no-cache`, `--config`). Les autres restent
+`--voice`, `--to-markdown`, `--output`, `--list-voices`, `--no-cache`,
+`--config`). Les autres restent
 acceptées : `--pitch`, `--language`, `--engine`, `--model`, `--family`,
 `--sessions`, `--prefetch`, `--code-blocks`, `--no-autoplay`,
 `--write-config`, `--show-config`, `--check-kokoro`.
