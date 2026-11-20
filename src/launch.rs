@@ -93,6 +93,15 @@ pub struct Args {
     /// Met Dysflow à jour : installe la dernière version publiée.
     #[arg(long)]
     pub update: bool,
+
+    /// Écrit le texte lu en WAV à ce chemin (`-` : sur la sortie standard)
+    /// puis quitte, sans écran.
+    #[arg(short, long, value_name = "WAV")]
+    pub output: Option<String>,
+
+    /// Liste les voix utilisables avec `--voice` puis quitte.
+    #[arg(long)]
+    pub list_voices: bool,
 }
 
 /// La commande avec son aide dans la langue de l'interface. Les commentaires
@@ -166,6 +175,20 @@ pub fn command() -> Command {
         .mut_arg("config", |a| {
             a.help(tr!("Open the settings screen right away.", "Ouvre directement l'écran de configuration."))
                 .help_heading(options)
+        })
+        .mut_arg("output", |a| {
+            a.help(tr!(
+                "Write the text as a WAV file at this path (`-`: standard output), then quit. Voice, speed and language come from the settings unless given.",
+                "Écrit le texte en WAV à ce chemin (`-` : sortie standard) puis quitte. Voix, débit et langue viennent des réglages s'ils ne sont pas donnés."
+            ))
+            .help_heading(options)
+        })
+        .mut_arg("list_voices", |a| {
+            a.help(tr!(
+                "List the voices --voice accepts (* marks the default one), then quit.",
+                "Liste les voix que --voice accepte (* marque celle par défaut) puis quitte."
+            ))
+            .help_heading(options)
         })
         .mut_arg("update", |a| {
             a.help(tr!(
@@ -260,6 +283,18 @@ pub fn prepare(args: &Args) -> Result<Launch> {
     }
     if args.check_kokoro {
         print!("{}", check_kokoro()?);
+        return Ok(Launch::Done);
+    }
+
+    // Sans écran : la liste des voix et l'export audio ne lisent rien à voix
+    // haute et n'écrivent jamais la configuration.
+    if args.list_voices {
+        prepare_headless(&mut config);
+        print!("{}", crate::export::voice_list(&config));
+        return Ok(Launch::Done);
+    }
+    if let Some(output) = &args.output {
+        export_audio(args, config, output)?;
         return Ok(Launch::Done);
     }
 
@@ -363,6 +398,100 @@ fn check_kokoro() -> Result<String> {
         "Kokoro missing from this binary (built without the kokoro-onnx feature)",
         "Kokoro absent de ce binaire (construit sans la feature kokoro-onnx)"
     ))
+}
+
+/// La configuration d'un appel sans écran : le modèle installé et les voix
+/// par langue, comme au lancement du lecteur, mais rien n'est écrit sur le
+/// disque. Les avis vont sur la sortie d'erreur.
+fn prepare_headless(config: &mut Config) {
+    let mut notices = Vec::new();
+    adopt_installed_model(config, &mut notices);
+    config.align_voice_with_family();
+    for notice in notices {
+        eprintln!("dysflow: {notice}");
+    }
+}
+
+/// `--output` : le texte en WAV, à la voix et au débit de la configuration
+/// sauf ce que la ligne de commande fixe. La voix qui a réellement parlé est
+/// dite sur la sortie d'erreur : un repli ne passe jamais inaperçu.
+fn export_audio(args: &Args, mut config: Config, output: &str) -> Result<()> {
+    use crate::export;
+    let destination = export::Destination::parse(output)?;
+    prepare_headless(&mut config);
+    export::apply_voice(&mut config, args.voice.as_deref())?;
+
+    let (text, identity) = export_text(args)?;
+    let mut builder = builder_for(&config, &text, identity.as_deref());
+    for block in crate::doc::blocks::split_blocks(&text) {
+        builder.push_block(&block);
+    }
+    builder.finish();
+    let language = builder.language().to_string();
+    let document = builder.into_document();
+    if document.sentences.is_empty() {
+        anyhow::bail!(crate::tr!("nothing readable", "aucun contenu lisible"));
+    }
+
+    let mut params = config.tts_params_in(&language);
+    // L'avis de construction est aussi la raison du repli, dite plus bas.
+    let (engine, _) = tts::build_engine(config.engine_preference(), &config.engine_settings());
+    // Attend la fin du chargement : la voix retenue est connue après.
+    let mut session = engine.open_session()?;
+    if let tts::Readiness::Fallback(reason) = engine.readiness() {
+        eprintln!("{}", crate::tr!(en = "dysflow: fallback voice: {reason}", fr = "dysflow: voix de repli : {reason}"));
+        // La voix de repli (celle du système) ne connaît pas les voix du
+        // modèle : elle parle de sa voix par défaut.
+        if crate::models::voices_follow_language(&config.engine.family) {
+            params.voice.clear();
+        }
+    }
+    let voice = if params.voice.is_empty() { crate::tr!("default", "par défaut").to_string() } else { params.voice.clone() };
+    eprintln!(
+        "{}",
+        crate::tr!(
+            en = "dysflow: {} · voice {voice} · {language} · speed {}",
+            fr = "dysflow: {} · voix {voice} · {language} · débit {}",
+            engine.name(),
+            config.voice.speed
+        )
+    );
+
+    let sentences = document.sentences.iter().map(|s| (s.text.as_str(), s.trailing_pause_ms));
+    let pcm = export::render(session.as_mut(), sentences, &params, config.voice.speed)?;
+    export::deliver(&export::wav_bytes(&pcm)?, &destination)?;
+    if let export::Destination::File(path) = &destination {
+        eprintln!(
+            "{}",
+            crate::tr!(
+                en = "dysflow: written {} ({:.1} s)",
+                fr = "dysflow: écrit {} ({:.1} s)",
+                path.display(),
+                pcm.duration.as_secs_f32()
+            )
+        );
+    }
+    Ok(())
+}
+
+/// Le texte à exporter et son identité (celle d'un fichier, pour la langue
+/// retenue pour lui) : un fichier, le presse-papiers, ou l'entrée standard
+/// lue jusqu'au bout.
+fn export_text(args: &Args) -> Result<(String, Option<String>)> {
+    if let Some(text) = extracted(args)? {
+        let identity = args.file.as_deref().map(crate::position::document_identity);
+        return Ok((text, identity));
+    }
+    if std::io::stdin().is_terminal() {
+        anyhow::bail!(crate::tr!(
+            "nothing to read: give a file, --clip, or text on standard input",
+            "rien à lire : donnez un fichier, --clip, ou du texte sur l'entrée standard"
+        ));
+    }
+    let mut text = String::new();
+    std::io::Read::read_to_string(&mut std::io::stdin(), &mut text)
+        .context(crate::tr!("reading standard input", "lecture de l'entrée standard"))?;
+    Ok((text, None))
 }
 
 /// Le texte d'une source qui en porte un, pour `--to-markdown`.

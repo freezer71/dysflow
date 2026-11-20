@@ -12,6 +12,7 @@ pub mod app;
 pub mod audio;
 pub mod config;
 pub mod doc;
+pub mod export;
 pub mod i18n;
 pub mod input;
 pub mod launch;
