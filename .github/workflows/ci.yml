@@ -71,6 +71,11 @@ jobs:
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - name: Clippy (Kokoro au terminal)
         run: cargo clippy -p dysflow --all-targets --features kokoro-onnx --locked -- -D warnings
+      - name: Tests d'ONNX Runtime (Windows)
+        # Le chargement d'ONNX Runtime par chemin absolu (lot W) : les essais
+        # qui demandent la vraie bibliothèque et le modèle sont ignorés.
+        if: runner.os == 'Windows'
+        run: cargo test -p dysflow --features kokoro-onnx --lib tts::kokoro::onnx --locked
       - name: Paquet et installation du terminal (ocr, kokoro-onnx)
         if: runner.os == 'Linux'
         # install.sh lance package.sh (build --features ocr,kokoro-onnx,
