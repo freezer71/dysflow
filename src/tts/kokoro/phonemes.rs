@@ -58,13 +58,17 @@ pub fn exe_dir() -> Option<PathBuf> {
     exe.parent().map(Path::to_path_buf)
 }
 
+/// Le nom du programme `dysflow-espeak`, avec l'extension de la plateforme
+/// (`dysflow-espeak.exe` sous Windows).
+pub const PROGRAM: &str = if cfg!(windows) { "dysflow-espeak.exe" } else { "dysflow-espeak" };
+
 /// Le programme `dysflow-espeak` : `DYSFLOW_ESPEAK` (l'app y met le sien), à
 /// côté du binaire, puis le `PATH`.
 pub fn locate_program() -> Option<PathBuf> {
     if let Some(path) = std::env::var_os("DYSFLOW_ESPEAK").map(PathBuf::from) {
         return is_executable(&path).then_some(path);
     }
-    let beside = exe_dir().map(|d| d.join("dysflow-espeak"));
+    let beside = exe_dir().map(|d| d.join(PROGRAM));
     if let Some(path) = beside.filter(|p| is_executable(p)) {
         return Some(path);
     }
@@ -76,14 +80,22 @@ pub fn locate_program() -> Option<PathBuf> {
 fn find_in_path(paths: &std::ffi::OsStr) -> Option<PathBuf> {
     std::env::split_paths(paths)
         .filter(|d| d.is_absolute())
-        .map(|d| d.join("dysflow-espeak"))
+        .map(|d| d.join(PROGRAM))
         .find(|p| is_executable(p))
 }
 
 /// Un fichier ordinaire que l'on a le droit d'exécuter.
-fn is_executable(path: &std::path::Path) -> bool {
+#[cfg(unix)]
+pub fn is_executable(path: &std::path::Path) -> bool {
     use std::os::unix::fs::PermissionsExt;
     std::fs::metadata(path).is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
+}
+
+/// Un fichier ordinaire qui se lance : sous Windows, c'est l'extension qui
+/// le dit, pas un droit du fichier.
+#[cfg(windows)]
+pub fn is_executable(path: &std::path::Path) -> bool {
+    path.extension().is_some_and(|e| e.eq_ignore_ascii_case("exe")) && std::fs::metadata(path).is_ok_and(|m| m.is_file())
 }
 
 /// Le dossier qui contient `espeak-ng-data`, quand il n'est pas celui du
@@ -494,9 +506,25 @@ impl Phonemizer for EspeakProcess {
 mod tests {
     use super::*;
     use std::io::{PipeReader, PipeWriter};
+    #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
+
+    #[test]
+    fn the_program_name_follows_the_platform() {
+        assert_eq!(PROGRAM, format!("dysflow-espeak{}", std::env::consts::EXE_SUFFIX));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn an_exe_file_is_executable_and_a_text_file_is_not() {
+        let dir = crate::paths::test_scratch("exe");
+        std::fs::write(dir.join("a.exe"), b"MZ").unwrap();
+        std::fs::write(dir.join("a.txt"), b"x").unwrap();
+        assert!(is_executable(&dir.join("a.exe")));
+        assert!(!is_executable(&dir.join("a.txt")));
+    }
 
     #[test]
     fn the_espeak_data_shipped_beside_the_binary_is_found() {
@@ -681,6 +709,7 @@ mod tests {
     }
 
     /// Un vrai processus, écrit en shell.
+    #[cfg(unix)]
     fn script(name: &str, body: &str) -> EspeakProcess {
         let dir = crate::paths::test_scratch(&format!("espeak-{name}"));
         std::fs::create_dir_all(&dir).unwrap();
@@ -690,13 +719,26 @@ mod tests {
         EspeakProcess::new(path, None)
     }
 
+    /// Un vrai processus, écrit en script `cmd` (que `Command` lance par
+    /// `cmd.exe`).
+    #[cfg(windows)]
+    fn script(name: &str, body: &str) -> EspeakProcess {
+        let dir = crate::paths::test_scratch(&format!("espeak-{name}"));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("dysflow-espeak.cmd");
+        std::fs::write(&path, format!("@echo off\r\n{body}\r\n")).unwrap();
+        EspeakProcess::new(path, None)
+    }
+
     #[test]
     fn a_helper_process_that_exits_or_stays_mute_is_an_error() {
+        let (exits, mute) =
+            if cfg!(windows) { ("exit /b 1", "findstr \"^\" > nul") } else { ("exit 1", "exec cat > /dev/null") };
         let t = std::time::Instant::now();
-        assert!(script("sortie", "exit 1").phonemize("fr", &strings(&["a"])).is_err());
+        assert!(script("sortie", exits).phonemize("fr", &strings(&["a"])).is_err());
         assert!(t.elapsed() < std::time::Duration::from_secs(1), "{:?}", t.elapsed());
         let t = std::time::Instant::now();
-        assert!(script("muet", "exec cat > /dev/null").phonemize("fr", &strings(&["a"])).is_err());
+        assert!(script("muet", mute).phonemize("fr", &strings(&["a"])).is_err());
         assert!(t.elapsed() < std::time::Duration::from_secs(6), "{:?}", t.elapsed());
     }
 
@@ -771,6 +813,7 @@ mod tests {
         assert_eq!(voice_of("en-GB"), "en-us");
     }
 
+    #[cfg(unix)]
     #[test]
     fn the_path_search_skips_relative_entries_and_plain_files() {
         let root = crate::paths::test_scratch("espeak-path");
@@ -790,6 +833,33 @@ mod tests {
         let relative = std::path::PathBuf::from("../".repeat(depth)).join(exec.strip_prefix("/").unwrap());
         assert!(relative.join("dysflow-espeak").is_file(), "le chemin relatif mène bien au programme");
         assert_eq!(find_in_path(&path(&[&relative, std::path::Path::new("")])), None);
+    }
+
+    /// Sous Windows, le programme porte `.exe` ; un dossier qui en a le nom,
+    /// ou le nom sans extension, ne compte pas. Les entrées relatives sont
+    /// ignorées : Windows, lui, cherche d'abord dans le dossier courant.
+    #[cfg(windows)]
+    #[test]
+    fn the_path_search_skips_relative_entries_and_non_programs() {
+        let root = crate::paths::test_scratch("espeak-path");
+        let (plain, exec) = (root.join("plain"), root.join("exec"));
+        std::fs::create_dir_all(plain.join(PROGRAM)).unwrap();
+        std::fs::write(plain.join("dysflow-espeak"), b"MZ").unwrap();
+        std::fs::create_dir_all(&exec).unwrap();
+        std::fs::write(exec.join(PROGRAM), b"MZ").unwrap();
+        let path = |dirs: &[&std::path::Path]| std::env::join_paths(dirs).unwrap();
+        assert_eq!(find_in_path(&path(&[&plain])), None, "pas un programme");
+        assert_eq!(find_in_path(&path(&[&plain, &exec])), Some(exec.join(PROGRAM)));
+        // Un dossier relatif au dossier courant (le dossier du paquet, sous
+        // `cargo test`), qui mène bien au programme, ne compte pas.
+        let name = format!("dysflow-tests-path-{}", std::process::id());
+        let relative = std::path::Path::new("target").join(&name);
+        std::fs::create_dir_all(&relative).unwrap();
+        std::fs::write(relative.join(PROGRAM), b"MZ").unwrap();
+        assert!(is_executable(&relative.join(PROGRAM)), "le chemin relatif mène bien au programme");
+        let found = find_in_path(&path(&[&relative, std::path::Path::new("")]));
+        std::fs::remove_dir_all(&relative).unwrap();
+        assert_eq!(found, None);
     }
 
     #[test]

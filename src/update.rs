@@ -6,15 +6,17 @@
 //! jour sur place une installation faite ailleurs que dans `~/.local`.
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
-use anyhow::{bail, Context, Result};
+use anyhow::{bail, Result};
 
 /// L'installateur, servi par le site depuis la branche main du dépôt.
 pub const INSTALLER: &str = "https://dysflow.koumalabs.org/install.sh";
 
 /// Télécharge et lance l'installateur, sortie et erreurs à l'écran.
+#[cfg(not(windows))]
 pub fn run() -> Result<()> {
+    use anyhow::Context;
+    use std::process::Command;
     let mut command = Command::new("sh");
     command.arg("-c").arg(format!("curl -fsSL {INSTALLER} | sh"));
     let prefix = std::env::current_exe()
@@ -31,9 +33,19 @@ pub fn run() -> Result<()> {
     Ok(())
 }
 
+/// Sous Windows, ni `sh` ni install.sh : pas encore de mise à jour en place.
+#[cfg(windows)]
+pub fn run() -> Result<()> {
+    bail!(crate::tr!(
+        "automatic update is not available on Windows yet",
+        "la mise à jour automatique n'existe pas encore sous Windows"
+    ))
+}
+
 /// `<préfixe>/lib/dysflow/dysflow` → `<préfixe>` ; `None` pour un binaire
 /// rangé autrement (`cargo install`, arbre de compilation) : l'installateur
 /// prend alors son préfixe par défaut.
+#[cfg_attr(windows, allow(dead_code))]
 fn prefix_of(exe: &Path) -> Option<PathBuf> {
     let dir = exe.parent()?;
     let lib = dir.parent()?;

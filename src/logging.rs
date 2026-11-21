@@ -8,7 +8,9 @@
 //! La redirection est rendue au moment où la garde est libérée : une erreur
 //! survenant après la sortie du mode plein écran s'affiche donc normalement.
 
-use std::path::{Path, PathBuf};
+#[cfg(unix)]
+use std::path::Path;
+use std::path::PathBuf;
 #[cfg(unix)]
 use std::sync::atomic::{AtomicI32, Ordering};
 
@@ -82,6 +84,13 @@ fn redirect_stderr_to(path: &Path) -> Option<StderrRedirect> {
 #[cfg(not(unix))]
 pub fn redirect_stderr() -> Option<StderrRedirect> {
     None
+}
+
+/// Hors Unix, rien n'est détourné, donc rien à rendre ; la garde reste une
+/// garde, que l'appelant relâche comme ailleurs.
+#[cfg(not(unix))]
+impl Drop for StderrRedirect {
+    fn drop(&mut self) {}
 }
 
 #[cfg(unix)]
