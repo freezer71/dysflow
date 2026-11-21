@@ -1,6 +1,7 @@
 # Intégration continue : tests et lint Rust sur les plateformes visées
 # (Linux x86_64 et ARM64, macOS Apple Silicon, Windows x86_64), paquet du
-# terminal sous Linux, MSRV, licences, scripts, et tests de l'app macOS.
+# terminal sous Linux et Windows, MSRV, licences, scripts, et tests de l'app
+# macOS.
 name: CI
 
 on:
@@ -28,7 +29,7 @@ jobs:
         # macos-15 : l'image macos-14 est retirée le 2 novembre 2026
         # (actions/runner-images#13518).
         # windows-2025 : le cœur et le terminal se compilent et se testent
-        # sous Windows (lot W) ; le paquet Windows viendra plus tard.
+        # sous Windows, et le paquet Windows y est construit (lot W).
         os: [ubuntu-24.04, ubuntu-24.04-arm, macos-15, windows-2025]
     runs-on: ${{ matrix.os }}
     steps:
@@ -82,12 +83,37 @@ jobs:
         # ONNX Runtime vérifié, dysflow-espeak), installe sous PREFIX, puis
         # vérifie depuis / que le binaire démarre et que Kokoro se charge.
         run: PREFIX="$RUNNER_TEMP/prefix" ./scripts/install.sh
+      - name: Paquet et vérification (Windows)
+        if: runner.os == 'Windows'
+        # package.sh sous le bash de Git for Windows : build --features
+        # ocr,kokoro-onnx, ONNX Runtime du paquet NuGet, dysflow-espeak.exe
+        # par CMake et MSVC, puis dist/dysflow-windows-x86_64.zip. L'archive
+        # est décompressée dans un dossier dont le chemin porte une espace et
+        # un accent, puis dans un autre hors de la page de code Windows-1252
+        # (« Ł ») ; le binaire y est vérifié depuis /, sans les variables qui
+        # désignent ORT ou espeak ailleurs, comme install.sh sous Linux.
+        shell: bash
+        run: |
+          command -v unzip
+          ./scripts/package.sh
+          tmp=$(cygpath -u "$RUNNER_TEMP")
+          for name in "Élodie Martin" "Łukasz Gaweł"; do
+            dest="$tmp/$name/dysflow"
+            rm -rf "$dest"
+            mkdir -p "$dest" && unzip -q dist/dysflow-windows-x86_64.zip -d "$dest"
+            echo "Depuis $dest :"
+            ( cd / && env -u DYSFLOW_ORT_LIB -u DYSFLOW_ESPEAK -u DYSFLOW_ESPEAK_DATA "$dest/dysflow.exe" --version )
+            ( cd / && env -u DYSFLOW_ORT_LIB -u DYSFLOW_ESPEAK -u DYSFLOW_ESPEAK_DATA "$dest/dysflow.exe" --check-kokoro )
+          done
       - name: Paquet joint
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' || runner.os == 'Windows'
         uses: actions/upload-artifact@v4
         with:
           name: dysflow-${{ runner.os }}-${{ runner.arch }}
-          path: dist/
+          # Le dossier seulement : l'archive Windows en est la copie.
+          path: |
+            dist/
+            !dist/*.zip
           retention-days: 7
 
   msrv:

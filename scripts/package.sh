@@ -2,8 +2,28 @@
 # Assemble un dossier distribuable : le binaire et les bibliothèques et
 # programmes qu'il charge (pour Kokoro, ONNX Runtime et dysflow-espeak avec ses
 # données et ses sources GPL).
+#
+# Sous Windows (bash de Git for Windows, MSVC) : dysflow.exe,
+# dysflow-espeak.exe et onnxruntime.dll, et en plus du dossier une archive
+# $OUT/dysflow-windows-x86_64.zip de son contenu, à décompresser n'importe où.
 set -eu
 cd "$(dirname "$0")/.."
+
+case "$(uname -s)" in
+MINGW* | MSYS* | CYGWIN*) WINDOWS=1 EXE=.exe ;;
+*) WINDOWS="" EXE="" ;;
+esac
+
+# Python 3 : sous Windows, la commande s'appelle souvent python, et python3
+# peut être le raccourci du Microsoft Store, qui ne lance rien.
+if python3 -c "" >/dev/null 2>&1; then
+    PYTHON=python3
+elif python -c "import sys; sys.exit(sys.version_info[0] != 3)" >/dev/null 2>&1; then
+    PYTHON=python
+else
+    echo "Erreur : Python 3 introuvable (python3 ou python)" >&2
+    exit 1
+fi
 
 # Vrai si le fichier $2 a l'empreinte SHA-256 $1 : sha256sum (GNU, ou BSD
 # sous macOS, d'où `-c -` sans `--status`), sinon shasum (Perl).
@@ -31,24 +51,25 @@ OUT="${OUT:-dist}"
 # Cargo.lock (python3 scripts/third-party-rust.py pour le régénérer) ; le
 # script refuse une licence GPL, AGPL ou inconnue dans le graphe lié. Il
 # décrit les features par défaut ci-dessous : avec d'autres, le régénérer.
-python3 -I scripts/third-party-rust.py --check
+"$PYTHON" -I scripts/third-party-rust.py --check
 
 echo "Compilation (features : $FEATURES)…"
 cargo build --release --features "$FEATURES"
 
 rm -rf "$OUT"
 mkdir -p "$OUT"
-cp target/release/dysflow "$OUT/"
+cp "target/release/dysflow$EXE" "$OUT/"
 
 # Kokoro au terminal : ONNX Runtime 1.31 à côté du binaire, et la
 # phonétisation dysflow-espeak (GPL-3.0, programme séparé que Dysflow lance) avec
 # ses données, sa licence et ses sources correspondantes.
 case ",$FEATURES," in
 *,kokoro-onnx,*)
-    if [ ! -x target/espeak/bin/dysflow-espeak ] || [ -n "$(find scripts/dysflow-espeak.c -newer target/espeak/bin/dysflow-espeak)" ]; then
+    espeak="target/espeak/bin/dysflow-espeak$EXE"
+    if [ ! -x "$espeak" ] || [ -n "$(find scripts/dysflow-espeak.c scripts/build-espeak.sh -newer "$espeak")" ]; then
         ./scripts/build-espeak.sh
     fi
-    cp target/espeak/bin/dysflow-espeak "$OUT/"
+    cp "$espeak" "$OUT/"
     cp -R target/espeak/share/espeak-ng-data "$OUT/"
     mkdir -p "$OUT/dysflow-espeak-source"
     cp target/espeak/COPYING target/espeak/SOURCE.txt target/espeak/dysflow-espeak.c \
@@ -104,6 +125,10 @@ case ",$FEATURES," in
                 fi
                 mv "$nupkg.part" "$nupkg"
             fi
+            if ! command -v unzip >/dev/null 2>&1; then
+                echo "Erreur : unzip manque (il ouvre le paquet NuGet d'ONNX Runtime)" >&2
+                exit 1
+            fi
             rm -rf target/ort/extraction
             mkdir -p target/ort/extraction
             unzip -q -j "$nupkg" "runtimes/$ORT_RID/native/$ORT_LIB" LICENSE ThirdPartyNotices.txt \
@@ -135,6 +160,24 @@ esac
 echo "Joint : NOTICE, THIRD-PARTY-RUST.txt et licences/"
 
 echo "Vérification hors de l'arbre de compilation…"
-( cd "$OUT" && ./dysflow --show-config >/dev/null )
+( cd "$OUT" && "./dysflow$EXE" --show-config >/dev/null )
+
+# Windows : l'archive à distribuer, faite par le zipfile de Python (les
+# entrées en « / », lisibles par l'Explorateur comme par unzip), à côté puis
+# mise en place d'un coup. Les fichiers sont à sa racine.
+if [ -n "$WINDOWS" ]; then
+    zip="dysflow-windows-x86_64.zip"
+    rm -f "$OUT/$zip" "$OUT.zip.part"
+    "$PYTHON" -I -c '
+import pathlib, sys, zipfile
+root = pathlib.Path(sys.argv[1])
+with zipfile.ZipFile(sys.argv[2], "w", zipfile.ZIP_DEFLATED) as archive:
+    for path in sorted(root.rglob("*")):
+        if path.is_file():
+            archive.write(path, path.relative_to(root).as_posix())
+' "$OUT" "$OUT.zip.part"
+    mv "$OUT.zip.part" "$OUT/$zip"
+    echo "Archive : $OUT/$zip"
+fi
 echo "Prêt : $OUT/"
 ls -lh "$OUT"

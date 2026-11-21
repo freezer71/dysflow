@@ -7,6 +7,12 @@
 #
 #   ./scripts/build-espeak.sh
 #
+# Sous Windows, il se lance depuis le bash de Git for Windows et construit par
+# CMake avec MSVC (Visual Studio, générateur par défaut de CMake) : le CMake
+# d'espeak-ng 1.52.0 prévoit MSVC (compat/getopt.c, en-têtes include/compat),
+# et MSVC est la chaîne du binaire Rust (x86_64-pc-windows-msvc). Le programme
+# s'appelle alors dysflow-espeak.exe.
+#
 # Produit target/espeak/bin/dysflow-espeak, target/espeak/share/espeak-ng-data
 # (français et anglais seulement), et, pour la GPL : target/espeak/COPYING,
 # SOURCE.txt (l'adresse exacte des sources d'espeak-ng, et l'engagement de
@@ -24,6 +30,10 @@ OUT=target/espeak
 TARBALL="$OUT/espeak-ng-$VERSION.tar.gz"
 SRC="$OUT/espeak-ng-$VERSION"
 mkdir -p "$OUT"
+case "$(uname -s)" in
+MINGW* | MSYS* | CYGWIN*) WINDOWS=1 EXE=.exe ;;
+*) WINDOWS="" EXE="" ;;
+esac
 
 # sha256sum (GNU, ou BSD sous macOS : ni l'un ni l'autre ne lisent `--status`
 # de la même façon, d'où `-c -` et la sortie jetée), sinon shasum (Perl).
@@ -70,14 +80,33 @@ if [ ! -f "$SRC/.extrait" ]; then
 fi
 
 # Programme autonome : bibliothèque statique, ni son, ni MBROLA, ni Klatt.
-cmake -S "$SRC" -B "$OUT/build" -DCMAKE_BUILD_TYPE=Release \
-    -DBUILD_SHARED_LIBS=OFF -DUSE_ASYNC=OFF -DUSE_MBROLA=OFF -DUSE_LIBSONIC=OFF \
-    -DUSE_LIBPCAUDIO=OFF -DUSE_KLATT=OFF -DUSE_SPEECHPLAYER=OFF \
-    -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0 -DCMAKE_OSX_ARCHITECTURES=arm64
-cmake --build "$OUT/build" -j
-
-LIB=$(find "$OUT/build" -type f -name libespeak-ng.a | head -1)
-UCD=$(find "$OUT/build" -type f -name libucd.a | head -1)
+OPTIONS=(-DBUILD_SHARED_LIBS=OFF -DUSE_ASYNC=OFF -DUSE_MBROLA=OFF -DUSE_LIBSONIC=OFF
+    -DUSE_LIBPCAUDIO=OFF -DUSE_KLATT=OFF -DUSE_SPEECHPLAYER=OFF)
+if [ -n "$WINDOWS" ]; then
+    # Le CRT lié statiquement (/MT), dans la bibliothèque comme dans le
+    # programme : dysflow-espeak.exe ne demande aucune DLL du redistribuable
+    # Visual C++. Le CMake d'espeak-ng demande la version 3.8, d'où la règle
+    # CMP0091 à donner pour que CMAKE_MSVC_RUNTIME_LIBRARY compte. Seules la
+    # bibliothèque, espeak-ng.exe et les données sont construites (cible
+    # data) : ni les essais d'espeak-ng, ni rien d'autre.
+    cmake -S "$SRC" -B "$OUT/build" -A x64 "${OPTIONS[@]}" \
+        -DCMAKE_POLICY_DEFAULT_CMP0091=NEW -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+    cmake --build "$OUT/build" --config Release --target data -j
+    LIB=$(find "$OUT/build" -type f -name espeak-ng.lib | head -1)
+    UCD=$(find "$OUT/build" -type f -name ucd.lib | head -1)
+else
+    cmake -S "$SRC" -B "$OUT/build" -DCMAKE_BUILD_TYPE=Release "${OPTIONS[@]}" \
+        -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0 -DCMAKE_OSX_ARCHITECTURES=arm64
+    cmake --build "$OUT/build" -j
+    LIB=$(find "$OUT/build" -type f -name libespeak-ng.a | head -1)
+    UCD=$(find "$OUT/build" -type f -name libucd.a | head -1)
+fi
+for f in "$LIB" "$UCD"; do
+    if [ ! -f "$f" ]; then
+        echo "Erreur : bibliothèque d'espeak-ng introuvable dans $OUT/build" >&2
+        exit 1
+    fi
+done
 DATA=$(find "$OUT/build" -type d -name espeak-ng-data | head -1)
 for f in phontab phonindex phondata intonations fr_dict en_dict; do
     if [ ! -f "$DATA/$f" ]; then
@@ -89,11 +118,48 @@ done
 rm -rf "${OUT:?}/bin" "${OUT:?}/share"
 mkdir -p "$OUT/bin" "$OUT/share/espeak-ng-data"
 # Le programme : dysflow-espeak.c et libespeak-ng, liée statiquement.
-CFLAGS=(-O2 -Wall -I"$SRC/src/include")
-if [ "$(uname -s)" = Darwin ]; then
-    CFLAGS+=(-mmacosx-version-min=14.0 -arch arm64)
+if [ -n "$WINDOWS" ]; then
+    # Sous Windows, par un petit projet CMake (cl.exe n'est pas dans le PATH
+    # du bash de Git ; CMake trouve Visual Studio). Les chemins lui sont
+    # donnés à la Windows (cygpath -m : D:/a/…). Le manifeste met le programme
+    # en page de code UTF-8 (Windows 10 1903 et après) : le dossier des
+    # données arrive en UTF-8 dans argv et fopen l'ouvre tel quel, quels que
+    # soient ses caractères (« C:\Users\Élodie… »).
+    WRAP="$OUT/windows"
+    rm -rf "$WRAP"
+    mkdir -p "$WRAP"
+    cat > "$WRAP/CMakeLists.txt" <<'CMAKE'
+cmake_minimum_required(VERSION 3.15)
+project(dysflow-espeak C)
+add_executable(dysflow-espeak "${DYSFLOW_ESPEAK_C}" dysflow-espeak.manifest)
+target_include_directories(dysflow-espeak PRIVATE "${ESPEAK_INCLUDE}")
+# Bibliothèque statique : ses déclarations ne sont pas importées d'une DLL.
+target_compile_definitions(dysflow-espeak PRIVATE LIBESPEAK_NG_EXPORT=1)
+target_link_libraries(dysflow-espeak PRIVATE "${ESPEAK_LIB}" "${UCD_LIB}")
+CMAKE
+    cat > "$WRAP/dysflow-espeak.manifest" <<'MANIFEST'
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <activeCodePage xmlns="http://schemas.microsoft.com/SMI/2019/WindowsSettings">UTF-8</activeCodePage>
+    </windowsSettings>
+  </application>
+</assembly>
+MANIFEST
+    cmake -S "$WRAP" -B "$WRAP/build" -A x64 -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded \
+        -DDYSFLOW_ESPEAK_C="$(cygpath -m "$PWD/scripts/dysflow-espeak.c")" \
+        -DESPEAK_INCLUDE="$(cygpath -m "$PWD/$SRC/src/include")" \
+        -DESPEAK_LIB="$(cygpath -m "$PWD/$LIB")" -DUCD_LIB="$(cygpath -m "$PWD/$UCD")"
+    cmake --build "$WRAP/build" --config Release
+    cp "$WRAP/build/Release/dysflow-espeak.exe" "$OUT/bin/dysflow-espeak.exe"
+else
+    CFLAGS=(-O2 -Wall -I"$SRC/src/include")
+    if [ "$(uname -s)" = Darwin ]; then
+        CFLAGS+=(-mmacosx-version-min=14.0 -arch arm64)
+    fi
+    cc "${CFLAGS[@]}" scripts/dysflow-espeak.c "$LIB" "$UCD" -lm -o "$OUT/bin/dysflow-espeak"
 fi
-cc "${CFLAGS[@]}" scripts/dysflow-espeak.c "$LIB" "$UCD" -lm -o "$OUT/bin/dysflow-espeak"
 for f in phontab phonindex phondata phondata-manifest intonations fr_dict en_dict; do
     [ -f "$DATA/$f" ] && cp "$DATA/$f" "$OUT/share/espeak-ng-data/"
 done
@@ -115,7 +181,7 @@ check() {
     local got
     # Le format porte les octets de la trame (\005, \000…) : voulu.
     # shellcheck disable=SC2059
-    got=$(printf "$1" | "$OUT/bin/dysflow-espeak" "$OUT/share" | LC_ALL=C tr -d '\000-\037')
+    got=$(printf "$1" | "$OUT/bin/dysflow-espeak$EXE" "$OUT/share" | LC_ALL=C tr -d '\000-\037')
     case "$got" in
         *"$2"*) echo "$2" ;;
         *) echo "Erreur : dysflow-espeak ne donne pas $2" >&2; exit 1 ;;
@@ -123,4 +189,4 @@ check() {
 }
 check '\005\000\000\000fr-fr\001\000\000\000\010\000\000\000Bonjour.' 'bɔ̃ʒˈuʁ'
 check '\005\000\000\000en-us\001\000\000\000\006\000\000\000Hello.' 'həlˈo͡ʊ'
-du -sh "$OUT/bin/dysflow-espeak" "$OUT/share/espeak-ng-data"
+du -sh "$OUT/bin/dysflow-espeak$EXE" "$OUT/share/espeak-ng-data"

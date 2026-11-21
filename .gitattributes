@@ -11,3 +11,8 @@
 *.otf binary
 *.traineddata binary
 *.safetensors binary
+
+# Scripts shell : toujours en LF. Sous Windows, le bash de Git for Windows
+# lance scripts/package.sh et build-espeak.sh (paquet Windows) : avec des
+# CRLF, chaque ligne finirait par un « \r » que bash prend pour une commande.
+*.sh text eol=lf
