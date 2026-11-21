@@ -61,7 +61,8 @@ sherpa_fetch() {
     SHERPA_CONFIG_LIB="target.$triple.sherpa-onnx.rustc-link-lib=['dylib=sherpa-onnx-c-api']"
 
     if [ -f "$SHERPA_LIB_DIR/$SHERPA_LIB" ] \
-        && { [ -z "$SHERPA_IMPLIB" ] || [ -f "$SHERPA_LIB_DIR/$SHERPA_IMPLIB" ]; }; then
+        && { [ -z "$SHERPA_IMPLIB" ] || [ -f "$SHERPA_LIB_DIR/$SHERPA_IMPLIB" ]; } \
+        && { [ "${ORT_RID#linux-}" = "$ORT_RID" ] || [ -f "$SHERPA_LIB_DIR/$ORT_DEST" ]; }; then
         return 0
     fi
     fetch_verified "$SHERPA_URL" "$SHERPA_SHA256" "target/sherpa-onnx/$SHERPA_STEM.tar.bz2"
@@ -83,7 +84,12 @@ with tarfile.open(archive, "r:bz2") as tar:
     case "$ORT_RID" in
     linux-*)
         "$PYTHON" -I scripts/elf-version-ref.py "target/sherpa-onnx/extraction/$SHERPA_LIB" \
-            libonnxruntime.so VERS_1.28.2 "VERS_$ORT_VERSION" ;;
+            libonnxruntime.so VERS_1.28.2 "VERS_$ORT_VERSION"
+        # L'éditeur de liens de GNU résout aussi les dépendances de la
+        # bibliothèque C (par son RPATH $ORIGIN) : sans ORT à côté d'elle,
+        # « undefined reference to OrtGetApiBase@VERS_1.31.0 » (vu sous
+        # ARM64). Le binaire n'y gagne aucune dépendance directe.
+        cp "$ORT_DIR/$ORT_LIB" "target/sherpa-onnx/extraction/$ORT_DEST" ;;
     esac
     rm -rf "$SHERPA_LIB_DIR"
     mv target/sherpa-onnx/extraction "$SHERPA_LIB_DIR"
