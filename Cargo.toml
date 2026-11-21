@@ -53,6 +53,15 @@ whatlang = "0.18"
 # `Session::builder`) ; passer directement à la 2.0 stable.
 ort = { version = "=2.0.0-rc.13", optional = true, default-features = false, features = ["load-dynamic", "ndarray", "std", "api-22"] }
 libloading = { version = "0.8", optional = true }
+# La dictée au terminal, Apache-2.0. En `shared` : la bibliothèque C de
+# sherpa-onnx, liée dynamiquement, utilise l'ONNX Runtime 1.31 livré à côté du
+# binaire, le même fichier que Kokoro, au lieu du 1.28.2 qu'elle embarque en
+# statique par défaut (lot 1 de la spec des moteurs). SHERPA_ONNX_LIB_DIR
+# désigne au build le dossier que prépare scripts/sherpa-onnx.sh ; sans
+# lui, sherpa-onnx-sys télécharge sa propre archive, avec ONNX Runtime 1.28.2,
+# que examples/ort_single_copy.rs refuse. Épinglé exactement : la bibliothèque
+# C vient de la publication de la même version.
+sherpa-onnx = { version = "=2.0.2", optional = true, default-features = false, features = ["shared"] }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
@@ -82,6 +91,9 @@ kokoro-onnx = ["dep:ort", "dep:libloading"]
 # compilé par CMake au premier build (~4 min, avec accès réseau), puis gardé
 # dans target/.
 mlx = ["dep:mlx-rs"]
+# Dictée par sherpa-onnx, sur le même ONNX Runtime que Kokoro. Jamais dans
+# l'app macOS, qui dicte en MLX.
+stt-sherpa = ["dep:sherpa-onnx", "kokoro-onnx"]
 
 [[bin]]
 name = "dysflow"
@@ -114,3 +126,7 @@ opt-level = 2
 [[example]]
 name = "kokoro_serve"
 required-features = ["kokoro-onnx"]
+
+[[example]]
+name = "ort_single_copy"
+required-features = ["stt-sherpa"]

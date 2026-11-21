@@ -23,6 +23,7 @@ pub mod paths;
 pub mod position;
 pub mod reader;
 pub mod source;
+pub mod stt;
 pub mod sync;
 pub mod text;
 pub mod tts;

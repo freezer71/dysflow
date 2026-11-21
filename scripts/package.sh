@@ -26,24 +26,9 @@ else
     exit 1
 fi
 
-# Vrai si le fichier $2 a l'empreinte SHA-256 $1 : sha256sum (GNU, ou BSD
-# sous macOS, d'où `-c -` sans `--status`), sinon shasum (Perl).
-# L'empreinte épinglée doit faire exactement 64 chiffres hexadécimaux : le
-# sha256sum BSD accepte une ligne mal formée (code 0), qui ne vérifierait rien.
-sha256_ok() {
-    case "$1" in
-    *[!0-9a-f]*) echo "Erreur : empreinte épinglée mal formée : $1" >&2; exit 1 ;;
-    esac
-    if [ "${#1}" -ne 64 ]; then
-        echo "Erreur : empreinte épinglée mal formée (${#1} caractères au lieu de 64) : $1" >&2
-        exit 1
-    fi
-    if command -v sha256sum >/dev/null 2>&1; then
-        echo "$1  $2" | sha256sum -c - >/dev/null 2>&1
-    else
-        echo "$1  $2" | shasum -a 256 -c --status
-    fi
-}
+# ort_fetch (ONNX Runtime du paquet NuGet) et vc_crt_deploy (Windows).
+# shellcheck source=scripts/paquet-commun.sh
+. scripts/paquet-commun.sh
 
 FEATURES="${FEATURES:-ocr,kokoro-onnx}"
 OUT="${OUT:-dist}"
@@ -77,66 +62,9 @@ case ",$FEATURES," in
         scripts/build-espeak.sh "$OUT/dysflow-espeak-source/"
     echo "Joint : dysflow-espeak, espeak-ng-data et ses sources (dysflow-espeak-source/)"
 
-    ORT_VERSION=1.31.0
-    # Une seule archive pour tous les systèmes : le paquet NuGet officiel de
-    # Microsoft (le dépôt GitHub microsoft/onnxruntime a disparu, ses archives
-    # de publication avec). Son empreinte est épinglée : une archive différente
-    # n'est jamais utilisée.
-    ORT_NUPKG="microsoft.ml.onnxruntime.$ORT_VERSION.nupkg"
-    ORT_URL="https://api.nuget.org/v3-flatcontainer/microsoft.ml.onnxruntime/$ORT_VERSION/$ORT_NUPKG"
-    ORT_SHA256=7e35fdb4f5adb62f01e60798e2e5ed05108f5fbbe1cca03fbcc37903cf7c5e3b
-    # ORT_RID : le dossier runtimes/<RID>/native/ du paquet. ORT_LIB : la
-    # bibliothèque dedans, ORT_DEST son nom à côté du binaire (celui que
-    # cherche src/tts/kokoro/onnx.rs). Seule cette bibliothèque est jointe, pas
-    # libonnxruntime_providers_shared.so : elle ne sert qu'à charger les
-    # fournisseurs CUDA et TensorRT, pas le fournisseur CPU que Dysflow utilise.
-    # Windows x64 prêt pour le paquet Windows (aucun système détecté ici).
-    case "$(uname -s)-$(uname -m)" in
-    Linux-x86_64)
-        ORT_RID=linux-x64 ORT_LIB=libonnxruntime.so ORT_DEST=libonnxruntime.so ;;
-    Linux-aarch64)
-        ORT_RID=linux-arm64 ORT_LIB=libonnxruntime.so ORT_DEST=libonnxruntime.so ;;
-    Darwin-arm64)
-        ORT_RID=osx-arm64 ORT_LIB=libonnxruntime.dylib ORT_DEST=libonnxruntime.dylib ;;
-    MINGW*-x86_64 | MSYS*-x86_64 | CYGWIN*-x86_64)
-        ORT_RID=win-x64 ORT_LIB=onnxruntime.dll ORT_DEST=onnxruntime.dll ;;
-    *) ORT_RID="" ;;
-    esac
+    # ONNX Runtime 1.31 à côté du binaire (scripts/paquet-commun.sh).
+    ort_fetch
     if [ -n "$ORT_RID" ]; then
-        ORT_DIR="target/ort/$ORT_VERSION-$ORT_RID"
-        mkdir -p target/ort
-        # Extrait à part, mis en place seulement une fois complet : une
-        # extraction interrompue est refaite au lancement suivant.
-        # Le fichier, pas le dossier : le cache de la CI (rust-cache) rend
-        # target/ort vidé de ses fichiers, et un dossier présent mais vide
-        # faisait échouer la copie plus bas.
-        if [ ! -f "$ORT_DIR/$ORT_LIB" ] \
-            || [ ! -f "$ORT_DIR/LICENSE" ] \
-            || [ ! -f "$ORT_DIR/ThirdPartyNotices.txt" ]; then
-            # L'archive : téléchargée sous un nom provisoire, gardée seulement
-            # si son empreinte est la bonne.
-            nupkg="target/ort/$ORT_NUPKG"
-            if [ ! -f "$nupkg" ] || ! sha256_ok "$ORT_SHA256" "$nupkg"; then
-                rm -f "$nupkg" "$nupkg.part"
-                curl -fsSL "$ORT_URL" -o "$nupkg.part"
-                if ! sha256_ok "$ORT_SHA256" "$nupkg.part"; then
-                    rm -f "$nupkg.part"
-                    echo "Erreur : empreinte SHA-256 inattendue pour $ORT_NUPKG" >&2
-                    exit 1
-                fi
-                mv "$nupkg.part" "$nupkg"
-            fi
-            if ! command -v unzip >/dev/null 2>&1; then
-                echo "Erreur : unzip manque (il ouvre le paquet NuGet d'ONNX Runtime)" >&2
-                exit 1
-            fi
-            rm -rf target/ort/extraction
-            mkdir -p target/ort/extraction
-            unzip -q -j "$nupkg" "runtimes/$ORT_RID/native/$ORT_LIB" LICENSE ThirdPartyNotices.txt \
-                -d target/ort/extraction
-            rm -rf "$ORT_DIR"
-            mv target/ort/extraction "$ORT_DIR"
-        fi
         cp "$ORT_DIR/$ORT_LIB" "$OUT/$ORT_DEST"
         cp "$ORT_DIR/LICENSE" "$OUT/LICENSE-onnxruntime"
         cp "$ORT_DIR/ThirdPartyNotices.txt" "$OUT/ThirdPartyNotices-onnxruntime.txt"
@@ -160,29 +88,10 @@ case ",$FEATURES," in
 esac
 echo "Joint : NOTICE, THIRD-PARTY-RUST.txt et licences/"
 
-# Windows : le runtime Visual C++ (vcruntime140, msvcp140…), qu'importent
-# dysflow.exe et onnxruntime.dll, joint à côté d'eux : un PC sans le
-# redistribuable lance quand même dysflow.exe (déploiement local, permis par
-# la licence de Visual Studio). Les DLL sont celles du Visual Studio qui a
-# compilé, trouvé par vswhere (à son emplacement fixe, ou VSWHERE=…), dans
-# VC\Redist\MSVC\<version par défaut>\x64\Microsoft.VC14x.CRT. Seules
-# celles qui sont réellement importées sont jointes.
+# Windows : le runtime Visual C++ qu'importent dysflow.exe et onnxruntime.dll,
+# joint à côté d'eux (vc_crt_deploy, scripts/paquet-commun.sh).
 if [ -n "$WINDOWS" ]; then
-    vswhere="${VSWHERE:-/c/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe}"
-    vs=$("$vswhere" -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 \
-        -property installationPath | tr -d '\r')
-    if [ -z "$vs" ]; then
-        echo "Erreur : Visual Studio (outils C++ x64) introuvable par vswhere" >&2
-        exit 1
-    fi
-    vs=$(cygpath -u "$vs")
-    redist=$(tr -d '\r\n ' < "$vs/VC/Auxiliary/Build/Microsoft.VCRedistVersion.default.txt")
-    crt=$(find "$vs/VC/Redist/MSVC/$redist/x64" -maxdepth 1 -type d -name 'Microsoft.VC14*.CRT' | head -1)
-    if [ -z "$crt" ]; then
-        echo "Erreur : runtime Visual C++ $redist introuvable dans $vs/VC/Redist/MSVC" >&2
-        exit 1
-    fi
-    "$PYTHON" -I scripts/windows-imports.py deploy-crt "$crt" "$OUT"
+    vc_crt_deploy "$OUT"
 
     # Un mot d'accueil, en français puis en anglais.
     cat > "$OUT/LISEZMOI.txt" <<'LISEZMOI'
