@@ -57,6 +57,12 @@ libloading = { version = "0.8", optional = true }
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
+# MLX en Rust, seulement sur les Mac Apple Silicon. Épinglé exactement :
+# `mlx-sys` compile sa propre copie de MLX, dont la version doit rester
+# connue (une seule copie dans l'app, voir la spec des moteurs).
+[target.'cfg(all(target_os = "macos", target_arch = "aarch64"))'.dependencies]
+mlx-rs = { version = "=0.34.0", optional = true }
+
 [build-dependencies]
 # Sonic (accélération de la parole) se compile toujours : deux fichiers C.
 cc = "1.1"
@@ -72,6 +78,10 @@ ocr = ["dep:tesseract-rs", "dep:image", "clipboard"]
 # Kokoro au terminal par ONNX Runtime (≥ 1.31, chargé dynamiquement). Jamais
 # dans l'app macOS, qui calcule Kokoro en MLX.
 kokoro-onnx = ["dep:ort", "dep:libloading"]
+# Calcul MLX en Rust (Mac Apple Silicon ; sans effet ailleurs). MLX est
+# compilé par CMake au premier build (~4 min, avec accès réseau), puis gardé
+# dans target/.
+mlx = ["dep:mlx-rs"]
 
 [[bin]]
 name = "dysflow"

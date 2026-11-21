@@ -10,6 +10,7 @@
 
 pub mod app;
 pub mod audio;
+pub mod compute;
 pub mod config;
 pub mod doc;
 pub mod export;

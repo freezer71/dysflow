@@ -16,7 +16,8 @@ path = "src/bin/uniffi-bindgen.rs"
 required-features = ["bindgen"]
 
 [dependencies]
-dysflow = { path = "..", default-features = false, features = ["clipboard"] }
+# mlx : MLX en Rust (Mac Apple Silicon seulement, sans effet ailleurs).
+dysflow = { path = "..", default-features = false, features = ["clipboard", "mlx"] }
 uniffi = "0.32"
 thiserror = "2"
 anyhow = "1.0"

@@ -308,3 +308,38 @@ Code jetable, hors dépôt.
 
 Whisper small int8 en segments, 4 fils : 0,5–1,2 s par segment, 2,3 %
 d'erreur de mots.
+
+## Décisions
+
+**Lot 0 (2026-11-21) : les deux copies de MLX cohabitent ; la transition
+se fait modèle par modèle.**
+
+- **Résultat** : l'édition des liens passe sans `duplicate symbol`, sans
+  rien changer à `mlx-sys`. `MLXCoexistenceTests` (MLX Swift, puis
+  `mlxRustSmoke()` par UniFFI, puis de nouveau MLX Swift : 6 chaque fois)
+  et `KokoroParityTests` (vrai modèle, écart < 0,01) passent dans le même
+  processus. C'est (a) sous sa forme la plus simple : les versions sont
+  déjà alignées (ci-dessous), si bien que construire `mlx-sys` sur les
+  sources `Cmlx` n'est pas nécessaire ; (b) est écarté.
+- **Pourquoi aucun conflit** : les deux copies vivent dans deux images
+  distinctes. MLX de mlx-swift est dans `KokoroMLX.framework` (669 symboles
+  `_mlx_*` exportés), MLX de `mlx-rs` dans l'exécutable de l'app
+  (`Dysflow.debug.dylib` en Debug : 602 symboles `_mlx_*`). L'espace de
+  noms à deux niveaux de macOS lie chaque référence à son image. Les
+  versions sont déjà les mêmes : `Cmlx` de mlx-swift 0.32.3 et `mlx-sys`
+  0.7.0 (`mlx-rs` 0.34.0) embarquent tous deux MLX 0.32.2.
+- **Symboles en conflit** : aucun.
+- **Conséquence pour l'ordre des lots** : modèle par modèle (lots 3 à 7).
+  mlx-swift reste lié tant qu'un modèle Swift subsiste.
+- **À régler au lot 3, avant qu'un modèle Rust serve dans l'app livrée** :
+  - *Les noyaux Metal de la copie Rust.* `mlx-sys` écrit `mlx.metallib`
+    dans `~/.mlx/lib/<clé>/` et inscrit ce chemin absolu dans le binaire.
+    La copie Rust, compilée sans `SWIFTPM_BUNDLE`, ne lit pas le
+    `default.metallib` de mlx-swift ; elle cherche `mlx.metallib` à côté de
+    son image (`Contents/MacOS/`), puis ce chemin de la machine de build.
+    Vérifié : sans `~/.mlx`, `smoke()` panique (« Failed to load the default
+    metallib »). L'app livrée doit joindre `mlx.metallib` dans
+    `Contents/MacOS/` (ou fixer le chemin au lancement).
+  - *Deux allocateurs Metal.* Chaque copie a son cache et son plafond : le
+    plafond posé par l'app (mlx-swift) ne borne pas la copie Rust. Le
+    budget mémoire doit couvrir les deux pendant la transition.

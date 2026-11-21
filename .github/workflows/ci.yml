@@ -43,7 +43,20 @@ jobs:
           rustup update stable --no-self-update
           rustup default stable
           rustup component add clippy
+      - name: Metal Toolchain (MLX de mlx-rs)
+        # Sur Mac, `cargo test --workspace` compile MLX par CMake (feature
+        # mlx, activée par ffi/) : ses noyaux demandent le compilateur Metal.
+        if: runner.os == 'macOS'
+        run: |
+          if ! xcrun -sdk macosx metal -v >/dev/null 2>&1; then
+            xcodebuild -downloadComponent MetalToolchain
+          fi
       - uses: Swatinem/rust-cache@v2
+        with:
+          # mlx-sys écrit ses noyaux Metal dans ~/.mlx/lib (chemin inscrit
+          # dans le binaire) : sans eux, un target/ restauré donnerait un MLX
+          # qui ne trouve pas sa mlx.metallib.
+          cache-directories: ${{ runner.os == 'macOS' && '~/.mlx' || '' }}
       - name: Tests
         run: cargo test --workspace --locked
       - name: Clippy
@@ -117,7 +130,12 @@ jobs:
           if ! xcrun -sdk macosx metal -v >/dev/null 2>&1; then
             xcodebuild -downloadComponent MetalToolchain
           fi
+      # Garde target/, donc MLX compilé par mlx-sys (CMake, ~4 min) : il ne se
+      # recompile pas d'une exécution à l'autre tant que Cargo.lock ne bouge pas.
+      # ~/.mlx : ses noyaux Metal, que le build ne réécrit pas s'il est en cache.
       - uses: Swatinem/rust-cache@v2
+        with:
+          cache-directories: ~/.mlx
       - name: dysflow-espeak
         run: ./scripts/build-espeak.sh
       - name: Moteur et liaison Swift
