@@ -135,12 +135,14 @@ if [ -n "$WINDOWS" ]; then
     # fonctions ne sont pas importées d'une DLL.
     gcc -O2 -Wall -municode -static -DLIBESPEAK_NG_EXPORT=1 -I"$SRC/src/include" \
         scripts/dysflow-espeak.c "$LIB" "$UCD" -o "$OUT/bin/dysflow-espeak.exe"
+    COMPILER="$(gcc --version | head -1) (MinGW-w64, MSYS2 UCRT64)"
 else
     CFLAGS=(-O2 -Wall -I"$SRC/src/include")
     if [ "$(uname -s)" = Darwin ]; then
         CFLAGS+=(-mmacosx-version-min=14.0 -arch arm64)
     fi
     cc "${CFLAGS[@]}" scripts/dysflow-espeak.c "$LIB" "$UCD" -lm -o "$OUT/bin/dysflow-espeak"
+    COMPILER=""
 fi
 for f in phontab phonindex phondata phondata-manifest intonations fr_dict en_dict; do
     [ -f "$DATA/$f" ] && cp "$DATA/$f" "$OUT/share/espeak-ng-data/"
@@ -152,6 +154,7 @@ cp scripts/dysflow-espeak.c "$OUT/dysflow-espeak.c"
 {
     echo "espeak-ng $VERSION, sources exactes : $URL (SHA-256 $SHA256)"
     echo "dysflow-espeak : dysflow-espeak.c, à côté de ce fichier ; construit par build-espeak.sh"
+    [ -z "$COMPILER" ] || echo "Compilateur de dysflow-espeak$EXE : $COMPILER"
     echo "(à placer dans scripts/ avec dysflow-espeak.c, à la racine des sources de Dysflow)"
     echo "L'archive ci-dessus (même empreinte) est conservée par le distributeur de Dysflow et"
     echo "fournie sur demande, tant que ce programme est distribué, si l'adresse venait à disparaître."

@@ -89,7 +89,7 @@ jobs:
         # seul ce script s'en sert, par MINGW_BIN.
         if: runner.os == 'Windows'
         id: msys2
-        uses: msys2/setup-msys2@v2
+        uses: msys2/setup-msys2@3c51bf698df1e37b2261f53cb67797b97761185c # v2.34.0
         with:
           msystem: UCRT64
           update: false
@@ -104,7 +104,9 @@ jobs:
         # est décompressée dans un dossier dont le chemin porte une espace et
         # un accent, puis dans un autre hors de la page de code Windows-1252
         # (« Ł ») ; le binaire y est vérifié depuis /, sans les variables qui
-        # désignent ORT ou espeak ailleurs, comme install.sh sous Linux.
+        # désignent ORT ou espeak ailleurs, comme install.sh sous Linux, et
+        # avec un PATH réduit à Windows : aucune DLL de Git, de MinGW ou des
+        # outils du runner ne peut masquer une DLL qui manquerait au paquet.
         shell: bash
         run: |
           command -v unzip
@@ -115,9 +117,19 @@ jobs:
             rm -rf "$dest"
             mkdir -p "$dest" && unzip -q dist/dysflow-windows-x86_64.zip -d "$dest"
             echo "Depuis $dest :"
-            ( cd / && env -u DYSFLOW_ORT_LIB -u DYSFLOW_ESPEAK -u DYSFLOW_ESPEAK_DATA "$dest/dysflow.exe" --version )
-            ( cd / && env -u DYSFLOW_ORT_LIB -u DYSFLOW_ESPEAK -u DYSFLOW_ESPEAK_DATA "$dest/dysflow.exe" --check-kokoro )
+            for option in --version --check-kokoro; do
+              ( cd / && env -u DYSFLOW_ORT_LIB -u DYSFLOW_ESPEAK -u DYSFLOW_ESPEAK_DATA \
+                  PATH="/c/Windows/System32:/c/Windows" "$dest/dysflow.exe" "$option" )
+            done
           done
+      - name: Imports des binaires (Windows)
+        # Chaque DLL qu'importent dysflow.exe, onnxruntime.dll, le runtime
+        # Visual C++ joint et dysflow-espeak.exe est dans le paquet ou dans
+        # Windows ; dysflow-espeak.exe n'importe que KERNEL32, ADVAPI32 et le
+        # CRT de Windows (rien de MinGW).
+        if: runner.os == 'Windows'
+        shell: bash
+        run: python -I scripts/windows-imports.py check dist
       - name: Paquet joint
         if: runner.os == 'Linux' || runner.os == 'Windows'
         uses: actions/upload-artifact@v4

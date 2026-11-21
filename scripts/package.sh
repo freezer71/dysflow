@@ -160,6 +160,75 @@ case ",$FEATURES," in
 esac
 echo "Joint : NOTICE, THIRD-PARTY-RUST.txt et licences/"
 
+# Windows : le runtime Visual C++ (vcruntime140, msvcp140…), qu'importent
+# dysflow.exe et onnxruntime.dll, joint à côté d'eux : un PC sans le
+# redistribuable lance quand même dysflow.exe (déploiement local, permis par
+# la licence de Visual Studio). Les DLL sont celles du Visual Studio qui a
+# compilé, trouvé par vswhere (à son emplacement fixe, ou VSWHERE=…), dans
+# VC\Redist\MSVC\<version par défaut>\x64\Microsoft.VC14x.CRT. Seules
+# celles qui sont réellement importées sont jointes.
+if [ -n "$WINDOWS" ]; then
+    vswhere="${VSWHERE:-/c/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe}"
+    vs=$("$vswhere" -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 \
+        -property installationPath | tr -d '\r')
+    if [ -z "$vs" ]; then
+        echo "Erreur : Visual Studio (outils C++ x64) introuvable par vswhere" >&2
+        exit 1
+    fi
+    vs=$(cygpath -u "$vs")
+    redist=$(tr -d '\r\n ' < "$vs/VC/Auxiliary/Build/Microsoft.VCRedistVersion.default.txt")
+    crt=$(find "$vs/VC/Redist/MSVC/$redist/x64" -maxdepth 1 -type d -name 'Microsoft.VC14*.CRT' | head -1)
+    if [ -z "$crt" ]; then
+        echo "Erreur : runtime Visual C++ $redist introuvable dans $vs/VC/Redist/MSVC" >&2
+        exit 1
+    fi
+    "$PYTHON" -I scripts/windows-imports.py deploy-crt "$crt" "$OUT"
+
+    # Un mot d'accueil, en français puis en anglais.
+    cat > "$OUT/LISEZMOI.txt" <<'LISEZMOI'
+Dysflow pour Windows — lecteur au terminal
+==========================================
+
+Contenu
+  dysflow.exe            le lecteur (lancez-le depuis PowerShell ou cmd)
+  dysflow-espeak.exe     la phonétisation de la voix Kokoro (espeak-ng, GPL-3.0),
+  espeak-ng-data\        ses données ; sources dans dysflow-espeak-source\
+  onnxruntime.dll        ONNX Runtime de Microsoft, le calcul de la voix Kokoro
+  vcruntime140*.dll, msvcp140*.dll
+                         le runtime Visual C++ de Microsoft, joint pour les PC
+                         qui ne l'ont pas
+  NOTICE, THIRD-PARTY-RUST.txt, licences\, LICENSE-onnxruntime…  les licences
+
+Utilisation
+  Gardez tous ces fichiers ensemble, dans n'importe quel dossier. Puis :
+    .\dysflow.exe --check-kokoro        vérifie que la voix Kokoro se charge
+    .\dysflow.exe fichier.txt           lit le fichier à voix haute
+    .\dysflow.exe -o lecture.wav fichier.txt   l'écrit en WAV
+  Au premier lancement du lecteur, Dysflow télécharge la voix Kokoro (une fois).
+
+-----------------------------------------------------------------------------
+
+Dysflow for Windows — terminal reader
+
+Contents
+  dysflow.exe            the reader (run it from PowerShell or cmd)
+  dysflow-espeak.exe     phonemization for the Kokoro voice (espeak-ng, GPL-3.0),
+  espeak-ng-data\        its data; sources in dysflow-espeak-source\
+  onnxruntime.dll        Microsoft ONNX Runtime, which computes the Kokoro voice
+  vcruntime140*.dll, msvcp140*.dll
+                         Microsoft's Visual C++ runtime, included for PCs that
+                         lack it
+  NOTICE, THIRD-PARTY-RUST.txt, licences\, LICENSE-onnxruntime…  the licenses
+
+Usage
+  Keep all these files together, in any folder. Then:
+    .\dysflow.exe --check-kokoro        checks that the Kokoro voice loads
+    .\dysflow.exe file.txt              reads the file aloud
+    .\dysflow.exe -o reading.wav file.txt      writes it as WAV
+  On the reader's first launch, Dysflow downloads the Kokoro voice (once).
+LISEZMOI
+fi
+
 echo "Vérification hors de l'arbre de compilation…"
 ( cd "$OUT" && "./dysflow$EXE" --show-config >/dev/null )
 
