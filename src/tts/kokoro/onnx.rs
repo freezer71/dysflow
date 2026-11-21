@@ -21,14 +21,19 @@ const MINIMUM: (u32, u32) = (1, 31);
 /// Intervalle de la garde d'abandon pendant un passage.
 const CANCEL_POLL: std::time::Duration = std::time::Duration::from_millis(25);
 
+#[cfg(windows)]
+const LIBRARY: &str = "onnxruntime.dll";
 #[cfg(target_os = "macos")]
 const LIBRARY: &str = "libonnxruntime.dylib";
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(windows, target_os = "macos")))]
 const LIBRARY: &str = "libonnxruntime.so";
 
 /// La bibliothèque ORT : `DYSFLOW_ORT_LIB`, à côté du binaire (liens
 /// symboliques résolus), dans un `lib/` voisin, sinon le nom nu (chemins de
-/// recherche du système).
+/// recherche du système). Sous Windows, jamais un nom nu : la recherche de
+/// DLL prendrait `System32\onnxruntime.dll`, un autre ORT que le nôtre ; on
+/// rend alors le chemin à côté du binaire, même absent, et le message
+/// « introuvable » le nomme.
 pub fn library_path() -> PathBuf {
     library_path_from(std::env::var_os("DYSFLOW_ORT_LIB"))
 }
@@ -45,6 +50,10 @@ fn library_path_from(explicit: Option<std::ffi::OsString>) -> PathBuf {
                 return candidate;
             }
         }
+    }
+    #[cfg(windows)]
+    if let Some(dir) = super::phonemes::exe_dir() {
+        return dir.join(LIBRARY);
     }
     PathBuf::from(LIBRARY)
 }
