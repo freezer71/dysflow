@@ -56,59 +56,64 @@ case ",$FEATURES," in
     echo "Joint : dysflow-espeak, espeak-ng-data et ses sources (dysflow-espeak-source/)"
 
     ORT_VERSION=1.31.0
+    # Une seule archive pour tous les systèmes : le paquet NuGet officiel de
+    # Microsoft (le dépôt GitHub microsoft/onnxruntime a disparu, ses archives
+    # de publication avec). Son empreinte est épinglée : une archive différente
+    # n'est jamais utilisée.
+    ORT_NUPKG="microsoft.ml.onnxruntime.$ORT_VERSION.nupkg"
+    ORT_URL="https://api.nuget.org/v3-flatcontainer/microsoft.ml.onnxruntime/$ORT_VERSION/$ORT_NUPKG"
+    ORT_SHA256=7e35fdb4f5adb62f01e60798e2e5ed05108f5fbbe1cca03fbcc37903cf7c5e3b
+    # ORT_RID : le dossier runtimes/<RID>/native/ du paquet. ORT_LIB : la
+    # bibliothèque dedans, ORT_DEST son nom à côté du binaire (celui que
+    # cherche src/tts/kokoro/onnx.rs). Seule cette bibliothèque est jointe, pas
+    # libonnxruntime_providers_shared.so : elle ne sert qu'à charger les
+    # fournisseurs CUDA et TensorRT, pas le fournisseur CPU que Dysflow utilise.
+    # Windows x64 prêt pour le paquet Windows (aucun système détecté ici).
     case "$(uname -s)-$(uname -m)" in
-    # Empreintes publiées avec la version v1.31.0 (champ `digest` des
-    # fichiers de la publication GitHub) : une archive différente n'est
-    # jamais jointe. ORT_LIB : la bibliothèque dans l'archive, ORT_DEST son
-    # nom à côté du binaire (celui que cherche src/tts/kokoro/onnx.rs).
     Linux-x86_64)
-        ORT_ARCHIVE="onnxruntime-linux-x64-$ORT_VERSION"
-        ORT_SHA256=cc5c72baf5ae5c8238a6841f0897227be2d02826b9cf98eaf02fdefaeeb03a57
-        ORT_LIB="libonnxruntime.so.$ORT_VERSION" ORT_DEST=libonnxruntime.so ;;
+        ORT_RID=linux-x64 ORT_LIB=libonnxruntime.so ORT_DEST=libonnxruntime.so ;;
     Linux-aarch64)
-        ORT_ARCHIVE="onnxruntime-linux-aarch64-$ORT_VERSION"
-        ORT_SHA256=c5b8b3cca31f3d643a3b313b8f42e2d0f16a4fcefd02cda343d97bd5306afaab
-        ORT_LIB="libonnxruntime.so.$ORT_VERSION" ORT_DEST=libonnxruntime.so ;;
+        ORT_RID=linux-arm64 ORT_LIB=libonnxruntime.so ORT_DEST=libonnxruntime.so ;;
     Darwin-arm64)
-        ORT_ARCHIVE="onnxruntime-osx-arm64-$ORT_VERSION"
-        ORT_SHA256=1031b36dd3bdaa8d976a6130d9cf2a05e9be320b93ae804f8427b91dc3432afc
-        ORT_LIB="libonnxruntime.$ORT_VERSION.dylib" ORT_DEST=libonnxruntime.dylib ;;
-    *) ORT_ARCHIVE="" ;;
+        ORT_RID=osx-arm64 ORT_LIB=libonnxruntime.dylib ORT_DEST=libonnxruntime.dylib ;;
+    MINGW*-x86_64 | MSYS*-x86_64 | CYGWIN*-x86_64)
+        ORT_RID=win-x64 ORT_LIB=onnxruntime.dll ORT_DEST=onnxruntime.dll ;;
+    *) ORT_RID="" ;;
     esac
-    if [ -n "$ORT_ARCHIVE" ]; then
+    if [ -n "$ORT_RID" ]; then
+        ORT_DIR="target/ort/$ORT_VERSION-$ORT_RID"
         mkdir -p target/ort
-        # Extraite à part, mise en place seulement une fois complète : une
+        # Extrait à part, mis en place seulement une fois complet : une
         # extraction interrompue est refaite au lancement suivant.
         # Le fichier, pas le dossier : le cache de la CI (rust-cache) rend
         # target/ort vidé de ses fichiers, et un dossier présent mais vide
         # faisait échouer la copie plus bas.
-        if [ ! -f "target/ort/$ORT_ARCHIVE/lib/$ORT_LIB" ] \
-            || [ ! -f "target/ort/$ORT_ARCHIVE/LICENSE" ] \
-            || [ ! -f "target/ort/$ORT_ARCHIVE/ThirdPartyNotices.txt" ]; then
+        if [ ! -f "$ORT_DIR/$ORT_LIB" ] \
+            || [ ! -f "$ORT_DIR/LICENSE" ] \
+            || [ ! -f "$ORT_DIR/ThirdPartyNotices.txt" ]; then
             # L'archive : téléchargée sous un nom provisoire, gardée seulement
             # si son empreinte est la bonne.
-            tarball="target/ort/$ORT_ARCHIVE.tgz"
-            if [ ! -f "$tarball" ] || ! sha256_ok "$ORT_SHA256" "$tarball"; then
-                rm -f "$tarball" "$tarball.part"
-                curl -fsSL "https://github.com/microsoft/onnxruntime/releases/download/v$ORT_VERSION/$ORT_ARCHIVE.tgz" \
-                    -o "$tarball.part"
-                if ! sha256_ok "$ORT_SHA256" "$tarball.part"; then
-                    rm -f "$tarball.part"
-                    echo "Erreur : empreinte SHA-256 inattendue pour $ORT_ARCHIVE.tgz" >&2
+            nupkg="target/ort/$ORT_NUPKG"
+            if [ ! -f "$nupkg" ] || ! sha256_ok "$ORT_SHA256" "$nupkg"; then
+                rm -f "$nupkg" "$nupkg.part"
+                curl -fsSL "$ORT_URL" -o "$nupkg.part"
+                if ! sha256_ok "$ORT_SHA256" "$nupkg.part"; then
+                    rm -f "$nupkg.part"
+                    echo "Erreur : empreinte SHA-256 inattendue pour $ORT_NUPKG" >&2
                     exit 1
                 fi
-                mv "$tarball.part" "$tarball"
+                mv "$nupkg.part" "$nupkg"
             fi
             rm -rf target/ort/extraction
             mkdir -p target/ort/extraction
-            tar -xzf "$tarball" -C target/ort/extraction
-            rm -rf "target/ort/$ORT_ARCHIVE"
-            mv "target/ort/extraction/$ORT_ARCHIVE" "target/ort/$ORT_ARCHIVE"
-            rm -rf target/ort/extraction
+            unzip -q -j "$nupkg" "runtimes/$ORT_RID/native/$ORT_LIB" LICENSE ThirdPartyNotices.txt \
+                -d target/ort/extraction
+            rm -rf "$ORT_DIR"
+            mv target/ort/extraction "$ORT_DIR"
         fi
-        cp "target/ort/$ORT_ARCHIVE/lib/$ORT_LIB" "$OUT/$ORT_DEST"
-        cp "target/ort/$ORT_ARCHIVE/LICENSE" "$OUT/LICENSE-onnxruntime"
-        cp "target/ort/$ORT_ARCHIVE/ThirdPartyNotices.txt" "$OUT/ThirdPartyNotices-onnxruntime.txt"
+        cp "$ORT_DIR/$ORT_LIB" "$OUT/$ORT_DEST"
+        cp "$ORT_DIR/LICENSE" "$OUT/LICENSE-onnxruntime"
+        cp "$ORT_DIR/ThirdPartyNotices.txt" "$OUT/ThirdPartyNotices-onnxruntime.txt"
         echo "Joint : ONNX Runtime $ORT_VERSION"
     else
         echo "ONNX Runtime non joint sur cette plateforme : DYSFLOW_ORT_LIB=<libonnxruntime> au lancement." >&2
