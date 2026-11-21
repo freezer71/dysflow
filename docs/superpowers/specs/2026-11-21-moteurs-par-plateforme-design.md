@@ -375,7 +375,7 @@ nécessaire.**
   elle échoue (sur le M5) : « Kokoro 1.31.0, sherpa-onnx 1.28.2 » et deux
   copies chargées (le binaire, qui embarque la 1.28.2, et la bibliothèque
   1.31.0). Une seconde copie 1.31.0, chargée sous un autre nom par
-  `DYSFLOW_ORT_LIB`, est vue aussi (M5).
+  `DYSFLOW_ORT_LIB`, est vue aussi (M5 et Linux ARM64, conteneur).
 - **Comment sherpa-onnx est lié** :
   - `sherpa-onnx` =2.0.2 en `shared` (feature `stt-sherpa`). La
     bibliothèque C (`libsherpa-onnx-c-api.so`/`.dylib`,
@@ -391,8 +391,9 @@ nécessaire.**
     `OrtGetApiBase`.
   - Sous Linux, la bibliothèque C demande `OrtGetApiBase@VERS_1.28.2` ; ORT
     ne définit que sa propre version : la requête est renommée en
-    `VERS_1.31.0` (`scripts/elf-version-ref.py` : 11 octets de même
-    longueur et l'empreinte de la version, rien d'autre). À refaire à chaque
+    `VERS_1.31.0` (`scripts/elf-version-ref.py` : 3 caractères de même
+    longueur dans `.dynstr` et le `vna_hash`, 5 octets en tout, rien
+    d'autre). À refaire à chaque
     montée d'ORT ou de sherpa-onnx.
   - Le script de build de `sherpa-onnx-sys` est remplacé par deux
     `--config` (clé `links`) : le binaire n'est lié qu'à la bibliothèque C,

@@ -149,6 +149,10 @@ fn resample(samples: &[f32], from: u32, to: u32) -> Vec<f32> {
 /// sans le charger de nouveau ; une copie d'ONNX Runtime est l'objet qui
 /// définit l'`OrtGetApiBase` trouvé (`dladdr`), compté une fois. Le nom du
 /// fichier n'y est pour rien : une copie renommée compte aussi.
+///
+/// Limite : un ORT lié statiquement dans un exécutable ELF sans `-rdynamic`
+/// n'exporte pas `OrtGetApiBase` et n'est pas compté ; une telle copie n'est
+/// attrapée que par la comparaison des versions, si la sienne diffère.
 #[cfg(target_os = "linux")]
 fn loaded_onnxruntime() -> Result<Vec<PathBuf>> {
     use std::collections::BTreeMap;
@@ -220,6 +224,10 @@ fn loaded_onnxruntime() -> Result<Vec<PathBuf>> {
 
 /// Windows : les modules du processus (`EnumProcessModules`) qui exportent
 /// `OrtGetApiBase`, quel que soit leur nom.
+///
+/// Limite : un ORT lié statiquement dans une DLL n'exporte pas
+/// `OrtGetApiBase` et n'est pas compté ; une telle copie n'est attrapée que
+/// par la comparaison des versions, si la sienne diffère.
 #[cfg(windows)]
 fn loaded_onnxruntime() -> Result<Vec<PathBuf>> {
     use std::ffi::c_void;
