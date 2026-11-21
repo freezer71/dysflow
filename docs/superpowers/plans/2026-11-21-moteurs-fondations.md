@@ -188,7 +188,7 @@ fn the_library_name_follows_the_platform() {
 **Files:**
 - Modify: `scripts/build-espeak.sh` (branche Windows : CMake + MSVC, lancé sous le bash de Git for Windows)
 - Modify: `scripts/dysflow-espeak.c` (seulement si un appel POSIX bloque la compilation MSVC)
-- Modify: `scripts/package.sh` (cas `windows-x86_64` : archive ORT `onnxruntime-win-x64-1.31.0.zip`, empreinte épinglée, sortie `.zip`)
+- Modify: `scripts/package.sh` (cas `windows-x86_64` : ORT par le bloc NuGet de la Task 1b, sortie `.zip`)
 - Modify: `.github/workflows/ci.yml` (étape « Paquet et vérification (Windows) »)
 
 **Interfaces:**
@@ -203,9 +203,8 @@ fn the_library_name_follows_the_platform() {
   - Si le CMake d'espeak-ng 1.52.0 ne construit pas sous MSVC, essayer MinGW (paquet MSYS2 du runner).
   - Noter dans le script le chemin retenu et pourquoi.
 - [ ] **Step 2: Ajouter le cas Windows à `package.sh`.**
-  - Télécharger `https://github.com/microsoft/onnxruntime/releases/download/v1.31.0/onnxruntime-win-x64-1.31.0.zip`.
-  - Relever son SHA-256 et l'épingler comme les autres. Une archive différente n'est jamais utilisée.
-  - Copier `lib/onnxruntime.dll` à côté de `dysflow.exe`.
+  - Réutiliser le bloc ONNX Runtime de la Task 1b : le paquet NuGet `microsoft.ml.onnxruntime.1.31.0.nupkg`, empreinte déjà épinglée, cas `win-x64` déjà prêt. Le dépôt GitHub de Microsoft a disparu.
+  - Copier `runtimes/win-x64/native/onnxruntime.dll` à côté de `dysflow.exe`.
   - Construire avec `--features ocr,kokoro-onnx`. Si Tesseract ne se construit pas sous Windows, retirer `ocr` du paquet Windows et le noter dans le script.
 - [ ] **Step 3: Ajouter l'étape CI de vérification**, dans un dossier dont le chemin contient une espace et un accent (Review Focus 2) :
 
