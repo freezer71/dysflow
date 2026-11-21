@@ -11,7 +11,8 @@
 # Le binaire cherche ses bibliothèques à côté de lui seulement (build.rs) :
 # $OUT sert comme sur un PC qui n'a pas l'arbre de compilation. Sous Windows,
 # $OUT reçoit aussi le runtime Visual C++, et ses imports sont vérifiés
-# (scripts/windows-imports.py).
+# (scripts/windows-imports.py) ; la porte y repasse avec ses modèles sous un
+# chemin non ASCII (le profil d'un utilisateur).
 #
 # $OUT.tar.gz en est l'archive, à lancer sur un autre PC :
 #   tar xzf ort-gate.tar.gz && ./ort-gate/ort_single_copy
@@ -100,6 +101,27 @@ if [ -n "$WINDOWS" ]; then
         PATH="/c/Windows/System32:/c/Windows" "$unit" stt::sherpa )
     ( cd / && env -u DYSFLOW_ORT_LIB -u DYSFLOW_KOKORO_DIR -u DYSFLOW_SILERO_VAD \
         PATH="/c/Windows/System32:/c/Windows" "$gate" )
+    # Les modèles d'un vrai PC sont sous le profil de l'utilisateur
+    # (C:\Users\Élodie Martin\AppData\Local\dysflow\models\…) : la porte une
+    # seconde fois, ses modèles copiés sous un chemin qui porte une espace et
+    # un accent, puis sous un autre hors de la page de code Windows-1252
+    # (« Ł »). Kokoro les ouvre par `ort`, Silero VAD par la bibliothèque C de
+    # sherpa-onnx, qui reçoit le chemin en UTF-8. DYSFLOW_KOKORO_DIR et
+    # DYSFLOW_SILERO_VAD sont ce que lit la porte (examples/ort_single_copy.rs),
+    # passés en chemins Windows.
+    base=$(cygpath -u "${RUNNER_TEMP:-$PWD/target}")
+    for name in "Élodie Martin" "Łukasz Gaweł"; do
+        models="$base/$name/AppData/Local/dysflow/models"
+        rm -rf "$models"
+        mkdir -p "$models/kokoro"
+        cp "$MODELS/silero_vad.onnx" "$models/"
+        cp "$MODELS/kokoro/model_quantized.onnx" "$MODELS/kokoro/config.json" "$models/kokoro/"
+        echo "Modèles depuis $(cygpath -w "$models") :"
+        ( cd / && env -u DYSFLOW_ORT_LIB \
+            DYSFLOW_KOKORO_DIR="$(cygpath -w "$models/kokoro")" \
+            DYSFLOW_SILERO_VAD="$(cygpath -w "$models/silero_vad.onnx")" \
+            PATH="/c/Windows/System32:/c/Windows" "$gate" )
+    done
 else
     ( cd / && env -u DYSFLOW_ORT_LIB -u DYSFLOW_KOKORO_DIR -u DYSFLOW_SILERO_VAD "$unit" stt::sherpa )
     ( cd / && env -u DYSFLOW_ORT_LIB -u DYSFLOW_KOKORO_DIR -u DYSFLOW_SILERO_VAD "$gate" )
