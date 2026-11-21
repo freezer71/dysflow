@@ -1,6 +1,6 @@
-# Intégration continue : tests et lint Rust sur les trois plateformes visées
-# (Linux x86_64 et ARM64, macOS Apple Silicon), paquet du terminal sous Linux,
-# MSRV, licences, scripts, et tests de l'app macOS.
+# Intégration continue : tests et lint Rust sur les plateformes visées
+# (Linux x86_64 et ARM64, macOS Apple Silicon, Windows x86_64), paquet du
+# terminal sous Linux, MSRV, licences, scripts, et tests de l'app macOS.
 name: CI
 
 on:
@@ -27,7 +27,9 @@ jobs:
       matrix:
         # macos-15 : l'image macos-14 est retirée le 2 novembre 2026
         # (actions/runner-images#13518).
-        os: [ubuntu-24.04, ubuntu-24.04-arm, macos-15]
+        # windows-2025 : le cœur et le terminal se compilent et se testent
+        # sous Windows (lot W) ; le paquet Windows viendra plus tard.
+        os: [ubuntu-24.04, ubuntu-24.04-arm, macos-15, windows-2025]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
