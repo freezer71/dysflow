@@ -8,10 +8,15 @@
 #   ./scripts/build-espeak.sh
 #
 # Sous Windows, il se lance depuis le bash de Git for Windows et construit par
-# CMake avec MSVC (Visual Studio, générateur par défaut de CMake) : le CMake
-# d'espeak-ng 1.52.0 prévoit MSVC (compat/getopt.c, en-têtes include/compat),
-# et MSVC est la chaîne du binaire Rust (x86_64-pc-windows-msvc). Le programme
-# s'appelle alors dysflow-espeak.exe.
+# CMake avec MinGW-w64 (gcc d'MSYS2, environnement UCRT64 : paquets
+# mingw-w64-ucrt-x86_64-gcc, -cmake et -ninja ; MINGW_BIN désigne leur
+# dossier bin, C:\msys64\ucrt64\bin par défaut). Le programme s'appelle alors
+# dysflow-espeak.exe, lié statiquement : il ne demande que les DLL de Windows.
+# Pourquoi pas MSVC, la chaîne du binaire Rust : espeak-ng 1.52.0 ne s'y
+# compile pas. Ses en-têtes src/include/compat (unistd.h, endian.h, getopt.h)
+# testent __has_include_next, que MSVC ne connaît pas (erreurs C7780 et C1017
+# sur la CI windows-2025). dysflow-espeak est un programme à part, lancé par
+# Dysflow : sa chaîne de compilation n'a pas à être celle du binaire.
 #
 # Produit target/espeak/bin/dysflow-espeak, target/espeak/share/espeak-ng-data
 # (français et anglais seulement), et, pour la GPL : target/espeak/COPYING,
@@ -83,31 +88,37 @@ fi
 OPTIONS=(-DBUILD_SHARED_LIBS=OFF -DUSE_ASYNC=OFF -DUSE_MBROLA=OFF -DUSE_LIBSONIC=OFF
     -DUSE_LIBPCAUDIO=OFF -DUSE_KLATT=OFF -DUSE_SPEECHPLAYER=OFF)
 if [ -n "$WINDOWS" ]; then
-    # Le CRT lié statiquement (/MT), dans la bibliothèque comme dans le
-    # programme : dysflow-espeak.exe ne demande aucune DLL du redistribuable
-    # Visual C++. Le CMake d'espeak-ng demande la version 3.8, d'où la règle
-    # CMP0091 à donner pour que CMAKE_MSVC_RUNTIME_LIBRARY compte. Seules la
+    # gcc, g++, cmake et ninja de MinGW-w64, devant ceux du système pour ce
+    # script seulement (le CMake de Visual Studio prendrait MSVC). Seules la
     # bibliothèque, espeak-ng.exe et les données sont construites (cible
     # data) : ni les essais d'espeak-ng, ni rien d'autre.
-    cmake -S "$SRC" -B "$OUT/build" -A x64 "${OPTIONS[@]}" \
-        -DCMAKE_POLICY_DEFAULT_CMP0091=NEW -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
-    cmake --build "$OUT/build" --config Release --target data -j
-    LIB=$(find "$OUT/build" -type f -name espeak-ng.lib | head -1)
-    UCD=$(find "$OUT/build" -type f -name ucd.lib | head -1)
+    MINGW_BIN=$(cygpath -u "${MINGW_BIN:-C:\msys64\ucrt64\bin}")
+    if [ ! -x "$MINGW_BIN/gcc.exe" ] || [ ! -x "$MINGW_BIN/ninja.exe" ] || [ ! -x "$MINGW_BIN/cmake.exe" ]; then
+        echo "Erreur : gcc, cmake ou ninja de MinGW-w64 manque dans $MINGW_BIN (MSYS2 UCRT64 :" >&2
+        echo "pacman -S mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-ninja ;" >&2
+        echo "MINGW_BIN=<dossier bin> sinon)" >&2
+        exit 1
+    fi
+    PATH="$MINGW_BIN:$PATH"
+    BUILD="$OUT/build-mingw"
+    cmake -S "$SRC" -B "$BUILD" -G Ninja -DCMAKE_BUILD_TYPE=Release "${OPTIONS[@]}" \
+        -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
+    cmake --build "$BUILD" --target data -j
 else
-    cmake -S "$SRC" -B "$OUT/build" -DCMAKE_BUILD_TYPE=Release "${OPTIONS[@]}" \
+    BUILD="$OUT/build"
+    cmake -S "$SRC" -B "$BUILD" -DCMAKE_BUILD_TYPE=Release "${OPTIONS[@]}" \
         -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0 -DCMAKE_OSX_ARCHITECTURES=arm64
-    cmake --build "$OUT/build" -j
-    LIB=$(find "$OUT/build" -type f -name libespeak-ng.a | head -1)
-    UCD=$(find "$OUT/build" -type f -name libucd.a | head -1)
+    cmake --build "$BUILD" -j
 fi
+LIB=$(find "$BUILD" -type f -name libespeak-ng.a | head -1)
+UCD=$(find "$BUILD" -type f -name libucd.a | head -1)
+DATA=$(find "$BUILD" -type d -name espeak-ng-data | head -1)
 for f in "$LIB" "$UCD"; do
     if [ ! -f "$f" ]; then
-        echo "Erreur : bibliothèque d'espeak-ng introuvable dans $OUT/build" >&2
+        echo "Erreur : bibliothèque d'espeak-ng introuvable dans $BUILD" >&2
         exit 1
     fi
 done
-DATA=$(find "$OUT/build" -type d -name espeak-ng-data | head -1)
 for f in phontab phonindex phondata intonations fr_dict en_dict; do
     if [ ! -f "$DATA/$f" ]; then
         echo "Erreur : $DATA/$f manque (construction des données d'espeak-ng)" >&2
@@ -119,40 +130,11 @@ rm -rf "${OUT:?}/bin" "${OUT:?}/share"
 mkdir -p "$OUT/bin" "$OUT/share/espeak-ng-data"
 # Le programme : dysflow-espeak.c et libespeak-ng, liée statiquement.
 if [ -n "$WINDOWS" ]; then
-    # Sous Windows, par un petit projet CMake (cl.exe n'est pas dans le PATH
-    # du bash de Git ; CMake trouve Visual Studio). Les chemins lui sont
-    # donnés à la Windows (cygpath -m : D:/a/…). Le manifeste met le programme
-    # en page de code UTF-8 (Windows 10 1903 et après) : le dossier des
-    # données arrive en UTF-8 dans argv et fopen l'ouvre tel quel, quels que
-    # soient ses caractères (« C:\Users\Élodie… »).
-    WRAP="$OUT/windows"
-    rm -rf "$WRAP"
-    mkdir -p "$WRAP"
-    cat > "$WRAP/CMakeLists.txt" <<'CMAKE'
-cmake_minimum_required(VERSION 3.15)
-project(dysflow-espeak C)
-add_executable(dysflow-espeak "${DYSFLOW_ESPEAK_C}" dysflow-espeak.manifest)
-target_include_directories(dysflow-espeak PRIVATE "${ESPEAK_INCLUDE}")
-# Bibliothèque statique : ses déclarations ne sont pas importées d'une DLL.
-target_compile_definitions(dysflow-espeak PRIVATE LIBESPEAK_NG_EXPORT=1)
-target_link_libraries(dysflow-espeak PRIVATE "${ESPEAK_LIB}" "${UCD_LIB}")
-CMAKE
-    cat > "$WRAP/dysflow-espeak.manifest" <<'MANIFEST'
-<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
-  <application xmlns="urn:schemas-microsoft-com:asm.v3">
-    <windowsSettings>
-      <activeCodePage xmlns="http://schemas.microsoft.com/SMI/2019/WindowsSettings">UTF-8</activeCodePage>
-    </windowsSettings>
-  </application>
-</assembly>
-MANIFEST
-    cmake -S "$WRAP" -B "$WRAP/build" -A x64 -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded \
-        -DDYSFLOW_ESPEAK_C="$(cygpath -m "$PWD/scripts/dysflow-espeak.c")" \
-        -DESPEAK_INCLUDE="$(cygpath -m "$PWD/$SRC/src/include")" \
-        -DESPEAK_LIB="$(cygpath -m "$PWD/$LIB")" -DUCD_LIB="$(cygpath -m "$PWD/$UCD")"
-    cmake --build "$WRAP/build" --config Release
-    cp "$WRAP/build/Release/dysflow-espeak.exe" "$OUT/bin/dysflow-espeak.exe"
+    # wmain (-municode) : le dossier des données arrive en UTF-16, voir
+    # dysflow-espeak.c. LIBESPEAK_NG_EXPORT : bibliothèque statique, ses
+    # fonctions ne sont pas importées d'une DLL.
+    gcc -O2 -Wall -municode -static -DLIBESPEAK_NG_EXPORT=1 -I"$SRC/src/include" \
+        scripts/dysflow-espeak.c "$LIB" "$UCD" -o "$OUT/bin/dysflow-espeak.exe"
 else
     CFLAGS=(-O2 -Wall -I"$SRC/src/include")
     if [ "$(uname -s)" = Darwin ]; then

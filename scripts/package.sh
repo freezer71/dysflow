@@ -3,7 +3,8 @@
 # programmes qu'il charge (pour Kokoro, ONNX Runtime et dysflow-espeak avec ses
 # données et ses sources GPL).
 #
-# Sous Windows (bash de Git for Windows, MSVC) : dysflow.exe,
+# Sous Windows (bash de Git for Windows ; dysflow.exe par MSVC,
+# dysflow-espeak.exe par MinGW-w64, voir build-espeak.sh) : dysflow.exe,
 # dysflow-espeak.exe et onnxruntime.dll, et en plus du dossier une archive
 # $OUT/dysflow-windows-x86_64.zip de son contenu, à décompresser n'importe où.
 set -eu

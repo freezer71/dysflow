@@ -83,11 +83,24 @@ jobs:
         # ONNX Runtime vérifié, dysflow-espeak), installe sous PREFIX, puis
         # vérifie depuis / que le binaire démarre et que Kokoro se charge.
         run: PREFIX="$RUNNER_TEMP/prefix" ./scripts/install.sh
+      - name: MinGW-w64 (dysflow-espeak, Windows)
+        # espeak-ng 1.52.0 ne se compile pas avec MSVC : build-espeak.sh le
+        # construit avec gcc d'MSYS2 (UCRT64). Rien n'est ajouté au PATH :
+        # seul ce script s'en sert, par MINGW_BIN.
+        if: runner.os == 'Windows'
+        id: msys2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: false
+          install: mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-ninja
       - name: Paquet et vérification (Windows)
         if: runner.os == 'Windows'
+        env:
+          MINGW_BIN: ${{ steps.msys2.outputs.msys2-location }}\ucrt64\bin
         # package.sh sous le bash de Git for Windows : build --features
         # ocr,kokoro-onnx, ONNX Runtime du paquet NuGet, dysflow-espeak.exe
-        # par CMake et MSVC, puis dist/dysflow-windows-x86_64.zip. L'archive
+        # par CMake et MinGW-w64, puis dist/dysflow-windows-x86_64.zip. L'archive
         # est décompressée dans un dossier dont le chemin porte une espace et
         # un accent, puis dans un autre hors de la page de code Windows-1252
         # (« Ł ») ; le binaire y est vérifié depuis /, sans les variables qui
