@@ -357,3 +357,63 @@ sous réserve du test de charge du lot 3.**
   - *Deux allocateurs Metal.* Chaque copie a son cache et son plafond : le
     plafond posé par l'app (mlx-swift) ne borne pas la copie Rust. Le
     budget mémoire doit couvrir les deux pendant la transition.
+
+**Lot 1 (2026-11-21) : une seule copie d'ONNX Runtime 1.31.0, partagée
+par Kokoro (`ort`) et sherpa-onnx, sur macOS, Linux x86_64, Linux ARM64 et
+Windows x86_64. Le repli (dictée dans un processus séparé) n'est pas
+nécessaire.**
+
+- **Résultat par système** (porte `examples/ort_single_copy.rs`, lancée
+  par `scripts/ort-gate.sh` en CI depuis un dossier qui a la forme du
+  paquet) : sur les quatre, Kokoro int8 dit « Bonjour. », Silero VAD (par
+  sherpa-onnx) y trouve un segment, l'ORT de Kokoro et celui de sherpa-onnx
+  sont tous deux 1.31.0, et une seule image du processus exporte
+  `OrtGetApiBase`. Vérifié aussi sur le M5, et sous Linux ARM64 dans un
+  conteneur sur le M5. Reste à vérifier sur les PC
+  Windows et Linux de l'utilisateur (archive `ort-gate` de la CI).
+- **La porte voit le problème** : avec le sherpa-onnx statique par défaut,
+  elle échoue (sur le M5) : « Kokoro 1.31.0, sherpa-onnx 1.28.2 » et deux
+  copies chargées (le binaire, qui embarque la 1.28.2, et la bibliothèque
+  1.31.0). Une seconde copie 1.31.0, chargée sous un autre nom par
+  `DYSFLOW_ORT_LIB`, est vue aussi (M5).
+- **Comment sherpa-onnx est lié** :
+  - `sherpa-onnx` =2.0.2 en `shared` (feature `stt-sherpa`). La
+    bibliothèque C (`libsherpa-onnx-c-api.so`/`.dylib`,
+    `sherpa-onnx-c-api.dll`) est prise telle que publiée par k2-fsa
+    (archive `shared` de la v2.0.2, empreinte épinglée,
+    `scripts/sherpa-onnx.sh`) ; sherpa-onnx n'est pas recompilé.
+  - À côté du binaire, elle charge par son nom (`libonnxruntime.so`,
+    `libonnxruntime.dylib`, `onnxruntime.dll`) l'ONNX Runtime 1.31.0 du
+    paquet NuGet que livre déjà `package.sh` : le même fichier que Kokoro.
+    L'ORT 1.28.2 de l'archive n'est jamais copié. Elle ne prend à ORT que
+    `OrtGetApiBase` (et l'API par son numéro, qu'ORT garde d'une version à
+    l'autre) ; `SherpaOnnxGetOnnxruntimeVersionStr` interroge ce même
+    `OrtGetApiBase`.
+  - Sous Linux, la bibliothèque C demande `OrtGetApiBase@VERS_1.28.2` ; ORT
+    ne définit que sa propre version : la requête est renommée en
+    `VERS_1.31.0` (`scripts/elf-version-ref.py` : 11 octets de même
+    longueur et l'empreinte de la version, rien d'autre). À refaire à chaque
+    montée d'ORT ou de sherpa-onnx.
+  - Le script de build de `sherpa-onnx-sys` est remplacé par deux
+    `--config` (clé `links`) : le binaire n'est lié qu'à la bibliothèque C,
+    pas à ONNX Runtime (sous Linux ARM64, il y inscrivait
+    `libonnxruntime.so.1`, que le paquet n'a pas), et rien n'est téléchargé
+    au build. `build.rs` ajoute le chemin de recherche à côté du binaire
+    (`$ORIGIN`, `@loader_path`). Sans ces `--config` (Clippy, MSRV), le
+    script de build télécharge son archive, avec ORT 1.28.2, que la porte
+    refuse.
+  - Sous Linux, l'éditeur de liens de GNU résout aussi les dépendances de la
+    bibliothèque C : l'ORT 1.31.0 est posé à côté d'elle au build, sans que
+    le binaire en dépende (seul `libsherpa-onnx-c-api.so` dans ses `NEEDED`).
+  - L'app macOS n'en a rien : `ffi/` n'active pas `stt-sherpa`, et la garde
+    de `build-ffi.sh` (aucun `ort` dans le graphe) la refuse.
+- **Taille ajoutée au paquet** : la bibliothèque C seule, ORT étant déjà
+  livré. Linux x86_64 5,8 Mo (2,3 Mo compressés), Linux ARM64 5,2 Mo
+  (2,1 Mo), macOS 4,9 Mo (2,0 Mo), Windows 4,8 Mo (2,0 Mo, runtime C
+  statique : aucune DLL Visual C++ de plus). Le binaire `dysflow` ne
+  grandit que des liaisons Rust qu'il appellera (lot 4).
+- **À régler au lot 4** : un binaire lié à sherpa-onnx ne démarre plus sans
+  sa bibliothèque C ni ONNX Runtime à côté de lui (aujourd'hui, sans ORT,
+  `dysflow` démarre et la voix du système lit) ; joindre la bibliothèque C
+  et la licence Apache-2.0 de sherpa-onnx au paquet ; les tests du binaire
+  avec `stt-sherpa` ne trouvent pas la bibliothèque depuis `target/*/deps/`.
