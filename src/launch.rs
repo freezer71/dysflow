@@ -272,6 +272,9 @@ pub fn prepare(args: &Args) -> Result<Launch> {
 
     apply_overrides(&mut config, args)?;
 
+    if args.show_config || args.write_config {
+        crate::export::apply_voice(&mut config, args.voice.as_deref())?;
+    }
     if args.show_config {
         print!("{}", toml::to_string_pretty(&config)?);
         return Ok(Launch::Done);
@@ -332,6 +335,10 @@ pub fn prepare(args: &Args) -> Result<Launch> {
     // Kokoro remplit en silence ses voix par langue manquantes. Seul Kokoro
     // nomme ses voix : aucune autre famille n'a de voix à réaligner.
     config.align_voice_with_family();
+
+    // `--voice` une fois la famille connue : Kokoro lit ses voix par langue,
+    // une voix posée avant l'adoption du modèle ou la migration serait perdue.
+    crate::export::apply_voice(&mut config, args.voice.as_deref())?;
 
     // La redirection couvre le chargement du modèle, qui est déjà bavard, et
     // tout ce qui suit : le chargement se poursuit en fond pendant la lecture
@@ -686,10 +693,9 @@ fn adopt_installed_model(config: &mut Config, notices: &mut Vec<String>) {
     }
 }
 
+/// Tout sauf `--voice`, qui dépend de la famille du modèle : il passe par
+/// `export::apply_voice`, une fois le modèle choisi.
 fn apply_overrides(config: &mut Config, args: &Args) -> Result<()> {
-    if let Some(v) = &args.voice {
-        config.voice.voice = v.clone();
-    }
     if let Some(v) = args.speed {
         config.voice.speed = v;
     }
@@ -778,6 +784,18 @@ mod tests {
         let mut notices = Vec::new();
         let to_save = migrate_for_launch(&mut config, on_supertonic(), args, &mut notices, &[kokoro_int8()], |_| true);
         (config, to_save, notices)
+    }
+
+    #[test]
+    fn the_voice_of_the_command_line_survives_the_kokoro_migration() {
+        let args = Args { voice: Some("am_adam".into()), ..Args::default() };
+        let (mut config, to_save, _) = migrated_with(&args);
+        crate::export::apply_voice(&mut config, args.voice.as_deref()).unwrap();
+        assert_eq!(config.engine.family, "kokoro");
+        assert_eq!(config.tts_params_in("fr").voice, "am_adam");
+        assert_eq!(config.tts_params_in("en").voice, "am_adam");
+        let saved = to_save.expect("la migration s'écrit sur le disque");
+        assert_ne!(saved.voice.per_language.get("fr").map(String::as_str), Some("am_adam"), "--voice ne s'écrit pas");
     }
 
     #[test]
