@@ -30,9 +30,11 @@ pub trait Phonemizer: Send {
 /// La plus longue ligne envoyée : un morceau plus long est coupé, pour
 /// borner la taille d'un lot.
 const MAX_LINE: usize = 900;
-/// Un lot tient dans le tampon d'un tube vide (16 Kio sous macOS) : l'écrire
-/// ne bloque jamais, même si le programme ne lit plus.
-const MAX_BATCH: usize = 8 * 1024;
+/// Un lot tient dans le tampon d'un tube vide (16 Kio sous macOS, 4 Kio
+/// pour les tubes de la bibliothèque standard sous Windows) : l'écrire ne
+/// bloque jamais, même si le programme ne lit plus. La moitié du tampon,
+/// pour la marge.
+const MAX_BATCH: usize = if cfg!(windows) { 2 * 1024 } else { 8 * 1024 };
 /// La plus longue trame de réponse acceptée (les phonèmes d'une ligne de
 /// `MAX_LINE` octets en font bien moins).
 const MAX_FRAME: usize = 64 * 1024;
