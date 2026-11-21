@@ -1,9 +1,9 @@
 #!/bin/sh
 # La porte du lot 1 (spec des moteurs, « Une seule copie d'ONNX Runtime ») :
-# compile examples/ort_single_copy.rs avec sherpa-onnx lié à l'ONNX Runtime
-# livré (scripts/sherpa-onnx.sh), assemble $OUT comme un paquet (le binaire,
-# ONNX Runtime, la bibliothèque C de sherpa-onnx, models/), puis le lance
-# depuis /.
+# compile examples/ort_single_copy.rs (et le passe à Clippy) avec la
+# bibliothèque C de sherpa-onnx de scripts/sherpa-onnx.sh, assemble $OUT comme
+# un paquet (le binaire, l'ONNX Runtime livré, la bibliothèque C de
+# sherpa-onnx, models/), puis le lance depuis /.
 #
 #   ./scripts/ort-gate.sh
 #
@@ -39,13 +39,11 @@ OUT="${OUT:-target/ort-gate}"
 MODELS="${MODELS:-target/ort-gate-models}"
 
 sherpa_fetch
-export SHERPA_ONNX_LIB_DIR
-# En CI, les étapes suivantes (Clippy) prennent le même dossier.
-if [ -n "${GITHUB_ENV:-}" ]; then
-    echo "SHERPA_ONNX_LIB_DIR=$SHERPA_ONNX_LIB_DIR" >> "$GITHUB_ENV"
-fi
-echo "sherpa-onnx $SHERPA_VERSION sur ONNX Runtime $ORT_VERSION : $SHERPA_ONNX_LIB_DIR"
-cargo build --release --locked --example ort_single_copy --features stt-sherpa
+echo "sherpa-onnx $SHERPA_VERSION ($SHERPA_LIB_DIR), ONNX Runtime $ORT_VERSION ($ORT_DIR)"
+cargo clippy -p dysflow --all-targets --features stt-sherpa --locked \
+    --config "$SHERPA_CONFIG_SEARCH" --config "$SHERPA_CONFIG_LIB" -- -D warnings
+cargo build --release --locked --example ort_single_copy --features stt-sherpa \
+    --config "$SHERPA_CONFIG_SEARCH" --config "$SHERPA_CONFIG_LIB"
 
 # Les modèles, empreintes épinglées. Silero VAD : publié par k2-fsa avec
 # sherpa-onnx. Kokoro int8 et sa configuration : les fichiers et révisions du
@@ -61,7 +59,8 @@ rm -rf "$OUT" "$OUT.tar.gz"
 mkdir -p "$OUT/models/kokoro"
 # CARGO_BUILD_TARGET (posé par la CI macOS) range le binaire sous sa cible.
 cp "target/${CARGO_BUILD_TARGET:+$CARGO_BUILD_TARGET/}release/examples/ort_single_copy$EXE" "$OUT/"
-cp "$SHERPA_ONNX_LIB_DIR/$SHERPA_LIB" "$SHERPA_ONNX_LIB_DIR/$ORT_DEST" "$OUT/"
+cp "$SHERPA_LIB_DIR/$SHERPA_LIB" "$OUT/"
+cp "$ORT_DIR/$ORT_LIB" "$OUT/$ORT_DEST"
 cp "$MODELS/silero_vad.onnx" "$OUT/models/"
 cp "$MODELS/kokoro/model_quantized.onnx" "$MODELS/kokoro/config.json" "$OUT/models/kokoro/"
 if [ -n "$WINDOWS" ]; then

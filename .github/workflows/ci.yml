@@ -138,17 +138,14 @@ jobs:
           path: target/ort-gate-models
           key: ort-gate-models-${{ hashFiles('scripts/ort-gate.sh') }}
       - name: Une seule copie d'ONNX Runtime (Kokoro et sherpa-onnx, lot 1)
-        # La porte du lot 1 : examples/ort_single_copy.rs, compilé avec
-        # sherpa-onnx lié à l'ONNX Runtime 1.31 du paquet NuGet
-        # (scripts/sherpa-onnx.sh), lancé depuis un dossier qui a la forme du
-        # paquet (target/ort-gate/). Kokoro int8 parle, Silero VAD y trouve un
-        # segment, les deux côtés ont ONNX Runtime 1.31.0, et une seule copie
-        # en est chargée.
+        # La porte du lot 1 : examples/ort_single_copy.rs (Clippy compris),
+        # compilé avec la bibliothèque C de sherpa-onnx de
+        # scripts/sherpa-onnx.sh, lancé depuis un dossier qui a la forme du
+        # paquet (target/ort-gate/), à côté de l'ONNX Runtime 1.31 du paquet
+        # NuGet. Kokoro int8 parle, Silero VAD y trouve un segment, les deux
+        # côtés ont ONNX Runtime 1.31.0, et une seule copie en est chargée.
         shell: bash
         run: ./scripts/ort-gate.sh
-      - name: Clippy (dictée sherpa-onnx)
-        shell: bash
-        run: cargo clippy -p dysflow --all-targets --features stt-sherpa --locked -- -D warnings
       - name: Porte ONNX Runtime jointe
         # Pour la vérifier sur un PC : tar xzf ort-gate.tar.gz, puis
         # ort-gate/ort_single_copy (voir scripts/ort-gate.sh).

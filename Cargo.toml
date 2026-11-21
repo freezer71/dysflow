@@ -56,11 +56,12 @@ libloading = { version = "0.8", optional = true }
 # La dictée au terminal, Apache-2.0. En `shared` : la bibliothèque C de
 # sherpa-onnx, liée dynamiquement, utilise l'ONNX Runtime 1.31 livré à côté du
 # binaire, le même fichier que Kokoro, au lieu du 1.28.2 qu'elle embarque en
-# statique par défaut (lot 1 de la spec des moteurs). SHERPA_ONNX_LIB_DIR
-# désigne au build le dossier que prépare scripts/sherpa-onnx.sh ; sans
-# lui, sherpa-onnx-sys télécharge sa propre archive, avec ONNX Runtime 1.28.2,
-# que examples/ort_single_copy.rs refuse. Épinglé exactement : la bibliothèque
-# C vient de la publication de la même version.
+# statique par défaut (lot 1 de la spec des moteurs). Le binaire livré se
+# construit avec les --config de scripts/sherpa-onnx.sh, qui remplacent le
+# script de build de sherpa-onnx-sys ; sans eux (Clippy, MSRV), ce script
+# télécharge sa propre archive, avec ONNX Runtime 1.28.2, que
+# examples/ort_single_copy.rs refuse. Épinglé exactement : la bibliothèque C
+# vient de la publication de la même version.
 sherpa-onnx = { version = "=2.0.2", optional = true, default-features = false, features = ["shared"] }
 
 [target.'cfg(unix)'.dependencies]

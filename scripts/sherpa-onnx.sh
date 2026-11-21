@@ -4,16 +4,22 @@
 # par `.` depuis la racine du dépôt, après scripts/paquet-commun.sh, avec PYTHON
 # posé (Python 3).
 #
-# sherpa_fetch prépare $SHERPA_ONNX_LIB_DIR, que sherpa-onnx-sys (feature
-# `shared`) prend au build au lieu de télécharger sa propre archive :
-#   - la bibliothèque C de sherpa-onnx $SHERPA_VERSION ($SHERPA_LIB ; sous
-#     Windows aussi sa bibliothèque d'importation), tirée de l'archive
-#     publiée par k2-fsa, empreinte épinglée ;
-#   - à côté, sous le nom que cette bibliothèque demande, l'ONNX Runtime
-#     $ORT_VERSION de ort_fetch (paquet NuGet de Microsoft), et non le 1.28.2
-#     de l'archive, qui n'est jamais copié.
-# Sous Linux, la bibliothèque C demande OrtGetApiBase@VERS_1.28.2 :
-# scripts/elf-version-ref.py renomme la requête en VERS_$ORT_VERSION.
+# sherpa_fetch prépare $SHERPA_LIB_DIR : la bibliothèque C de sherpa-onnx
+# $SHERPA_VERSION ($SHERPA_LIB ; sous Windows aussi sa bibliothèque
+# d'importation), tirée de l'archive publiée par k2-fsa, empreinte épinglée.
+# L'ONNX Runtime 1.28.2 de l'archive n'est jamais pris : à l'exécution, la
+# bibliothèque C charge celui qui est à côté d'elle, l'ONNX Runtime
+# $ORT_VERSION de ort_fetch (paquet NuGet de Microsoft), sous le nom qu'elle
+# demande (libonnxruntime.so, libonnxruntime.dylib, onnxruntime.dll). Sous
+# Linux, elle demande OrtGetApiBase@VERS_1.28.2 : scripts/elf-version-ref.py
+# renomme la requête en VERS_$ORT_VERSION.
+#
+# Puis SHERPA_CONFIG_SEARCH et SHERPA_CONFIG_LIB, à passer à cargo par
+# --config : ils remplacent le script de build de sherpa-onnx-sys (clé
+# `links = "sherpa-onnx"`). Le binaire est lié à la bibliothèque C seule :
+# pas à ONNX Runtime, dont il n'appelle rien (le script de build l'y lierait,
+# sous un autre nom que celui du fichier livré), sans téléchargement ni
+# chemin absolu vers l'arbre de compilation.
 
 SHERPA_VERSION=2.0.2
 
@@ -42,14 +48,20 @@ sherpa_fetch() {
     esac
     SHERPA_STEM="sherpa-onnx-v$SHERPA_VERSION-$SHERPA_ARCHIVE"
     SHERPA_URL="https://github.com/k2-fsa/sherpa-onnx/releases/download/v$SHERPA_VERSION/$SHERPA_STEM.tar.bz2"
-    # Le nom porte les deux versions : changer l'une refait le dossier.
-    # Un chemin absolu, lisible par build.rs : sous Windows, en C:/… .
+    # Un chemin absolu, lisible par cargo : sous Windows, en C:/… . Le nom
+    # porte les deux versions (la requête renommée sous Linux dépend d'ORT).
     root=$PWD
     case "$ORT_RID" in win-*) root=$(cygpath -m "$PWD") ;; esac
-    SHERPA_ONNX_LIB_DIR="$root/target/sherpa-onnx/$SHERPA_VERSION-ort$ORT_VERSION-$ORT_RID"
-    if [ -f "$SHERPA_ONNX_LIB_DIR/$SHERPA_LIB" ] && [ -f "$SHERPA_ONNX_LIB_DIR/$ORT_DEST" ] \
-        && { [ -z "$SHERPA_IMPLIB" ] || [ -f "$SHERPA_ONNX_LIB_DIR/$SHERPA_IMPLIB" ]; } \
-        && { [ "$ORT_RID" != osx-arm64 ] || [ -f "$SHERPA_ONNX_LIB_DIR/libonnxruntime.tbd" ]; }; then
+    SHERPA_LIB_DIR="$root/target/sherpa-onnx/$SHERPA_VERSION-ort$ORT_VERSION-$ORT_RID"
+
+    # La cible de cargo : CARGO_BUILD_TARGET (posé par la CI macOS), sinon
+    # celle de rustc.
+    triple=${CARGO_BUILD_TARGET:-$(rustc -vV | sed -n 's/^host: //p')}
+    SHERPA_CONFIG_SEARCH="target.$triple.sherpa-onnx.rustc-link-search=['native=$SHERPA_LIB_DIR']"
+    SHERPA_CONFIG_LIB="target.$triple.sherpa-onnx.rustc-link-lib=['dylib=sherpa-onnx-c-api']"
+
+    if [ -f "$SHERPA_LIB_DIR/$SHERPA_LIB" ] \
+        && { [ -z "$SHERPA_IMPLIB" ] || [ -f "$SHERPA_LIB_DIR/$SHERPA_IMPLIB" ]; }; then
         return 0
     fi
     fetch_verified "$SHERPA_URL" "$SHERPA_SHA256" "target/sherpa-onnx/$SHERPA_STEM.tar.bz2"
@@ -68,35 +80,11 @@ with tarfile.open(archive, "r:bz2") as tar:
 ' "target/sherpa-onnx/$SHERPA_STEM.tar.bz2" "$SHERPA_STEM" target/sherpa-onnx/extraction \
         "$SHERPA_LIB" ${SHERPA_IMPLIB:+"$SHERPA_IMPLIB"}
     chmod +x "target/sherpa-onnx/extraction/$SHERPA_LIB"
-    cp "$ORT_DIR/$ORT_LIB" "target/sherpa-onnx/extraction/$ORT_DEST"
-    if [ -n "$ORT_IMPLIB" ]; then
-        cp "$ORT_DIR/$ORT_IMPLIB" target/sherpa-onnx/extraction/
-    fi
     case "$ORT_RID" in
     linux-*)
         "$PYTHON" -I scripts/elf-version-ref.py "target/sherpa-onnx/extraction/$SHERPA_LIB" \
             libonnxruntime.so VERS_1.28.2 "VERS_$ORT_VERSION" ;;
-    osx-*)
-        # sherpa-onnx-sys lie aussi le binaire à ONNX Runtime (-lonnxruntime),
-        # sans qu'il en appelle rien ; l'éditeur de liens y inscrirait le nom
-        # d'installation du fichier NuGet, @rpath/libonnxruntime.1.dylib, que
-        # le paquet n'a pas. Ce descripteur (lu avant le .dylib) lui donne le
-        # nom que demande déjà la bibliothèque C de sherpa-onnx et que porte
-        # le fichier livré : @rpath/libonnxruntime.dylib. Le fichier de
-        # Microsoft n'est pas modifié.
-        cat > target/sherpa-onnx/extraction/libonnxruntime.tbd <<TBD
---- !tapi-tbd
-tbd-version: 4
-targets: [ arm64-macos ]
-install-name: '@rpath/libonnxruntime.dylib'
-current-version: $ORT_VERSION
-exports:
-  - targets: [ arm64-macos ]
-    symbols: [ _OrtGetApiBase ]
-...
-TBD
-        ;;
     esac
-    rm -rf "$SHERPA_ONNX_LIB_DIR"
-    mv target/sherpa-onnx/extraction "$SHERPA_ONNX_LIB_DIR"
+    rm -rf "$SHERPA_LIB_DIR"
+    mv target/sherpa-onnx/extraction "$SHERPA_LIB_DIR"
 }

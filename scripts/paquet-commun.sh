@@ -48,8 +48,7 @@ ORT_VERSION=1.31.0
 # Pose ORT_RID (le dossier runtimes/<RID>/native/ du paquet NuGet), ORT_LIB (la
 # bibliothèque dedans) et ORT_DEST (son nom à côté du binaire, celui que
 # cherche src/tts/kokoro/onnx.rs) ; ORT_RID vide si le système n'a pas d'ORT
-# joint. Sous Windows, ORT_IMPLIB : la bibliothèque d'importation
-# onnxruntime.lib, pour l'édition des liens de sherpa-onnx.
+# joint.
 #
 # Une seule archive pour tous les systèmes : le paquet NuGet officiel de
 # Microsoft (le dépôt GitHub microsoft/onnxruntime a disparu, ses archives de
@@ -61,7 +60,6 @@ ort_fetch() {
     ORT_NUPKG="microsoft.ml.onnxruntime.$ORT_VERSION.nupkg"
     ORT_URL="https://api.nuget.org/v3-flatcontainer/microsoft.ml.onnxruntime/$ORT_VERSION/$ORT_NUPKG"
     ORT_SHA256=7e35fdb4f5adb62f01e60798e2e5ed05108f5fbbe1cca03fbcc37903cf7c5e3b
-    ORT_IMPLIB=""
     case "$(uname -s)-$(uname -m)" in
     Linux-x86_64)
         ORT_RID=linux-x64 ORT_LIB=libonnxruntime.so ORT_DEST=libonnxruntime.so ;;
@@ -70,7 +68,7 @@ ort_fetch() {
     Darwin-arm64)
         ORT_RID=osx-arm64 ORT_LIB=libonnxruntime.dylib ORT_DEST=libonnxruntime.dylib ;;
     MINGW*-x86_64 | MSYS*-x86_64 | CYGWIN*-x86_64)
-        ORT_RID=win-x64 ORT_LIB=onnxruntime.dll ORT_DEST=onnxruntime.dll ORT_IMPLIB=onnxruntime.lib ;;
+        ORT_RID=win-x64 ORT_LIB=onnxruntime.dll ORT_DEST=onnxruntime.dll ;;
     *) ORT_RID="" ; return 0 ;;
     esac
     ORT_DIR="target/ort/$ORT_VERSION-$ORT_RID"
@@ -78,8 +76,7 @@ ort_fetch() {
     # interrompue est refaite au lancement suivant. Les fichiers, pas le
     # dossier : le cache de la CI (rust-cache) rend target/ort vidé de ses
     # fichiers, et un dossier présent mais vide faisait échouer la copie.
-    if [ -f "$ORT_DIR/$ORT_LIB" ] && [ -f "$ORT_DIR/LICENSE" ] && [ -f "$ORT_DIR/ThirdPartyNotices.txt" ] \
-        && { [ -z "$ORT_IMPLIB" ] || [ -f "$ORT_DIR/$ORT_IMPLIB" ]; }; then
+    if [ -f "$ORT_DIR/$ORT_LIB" ] && [ -f "$ORT_DIR/LICENSE" ] && [ -f "$ORT_DIR/ThirdPartyNotices.txt" ]; then
         return 0
     fi
     fetch_verified "$ORT_URL" "$ORT_SHA256" "target/ort/$ORT_NUPKG"
@@ -89,8 +86,7 @@ ort_fetch() {
     fi
     rm -rf target/ort/extraction
     mkdir -p target/ort/extraction
-    unzip -q -j "target/ort/$ORT_NUPKG" "runtimes/$ORT_RID/native/$ORT_LIB" \
-        ${ORT_IMPLIB:+"runtimes/$ORT_RID/native/$ORT_IMPLIB"} LICENSE ThirdPartyNotices.txt \
+    unzip -q -j "target/ort/$ORT_NUPKG" "runtimes/$ORT_RID/native/$ORT_LIB" LICENSE ThirdPartyNotices.txt \
         -d target/ort/extraction
     rm -rf "$ORT_DIR"
     mv target/ort/extraction "$ORT_DIR"

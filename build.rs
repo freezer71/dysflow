@@ -12,10 +12,11 @@ fn main() {
 }
 
 /// La bibliothèque C de sherpa-onnx (et l'ONNX Runtime qu'elle charge) est
-/// cherchée à côté du binaire, comme ONNX Runtime pour Kokoro. Les
-/// `rustc-link-arg` de sherpa-onnx-sys ne valent que pour ses propres
-/// cibles : sans cette ligne, le binaire n'a aucun chemin de recherche
-/// (« no LC_RPATH's found » sous macOS). Rien sous Windows, où le dossier du
+/// cherchée à côté du binaire, comme ONNX Runtime pour Kokoro. Le script de
+/// build de sherpa-onnx-sys est remplacé (scripts/sherpa-onnx.sh), et ses
+/// `rustc-link-arg` ne valaient de toute façon que pour ses propres cibles :
+/// sans cette ligne, le binaire n'a aucun chemin de recherche (« no
+/// LC_RPATH's found » sous macOS). Rien sous Windows, où le dossier du
 /// binaire passe en premier.
 fn sherpa_rpath() {
     match std::env::var("CARGO_CFG_TARGET_OS").as_deref() {
