@@ -26,7 +26,9 @@
  * Sous Windows, DOSSIER est lu en UTF-16 (wmain) et le programme s'y place :
  * libespeak-ng, qui ouvre ses fichiers par des chemins en octets (page de
  * code locale), n'en voit que « . ». DOSSIER peut ainsi contenir n'importe
- * quel caractère (« C:\Users\Łukasz… ») et n'a pas de limite de longueur.
+ * quel caractère (« C:\Users\Łukasz… »). Sa longueur reste bornée : sans
+ * longPathAware dans le manifeste, le dossier courant d'un programme Windows
+ * ne dépasse pas MAX_PATH (260 caractères, ~258 utiles).
  *
  * Les phonèmes viennent d'espeak_TextToPhonemes, comme chez phonemizer (que
  * misaki utilise) : en IPA, les phonèmes de plusieurs lettres liés par U+0361,

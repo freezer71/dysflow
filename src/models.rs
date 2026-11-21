@@ -703,11 +703,22 @@ pub const CATALOG: &[ModelPackage] = &[
 ];
 
 impl Runtime {
-    /// Le moyen de calcul que ce moteur demande.
+    /// Le moyen de calcul que ce moteur demande. Sans joker : un moteur
+    /// ajouté doit dire le sien.
     pub fn accelerator(self) -> Accelerator {
         match self {
             Runtime::KokoroOnnx => Accelerator::OrtCpu,
-            _ => Accelerator::Mlx,
+            Runtime::KokoroMlx
+            | Runtime::ParakeetMlx
+            | Runtime::PhononMlx
+            | Runtime::WhisperMlx
+            | Runtime::CanaryMlx
+            | Runtime::VoxtralRealtimeMlx
+            | Runtime::NemotronMlx
+            | Runtime::Qwen3AsrMlx
+            | Runtime::CohereMlx
+            | Runtime::Qwen3TtsMlx
+            | Runtime::MagpieMlx => Accelerator::Mlx,
         }
     }
 }
@@ -730,7 +741,8 @@ pub fn available_for(accelerators: &[Accelerator]) -> Vec<&'static ModelPackage>
 }
 
 /// Les paquets installés de la famille, dans l'ordre des accélérateurs : le
-/// repli quand le meilleur ne se charge pas.
+/// repli quand le meilleur ne se charge pas. La liste rend aussi le paquet qui
+/// vient d'échouer, s'il est installé : à exclure par l'appelant (lot 3).
 pub fn fallbacks(
     family: &str,
     accelerators: &[Accelerator],

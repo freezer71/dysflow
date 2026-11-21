@@ -186,8 +186,8 @@ fn the_library_name_follows_the_platform() {
 ### Task 4: Lot W — `dysflow-espeak.exe` et le paquet Windows de `dysflow-cli`
 
 **Files:**
-- Modify: `scripts/build-espeak.sh` (branche Windows : CMake + MSVC, lancé sous le bash de Git for Windows)
-- Modify: `scripts/dysflow-espeak.c` (seulement si un appel POSIX bloque la compilation MSVC)
+- Modify: `scripts/build-espeak.sh` (branche Windows : CMake et MinGW-w64 d'MSYS2 (UCRT64), lancé sous le bash de Git for Windows ; espeak-ng 1.52.0 ne se compile pas avec MSVC)
+- Modify: `scripts/dysflow-espeak.c` (seulement si un appel POSIX bloque la compilation MinGW-w64)
 - Modify: `scripts/package.sh` (cas `windows-x86_64` : ORT par le bloc NuGet de la Task 1b, sortie `.zip`)
 - Modify: `.github/workflows/ci.yml` (étape « Paquet et vérification (Windows) »)
 

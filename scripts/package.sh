@@ -110,7 +110,7 @@ Contenu
 
 Utilisation
   Gardez tous ces fichiers ensemble, dans n'importe quel dossier. Puis :
-    .\dysflow.exe --check-kokoro        vérifie que la voix Kokoro se charge
+    .\dysflow.exe --check-kokoro        vérifie ONNX Runtime et la phonétisation
     .\dysflow.exe fichier.txt           lit le fichier à voix haute
     .\dysflow.exe -o lecture.wav fichier.txt   l'écrit en WAV
   Au premier lancement du lecteur, Dysflow télécharge la voix Kokoro (une fois).
@@ -131,7 +131,7 @@ Contents
 
 Usage
   Keep all these files together, in any folder. Then:
-    .\dysflow.exe --check-kokoro        checks that the Kokoro voice loads
+    .\dysflow.exe --check-kokoro        checks ONNX Runtime and phonemization
     .\dysflow.exe file.txt              reads the file aloud
     .\dysflow.exe -o reading.wav file.txt      writes it as WAV
   On the reader's first launch, Dysflow downloads the Kokoro voice (once).
