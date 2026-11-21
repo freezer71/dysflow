@@ -195,15 +195,16 @@ séparé (comme espeak-ng aujourd'hui) avec son propre ONNX Runtime.
 
 ### 5. Le pont avec l'app Mac pendant la transition
 
-**Une seule copie de MLX.** L'app lie aujourd'hui MLX par mlx-swift (`Cmlx`,
-MLX 0.32.3) ; `mlx-rs` compile sa propre copie (0.32.2), en statique, dans
+**Les copies de MLX dans l'app.** L'app lie aujourd'hui MLX par mlx-swift (`Cmlx` de
+mlx-swift 0.32.3, MLX 0.32.2 mesuré au lot 0) ; `mlx-rs` compile sa propre copie (0.32.2), en statique, dans
 `libdysflow_ffi.a`. Deux copies dans un binaire risquent des symboles en
 double et deux allocateurs Metal. **Lot 0** : le vérifier. Dans l'ordre de
 préférence *(appel de l'assistant)* : (a) `mlx-sys` construit sur les
 sources `Cmlx` de mlx-swift, versions alignées ; (b) si c'est impossible,
 la transition se fait d'un bloc côté app : tous les modèles sont portés et
 validés par les bancs et `dysflow-cli`, puis l'app passe en une fois et
-mlx-swift part.
+mlx-swift part. Résultat du lot 0 : un troisième cas, deux copies côte à côte
+(voir « Décisions »).
 
 L'app Swift continue d'appeler le cœur par UniFFI. Pour chaque modèle porté,
 le cœur cesse de demander le calcul à Swift et le fait lui-même ; le code
@@ -231,7 +232,7 @@ et leurs relevés sont joints au lot.
 
 ## Ordre des lots
 
-0. Une seule copie de MLX dans l'app (voir 5) ; décide si la suite passe
+0. Les copies de MLX dans l'app (voir 5) ; décide si la suite passe
    modèle par modèle ou d'un bloc.
 W. Windows : CI et `dysflow-cli` (voir « Windows »).
 1. Une seule copie d'ONNX Runtime pour `ort` et `sherpa-onnx`, vérifiée sur
@@ -311,27 +312,40 @@ d'erreur de mots.
 
 ## Décisions
 
-**Lot 0 (2026-11-21) : les deux copies de MLX cohabitent ; la transition
-se fait modèle par modèle.**
+**Lot 0 (2026-11-21) : deux copies de MLX côte à côte, cohabitation
+vérifiée pour un test de fumée ; la transition se fait modèle par modèle,
+sous réserve du test de charge du lot 3.**
 
 - **Résultat** : l'édition des liens passe sans `duplicate symbol`, sans
   rien changer à `mlx-sys`. `MLXCoexistenceTests` (MLX Swift, puis
   `mlxRustSmoke()` par UniFFI, puis de nouveau MLX Swift : 6 chaque fois)
   et `KokoroParityTests` (vrai modèle, écart < 0,01) passent dans le même
-  processus. C'est (a) sous sa forme la plus simple : les versions sont
-  déjà alignées (ci-dessous), si bien que construire `mlx-sys` sur les
-  sources `Cmlx` n'est pas nécessaire ; (b) est écarté.
-- **Pourquoi aucun conflit** : les deux copies vivent dans deux images
+  processus. Ce n'est ni (a) ni (b), mais un troisième cas : **deux
+  copies côte à côte**, dans deux images distinctes. (a) donnerait une
+  seule copie (`mlx-sys` construit sur les sources `Cmlx`) ; il n'a pas
+  été tenté, l'édition des liens passant sans lui. (b) n'est pas
+  nécessaire.
+- **Portée de la vérification** : la cohabitation est vérifiée pour un
+  test de fumée, pas au-delà. La copie Rust n'a sommé que trois flottants ;
+  `KokoroParityTests` n'exerce que mlx-swift ; les deux allocateurs Metal
+  n'ont pas été mis sous charge par deux vrais modèles ; seul le build
+  Debug a été testé, et `nm` lu en Debug seulement.
+- **Pourquoi l'édition des liens passe** : les deux copies vivent dans deux images
   distinctes. MLX de mlx-swift est dans `KokoroMLX.framework` (669 symboles
   `_mlx_*` exportés), MLX de `mlx-rs` dans l'exécutable de l'app
   (`Dysflow.debug.dylib` en Debug : 602 symboles `_mlx_*`). L'espace de
   noms à deux niveaux de macOS lie chaque référence à son image. Les
   versions sont déjà les mêmes : `Cmlx` de mlx-swift 0.32.3 et `mlx-sys`
   0.7.0 (`mlx-rs` 0.34.0) embarquent tous deux MLX 0.32.2.
-- **Symboles en conflit** : aucun.
+- **Symboles en conflit** : aucun à l'édition des liens.
 - **Conséquence pour l'ordre des lots** : modèle par modèle (lots 3 à 7).
   mlx-swift reste lié tant qu'un modèle Swift subsiste.
 - **À régler au lot 3, avant qu'un modèle Rust serve dans l'app livrée** :
+  - *Un test de charge.* Deux vrais modèles, un par copie (par exemple
+    Kokoro en `mlx-rs` et un modèle de dictée en mlx-swift), qui calculent
+    dans le même processus, en Release, avec le plafond mémoire de l'app
+    posé : résultats justes des deux côtés, et pic mémoire relevé pour
+    chaque copie. Si ce test échoue, revenir à (a) ou à (b).
   - *Les noyaux Metal de la copie Rust.* `mlx-sys` écrit `mlx.metallib`
     dans `~/.mlx/lib/<clé>/` et inscrit ce chemin absolu dans le binaire.
     La copie Rust, compilée sans `SWIFTPM_BUNDLE`, ne lit pas le
