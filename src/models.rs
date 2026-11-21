@@ -5,6 +5,7 @@
 //! d'un vrai modèle atteignable depuis l'interface, sans ligne de commande et
 //! sans jamais télécharger quoi que ce soit sans accord explicite.
 
+use crate::compute::Accelerator;
 use crate::i18n::Tr;
 use crate::sync::LockExt;
 use anyhow::{anyhow, Context, Result};
@@ -701,29 +702,52 @@ pub const CATALOG: &[ModelPackage] = &[
     },
 ];
 
-/// Catalogue restreint à ce que ce binaire sait charger.
-///
-/// Kokoro MLX : seulement quand l'app fournit le calcul (`mlx`), et alors
-/// jamais le paquet ONNX à côté. Kokoro int8 : seulement avec la feature
-/// `kokoro-onnx`.
-pub fn available_with(mlx: bool) -> Vec<&'static ModelPackage> {
+impl Runtime {
+    /// Le moyen de calcul que ce moteur demande.
+    pub fn accelerator(self) -> Accelerator {
+        match self {
+            Runtime::KokoroOnnx => Accelerator::OrtCpu,
+            _ => Accelerator::Mlx,
+        }
+    }
+}
+
+/// Par famille, seulement les paquets du meilleur accélérateur disponible.
+/// Ordre du catalogue.
+pub fn available_for(accelerators: &[Accelerator]) -> Vec<&'static ModelPackage> {
+    let best = |family: &str| {
+        accelerators
+            .iter()
+            .position(|a| CATALOG.iter().any(|p| p.family == family && p.runtime.accelerator() == *a))
+    };
     CATALOG
         .iter()
-        .filter(|p| match p.runtime {
-            Runtime::KokoroMlx
-            | Runtime::ParakeetMlx
-            | Runtime::PhononMlx
-            | Runtime::WhisperMlx
-            | Runtime::CanaryMlx
-            | Runtime::VoxtralRealtimeMlx
-            | Runtime::NemotronMlx
-            | Runtime::Qwen3AsrMlx
-            | Runtime::CohereMlx
-            | Runtime::Qwen3TtsMlx
-            | Runtime::MagpieMlx => mlx,
-            Runtime::KokoroOnnx => !mlx && cfg!(feature = "kokoro-onnx"),
+        .filter(|p| {
+            let rank = accelerators.iter().position(|a| *a == p.runtime.accelerator());
+            rank.is_some() && rank == best(p.family)
         })
         .collect()
+}
+
+/// Les paquets installés de la famille, dans l'ordre des accélérateurs : le
+/// repli quand le meilleur ne se charge pas.
+pub fn fallbacks(
+    family: &str,
+    accelerators: &[Accelerator],
+    is_installed: impl Fn(&ModelPackage) -> bool,
+) -> Vec<&'static ModelPackage> {
+    accelerators
+        .iter()
+        .flat_map(|a| CATALOG.iter().filter(move |p| p.family == family && p.runtime.accelerator() == *a))
+        .filter(|p| is_installed(p))
+        .collect()
+}
+
+/// Catalogue restreint à ce que ce binaire sait charger : Kokoro MLX quand
+/// l'app fournit le calcul (`mlx`), et alors jamais le paquet ONNX à côté ;
+/// Kokoro int8 seulement avec la feature `kokoro-onnx`.
+pub fn available_with(mlx: bool) -> Vec<&'static ModelPackage> {
+    available_for(&crate::compute::available(mlx))
 }
 
 /// Le catalogue du terminal : sans calcul MLX.
@@ -1561,6 +1585,49 @@ impl crate::config::Config {
 
 #[cfg(test)]
 mod tests {
+    // Relevé sur `main` avant le lot 2 : `available_with(true)`, dans l'ordre.
+    const BEFORE_LOT_2_MAC_IDS: [&str; 15] = [
+        "kokoro_82m_mlx",
+        "parakeet_tdt_v3",
+        "phonon_2",
+        "whisper_tiny_4bit",
+        "whisper_small_4bit",
+        "whisper_large_v3_turbo_4bit",
+        "canary_1b_v2_q8",
+        "voxtral_realtime_4bit",
+        "parakeet_tdt_v2",
+        "nemotron_35_asr_streaming_8bit",
+        "qwen3_asr_06b_8bit",
+        "qwen3_asr_17b_4bit",
+        "cohere_transcribe_8bit",
+        "qwen3_tts_06b_base_8bit",
+        "magpie_tts_357m_8bit",
+    ];
+
+    #[test]
+    fn an_installed_mac_sees_exactly_the_same_catalog() {
+        let ids: Vec<_> = super::available_with(true).iter().map(|p| p.id).collect();
+        assert_eq!(ids, BEFORE_LOT_2_MAC_IDS);
+    }
+
+    #[test]
+    fn each_family_shows_only_its_best_accelerator() {
+        use crate::compute::Accelerator;
+        let ids: Vec<_> = super::available_for(&[Accelerator::Mlx, Accelerator::OrtCpu]).iter().map(|p| p.id).collect();
+        assert!(ids.contains(&"kokoro_82m_mlx") && !ids.contains(&"kokoro_82m_int8"));
+        let ids: Vec<_> = super::available_for(&[Accelerator::OrtCpu]).iter().map(|p| p.id).collect();
+        assert_eq!(ids, vec!["kokoro_82m_int8"]);
+    }
+
+    #[test]
+    fn fallback_lists_only_installed_packages_of_the_family_in_order() {
+        use crate::compute::Accelerator;
+        let order = super::fallbacks("kokoro", &[Accelerator::Mlx, Accelerator::OrtCpu], |p| p.id == "kokoro_82m_int8");
+        assert_eq!(order.iter().map(|p| p.id).collect::<Vec<_>>(), vec!["kokoro_82m_int8"]);
+        let both = super::fallbacks("kokoro", &[Accelerator::Mlx, Accelerator::OrtCpu], |_| true);
+        assert_eq!(both.iter().map(|p| p.id).collect::<Vec<_>>(), vec!["kokoro_82m_mlx", "kokoro_82m_int8"]);
+    }
+
     #[test]
     fn voices_are_unified_on_the_french_one() {
         let mut c = crate::config::Config::default();
