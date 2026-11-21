@@ -383,6 +383,13 @@ nécessaire.**
   `OrtGetApiBase`. Vérifié aussi sur le M5, et sous Linux ARM64 dans un
   conteneur sur le M5. Reste à vérifier sur les PC
   Windows et Linux de l'utilisateur (archive `ort-gate` de la CI).
+- **Modèles sous un chemin non ASCII (Windows)** : la porte repasse avec
+  ses modèles sous `%RUNNER_TEMP%\Élodie Martin\AppData\Local\dysflow\models`
+  puis sous `…\Łukasz Gaweł\…` (hors Windows-1252), par
+  `DYSFLOW_KOKORO_DIR` et `DYSFLOW_SILERO_VAD` : Kokoro (`ort`) et Silero
+  VAD (bibliothèque C de sherpa-onnx, chemin reçu en UTF-8) s'y chargent,
+  mêmes résultats (CI, run 44945761873). Le profil d'un utilisateur non
+  ASCII ne demande rien de plus au lot 4.
 - **La porte voit le problème** : avec le sherpa-onnx statique par défaut,
   elle échoue (sur le M5) : « Kokoro 1.31.0, sherpa-onnx 1.28.2 » et deux
   copies chargées (le binaire, qui embarque la 1.28.2, et la bibliothèque
