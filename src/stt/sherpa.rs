@@ -6,6 +6,7 @@
 //! d'ONNX Runtime dans le processus ; `examples/ort_single_copy.rs` le vérifie
 //! (lot 1 de la spec des moteurs).
 
+use crate::tts::kokoro::onnx;
 use anyhow::{bail, Context, Result};
 use std::path::Path;
 
@@ -26,10 +27,25 @@ pub fn onnxruntime_version() -> Result<String> {
     Ok(version)
 }
 
+/// Refuse deux copies d'ONNX Runtime de versions différentes : celle que
+/// charge Kokoro et celle que sherpa-onnx utilise. Appelée avant le premier
+/// chargement d'un modèle sherpa (`vad_smoke`).
+pub fn check_same_runtime(kokoro: &str, sherpa: &str) -> Result<()> {
+    anyhow::ensure!(
+        kokoro == sherpa,
+        crate::tr!(
+            en = "two ONNX Runtime copies: {kokoro} (voice) and {sherpa} (dictation)",
+            fr = "deux copies d'ONNX Runtime : {kokoro} (voix) et {sherpa} (dictée)"
+        )
+    );
+    Ok(())
+}
+
 /// Le nombre de segments de parole que Silero VAD trouve dans `samples`
 /// (mono, 16 kHz, entre -1 et 1). Réglages de la dictée par défaut : seuil
 /// 0,5, un quart de seconde au moins de parole et de silence.
 pub fn vad_smoke(model: &Path, samples: &[f32]) -> Result<usize> {
+    check_same_runtime(&onnx::version_of(&onnx::library_path())?, &onnxruntime_version()?)?;
     anyhow::ensure!(
         model.is_file(),
         crate::tr!(en = "Silero VAD model missing: {}", fr = "modèle Silero VAD absent : {}", model.display())
@@ -66,4 +82,20 @@ pub fn vad_smoke(model: &Path, samples: &[f32]) -> Result<usize> {
     vad.flush();
     drain(&vad);
     Ok(segments)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_same_runtime_passes() {
+        assert!(check_same_runtime("1.31.0", "1.31.0").is_ok());
+    }
+
+    #[test]
+    fn two_runtimes_are_refused_with_both_versions_named() {
+        let err = check_same_runtime("1.31.0", "1.28.2").unwrap_err().to_string();
+        assert!(err.contains("1.31.0") && err.contains("1.28.2"), "{err}");
+    }
 }

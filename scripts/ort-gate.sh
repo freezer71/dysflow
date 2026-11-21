@@ -3,7 +3,8 @@
 # compile examples/ort_single_copy.rs (et le passe à Clippy) avec la
 # bibliothèque C de sherpa-onnx de scripts/sherpa-onnx.sh, assemble $OUT comme
 # un paquet (le binaire, l'ONNX Runtime livré, la bibliothèque C de
-# sherpa-onnx, models/), puis le lance depuis /.
+# sherpa-onnx, models/), puis le lance depuis /. Les tests unitaires de
+# stt::sherpa (check_same_runtime) passent d'abord, par le même chemin.
 #
 #   ./scripts/ort-gate.sh
 #
@@ -45,6 +46,19 @@ cargo clippy -p dysflow --all-targets --features stt-sherpa --locked \
 cargo build --release --locked --example ort_single_copy --features stt-sherpa \
     --config "$SHERPA_CONFIG_SEARCH" --config "$SHERPA_CONFIG_LIB"
 
+# Les tests unitaires de stt::sherpa : sans modèle, mais le binaire de test est
+# lié à la bibliothèque C de sherpa-onnx. On le compile avec les mêmes --config,
+# puis on le lance à côté d'elle, dans $OUT (plus bas).
+test_exe=$(cargo test --release --locked --lib --features stt-sherpa --no-run --message-format=json \
+    --config "$SHERPA_CONFIG_SEARCH" --config "$SHERPA_CONFIG_LIB" \
+    | "$PYTHON" -c 'import json,sys
+for l in sys.stdin:
+    try: m=json.loads(l)
+    except ValueError: continue
+    if m.get("reason")=="compiler-artifact" and m.get("executable") and m["target"]["kind"]==["lib"] and m["profile"]["test"]:
+        print(m["executable"])' | tail -n 1)
+[ -n "$test_exe" ] || { echo "Erreur : binaire des tests de la bibliothèque introuvable" >&2; exit 1; }
+
 # Les modèles, empreintes épinglées. Silero VAD : publié par k2-fsa avec
 # sherpa-onnx. Kokoro int8 et sa configuration : les fichiers et révisions du
 # catalogue (src/models.rs, kokoro_82m_int8).
@@ -67,6 +81,7 @@ if [ -n "$WINDOWS" ]; then
     vc_crt_deploy "$OUT"
     "$PYTHON" -I scripts/windows-imports.py check "$OUT"
 fi
+cp "$test_exe" "$OUT/dysflow_lib_tests$EXE"
 ls -l "$OUT"
 # Ce que le binaire et sherpa-onnx demandent au chargement.
 case "$ORT_RID" in
@@ -76,11 +91,16 @@ esac
 ( cd "$(dirname "$OUT")" && tar czf "$(basename "$OUT").tar.gz" "$(basename "$OUT")" )
 
 # Le lancement : depuis /, sans variable qui désigne un autre ONNX Runtime ;
-# sous Windows, PATH réduit à Windows.
+# sous Windows, PATH réduit à Windows. D'abord les tests unitaires de
+# stt::sherpa (check_same_runtime), puis la porte.
 gate="$PWD/$OUT/ort_single_copy$EXE"
+unit="$PWD/$OUT/dysflow_lib_tests$EXE"
 if [ -n "$WINDOWS" ]; then
+    ( cd / && env -u DYSFLOW_ORT_LIB -u DYSFLOW_KOKORO_DIR -u DYSFLOW_SILERO_VAD \
+        PATH="/c/Windows/System32:/c/Windows" "$unit" stt::sherpa )
     ( cd / && env -u DYSFLOW_ORT_LIB -u DYSFLOW_KOKORO_DIR -u DYSFLOW_SILERO_VAD \
         PATH="/c/Windows/System32:/c/Windows" "$gate" )
 else
+    ( cd / && env -u DYSFLOW_ORT_LIB -u DYSFLOW_KOKORO_DIR -u DYSFLOW_SILERO_VAD "$unit" stt::sherpa )
     ( cd / && env -u DYSFLOW_ORT_LIB -u DYSFLOW_KOKORO_DIR -u DYSFLOW_SILERO_VAD "$gate" )
 fi
