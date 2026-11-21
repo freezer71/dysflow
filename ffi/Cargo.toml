@@ -7,13 +7,9 @@ description = "Liaison UniFFI du lecteur dysflow pour l'app macOS"
 
 [lib]
 name = "dysflow_ffi"
-# staticlib pour l'app, cdylib pour que uniffi-bindgen lise les métadonnées.
+# staticlib pour l'app, cdylib pour que uniffi-bindgen (ffi/bindgen) lise les
+# métadonnées.
 crate-type = ["staticlib", "cdylib", "lib"]
-
-[[bin]]
-name = "uniffi-bindgen"
-path = "src/bin/uniffi-bindgen.rs"
-required-features = ["bindgen"]
 
 [dependencies]
 # mlx : MLX en Rust (Mac Apple Silicon seulement, sans effet ailleurs).
@@ -24,4 +20,3 @@ anyhow = "1.0"
 
 [features]
 ocr = ["dysflow/ocr"]
-bindgen = ["uniffi/cli"]

@@ -43,14 +43,20 @@ jobs:
           rustup update stable --no-self-update
           rustup default stable
           rustup component add clippy
-      - name: Metal Toolchain (MLX de mlx-rs)
+      - name: Metal Toolchain et cible explicite (MLX de mlx-rs)
         # Sur Mac, `cargo test --workspace` compile MLX par CMake (feature
         # mlx, activée par ffi/) : ses noyaux demandent le compilateur Metal.
+        # La cible explicite sépare toujours les dépendances de build de
+        # celles du code : Tests et Clippy voient alors le même mlx-sys et
+        # partagent un seul build de MLX. Sans elle, cargo partage ces
+        # dépendances avec le code en test mais pas en clippy (qui ne les
+        # compile qu'en métadonnées), et MLX se recompile (~8 min).
         if: runner.os == 'macOS'
         run: |
           if ! xcrun -sdk macosx metal -v >/dev/null 2>&1; then
             xcodebuild -downloadComponent MetalToolchain
           fi
+          echo "CARGO_BUILD_TARGET=aarch64-apple-darwin" >> "$GITHUB_ENV"
       - uses: Swatinem/rust-cache@v2
         with:
           # mlx-sys écrit ses noyaux Metal dans ~/.mlx/lib (chemin inscrit

@@ -38,15 +38,14 @@ mkdir -p "$GEN" "$LIB"
 # L'app vise macOS 14 : rustc et cc lisent cette variable.
 export MACOSX_DEPLOYMENT_TARGET=14.0
 
-# La liaison d'abord : le binaire bindgen recompile le crate sans les options
-# lourdes, et écraserait sinon la bibliothèque finale.
-cargo build --profile app -p dysflow-ffi
-cargo run --profile app -p dysflow-ffi --features bindgen --bin uniffi-bindgen -- \
-    generate --library target/app/libdysflow_ffi.dylib --language swift --out-dir "$GEN"
-mv "$GEN/dysflow_ffiFFI.modulemap" "$GEN/module.modulemap"
-
+# Un seul build du moteur : MLX (mlx-sys, CMake) se compile une fois. La
+# liaison se lit dans la bibliothèque finale ; l'outil (ffi/bindgen) est un
+# paquet à part, qui ne recompile ni le moteur ni MLX.
 cargo build --profile app -p dysflow-ffi ${FEATURES:+--features "$FEATURES"}
 cp target/app/libdysflow_ffi.a "$LIB/"
+cargo run --profile app -p dysflow-uniffi-bindgen -- \
+    generate --library target/app/libdysflow_ffi.dylib --language swift --out-dir "$GEN"
+mv "$GEN/dysflow_ffiFFI.modulemap" "$GEN/module.modulemap"
 
 FLAGS="-ldysflow_ffi -lc++ -framework CoreAudio -framework AudioToolbox -framework AudioUnit -framework CoreFoundation -framework Security -framework Metal -framework Accelerate"
 echo "OTHER_LDFLAGS = $FLAGS" > "$GEN/Link.xcconfig"
