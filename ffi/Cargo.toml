@@ -12,11 +12,15 @@ name = "dysflow_ffi"
 crate-type = ["staticlib", "cdylib", "lib"]
 
 [dependencies]
-# mlx : MLX en Rust (Mac Apple Silicon seulement, sans effet ailleurs).
-dysflow = { path = "..", default-features = false, features = ["clipboard", "mlx"] }
+dysflow = { path = "..", default-features = false, features = ["clipboard"] }
 uniffi = "0.32"
 thiserror = "2"
 anyhow = "1.0"
 
 [features]
 ocr = ["dysflow/ocr"]
+# MLX en Rust (mlx-rs ; Mac Apple Silicon seulement, sans effet ailleurs) et
+# `mlx_rust_smoke`. Hors de l'app livrée jusqu'au lot 3 : seul le build de
+# test de la CI l'active (FEATURES=ocr,mlx ./scripts/build-ffi.sh), pour le
+# test de cohabitation des deux copies de MLX (décision « Lot 0 »).
+mlx = ["dysflow/mlx"]

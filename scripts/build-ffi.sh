@@ -3,6 +3,10 @@
 #
 #   ./scripts/build-ffi.sh                       # ocr
 #   FEATURES= ./scripts/build-ffi.sh             # voix du système seule
+#   FEATURES=ocr,mlx ./scripts/build-ffi.sh      # build de test de la CI
+#
+# mlx (MLX en Rust, mlx_rust_smoke) n'entre pas dans l'app livrée avant le
+# lot 3 : seul le build de test de la CI l'active, pour MLXCoexistenceTests.
 #
 # Produit macos/Generated (Swift, en-tête, module, Link.xcconfig) et
 # macos/Libraries (libdysflow_ffi.a).
@@ -48,5 +52,14 @@ cargo run --profile app -p dysflow-uniffi-bindgen -- \
 mv "$GEN/dysflow_ffiFFI.modulemap" "$GEN/module.modulemap"
 
 FLAGS="-ldysflow_ffi -lc++ -framework CoreAudio -framework AudioToolbox -framework AudioUnit -framework CoreFoundation -framework Security -framework Metal -framework Accelerate"
-echo "OTHER_LDFLAGS = $FLAGS" > "$GEN/Link.xcconfig"
+# DYSFLOW_FFI_CONDITIONS : les conditions Swift des tests qui suivent les
+# features du moteur (DYSFLOW_MLX_RUST : mlxRustSmoke existe).
+CONDITIONS=
+case ",$FEATURES," in
+*,mlx,*) CONDITIONS=DYSFLOW_MLX_RUST ;;
+esac
+{
+    echo "OTHER_LDFLAGS = $FLAGS"
+    echo "DYSFLOW_FFI_CONDITIONS = $CONDITIONS"
+} > "$GEN/Link.xcconfig"
 echo "Liaison prête dans $GEN et $LIB"

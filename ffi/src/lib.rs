@@ -1004,9 +1004,11 @@ pub fn set_interface_language(tag: String) {
 
 /// Un calcul MLX fait par le moteur Rust (`mlx-rs`), dans le processus de
 /// l'app qui lie aussi mlx-swift : rend 6. Vérifie que les deux copies de MLX
-/// cohabitent (lot 0 des moteurs). `dysflow/mlx` est toujours actif ici
-/// (ffi/Cargo.toml) : seule la cible décide, comme pour `compute::mlx_smoke`.
-#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+/// cohabitent (lot 0 des moteurs). Seulement avec la feature `mlx` de ffi/,
+/// que seul le build de test de la CI active : l'app livrée n'a ni MLX en Rust
+/// ni cette fonction avant le lot 3. Sans effet hors Mac Apple Silicon, comme
+/// `compute::mlx_smoke`.
+#[cfg(all(feature = "mlx", target_os = "macos", target_arch = "aarch64"))]
 #[uniffi::export]
 pub fn mlx_rust_smoke() -> Result<f32, DysflowError> {
     dysflow::compute::mlx_smoke::smoke().map_err(failed)

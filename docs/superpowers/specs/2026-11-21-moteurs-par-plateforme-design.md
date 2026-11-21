@@ -340,6 +340,18 @@ sous réserve du test de charge du lot 3.**
 - **Symboles en conflit** : aucun à l'édition des liens.
 - **Conséquence pour l'ordre des lots** : modèle par modèle (lots 3 à 7).
   mlx-swift reste lié tant qu'un modèle Swift subsiste.
+- **La copie Rust n'est liée que dans le build de test jusqu'au lot 3**
+  (revue finale des fondations) : `mlx` est une feature de `ffi/`,
+  désactivée par défaut, que seul le build de test de la CI active
+  (`FEATURES=ocr,mlx ./scripts/build-ffi.sh`, puis `MLXCoexistenceTests`) ;
+  `mlx_rust_smoke` n'existe qu'avec elle. `build-macos.sh` (donc
+  `release-macos.sh`) la refuse et vérifie qu'aucun symbole `_mlx_` n'est
+  dans `libdysflow_ffi.a` : un Mac installé ne reçoit rien de MLX en Rust.
+  Avant de la livrer, le lot 3 devra traiter : les sources que `mlx-sys`
+  télécharge au build sans empreinte (MLX, fmt, nlohmann/json,
+  metal-cpp) ; l'avis de licence de gguflib (MIT), absent de l'app ; la
+  taille de l'app Release mesurée avec et sans (`nm … | grep -c ' _mlx_'`,
+  `libdysflow_ffi.a` 165 Mo avec, 122 Mo sans).
 - **À régler au lot 3, avant qu'un modèle Rust serve dans l'app livrée** :
   - *Un test de charge.* Deux vrais modèles, un par copie (par exemple
     Kokoro en `mlx-rs` et un modèle de dictée en mlx-swift), qui calculent

@@ -32,7 +32,30 @@ fi
 if [ ! -x target/espeak/bin/dysflow-espeak ] || [ scripts/dysflow-espeak.c -nt target/espeak/bin/dysflow-espeak ]; then
     ./scripts/build-espeak.sh
 fi
+# La copie Rust de MLX (feature mlx du moteur) n'entre pas dans l'app livrée
+# avant le lot 3 (spec des moteurs, décision « Lot 0 ») : seul le build de
+# test de la CI l'active.
+case ",${FEATURES:-}," in
+*,mlx,*)
+    echo "Erreur : la feature mlx (MLX en Rust) est réservée au build de test, pas à l'app livrée" >&2
+    exit 1
+    ;;
+esac
 ./scripts/build-ffi.sh
+# Et rien de MLX dans le moteur lié : aucun symbole de mlx-c (`_mlx_…`, objets
+# natifs de CMake). Le nm d'Apple sort en erreur sur les objets Rust en
+# bitcode d'un LLVM plus récent : son code de sortie ne dit rien, mais une
+# sortie vide refuse la construction.
+symbols=$(nm macos/Libraries/libdysflow_ffi.a 2>/dev/null || true)
+if [ -z "$symbols" ]; then
+    echo "Erreur : nm ne lit aucun symbole dans macos/Libraries/libdysflow_ffi.a" >&2
+    exit 1
+fi
+mlx_symbols=$(grep -c ' _mlx_' <<<"$symbols" || true)
+if [ "$mlx_symbols" != 0 ]; then
+    echo "Erreur : $mlx_symbols symboles _mlx_ dans libdysflow_ffi.a (MLX en Rust dans l'app livrée)" >&2
+    exit 1
+fi
 # Les licences des crates Rust liées : THIRD-PARTY-RUST.txt doit suivre
 # Cargo.lock (python3 scripts/third-party-rust.py pour le régénérer). Le
 # script refuse une licence GPL, AGPL ou inconnue dans le graphe lié.

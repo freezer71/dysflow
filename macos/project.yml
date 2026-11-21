@@ -220,6 +220,9 @@ targets:
     settings:
       base:
         SWIFT_INCLUDE_PATHS: $(SRCROOT)/Generated
+        # DYSFLOW_MLX_RUST si le moteur a la feature mlx (Link.xcconfig,
+        # écrit par scripts/build-ffi.sh) : MLXCoexistenceTests.
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) $(DYSFLOW_FFI_CONDITIONS)
         TEST_HOST: $(BUILT_PRODUCTS_DIR)/Dysflow.app/Contents/MacOS/Dysflow
         BUNDLE_LOADER: $(TEST_HOST)
         GENERATE_INFOPLIST_FILE: YES
