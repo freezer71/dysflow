@@ -32,3 +32,29 @@ public enum MLXStreams {
         return mlx_get_streams(&all) == 0 && mlx_vector_stream_size(all) > 0
     }
 }
+
+#if DEBUG
+/// Pour le test du verrou. Appelé de son bundle, le C de MLX se lierait au MLX
+/// de Rust, que l'app exporte (`FEATURES=ocr,mlx`) : le test doit passer par
+/// ce framework pour éprouver la copie de mlx-swift.
+extension MLXStreams {
+    /// `a @ b * scale` sur le flux par défaut de ce fil : celui que prennent les
+    /// opérateurs C++ de MLX sans flux, hors de `Stream.gpu`.
+    public static func scaledProductOnTheThreadsStream(_ a: MLXArray, _ b: MLXArray, scale: MLXArray) -> MLXArray {
+        let stream = mlx_default_gpu_stream_new()
+        defer { _ = mlx_stream_free(stream) }
+        var product = mlx_array_new(), scaled = mlx_array_new()
+        _ = mlx_matmul(&product, a.ctx, b.ctx, stream)
+        _ = mlx_multiply(&scaled, product, scale.ctx, stream)
+        _ = mlx_array_free(product)
+        return MLXArray(scaled)
+    }
+
+    /// Vrai si le calcul de `array` est fini, sans l'attendre.
+    public static func isFinished(_ array: MLXArray) -> Bool {
+        var available = false
+        _ = _mlx_array_is_available(&available, array.ctx)
+        return available
+    }
+}
+#endif

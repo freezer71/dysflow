@@ -1,4 +1,4 @@
-import Cmlx
+import KokoroMLX
 import MLX
 import os
 import XCTest
@@ -130,19 +130,13 @@ private func longWork(_ ones: MLXArray, stream: StreamOrDevice = .default) -> ML
     return product
 }
 
-/// Le même calcul sur le flux par défaut du fil : celui que prennent les
-/// opérateurs C++ de MLX sans flux, hors de `Stream.gpu`.
+/// Le même calcul sur le flux par défaut du fil, hors de `Stream.gpu`. Aucun
+/// appel au C de MLX dans ce bundle : voir `MLXStreams`.
 private func longWorkOnTheThreadsStream(_ ones: MLXArray) -> MLXArray {
-    let stream = mlx_default_gpu_stream_new()
-    defer { _ = mlx_stream_free(stream) }
     let shrink = MLXArray(1 / Float(ones.dim(0)))
     var product = ones
     for _ in 0..<8 {
-        var next = mlx_array_new(), scaled = mlx_array_new()
-        _ = mlx_matmul(&next, product.ctx, ones.ctx, stream)
-        _ = mlx_multiply(&scaled, next, shrink.ctx, stream)
-        _ = mlx_array_free(next)
-        product = MLXArray(scaled)
+        product = MLXStreams.scaledProductOnTheThreadsStream(product, ones, scale: shrink)
     }
     return product
 }
@@ -155,9 +149,7 @@ private func finishedWhenTheGateIsFree(throwing: Bool = false, _ graph: () -> ML
     Thread.detachNewThread {
         waiting.wait()
         MLXGate.shared.run {
-            var available = false
-            _ = _mlx_array_is_available(&available, launched.array.ctx)
-            launched.finished = available
+            launched.finished = MLXStreams.isFinished(launched.array)
         }
         looked.signal()
     }
