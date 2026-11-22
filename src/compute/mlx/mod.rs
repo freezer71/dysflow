@@ -21,9 +21,40 @@ pub fn smoke() -> anyhow::Result<f32> {
     })
 }
 
+/// La mémoire de la copie Rust de MLX, en octets : en usage, au plus haut
+/// depuis le dernier `reset_peak`, et en cache.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Memory {
+    pub active: usize,
+    pub peak: usize,
+    pub cache: usize,
+}
+
+/// Lue sur le fil MLX, entre deux travaux (les mesures, `voice_bench`).
+pub fn memory() -> anyhow::Result<Memory> {
+    worker::run(|| {
+        Ok(Memory {
+            active: mlx_rs::memory::active_memory()?,
+            peak: mlx_rs::memory::peak_memory()?,
+            cache: mlx_rs::memory::cache_memory()?,
+        })
+    })
+}
+
+/// Repart de la mémoire en usage pour le pic suivant.
+pub fn reset_peak() -> anyhow::Result<()> {
+    worker::run(|| Ok(mlx_rs::memory::reset_peak_memory()?))
+}
+
 #[cfg(test)]
 mod tests {
     use std::process::Command;
+
+    #[test]
+    fn the_memory_report_is_read_on_the_worker() {
+        let memory = super::memory().expect("MLX");
+        assert!(memory.peak >= memory.active, "{memory:?}");
+    }
 
     #[test]
     fn mlx_sums_on_the_gpu() {

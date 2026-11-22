@@ -62,6 +62,11 @@ pub fn remove(key: &str) {
     apply();
 }
 
+/// Le besoin inscrit pour `key`, s'il y en a un.
+pub fn of(key: &str) -> Option<Need> {
+    BUDGET.needs.locked().get(key).copied()
+}
+
 /// La somme des besoins inscrits.
 pub fn total() -> Need {
     BUDGET.total()
