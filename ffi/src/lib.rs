@@ -1007,11 +1007,27 @@ pub fn set_interface_language(tag: String) {
 /// cohabitent (lot 0 des moteurs). Seulement avec la feature `mlx` de ffi/,
 /// que seul le build de test de la CI active : l'app livrée n'a ni MLX en Rust
 /// ni cette fonction avant le lot 3. Sans effet hors Mac Apple Silicon, comme
-/// `compute::mlx_smoke`.
+/// `compute::mlx`. Passe par le fil MLX : une erreur, sans attendre, si ce fil
+/// tient le verrou du GPU (`gpu_lock`).
 #[cfg(all(feature = "mlx", target_os = "macos", target_arch = "aarch64"))]
 #[uniffi::export]
 pub fn mlx_rust_smoke() -> Result<f32, DysflowError> {
-    dysflow::compute::mlx_smoke::smoke().map_err(failed)
+    dysflow::compute::mlx::smoke().map_err(failed)
+}
+
+/// Prend le verrou du GPU, commun aux deux copies de MLX (`MLXGate.shared`),
+/// en attendant s'il le faut. Synchrone : le fil qui l'appelle est celui qui
+/// le rendra. En le tenant, ne jamais appeler un calcul Rust. Hors de la
+/// feature `mlx` : l'app l'appelle toujours.
+#[uniffi::export]
+pub fn gpu_lock() {
+    dysflow::compute::gpu::lock();
+}
+
+/// Rend le verrou du GPU, sur le fil qui l'a pris ; sans effet sinon.
+#[uniffi::export]
+pub fn gpu_unlock() {
+    dysflow::compute::gpu::unlock();
 }
 
 /// La phrase d'exemple des aperçus, dans `language` (`fr` par défaut) : le
@@ -1612,5 +1628,31 @@ mod tests {
         assert_eq!(at(0.6), 2);
         assert_eq!(at(1.0), 3, "le bout de la barre : la dernière phrase");
         assert_eq!(at(0.0), 0);
+    }
+
+    #[test]
+    fn the_exported_lock_is_the_one_of_the_core() {
+        gpu_lock();
+        let held = dysflow::compute::gpu::held_by_this_thread();
+        gpu_unlock();
+        assert!(held && !dysflow::compute::gpu::held_by_this_thread());
+    }
+
+    /// Ce que fait `MLXGate.shared` : pendant qu'un fil tient le verrou, un
+    /// calcul Rust ne commence pas, et le sien est refusé. Les noyaux viennent
+    /// de `DYSFLOW_MLX_METALLIB` (scripts/mlx-sources.sh).
+    #[cfg(all(feature = "mlx", target_os = "macos", target_arch = "aarch64"))]
+    #[test]
+    fn the_exported_lock_excludes_the_rust_compute() {
+        assert_eq!(mlx_rust_smoke().expect("MLX"), 6.0);
+        let (done, is_done) = std::sync::mpsc::channel();
+        gpu_lock();
+        let refused = mlx_rust_smoke().is_err();
+        std::thread::spawn(move || done.send(mlx_rust_smoke()));
+        let waited = is_done.recv_timeout(Duration::from_millis(300)).is_err();
+        gpu_unlock();
+        assert!(refused, "un calcul sous le verrou attendrait sans fin");
+        assert!(waited, "le calcul Rust a commencé pendant que le verrou est tenu");
+        assert_eq!(is_done.recv_timeout(Duration::from_secs(20)).expect("verrou jamais rendu").expect("MLX"), 6.0);
     }
 }

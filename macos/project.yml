@@ -171,6 +171,27 @@ targets:
           else
             echo "warning: dysflow-espeak absent (./scripts/build-espeak.sh) : Kokoro se repliera"
           fi
+      - name: Joindre les noyaux Metal de la copie Rust de MLX (build de test)
+        basedOnDependencyAnalysis: false
+        script: |
+          # compute::mlx les cherche à côté de l'exécutable. Seul le build de
+          # test lie MLX en Rust (DYSFLOW_MLX_RUST, Link.xcconfig) ; sans lui,
+          # un fichier laissé par ce build est retiré.
+          DEST="$TARGET_BUILD_DIR/$EXECUTABLE_FOLDER_PATH/mlx.metallib"
+          case " $DYSFLOW_FFI_CONDITIONS " in
+          *" DYSFLOW_MLX_RUST "*)
+            # Ceux du MLX lié : bâti pour la cible de macOS de l'app.
+            SOURCE="$SRCROOT/../target/mlx-metallib/macos-$MACOSX_DEPLOYMENT_TARGET/mlx.metallib"
+            if [ ! -s "$SOURCE" ]; then
+              echo "error: noyaux Metal absents ($SOURCE) : lancer FEATURES=ocr,mlx ./scripts/build-ffi.sh"
+              exit 1
+            fi
+            cp "$SOURCE" "$DEST"
+            # Dans Contents/MacOS, codesign exige que chaque fichier soit signé.
+            codesign --force --sign - "$DEST"
+            ;;
+          *) rm -f "$DEST" ;;
+          esac
       - name: Joindre NOTICE et les licences des bibliothèques
         basedOnDependencyAnalysis: false
         script: |

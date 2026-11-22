@@ -1,7 +1,8 @@
 //! Le calcul des modèles, au plus près du matériel de chaque système.
 
+pub mod gpu;
 #[cfg(all(feature = "mlx", target_os = "macos", target_arch = "aarch64"))]
-pub mod mlx_smoke;
+pub mod mlx;
 
 /// Un moyen de calculer un modèle sur cette machine.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

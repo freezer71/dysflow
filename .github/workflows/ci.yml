@@ -77,8 +77,9 @@ jobs:
           . scripts/mlx-sources.sh
           echo "CMAKE_TOOLCHAIN_FILE_aarch64_apple_darwin=$CMAKE_TOOLCHAIN_FILE_aarch64_apple_darwin" >> "$GITHUB_ENV"
           echo "MLX_RS_METAL_PATH=$MLX_RS_METAL_PATH" >> "$GITHUB_ENV"
+          echo "DYSFLOW_MLX_METALLIB=$DYSFLOW_MLX_METALLIB" >> "$GITHUB_ENV"
       - name: Tests
-        # Sur Mac, avec MLX en Rust (compute::mlx_smoke) ; sans effet ailleurs.
+        # Sur Mac, avec MLX en Rust (compute::mlx) ; sans effet ailleurs.
         run: cargo test --workspace --locked ${{ runner.os == 'macOS' && '--features dysflow-ffi/mlx' || '' }}
       - name: Clippy
         run: cargo clippy --workspace --all-targets --locked ${{ runner.os == 'macOS' && '--features dysflow-ffi/mlx' || '' }} -- -D warnings

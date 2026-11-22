@@ -46,7 +46,8 @@ mkdir -p "$GEN" "$LIB"
 export MACOSX_DEPLOYMENT_TARGET=14.0
 
 # Les sources épinglées de MLX et l'emplacement de mlx.metallib (target/
-# mlx-metallib) : avant cargo, qui compile mlx-sys.
+# mlx-metallib/macos-14.0 : ceux de la cible ci-dessus) : avant cargo, qui
+# compile mlx-sys.
 case ",$FEATURES," in
 *,mlx,*)
     # shellcheck source=scripts/mlx-sources.sh

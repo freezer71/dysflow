@@ -16,6 +16,12 @@
 #   CMAKE_TOOLCHAIN_FILE_aarch64_apple_darwin : le fichier CMake ci-dessus ;
 #   MLX_RS_METAL_PATH : target/mlx-metallib, où mlx-sys écrit mlx.metallib
 #     (les noyaux Metal), pour que le cache de la CI le garde avec target/ ;
+#     avec MACOSX_DEPLOYMENT_TARGET (build-ffi.sh : 14.0), son sous-dossier
+#     macos-<version>. Le jeu de noyaux suit cette version (NAX dès 26.2) et
+#     ne va qu'avec le MLX bâti pour elle : dans un seul dossier, le dernier
+#     build effaçait l'autre, et `matmul` ne trouvait plus ses noyaux ;
+#   DYSFLOW_MLX_METALLIB : ce fichier, que compute::mlx lit à l'exécution
+#     (tests de ffi/, exemples : rien n'est à côté de leur exécutable) ;
 #   et prépare target/mlx-sources/licences (préfixe mlx-rs-), que l'app joint.
 #
 # Sans effet hors d'un Mac Apple Silicon (MLX n'y est pas compilé). Sûr à lire
@@ -154,7 +160,8 @@ Darwin-arm64)
     mlx_fetch_archive metal_cpp "$METAL_CPP_URL" "$METAL_CPP_SHA256" zip
     mlx_licences
     export CMAKE_TOOLCHAIN_FILE_aarch64_apple_darwin="$PWD/scripts/mlx-sources.cmake"
-    export MLX_RS_METAL_PATH="$PWD/target/mlx-metallib"
+    export MLX_RS_METAL_PATH="$PWD/target/mlx-metallib${MACOSX_DEPLOYMENT_TARGET:+/macos-$MACOSX_DEPLOYMENT_TARGET}"
+    export DYSFLOW_MLX_METALLIB="$MLX_RS_METAL_PATH/mlx.metallib"
     mkdir -p "$MLX_RS_METAL_PATH"
     mlx_metallib_garde
     ;;
