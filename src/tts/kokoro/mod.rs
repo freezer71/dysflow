@@ -1,5 +1,6 @@
 //! Kokoro-82M : phonétisation, voix, minutage des mots et moteur. Le calcul
-//! passe par `KokoroBackend` (MLX dans l'app, ONNX Runtime au terminal).
+//! passe par `KokoroBackend` (MLX dans l'app, ONNX Runtime au terminal ;
+//! `mlx` : le même calcul MLX, en Rust).
 
 pub mod align;
 pub mod backend;
@@ -7,6 +8,8 @@ pub mod phonemes;
 pub mod voices;
 #[cfg(feature = "kokoro-onnx")]
 pub mod onnx;
+#[cfg(all(feature = "mlx", target_os = "macos", target_arch = "aarch64"))]
+pub mod mlx;
 
 pub use backend::{check, KokoroBackend, KokoroRaw, SharedCompute};
 
