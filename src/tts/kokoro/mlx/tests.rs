@@ -267,6 +267,60 @@ fn the_warm_up_is_skipped_once_a_synthesis_compiled_the_kernels() {
     other.release();
 }
 
+/// Une préparation demandée pendant une synthèse, rangée derrière elle dans
+/// la file du fil MLX : elle voit le passage complet qui l'a précédée et ne
+/// refait rien. Déterministe : la synthèse est tenue dans son travail (son
+/// test d'abandon attend) jusqu'à ce que la préparation soit dans la file.
+#[test]
+#[ignore = "poids Kokoro"]
+fn a_warm_up_queued_behind_a_synthesis_does_nothing() {
+    const ALONE: &str = "DYSFLOW_TEST_ALONE";
+    if std::env::var_os(ALONE).is_none() {
+        let name = "tts::kokoro::mlx::tests::a_warm_up_queued_behind_a_synthesis_does_nothing";
+        let out = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([name, "--exact", "--ignored"])
+            .env(ALONE, "1")
+            .output()
+            .unwrap();
+        let (stdout, stderr) = (String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
+        assert!(out.status.success() && stdout.contains("1 passed"), "{stdout}{stderr}");
+        return;
+    }
+    let backend = Arc::new(loaded());
+    let (entered, has_entered) = std::sync::mpsc::channel::<()>();
+    let (go, may_go) = std::sync::mpsc::channel::<()>();
+    let hook = Mutex::new(Some((entered, may_go)));
+    // Première consultation (avant le passage, sous le verrou) : tenir.
+    let cancel = Cancel::when(move || {
+        if let Some((entered, may_go)) = hook.lock().unwrap().take() {
+            entered.send(()).unwrap();
+            may_go.recv().unwrap();
+        }
+        false
+    });
+    let reading = {
+        let backend = Arc::clone(&backend);
+        std::thread::spawn(move || backend.infer(&[0, 43, 0], &zero_style(), &cancel).map(|raw| raw.durations.len()))
+    };
+    has_entered.recv().unwrap();
+    assert!(!KERNELS_COMPILED.load(Ordering::SeqCst), "processus neuf");
+    let warming = {
+        let backend = Arc::clone(&backend);
+        std::thread::spawn(move || backend.warm_up())
+    };
+    // La préparation est dans la file, derrière la synthèse tenue.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    while crate::compute::mlx::queued() == 0 {
+        assert!(std::time::Instant::now() < deadline, "la préparation n'est jamais arrivée dans la file");
+        std::thread::yield_now();
+    }
+    go.send(()).unwrap();
+    assert_eq!(reading.join().unwrap().unwrap(), 3);
+    warming.join().unwrap().unwrap();
+    assert_eq!(backend.passes(), 1, "la préparation n'a pas refait de passage");
+    backend.release();
+}
+
 /// Un passage abandonné en route ne lève pas le drapeau : dans un processus
 /// neuf, la préparation qui suit calcule.
 #[test]

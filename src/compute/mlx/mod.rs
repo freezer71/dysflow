@@ -7,6 +7,8 @@ pub mod metallib;
 mod worker;
 
 pub use worker::Held;
+#[cfg(test)]
+pub(crate) use worker::queued;
 
 /// Un calcul MLX minimal : la somme de `[1, 2, 3]` sur le GPU, 6. Prouve que
 /// MLX, compilé par `mlx-rs`, tourne dans le processus (le terminal, ou l'app

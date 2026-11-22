@@ -254,7 +254,20 @@ fn post(job: Job) {
     });
     // Le fil ne s'arrête jamais ; s'il le faisait, `call` verrait sa réponse
     // perdue, et une libération n'a personne à prévenir.
+    #[cfg(test)]
+    QUEUED.fetch_add(1, Ordering::SeqCst);
     let _ = jobs.send(job);
+}
+
+/// Les essais : travaux déposés que le fil MLX n'a pas encore pris.
+#[cfg(test)]
+static QUEUED: AtomicU64 = AtomicU64::new(0);
+
+/// Les travaux en attente derrière celui qui tourne : un essai sait ainsi,
+/// sans attendre au hasard, qu'un appel est rangé dans la file.
+#[cfg(test)]
+pub(crate) fn queued() -> u64 {
+    QUEUED.load(Ordering::SeqCst)
 }
 
 fn serve(jobs: Receiver<Job>) {
@@ -266,6 +279,8 @@ fn serve(jobs: Receiver<Job>) {
     ON_WORKER.set(true);
     let mut slots = Slots::new();
     for job in jobs {
+        #[cfg(test)]
+        QUEUED.fetch_sub(1, Ordering::SeqCst);
         // Entre deux travaux, la copie Swift qui attendait passe.
         gpu::let_waiters_pass();
         // Le seul endroit où le verrou est rendu : après la fin des flux,

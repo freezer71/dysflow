@@ -87,17 +87,29 @@ impl MlxBackend {
     }
 
     /// Un passage sous le verrou du GPU : l'abandon d'abord, puis le calcul ;
-    /// complet, il marque les noyaux compilés.
-    fn run(&self, held: &Held<Kokoro>, ids: &[i64], style: &[f32], cancel: &Cancel) -> Result<KokoroRaw> {
+    /// complet, il marque les noyaux compilés. `warm_up` : rien à faire (et
+    /// `None`) si un passage complet a eu lieu, lu sous ce même verrou,
+    /// donc après tout passage rangé avant dans la file.
+    fn run(
+        &self,
+        held: &Held<Kokoro>,
+        ids: &[i64],
+        style: &[f32],
+        cancel: &Cancel,
+        warm_up: bool,
+    ) -> Result<Option<KokoroRaw>> {
         let (ids, style, cancel) = (ids.to_vec(), style.to_vec(), cancel.clone());
         let passes = Arc::clone(&self.passes);
-        let raw = held.with(move |kokoro| {
+        held.with(move |kokoro| {
             cancel.check()?;
+            if warm_up && KERNELS_COMPILED.load(Ordering::SeqCst) {
+                return Ok(None);
+            }
             passes.fetch_add(1, Ordering::SeqCst);
-            kokoro.forward(&ids, &style, &cancel)
-        })?;
-        KERNELS_COMPILED.store(true, Ordering::SeqCst);
-        Ok(raw)
+            let raw = kokoro.forward(&ids, &style, &cancel)?;
+            KERNELS_COMPILED.store(true, Ordering::SeqCst);
+            Ok(Some(raw))
+        })
     }
 }
 
@@ -134,10 +146,12 @@ impl KokoroBackend for MlxBackend {
     /// faire si un passage complet a déjà eu lieu dans ce processus.
     fn warm_up(&self) -> Result<()> {
         let held = self.held().ok_or_else(not_loaded)?;
+        // Sans attendre le verrou quand c'est déjà fait ; sinon, relu sous
+        // lui (une synthèse peut finir avant le tour de la préparation).
         if KERNELS_COMPILED.load(Ordering::SeqCst) {
             return Ok(());
         }
-        self.run(&held, &warm_up_ids(), &[0.0; 256], &Cancel::never()).map(drop)
+        self.run(&held, &warm_up_ids(), &[0.0; 256], &Cancel::never(), true).map(drop)
     }
 
     fn infer(&self, ids: &[i64], style: &[f32], cancel: &Cancel) -> Result<KokoroRaw> {
@@ -147,7 +161,8 @@ impl KokoroBackend for MlxBackend {
             cancel.check()?;
             return Err(not_loaded());
         };
-        self.run(&held, ids, style, cancel)
+        self.run(&held, ids, style, cancel, false)?
+            .ok_or_else(|| anyhow!("Kokoro : passage sauté hors de la préparation"))
     }
 
     fn release(&self) {
