@@ -21,16 +21,27 @@ const MINIMUM: (u32, u32) = (1, 31);
 /// Intervalle de la garde d'abandon pendant un passage.
 const CANCEL_POLL: std::time::Duration = std::time::Duration::from_millis(25);
 
+#[cfg(windows)]
+const LIBRARY: &str = "onnxruntime.dll";
 #[cfg(target_os = "macos")]
 const LIBRARY: &str = "libonnxruntime.dylib";
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(windows, target_os = "macos")))]
 const LIBRARY: &str = "libonnxruntime.so";
 
 /// La bibliothèque ORT : `DYSFLOW_ORT_LIB`, à côté du binaire (liens
 /// symboliques résolus), dans un `lib/` voisin, sinon le nom nu (chemins de
-/// recherche du système).
+/// recherche du système). Sous Windows, jamais un nom nu : la recherche de
+/// DLL prendrait `System32\onnxruntime.dll`, un autre ORT que le nôtre ; on
+/// rend alors le chemin à côté du binaire, même absent, et le message
+/// « introuvable » le nomme.
 pub fn library_path() -> PathBuf {
-    if let Some(path) = std::env::var_os("DYSFLOW_ORT_LIB") {
+    library_path_from(std::env::var_os("DYSFLOW_ORT_LIB"))
+}
+
+/// `library_path` avec la valeur de `DYSFLOW_ORT_LIB` en argument : les essais
+/// n'ont pas à modifier l'environnement du processus (partagé entre fils).
+fn library_path_from(explicit: Option<std::ffi::OsString>) -> PathBuf {
+    if let Some(path) = explicit {
         return explicit_library(path);
     }
     if let Some(dir) = super::phonemes::exe_dir() {
@@ -39,6 +50,10 @@ pub fn library_path() -> PathBuf {
                 return candidate;
             }
         }
+    }
+    #[cfg(windows)]
+    if let Some(dir) = super::phonemes::exe_dir() {
+        return dir.join(LIBRARY);
     }
     PathBuf::from(LIBRARY)
 }
@@ -253,16 +268,41 @@ mod tests {
         assert!(check_version("n'importe quoi").is_err());
     }
 
+    #[cfg(windows)]
+    #[test]
+    fn on_windows_the_library_is_never_a_bare_name() {
+        // Un nom nu laisserait Windows prendre System32\onnxruntime.dll.
+        let path = library_path_from(None);
+        assert!(path.is_absolute(), "{}", path.display());
+        assert!(path.ends_with(LIBRARY), "{}", path.display());
+    }
+
+    #[test]
+    fn the_library_name_follows_the_platform() {
+        let expected = if cfg!(windows) {
+            "onnxruntime.dll"
+        } else if cfg!(target_os = "macos") {
+            "libonnxruntime.dylib"
+        } else {
+            "libonnxruntime.so"
+        };
+        assert_eq!(LIBRARY, expected);
+    }
+
     #[test]
     fn a_relative_library_path_is_made_absolute() {
         // `version_of` et `ort` (qui résout un chemin relatif depuis le
         // binaire) doivent charger le même fichier.
-        let relative = explicit_library("lib/libonnxruntime.so".into());
+        let relative = explicit_library(Path::new("lib").join(LIBRARY).into_os_string());
         assert!(relative.is_absolute(), "{}", relative.display());
-        assert!(relative.ends_with("lib/libonnxruntime.so"));
-        assert_eq!(explicit_library("/opt/ort/libonnxruntime.so".into()), PathBuf::from("/opt/ort/libonnxruntime.so"));
+        assert!(relative.ends_with(Path::new("lib").join(LIBRARY)));
+        // Un chemin déjà absolu reste tel quel (sous Windows, « /opt/… » n'en
+        // est pas un : on en construit un depuis le dossier temporaire).
+        let absolute = std::env::temp_dir().join("ort").join(LIBRARY);
+        assert!(absolute.is_absolute());
+        assert_eq!(explicit_library(absolute.clone().into_os_string()), absolute);
         // Un nom nu reste nu : les chemins de recherche du système.
-        assert_eq!(explicit_library("libonnxruntime.so".into()), PathBuf::from("libonnxruntime.so"));
+        assert_eq!(explicit_library(LIBRARY.into()), PathBuf::from(LIBRARY));
     }
 
     #[test]
@@ -274,7 +314,7 @@ mod tests {
 
     #[test]
     fn an_absent_library_is_named_in_the_error() {
-        let err = version_of(Path::new("/nulle/part/libonnxruntime.so")).unwrap_err().to_string();
+        let err = version_of(&std::env::temp_dir().join("nulle-part").join(LIBRARY)).unwrap_err().to_string();
         assert!(err.contains("ONNX Runtime introuvable"), "{err}");
     }
 

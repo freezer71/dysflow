@@ -3,6 +3,10 @@
 #
 #   ./scripts/build-ffi.sh                       # ocr
 #   FEATURES= ./scripts/build-ffi.sh             # voix du système seule
+#   FEATURES=ocr,mlx ./scripts/build-ffi.sh      # build de test de la CI
+#
+# mlx (MLX en Rust, mlx_rust_smoke) n'entre pas dans l'app livrée avant le
+# lot 3 : seul le build de test de la CI l'active, pour MLXCoexistenceTests.
 #
 # Produit macos/Generated (Swift, en-tête, module, Link.xcconfig) et
 # macos/Libraries (libdysflow_ffi.a).
@@ -38,16 +42,24 @@ mkdir -p "$GEN" "$LIB"
 # L'app vise macOS 14 : rustc et cc lisent cette variable.
 export MACOSX_DEPLOYMENT_TARGET=14.0
 
-# La liaison d'abord : le binaire bindgen recompile le crate sans les options
-# lourdes, et écraserait sinon la bibliothèque finale.
-cargo build --profile app -p dysflow-ffi
-cargo run --profile app -p dysflow-ffi --features bindgen --bin uniffi-bindgen -- \
+# Un seul build du moteur : MLX (mlx-sys, CMake) se compile une fois. La
+# liaison se lit dans la bibliothèque finale ; l'outil (ffi/bindgen) est un
+# paquet à part, qui ne recompile ni le moteur ni MLX.
+cargo build --profile app -p dysflow-ffi ${FEATURES:+--features "$FEATURES"}
+cp target/app/libdysflow_ffi.a "$LIB/"
+cargo run --profile app -p dysflow-uniffi-bindgen -- \
     generate --library target/app/libdysflow_ffi.dylib --language swift --out-dir "$GEN"
 mv "$GEN/dysflow_ffiFFI.modulemap" "$GEN/module.modulemap"
 
-cargo build --profile app -p dysflow-ffi ${FEATURES:+--features "$FEATURES"}
-cp target/app/libdysflow_ffi.a "$LIB/"
-
 FLAGS="-ldysflow_ffi -lc++ -framework CoreAudio -framework AudioToolbox -framework AudioUnit -framework CoreFoundation -framework Security -framework Metal -framework Accelerate"
-echo "OTHER_LDFLAGS = $FLAGS" > "$GEN/Link.xcconfig"
+# DYSFLOW_FFI_CONDITIONS : les conditions Swift des tests qui suivent les
+# features du moteur (DYSFLOW_MLX_RUST : mlxRustSmoke existe).
+CONDITIONS=
+case ",$FEATURES," in
+*,mlx,*) CONDITIONS=DYSFLOW_MLX_RUST ;;
+esac
+{
+    echo "OTHER_LDFLAGS = $FLAGS"
+    echo "DYSFLOW_FFI_CONDITIONS = $CONDITIONS"
+} > "$GEN/Link.xcconfig"
 echo "Liaison prête dans $GEN et $LIB"

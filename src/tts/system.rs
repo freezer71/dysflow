@@ -317,6 +317,7 @@ fn which(program: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
     use std::time::Instant;
 
     #[test]

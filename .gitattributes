@@ -1,0 +1,18 @@
+# Fichiers binaires : jamais de conversion de fins de ligne. Sous Windows
+# (core.autocrlf, actif sur les machines de la CI), git prenait les PDF de
+# tests/fixtures pour du texte et y glissait des CRLF : « invalid file
+# trailer » à la lecture.
+*.pdf binary
+*.png binary
+*.webp binary
+*.ico binary
+*.icns binary
+*.ttf binary
+*.otf binary
+*.traineddata binary
+*.safetensors binary
+
+# Scripts shell : toujours en LF. Sous Windows, le bash de Git for Windows
+# lance scripts/package.sh et build-espeak.sh (paquet Windows) : avec des
+# CRLF, chaque ligne finirait par un « \r » que bash prend pour une commande.
+*.sh text eol=lf

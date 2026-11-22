@@ -1,6 +1,7 @@
-# Intégration continue : tests et lint Rust sur les trois plateformes visées
-# (Linux x86_64 et ARM64, macOS Apple Silicon), paquet du terminal sous Linux,
-# MSRV, licences, scripts, et tests de l'app macOS.
+# Intégration continue : tests et lint Rust sur les plateformes visées
+# (Linux x86_64 et ARM64, macOS Apple Silicon, Windows x86_64), paquet du
+# terminal sous Linux et Windows, MSRV, licences, scripts, et tests de l'app
+# macOS.
 name: CI
 
 on:
@@ -27,7 +28,9 @@ jobs:
       matrix:
         # macos-15 : l'image macos-14 est retirée le 2 novembre 2026
         # (actions/runner-images#13518).
-        os: [ubuntu-24.04, ubuntu-24.04-arm, macos-15]
+        # windows-2025 : le cœur et le terminal se compilent et se testent
+        # sous Windows, et le paquet Windows y est construit (lot W).
+        os: [ubuntu-24.04, ubuntu-24.04-arm, macos-15, windows-2025]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -43,25 +46,126 @@ jobs:
           rustup update stable --no-self-update
           rustup default stable
           rustup component add clippy
+      - name: Metal Toolchain et cible explicite (MLX de mlx-rs)
+        # Sur Mac, Tests et Clippy activent la feature mlx de ffi/ (hors de
+        # l'app livrée jusqu'au lot 3) : MLX compilé par CMake, dont les
+        # noyaux demandent le compilateur Metal.
+        # La cible explicite sépare toujours les dépendances de build de
+        # celles du code : Tests et Clippy voient alors le même mlx-sys et
+        # partagent un seul build de MLX. Sans elle, cargo partage ces
+        # dépendances avec le code en test mais pas en clippy (qui ne les
+        # compile qu'en métadonnées), et MLX se recompile (~8 min).
+        if: runner.os == 'macOS'
+        run: |
+          if ! xcrun -sdk macosx metal -v >/dev/null 2>&1; then
+            xcodebuild -downloadComponent MetalToolchain
+          fi
+          echo "CARGO_BUILD_TARGET=aarch64-apple-darwin" >> "$GITHUB_ENV"
       - uses: Swatinem/rust-cache@v2
+        with:
+          # mlx-sys écrit ses noyaux Metal dans ~/.mlx/lib (chemin inscrit
+          # dans le binaire) : sans eux, un target/ restauré donnerait un MLX
+          # qui ne trouve pas sa mlx.metallib.
+          cache-directories: ${{ runner.os == 'macOS' && '~/.mlx' || '' }}
       - name: Tests
-        run: cargo test --workspace --locked
+        # Sur Mac, avec MLX en Rust (compute::mlx_smoke) ; sans effet ailleurs.
+        run: cargo test --workspace --locked ${{ runner.os == 'macOS' && '--features dysflow-ffi/mlx' || '' }}
       - name: Clippy
-        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+        run: cargo clippy --workspace --all-targets --locked ${{ runner.os == 'macOS' && '--features dysflow-ffi/mlx' || '' }} -- -D warnings
       - name: Clippy (Kokoro au terminal)
         run: cargo clippy -p dysflow --all-targets --features kokoro-onnx --locked -- -D warnings
+      - name: Tests d'ONNX Runtime (Windows)
+        # Le chargement d'ONNX Runtime par chemin absolu (lot W) : les essais
+        # qui demandent la vraie bibliothèque et le modèle sont ignorés.
+        if: runner.os == 'Windows'
+        run: cargo test -p dysflow --features kokoro-onnx --lib tts::kokoro::onnx --locked
       - name: Paquet et installation du terminal (ocr, kokoro-onnx)
         if: runner.os == 'Linux'
         # install.sh lance package.sh (build --features ocr,kokoro-onnx,
         # ONNX Runtime vérifié, dysflow-espeak), installe sous PREFIX, puis
         # vérifie depuis / que le binaire démarre et que Kokoro se charge.
         run: PREFIX="$RUNNER_TEMP/prefix" ./scripts/install.sh
+      - name: MinGW-w64 (dysflow-espeak, Windows)
+        # espeak-ng 1.52.0 ne se compile pas avec MSVC : build-espeak.sh le
+        # construit avec gcc d'MSYS2 (UCRT64). Rien n'est ajouté au PATH :
+        # seul ce script s'en sert, par MINGW_BIN.
+        if: runner.os == 'Windows'
+        id: msys2
+        uses: msys2/setup-msys2@3c51bf698df1e37b2261f53cb67797b97761185c # v2.34.0
+        with:
+          msystem: UCRT64
+          update: false
+          install: mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-ninja
+      - name: Paquet et vérification (Windows)
+        if: runner.os == 'Windows'
+        env:
+          MINGW_BIN: ${{ steps.msys2.outputs.msys2-location }}\ucrt64\bin
+        # package.sh sous le bash de Git for Windows : build --features
+        # ocr,kokoro-onnx, ONNX Runtime du paquet NuGet, dysflow-espeak.exe
+        # par CMake et MinGW-w64, puis dist/dysflow-windows-x86_64.zip. L'archive
+        # est décompressée dans un dossier dont le chemin porte une espace et
+        # un accent, puis dans un autre hors de la page de code Windows-1252
+        # (« Ł ») ; le binaire y est vérifié depuis /, sans les variables qui
+        # désignent ORT ou espeak ailleurs, comme install.sh sous Linux, et
+        # avec un PATH réduit à Windows : aucune DLL de Git, de MinGW ou des
+        # outils du runner ne peut masquer une DLL qui manquerait au paquet.
+        shell: bash
+        run: |
+          command -v unzip
+          ./scripts/package.sh
+          tmp=$(cygpath -u "$RUNNER_TEMP")
+          for name in "Élodie Martin" "Łukasz Gaweł"; do
+            dest="$tmp/$name/dysflow"
+            rm -rf "$dest"
+            mkdir -p "$dest" && unzip -q dist/dysflow-windows-x86_64.zip -d "$dest"
+            echo "Depuis $dest :"
+            for option in --version --check-kokoro; do
+              ( cd / && env -u DYSFLOW_ORT_LIB -u DYSFLOW_ESPEAK -u DYSFLOW_ESPEAK_DATA \
+                  PATH="/c/Windows/System32:/c/Windows" "$dest/dysflow.exe" "$option" )
+            done
+          done
+      - name: Imports des binaires (Windows)
+        # Chaque DLL qu'importent dysflow.exe, onnxruntime.dll, le runtime
+        # Visual C++ joint et dysflow-espeak.exe est dans le paquet ou dans
+        # Windows ; dysflow-espeak.exe n'importe que KERNEL32, ADVAPI32 et le
+        # CRT de Windows (rien de MinGW).
+        if: runner.os == 'Windows'
+        shell: bash
+        run: python -I scripts/windows-imports.py check dist
+      - name: Modèles de la porte ONNX Runtime (cache)
+        # Silero VAD, Kokoro int8 et sa configuration : empreintes épinglées
+        # dans scripts/ort-gate.sh, qui ne retélécharge pas un fichier juste.
+        uses: actions/cache@v4
+        with:
+          path: target/ort-gate-models
+          key: ort-gate-models-${{ hashFiles('scripts/ort-gate.sh') }}
+      - name: Une seule copie d'ONNX Runtime (Kokoro et sherpa-onnx, lot 1)
+        # La porte du lot 1 : examples/ort_single_copy.rs (Clippy compris),
+        # compilé avec la bibliothèque C de sherpa-onnx de
+        # scripts/sherpa-onnx.sh, lancé depuis un dossier qui a la forme du
+        # paquet (target/ort-gate/), à côté de l'ONNX Runtime 1.31 du paquet
+        # NuGet. Kokoro int8 parle, Silero VAD y trouve un segment, les deux
+        # côtés ont ONNX Runtime 1.31.0, et une seule copie en est chargée.
+        shell: bash
+        run: ./scripts/ort-gate.sh
+      - name: Porte ONNX Runtime jointe
+        # Pour la vérifier sur un PC : tar xzf ort-gate.tar.gz, puis
+        # ort-gate/ort_single_copy (voir scripts/ort-gate.sh).
+        if: runner.os == 'Linux' || runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ort-gate-${{ runner.os }}-${{ runner.arch }}
+          path: target/ort-gate.tar.gz
+          retention-days: 7
       - name: Paquet joint
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' || runner.os == 'Windows'
         uses: actions/upload-artifact@v4
         with:
           name: dysflow-${{ runner.os }}-${{ runner.arch }}
-          path: dist/
+          # Le dossier seulement : l'archive Windows en est la copie.
+          path: |
+            dist/
+            !dist/*.zip
           retention-days: 7
 
   msrv:
@@ -117,12 +221,23 @@ jobs:
           if ! xcrun -sdk macosx metal -v >/dev/null 2>&1; then
             xcodebuild -downloadComponent MetalToolchain
           fi
+      # Garde target/, donc MLX compilé par mlx-sys (CMake, ~4 min) : il ne se
+      # recompile pas d'une exécution à l'autre tant que Cargo.lock ne bouge pas.
+      # ~/.mlx : ses noyaux Metal, que le build ne réécrit pas s'il est en cache.
       - uses: Swatinem/rust-cache@v2
+        with:
+          cache-directories: ~/.mlx
       - name: dysflow-espeak
         run: ./scripts/build-espeak.sh
       - name: Moteur et liaison Swift
         id: ffi
-        run: ./scripts/build-ffi.sh
+        # Le build de test : avec la copie Rust de MLX (feature mlx), que l'app
+        # livrée n'a pas avant le lot 3 (scripts/build-macos.sh la refuse).
+        # MLXCoexistenceTests vérifie ainsi la décision « Lot 0 » ; sans
+        # DYSFLOW_MLX_RUST, ce test serait sauté : la CI le refuse.
+        run: |
+          FEATURES=ocr,mlx ./scripts/build-ffi.sh
+          grep -qx 'DYSFLOW_FFI_CONDITIONS = DYSFLOW_MLX_RUST' macos/Generated/Link.xcconfig
       - name: Tests de l'app
         # Les tests d'interface (DysflowUITests) pilotent l'app à l'écran et
         # demandent l'accès Accessibilité : hors CI.

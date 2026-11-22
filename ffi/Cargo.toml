@@ -7,13 +7,9 @@ description = "Liaison UniFFI du lecteur dysflow pour l'app macOS"
 
 [lib]
 name = "dysflow_ffi"
-# staticlib pour l'app, cdylib pour que uniffi-bindgen lise les métadonnées.
+# staticlib pour l'app, cdylib pour que uniffi-bindgen (ffi/bindgen) lise les
+# métadonnées.
 crate-type = ["staticlib", "cdylib", "lib"]
-
-[[bin]]
-name = "uniffi-bindgen"
-path = "src/bin/uniffi-bindgen.rs"
-required-features = ["bindgen"]
 
 [dependencies]
 dysflow = { path = "..", default-features = false, features = ["clipboard"] }
@@ -23,4 +19,8 @@ anyhow = "1.0"
 
 [features]
 ocr = ["dysflow/ocr"]
-bindgen = ["uniffi/cli"]
+# MLX en Rust (mlx-rs ; Mac Apple Silicon seulement, sans effet ailleurs) et
+# `mlx_rust_smoke`. Hors de l'app livrée jusqu'au lot 3 : seul le build de
+# test de la CI l'active (FEATURES=ocr,mlx ./scripts/build-ffi.sh), pour le
+# test de cohabitation des deux copies de MLX (décision « Lot 0 »).
+mlx = ["dysflow/mlx"]

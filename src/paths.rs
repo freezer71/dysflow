@@ -61,20 +61,28 @@ pub(crate) fn test_scratch(name: &str) -> PathBuf {
 }
 
 /// `dysflow-tests-<pid>` : créée au premier usage, retirée par `atexit` à la
-/// sortie du processus de test. Au même moment, les racines laissées par un
-/// processus mort (test interrompu, plantage) partent aussi.
+/// sortie du processus de test. Au même moment, sous Unix, les racines
+/// laissées par un processus mort (test interrompu, plantage) partent aussi.
 #[cfg(test)]
 fn test_base() -> PathBuf {
+    // Sous Windows, `libc` n'est pas une dépendance : l'`atexit` du CRT.
+    #[cfg(unix)]
+    use libc::atexit;
+    #[cfg(windows)]
+    extern "C" {
+        fn atexit(callback: extern "C" fn()) -> std::ffi::c_int;
+    }
     static INIT: std::sync::Once = std::sync::Once::new();
     let base = std::env::temp_dir().join(format!("{TEST_PREFIX}{}", std::process::id()));
     INIT.call_once(|| {
+        #[cfg(unix)]
         sweep_dead_test_roots();
         extern "C" fn remove_test_root() {
             let base = std::env::temp_dir().join(format!("{TEST_PREFIX}{}", std::process::id()));
             let _ = std::fs::remove_dir_all(base);
         }
         // SAFETY : `remove_test_root` ne prend aucun argument et ne panique pas.
-        unsafe { libc::atexit(remove_test_root) };
+        unsafe { atexit(remove_test_root) };
     });
     base
 }
@@ -82,8 +90,10 @@ fn test_base() -> PathBuf {
 #[cfg(test)]
 const TEST_PREFIX: &str = "dysflow-tests-";
 
-/// Retire les racines de test dont le processus n'existe plus.
-#[cfg(test)]
+/// Retire les racines de test dont le processus n'existe plus. Unix
+/// seulement : sous Windows, savoir si un processus vit demanderait l'API
+/// Win32, et une racine laissée par un plantage y reste.
+#[cfg(all(test, unix))]
 fn sweep_dead_test_roots() {
     let Ok(entries) = std::fs::read_dir(std::env::temp_dir()) else { return };
     for entry in entries.flatten() {

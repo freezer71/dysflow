@@ -10,6 +10,7 @@
 
 pub mod app;
 pub mod audio;
+pub mod compute;
 pub mod config;
 pub mod doc;
 pub mod export;
@@ -22,6 +23,7 @@ pub mod paths;
 pub mod position;
 pub mod reader;
 pub mod source;
+pub mod stt;
 pub mod sync;
 pub mod text;
 pub mod tts;

@@ -1,5 +1,5 @@
 [workspace]
-members = [".", "ffi"]
+members = [".", "ffi", "ffi/bindgen"]
 
 [package]
 name = "dysflow"
@@ -53,9 +53,25 @@ whatlang = "0.18"
 # `Session::builder`) ; passer directement à la 2.0 stable.
 ort = { version = "=2.0.0-rc.13", optional = true, default-features = false, features = ["load-dynamic", "ndarray", "std", "api-22"] }
 libloading = { version = "0.8", optional = true }
+# La dictée au terminal, Apache-2.0. En `shared` : la bibliothèque C de
+# sherpa-onnx, liée dynamiquement, utilise l'ONNX Runtime 1.31 livré à côté du
+# binaire, le même fichier que Kokoro, au lieu du 1.28.2 qu'elle embarque en
+# statique par défaut (lot 1 de la spec des moteurs). Le binaire livré se
+# construit avec les --config de scripts/sherpa-onnx.sh, qui remplacent le
+# script de build de sherpa-onnx-sys ; sans eux (Clippy, MSRV), ce script
+# télécharge sa propre archive, avec ONNX Runtime 1.28.2, que
+# examples/ort_single_copy.rs refuse. Épinglé exactement : la bibliothèque C
+# vient de la publication de la même version.
+sherpa-onnx = { version = "=2.0.2", optional = true, default-features = false, features = ["shared"] }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
+
+# MLX en Rust, seulement sur les Mac Apple Silicon. Épinglé exactement :
+# `mlx-sys` compile sa propre copie de MLX, dont la version doit rester
+# connue (une seule copie dans l'app, voir la spec des moteurs).
+[target.'cfg(all(target_os = "macos", target_arch = "aarch64"))'.dependencies]
+mlx-rs = { version = "=0.34.0", optional = true }
 
 [build-dependencies]
 # Sonic (accélération de la parole) se compile toujours : deux fichiers C.
@@ -72,6 +88,13 @@ ocr = ["dep:tesseract-rs", "dep:image", "clipboard"]
 # Kokoro au terminal par ONNX Runtime (≥ 1.31, chargé dynamiquement). Jamais
 # dans l'app macOS, qui calcule Kokoro en MLX.
 kokoro-onnx = ["dep:ort", "dep:libloading"]
+# Calcul MLX en Rust (Mac Apple Silicon ; sans effet ailleurs). MLX est
+# compilé par CMake au premier build (~4 min, avec accès réseau), puis gardé
+# dans target/.
+mlx = ["dep:mlx-rs"]
+# Dictée par sherpa-onnx, sur le même ONNX Runtime que Kokoro. Jamais dans
+# l'app macOS, qui dicte en MLX.
+stt-sherpa = ["dep:sherpa-onnx", "kokoro-onnx"]
 
 [[bin]]
 name = "dysflow"
@@ -104,3 +127,7 @@ opt-level = 2
 [[example]]
 name = "kokoro_serve"
 required-features = ["kokoro-onnx"]
+
+[[example]]
+name = "ort_single_copy"
+required-features = ["stt-sherpa"]

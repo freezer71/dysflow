@@ -1,0 +1,17 @@
+[package]
+name = "dysflow-uniffi-bindgen"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Génère la liaison Swift de dysflow-ffi depuis sa bibliothèque compilée"
+
+# Un paquet à part, sans dépendance à dysflow : le construire ne touche ni
+# aux features de dysflow-ffi ni à MLX. Dans le paquet ffi, l'outil aurait
+# changé les features unifiées, et mlx-sys aurait recompilé MLX (CMake,
+# ~7 min) à chaque passage de build-ffi.sh.
+[[bin]]
+name = "uniffi-bindgen"
+path = "src/main.rs"
+
+[dependencies]
+uniffi = { version = "0.32", features = ["cli"] }

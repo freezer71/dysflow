@@ -2,27 +2,33 @@
 # Assemble un dossier distribuable : le binaire et les bibliothèques et
 # programmes qu'il charge (pour Kokoro, ONNX Runtime et dysflow-espeak avec ses
 # données et ses sources GPL).
+#
+# Sous Windows (bash de Git for Windows ; dysflow.exe par MSVC,
+# dysflow-espeak.exe par MinGW-w64, voir build-espeak.sh) : dysflow.exe,
+# dysflow-espeak.exe et onnxruntime.dll, et en plus du dossier une archive
+# $OUT/dysflow-windows-x86_64.zip de son contenu, à décompresser n'importe où.
 set -eu
 cd "$(dirname "$0")/.."
 
-# Vrai si le fichier $2 a l'empreinte SHA-256 $1 : sha256sum (GNU, ou BSD
-# sous macOS, d'où `-c -` sans `--status`), sinon shasum (Perl).
-# L'empreinte épinglée doit faire exactement 64 chiffres hexadécimaux : le
-# sha256sum BSD accepte une ligne mal formée (code 0), qui ne vérifierait rien.
-sha256_ok() {
-    case "$1" in
-    *[!0-9a-f]*) echo "Erreur : empreinte épinglée mal formée : $1" >&2; exit 1 ;;
-    esac
-    if [ "${#1}" -ne 64 ]; then
-        echo "Erreur : empreinte épinglée mal formée (${#1} caractères au lieu de 64) : $1" >&2
-        exit 1
-    fi
-    if command -v sha256sum >/dev/null 2>&1; then
-        echo "$1  $2" | sha256sum -c - >/dev/null 2>&1
-    else
-        echo "$1  $2" | shasum -a 256 -c --status
-    fi
-}
+case "$(uname -s)" in
+MINGW* | MSYS* | CYGWIN*) WINDOWS=1 EXE=.exe ;;
+*) WINDOWS="" EXE="" ;;
+esac
+
+# Python 3 : sous Windows, la commande s'appelle souvent python, et python3
+# peut être le raccourci du Microsoft Store, qui ne lance rien.
+if python3 -c "" >/dev/null 2>&1; then
+    PYTHON=python3
+elif python -c "import sys; sys.exit(sys.version_info[0] != 3)" >/dev/null 2>&1; then
+    PYTHON=python
+else
+    echo "Erreur : Python 3 introuvable (python3 ou python)" >&2
+    exit 1
+fi
+
+# ort_fetch (ONNX Runtime du paquet NuGet) et vc_crt_deploy (Windows).
+# shellcheck source=scripts/paquet-commun.sh
+. scripts/paquet-commun.sh
 
 FEATURES="${FEATURES:-ocr,kokoro-onnx}"
 OUT="${OUT:-dist}"
@@ -31,84 +37,37 @@ OUT="${OUT:-dist}"
 # Cargo.lock (python3 scripts/third-party-rust.py pour le régénérer) ; le
 # script refuse une licence GPL, AGPL ou inconnue dans le graphe lié. Il
 # décrit les features par défaut ci-dessous : avec d'autres, le régénérer.
-python3 -I scripts/third-party-rust.py --check
+"$PYTHON" -I scripts/third-party-rust.py --check
 
 echo "Compilation (features : $FEATURES)…"
 cargo build --release --features "$FEATURES"
 
 rm -rf "$OUT"
 mkdir -p "$OUT"
-cp target/release/dysflow "$OUT/"
+cp "target/release/dysflow$EXE" "$OUT/"
 
 # Kokoro au terminal : ONNX Runtime 1.31 à côté du binaire, et la
 # phonétisation dysflow-espeak (GPL-3.0, programme séparé que Dysflow lance) avec
 # ses données, sa licence et ses sources correspondantes.
 case ",$FEATURES," in
 *,kokoro-onnx,*)
-    if [ ! -x target/espeak/bin/dysflow-espeak ] || [ -n "$(find scripts/dysflow-espeak.c -newer target/espeak/bin/dysflow-espeak)" ]; then
+    espeak="target/espeak/bin/dysflow-espeak$EXE"
+    if [ ! -x "$espeak" ] || [ -n "$(find scripts/dysflow-espeak.c scripts/build-espeak.sh -newer "$espeak")" ]; then
         ./scripts/build-espeak.sh
     fi
-    cp target/espeak/bin/dysflow-espeak "$OUT/"
+    cp "$espeak" "$OUT/"
     cp -R target/espeak/share/espeak-ng-data "$OUT/"
     mkdir -p "$OUT/dysflow-espeak-source"
     cp target/espeak/COPYING target/espeak/SOURCE.txt target/espeak/dysflow-espeak.c \
         scripts/build-espeak.sh "$OUT/dysflow-espeak-source/"
     echo "Joint : dysflow-espeak, espeak-ng-data et ses sources (dysflow-espeak-source/)"
 
-    ORT_VERSION=1.31.0
-    case "$(uname -s)-$(uname -m)" in
-    # Empreintes publiées avec la version v1.31.0 (champ `digest` des
-    # fichiers de la publication GitHub) : une archive différente n'est
-    # jamais jointe. ORT_LIB : la bibliothèque dans l'archive, ORT_DEST son
-    # nom à côté du binaire (celui que cherche src/tts/kokoro/onnx.rs).
-    Linux-x86_64)
-        ORT_ARCHIVE="onnxruntime-linux-x64-$ORT_VERSION"
-        ORT_SHA256=cc5c72baf5ae5c8238a6841f0897227be2d02826b9cf98eaf02fdefaeeb03a57
-        ORT_LIB="libonnxruntime.so.$ORT_VERSION" ORT_DEST=libonnxruntime.so ;;
-    Linux-aarch64)
-        ORT_ARCHIVE="onnxruntime-linux-aarch64-$ORT_VERSION"
-        ORT_SHA256=c5b8b3cca31f3d643a3b313b8f42e2d0f16a4fcefd02cda343d97bd5306afaab
-        ORT_LIB="libonnxruntime.so.$ORT_VERSION" ORT_DEST=libonnxruntime.so ;;
-    Darwin-arm64)
-        ORT_ARCHIVE="onnxruntime-osx-arm64-$ORT_VERSION"
-        ORT_SHA256=1031b36dd3bdaa8d976a6130d9cf2a05e9be320b93ae804f8427b91dc3432afc
-        ORT_LIB="libonnxruntime.$ORT_VERSION.dylib" ORT_DEST=libonnxruntime.dylib ;;
-    *) ORT_ARCHIVE="" ;;
-    esac
-    if [ -n "$ORT_ARCHIVE" ]; then
-        mkdir -p target/ort
-        # Extraite à part, mise en place seulement une fois complète : une
-        # extraction interrompue est refaite au lancement suivant.
-        # Le fichier, pas le dossier : le cache de la CI (rust-cache) rend
-        # target/ort vidé de ses fichiers, et un dossier présent mais vide
-        # faisait échouer la copie plus bas.
-        if [ ! -f "target/ort/$ORT_ARCHIVE/lib/$ORT_LIB" ] \
-            || [ ! -f "target/ort/$ORT_ARCHIVE/LICENSE" ] \
-            || [ ! -f "target/ort/$ORT_ARCHIVE/ThirdPartyNotices.txt" ]; then
-            # L'archive : téléchargée sous un nom provisoire, gardée seulement
-            # si son empreinte est la bonne.
-            tarball="target/ort/$ORT_ARCHIVE.tgz"
-            if [ ! -f "$tarball" ] || ! sha256_ok "$ORT_SHA256" "$tarball"; then
-                rm -f "$tarball" "$tarball.part"
-                curl -fsSL "https://github.com/microsoft/onnxruntime/releases/download/v$ORT_VERSION/$ORT_ARCHIVE.tgz" \
-                    -o "$tarball.part"
-                if ! sha256_ok "$ORT_SHA256" "$tarball.part"; then
-                    rm -f "$tarball.part"
-                    echo "Erreur : empreinte SHA-256 inattendue pour $ORT_ARCHIVE.tgz" >&2
-                    exit 1
-                fi
-                mv "$tarball.part" "$tarball"
-            fi
-            rm -rf target/ort/extraction
-            mkdir -p target/ort/extraction
-            tar -xzf "$tarball" -C target/ort/extraction
-            rm -rf "target/ort/$ORT_ARCHIVE"
-            mv "target/ort/extraction/$ORT_ARCHIVE" "target/ort/$ORT_ARCHIVE"
-            rm -rf target/ort/extraction
-        fi
-        cp "target/ort/$ORT_ARCHIVE/lib/$ORT_LIB" "$OUT/$ORT_DEST"
-        cp "target/ort/$ORT_ARCHIVE/LICENSE" "$OUT/LICENSE-onnxruntime"
-        cp "target/ort/$ORT_ARCHIVE/ThirdPartyNotices.txt" "$OUT/ThirdPartyNotices-onnxruntime.txt"
+    # ONNX Runtime 1.31 à côté du binaire (scripts/paquet-commun.sh).
+    ort_fetch
+    if [ -n "$ORT_RID" ]; then
+        cp "$ORT_DIR/$ORT_LIB" "$OUT/$ORT_DEST"
+        cp "$ORT_DIR/LICENSE" "$OUT/LICENSE-onnxruntime"
+        cp "$ORT_DIR/ThirdPartyNotices.txt" "$OUT/ThirdPartyNotices-onnxruntime.txt"
         echo "Joint : ONNX Runtime $ORT_VERSION"
     else
         echo "ONNX Runtime non joint sur cette plateforme : DYSFLOW_ORT_LIB=<libonnxruntime> au lancement." >&2
@@ -129,7 +88,75 @@ case ",$FEATURES," in
 esac
 echo "Joint : NOTICE, THIRD-PARTY-RUST.txt et licences/"
 
+# Windows : le runtime Visual C++ qu'importent dysflow.exe et onnxruntime.dll,
+# joint à côté d'eux (vc_crt_deploy, scripts/paquet-commun.sh).
+if [ -n "$WINDOWS" ]; then
+    vc_crt_deploy "$OUT"
+
+    # Un mot d'accueil, en français puis en anglais.
+    cat > "$OUT/LISEZMOI.txt" <<'LISEZMOI'
+Dysflow pour Windows — lecteur au terminal
+==========================================
+
+Contenu
+  dysflow.exe            le lecteur (lancez-le depuis PowerShell ou cmd)
+  dysflow-espeak.exe     la phonétisation de la voix Kokoro (espeak-ng, GPL-3.0),
+  espeak-ng-data\        ses données ; sources dans dysflow-espeak-source\
+  onnxruntime.dll        ONNX Runtime de Microsoft, le calcul de la voix Kokoro
+  vcruntime140*.dll, msvcp140*.dll
+                         le runtime Visual C++ de Microsoft, joint pour les PC
+                         qui ne l'ont pas
+  NOTICE, THIRD-PARTY-RUST.txt, licences\, LICENSE-onnxruntime…  les licences
+
+Utilisation
+  Gardez tous ces fichiers ensemble, dans n'importe quel dossier. Puis :
+    .\dysflow.exe --check-kokoro        vérifie ONNX Runtime et la phonétisation
+    .\dysflow.exe fichier.txt           lit le fichier à voix haute
+    .\dysflow.exe -o lecture.wav fichier.txt   l'écrit en WAV
+  Au premier lancement du lecteur, Dysflow télécharge la voix Kokoro (une fois).
+
+-----------------------------------------------------------------------------
+
+Dysflow for Windows — terminal reader
+
+Contents
+  dysflow.exe            the reader (run it from PowerShell or cmd)
+  dysflow-espeak.exe     phonemization for the Kokoro voice (espeak-ng, GPL-3.0),
+  espeak-ng-data\        its data; sources in dysflow-espeak-source\
+  onnxruntime.dll        Microsoft ONNX Runtime, which computes the Kokoro voice
+  vcruntime140*.dll, msvcp140*.dll
+                         Microsoft's Visual C++ runtime, included for PCs that
+                         lack it
+  NOTICE, THIRD-PARTY-RUST.txt, licences\, LICENSE-onnxruntime…  the licenses
+
+Usage
+  Keep all these files together, in any folder. Then:
+    .\dysflow.exe --check-kokoro        checks ONNX Runtime and phonemization
+    .\dysflow.exe file.txt              reads the file aloud
+    .\dysflow.exe -o reading.wav file.txt      writes it as WAV
+  On the reader's first launch, Dysflow downloads the Kokoro voice (once).
+LISEZMOI
+fi
+
 echo "Vérification hors de l'arbre de compilation…"
-( cd "$OUT" && ./dysflow --show-config >/dev/null )
+( cd "$OUT" && "./dysflow$EXE" --show-config >/dev/null )
+
+# Windows : l'archive à distribuer, faite par le zipfile de Python (les
+# entrées en « / », lisibles par l'Explorateur comme par unzip), à côté puis
+# mise en place d'un coup. Les fichiers sont à sa racine.
+if [ -n "$WINDOWS" ]; then
+    zip="dysflow-windows-x86_64.zip"
+    rm -f "$OUT/$zip" "$OUT.zip.part"
+    "$PYTHON" -I -c '
+import pathlib, sys, zipfile
+root = pathlib.Path(sys.argv[1])
+with zipfile.ZipFile(sys.argv[2], "w", zipfile.ZIP_DEFLATED) as archive:
+    for path in sorted(root.rglob("*")):
+        if path.is_file():
+            archive.write(path, path.relative_to(root).as_posix())
+' "$OUT" "$OUT.zip.part"
+    mv "$OUT.zip.part" "$OUT/$zip"
+    echo "Archive : $OUT/$zip"
+fi
 echo "Prêt : $OUT/"
 ls -lh "$OUT"

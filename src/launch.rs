@@ -770,7 +770,11 @@ mod tests {
         assert!(notice.starts_with("Nouvelle voix : Kokoro remplace supertonic."), "{notice}");
         assert!(!notice.contains("`s`"), "plus de rubrique Modèles où revenir : {notice}");
         assert_eq!(config.engine.family, "kokoro");
-        assert!(config.engine.model_path.ends_with("kokoro/model_quantized.onnx"), "{}", config.engine.model_path);
+        assert!(
+            std::path::Path::new(&config.engine.model_path).ends_with("kokoro/model_quantized.onnx"),
+            "{}",
+            config.engine.model_path
+        );
         assert_eq!(config.voice.per_language["fr"], "p-fenrir60");
         assert_eq!(config.app.voice_migration, crate::reader::migration::KOKORO_MIGRATION);
         assert_eq!(migrate_terminal_in(&mut config, &[kokoro_int8()], |_| true), None, "une seule fois");

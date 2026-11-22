@@ -23,6 +23,13 @@
  * Toute erreur (voix inconnue, trame trop longue, entrée coupée) termine le
  * programme ; Dysflow le relance.
  *
+ * Sous Windows, DOSSIER est lu en UTF-16 (wmain) et le programme s'y place :
+ * libespeak-ng, qui ouvre ses fichiers par des chemins en octets (page de
+ * code locale), n'en voit que « . ». DOSSIER peut ainsi contenir n'importe
+ * quel caractère (« C:\Users\Łukasz… »). Sa longueur reste bornée : sans
+ * longPathAware dans le manifeste, le dossier courant d'un programme Windows
+ * ne dépasse pas MAX_PATH (260 caractères, ~258 utiles).
+ *
  * Les phonèmes viennent d'espeak_TextToPhonemes, comme chez phonemizer (que
  * misaki utilise) : en IPA, les phonèmes de plusieurs lettres liés par U+0361,
  * une proposition après l'autre, réunies par une espace. Ni SSML ni phonèmes
@@ -35,7 +42,25 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef _WIN32
+/* Windows (MinGW-w64) : les mêmes appels sous leurs noms du CRT, et NUL pour
+ * /dev/null. Les entrées et sorties passent en binaire : en mode texte, le
+ * CRT changerait les \n en \r\n et s'arrêterait au premier octet 0x1A. */
+#include <direct.h>
+#include <io.h>
+#include <wchar.h>
+#define dup _dup
+#define dup2 _dup2
+#define close _close
+#define open _open
+#define fdopen _fdopen
+#define O_WRONLY _O_WRONLY
+#define STDOUT_FILENO 1
+#define NULL_DEVICE "NUL"
+#else
 #include <unistd.h>
+#define NULL_DEVICE "/dev/null"
+#endif
 
 #define MAX_ITEM (64 * 1024)
 #define MAX_COUNT 4096
@@ -61,7 +86,11 @@ static int read_u32(uint32_t *value) {
 }
 
 static void write_u32(uint32_t value) {
-	unsigned char b[4] = {value & 0xff, (value >> 8) & 0xff, (value >> 16) & 0xff, value >> 24};
+	unsigned char b[4];
+	b[0] = value & 0xff;
+	b[1] = (value >> 8) & 0xff;
+	b[2] = (value >> 16) & 0xff;
+	b[3] = value >> 24;
 	fwrite(b, 1, 4, out);
 }
 
@@ -114,13 +143,16 @@ static void phonemize(const char *text) {
 	write_frame(output, output_size);
 }
 
-int main(int argc, char **argv) {
-	const char *path = argc > 1 ? argv[1] : NULL;
+static int run(const char *path) {
 	int private_fd = dup(STDOUT_FILENO);
-	int null_fd = open("/dev/null", O_WRONLY);
+	int null_fd = open(NULL_DEVICE, O_WRONLY);
 	if (private_fd < 0 || null_fd < 0 || dup2(null_fd, STDOUT_FILENO) < 0)
 		return 2;
 	close(null_fd);
+#ifdef _WIN32
+	if (_setmode(_fileno(stdin), _O_BINARY) < 0 || _setmode(private_fd, _O_BINARY) < 0)
+		return 2;
+#endif
 	out = fdopen(private_fd, "wb");
 	if (out == NULL)
 		return 2;
@@ -156,3 +188,15 @@ int main(int argc, char **argv) {
 	}
 	return 0;
 }
+
+#ifdef _WIN32
+int wmain(int argc, wchar_t **argv) {
+	if (argc > 1 && _wchdir(argv[1]) != 0)
+		return 2;
+	return run(argc > 1 ? "." : NULL);
+}
+#else
+int main(int argc, char **argv) {
+	return run(argc > 1 ? argv[1] : NULL);
+}
+#endif

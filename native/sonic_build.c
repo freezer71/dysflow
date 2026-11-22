@@ -12,7 +12,14 @@
 #include <stdlib.h>
 #include <string.h>
 
-static _Thread_local unsigned long long dysflow_sonic_heap_calls = 0;
+/* MSVC ne connaît `_Thread_local` qu'en /std:c11 : sa forme à lui. */
+#ifdef _MSC_VER
+#define DYSFLOW_THREAD_LOCAL __declspec(thread)
+#else
+#define DYSFLOW_THREAD_LOCAL _Thread_local
+#endif
+
+static DYSFLOW_THREAD_LOCAL unsigned long long dysflow_sonic_heap_calls = 0;
 
 unsigned long long dysflow_sonic_heap_calls_on_this_thread(void) {
     return dysflow_sonic_heap_calls;

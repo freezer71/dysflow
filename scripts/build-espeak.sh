@@ -7,6 +7,17 @@
 #
 #   ./scripts/build-espeak.sh
 #
+# Sous Windows, il se lance depuis le bash de Git for Windows et construit par
+# CMake avec MinGW-w64 (gcc d'MSYS2, environnement UCRT64 : paquets
+# mingw-w64-ucrt-x86_64-gcc, -cmake et -ninja ; MINGW_BIN désigne leur
+# dossier bin, C:\msys64\ucrt64\bin par défaut). Le programme s'appelle alors
+# dysflow-espeak.exe, lié statiquement : il ne demande que les DLL de Windows.
+# Pourquoi pas MSVC, la chaîne du binaire Rust : espeak-ng 1.52.0 ne s'y
+# compile pas. Ses en-têtes src/include/compat (unistd.h, endian.h, getopt.h)
+# testent __has_include_next, que MSVC ne connaît pas (erreurs C7780 et C1017
+# sur la CI windows-2025). dysflow-espeak est un programme à part, lancé par
+# Dysflow : sa chaîne de compilation n'a pas à être celle du binaire.
+#
 # Produit target/espeak/bin/dysflow-espeak, target/espeak/share/espeak-ng-data
 # (français et anglais seulement), et, pour la GPL : target/espeak/COPYING,
 # SOURCE.txt (l'adresse exacte des sources d'espeak-ng, et l'engagement de
@@ -24,6 +35,10 @@ OUT=target/espeak
 TARBALL="$OUT/espeak-ng-$VERSION.tar.gz"
 SRC="$OUT/espeak-ng-$VERSION"
 mkdir -p "$OUT"
+case "$(uname -s)" in
+MINGW* | MSYS* | CYGWIN*) WINDOWS=1 EXE=.exe ;;
+*) WINDOWS="" EXE="" ;;
+esac
 
 # sha256sum (GNU, ou BSD sous macOS : ni l'un ni l'autre ne lisent `--status`
 # de la même façon, d'où `-c -` et la sortie jetée), sinon shasum (Perl).
@@ -70,15 +85,40 @@ if [ ! -f "$SRC/.extrait" ]; then
 fi
 
 # Programme autonome : bibliothèque statique, ni son, ni MBROLA, ni Klatt.
-cmake -S "$SRC" -B "$OUT/build" -DCMAKE_BUILD_TYPE=Release \
-    -DBUILD_SHARED_LIBS=OFF -DUSE_ASYNC=OFF -DUSE_MBROLA=OFF -DUSE_LIBSONIC=OFF \
-    -DUSE_LIBPCAUDIO=OFF -DUSE_KLATT=OFF -DUSE_SPEECHPLAYER=OFF \
-    -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0 -DCMAKE_OSX_ARCHITECTURES=arm64
-cmake --build "$OUT/build" -j
-
-LIB=$(find "$OUT/build" -type f -name libespeak-ng.a | head -1)
-UCD=$(find "$OUT/build" -type f -name libucd.a | head -1)
-DATA=$(find "$OUT/build" -type d -name espeak-ng-data | head -1)
+OPTIONS=(-DBUILD_SHARED_LIBS=OFF -DUSE_ASYNC=OFF -DUSE_MBROLA=OFF -DUSE_LIBSONIC=OFF
+    -DUSE_LIBPCAUDIO=OFF -DUSE_KLATT=OFF -DUSE_SPEECHPLAYER=OFF)
+if [ -n "$WINDOWS" ]; then
+    # gcc, g++, cmake et ninja de MinGW-w64, devant ceux du système pour ce
+    # script seulement (le CMake de Visual Studio prendrait MSVC). Seules la
+    # bibliothèque, espeak-ng.exe et les données sont construites (cible
+    # data) : ni les essais d'espeak-ng, ni rien d'autre.
+    MINGW_BIN=$(cygpath -u "${MINGW_BIN:-C:\msys64\ucrt64\bin}")
+    if [ ! -x "$MINGW_BIN/gcc.exe" ] || [ ! -x "$MINGW_BIN/ninja.exe" ] || [ ! -x "$MINGW_BIN/cmake.exe" ]; then
+        echo "Erreur : gcc, cmake ou ninja de MinGW-w64 manque dans $MINGW_BIN (MSYS2 UCRT64 :" >&2
+        echo "pacman -S mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-ninja ;" >&2
+        echo "MINGW_BIN=<dossier bin> sinon)" >&2
+        exit 1
+    fi
+    PATH="$MINGW_BIN:$PATH"
+    BUILD="$OUT/build-mingw"
+    cmake -S "$SRC" -B "$BUILD" -G Ninja -DCMAKE_BUILD_TYPE=Release "${OPTIONS[@]}" \
+        -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
+    cmake --build "$BUILD" --target data -j
+else
+    BUILD="$OUT/build"
+    cmake -S "$SRC" -B "$BUILD" -DCMAKE_BUILD_TYPE=Release "${OPTIONS[@]}" \
+        -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0 -DCMAKE_OSX_ARCHITECTURES=arm64
+    cmake --build "$BUILD" -j
+fi
+LIB=$(find "$BUILD" -type f -name libespeak-ng.a | head -1)
+UCD=$(find "$BUILD" -type f -name libucd.a | head -1)
+DATA=$(find "$BUILD" -type d -name espeak-ng-data | head -1)
+for f in "$LIB" "$UCD"; do
+    if [ ! -f "$f" ]; then
+        echo "Erreur : bibliothèque d'espeak-ng introuvable dans $BUILD" >&2
+        exit 1
+    fi
+done
 for f in phontab phonindex phondata intonations fr_dict en_dict; do
     if [ ! -f "$DATA/$f" ]; then
         echo "Erreur : $DATA/$f manque (construction des données d'espeak-ng)" >&2
@@ -89,11 +129,21 @@ done
 rm -rf "${OUT:?}/bin" "${OUT:?}/share"
 mkdir -p "$OUT/bin" "$OUT/share/espeak-ng-data"
 # Le programme : dysflow-espeak.c et libespeak-ng, liée statiquement.
-CFLAGS=(-O2 -Wall -I"$SRC/src/include")
-if [ "$(uname -s)" = Darwin ]; then
-    CFLAGS+=(-mmacosx-version-min=14.0 -arch arm64)
+if [ -n "$WINDOWS" ]; then
+    # wmain (-municode) : le dossier des données arrive en UTF-16, voir
+    # dysflow-espeak.c. LIBESPEAK_NG_EXPORT : bibliothèque statique, ses
+    # fonctions ne sont pas importées d'une DLL.
+    gcc -O2 -Wall -municode -static -DLIBESPEAK_NG_EXPORT=1 -I"$SRC/src/include" \
+        scripts/dysflow-espeak.c "$LIB" "$UCD" -o "$OUT/bin/dysflow-espeak.exe"
+    COMPILER="$(gcc --version | head -1) (MinGW-w64, MSYS2 UCRT64)"
+else
+    CFLAGS=(-O2 -Wall -I"$SRC/src/include")
+    if [ "$(uname -s)" = Darwin ]; then
+        CFLAGS+=(-mmacosx-version-min=14.0 -arch arm64)
+    fi
+    cc "${CFLAGS[@]}" scripts/dysflow-espeak.c "$LIB" "$UCD" -lm -o "$OUT/bin/dysflow-espeak"
+    COMPILER=""
 fi
-cc "${CFLAGS[@]}" scripts/dysflow-espeak.c "$LIB" "$UCD" -lm -o "$OUT/bin/dysflow-espeak"
 for f in phontab phonindex phondata phondata-manifest intonations fr_dict en_dict; do
     [ -f "$DATA/$f" ] && cp "$DATA/$f" "$OUT/share/espeak-ng-data/"
 done
@@ -104,6 +154,7 @@ cp scripts/dysflow-espeak.c "$OUT/dysflow-espeak.c"
 {
     echo "espeak-ng $VERSION, sources exactes : $URL (SHA-256 $SHA256)"
     echo "dysflow-espeak : dysflow-espeak.c, à côté de ce fichier ; construit par build-espeak.sh"
+    [ -z "$COMPILER" ] || echo "Compilateur de dysflow-espeak$EXE : $COMPILER"
     echo "(à placer dans scripts/ avec dysflow-espeak.c, à la racine des sources de Dysflow)"
     echo "L'archive ci-dessus (même empreinte) est conservée par le distributeur de Dysflow et"
     echo "fournie sur demande, tant que ce programme est distribué, si l'adresse venait à disparaître."
@@ -115,7 +166,7 @@ check() {
     local got
     # Le format porte les octets de la trame (\005, \000…) : voulu.
     # shellcheck disable=SC2059
-    got=$(printf "$1" | "$OUT/bin/dysflow-espeak" "$OUT/share" | LC_ALL=C tr -d '\000-\037')
+    got=$(printf "$1" | "$OUT/bin/dysflow-espeak$EXE" "$OUT/share" | LC_ALL=C tr -d '\000-\037')
     case "$got" in
         *"$2"*) echo "$2" ;;
         *) echo "Erreur : dysflow-espeak ne donne pas $2" >&2; exit 1 ;;
@@ -123,4 +174,4 @@ check() {
 }
 check '\005\000\000\000fr-fr\001\000\000\000\010\000\000\000Bonjour.' 'bɔ̃ʒˈuʁ'
 check '\005\000\000\000en-us\001\000\000\000\006\000\000\000Hello.' 'həlˈo͡ʊ'
-du -sh "$OUT/bin/dysflow-espeak" "$OUT/share/espeak-ng-data"
+du -sh "$OUT/bin/dysflow-espeak$EXE" "$OUT/share/espeak-ng-data"
