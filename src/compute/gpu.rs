@@ -3,6 +3,9 @@
 //! Rust (`compute::mlx`). Présent partout, même sans la feature `mlx` : l'app
 //! l'appelle toujours.
 //!
+//! Il couvre le calcul jusqu'à sa fin sur le GPU : qui le prend pour calculer
+//! attend ses flux avant de le rendre (`async_eval` revient avant cette fin).
+//!
 //! Sur macOS, un `os_unfair_lock` : qui attend transmet sa priorité à qui
 //! tient le verrou. Ce verrou arrête le processus si le fil qui le tient le
 //! reprend, ou si un autre le rend : le compte par fil ci-dessous rend les

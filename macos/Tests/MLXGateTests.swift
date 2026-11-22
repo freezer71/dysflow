@@ -1,3 +1,5 @@
+import Cmlx
+import MLX
 import os
 import XCTest
 @testable import Dysflow
@@ -60,6 +62,23 @@ final class MLXGateTests: XCTestCase {
         XCTAssertEqual(finished.wait(timeout: .now() + 10), .success)
     }
 
+    /// `asyncEval` revient avant le GPU (le pas de Nemotron) : le verrou
+    /// partagé n'est rendu qu'à la fin du calcul, erreur comprise. Le modèle
+    /// est chargé sur un fil et calcule sur un autre, comme dans l'app.
+    func testTheSharedGateCoversTheGPUWorkLeftByAsyncEval() throws {
+        let model = try loadedOnAnotherThread()
+        XCTAssertTrue(finishedWhenTheGateIsFree { longWork(model.array) },
+                      "verrou rendu pendant le calcul du GPU")
+        XCTAssertTrue(finishedWhenTheGateIsFree(throwing: true) { longWork(model.array) },
+                      "verrou rendu pendant le calcul d'un corps en erreur")
+        XCTAssertTrue(finishedWhenTheGateIsFree { longWork(model.array, stream: .cpu) },
+                      "verrou rendu pendant le calcul du CPU")
+        XCTAssertTrue(finishedWhenTheGateIsFree { longWork(model.array, stream: .cpu) + 1 },
+                      "verrou rendu pendant un calcul du CPU qui nourrit le GPU")
+        XCTAssertTrue(finishedWhenTheGateIsFree { longWorkOnTheThreadsStream(model.array) },
+                      "verrou rendu pendant un calcul sur le flux par défaut du fil")
+    }
+
     #if DYSFLOW_MLX_RUST
     /// Un calcul Rust demandé en tenant le verrou est refusé : le fil MLX
     /// l'attendrait sans fin.
@@ -79,4 +98,78 @@ final class MLXGateTests: XCTestCase {
     gpuLock()
     gpuUnlock()
     #endif
+}
+
+/// Un tableau passé d'un fil à l'autre, sous le verrou.
+private final class Passed: @unchecked Sendable {
+    var array: MLXArray!
+    var finished = false
+}
+
+private func loadedOnAnotherThread() throws -> Passed {
+    let model = Passed(), loaded = DispatchSemaphore(value: 0)
+    Thread.detachNewThread {
+        MLXGate.shared.run {
+            let ones = MLXArray.ones([2048, 2048])
+            eval(ones)
+            model.array = ones
+        }
+        loaded.signal()
+    }
+    guard loaded.wait(timeout: .now() + 20) == .success else { throw CancellationError() }
+    return model
+}
+
+/// Quelques dizaines de millisecondes de calcul.
+private func longWork(_ ones: MLXArray, stream: StreamOrDevice = .default) -> MLXArray {
+    let shrink = MLXArray(1 / Float(ones.dim(0)))
+    var product = ones
+    for _ in 0..<8 {
+        product = multiply(matmul(product, ones, stream: stream), shrink, stream: stream)
+    }
+    return product
+}
+
+/// Le même calcul sur le flux par défaut du fil : celui que prennent les
+/// opérateurs C++ de MLX sans flux, hors de `Stream.gpu`.
+private func longWorkOnTheThreadsStream(_ ones: MLXArray) -> MLXArray {
+    let stream = mlx_default_gpu_stream_new()
+    defer { _ = mlx_stream_free(stream) }
+    let shrink = MLXArray(1 / Float(ones.dim(0)))
+    var product = ones
+    for _ in 0..<8 {
+        var next = mlx_array_new(), scaled = mlx_array_new()
+        _ = mlx_matmul(&next, product.ctx, ones.ctx, stream)
+        _ = mlx_multiply(&scaled, next, shrink.ctx, stream)
+        _ = mlx_array_free(next)
+        product = MLXArray(scaled)
+    }
+    return product
+}
+
+/// Vrai si ce que `graph` a lancé est fini quand un autre fil obtient le
+/// verrou partagé : c'est ce que verrait la copie Rust.
+private func finishedWhenTheGateIsFree(throwing: Bool = false, _ graph: () -> MLXArray) -> Bool {
+    let launched = Passed()
+    let waiting = DispatchSemaphore(value: 0), looked = DispatchSemaphore(value: 0)
+    Thread.detachNewThread {
+        waiting.wait()
+        MLXGate.shared.run {
+            var available = false
+            _ = _mlx_array_is_available(&available, launched.array.ctx)
+            launched.finished = available
+        }
+        looked.signal()
+    }
+    try? MLXGate.shared.run {
+        let array = graph()
+        waiting.signal()
+        // Le temps que l'autre fil attende le verrou.
+        usleep(5_000)
+        asyncEval(array)
+        launched.array = array
+        if throwing { throw CancellationError() }
+    }
+    guard looked.wait(timeout: .now() + 20) == .success else { return false }
+    return launched.finished
 }

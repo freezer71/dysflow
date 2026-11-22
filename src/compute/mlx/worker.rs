@@ -1,6 +1,7 @@
 //! Le fil MLX. `Array` et `Stream` ne sont pas `Send`, et MLX garde ses flux
 //! par fil : tout modèle naît, calcule et meurt sur ce seul fil, qui tient
-//! `gpu` pendant chacun de ses travaux.
+//! `gpu` pendant chacun de ses travaux, et jusqu'à ce que le GPU ait fini
+//! ce qu'ils ont lancé (`async_eval` revient avant).
 //!
 //! Qui appelle attend le résultat ; il ne doit donc jamais tenir `gpu`
 //! (l'appel est alors refusé), et un travail n'attend jamais un autre fil qui
@@ -10,6 +11,7 @@
 use std::any::Any;
 use std::cell::Cell;
 use std::collections::HashMap;
+use std::ffi::{c_int, c_void};
 use std::marker::PhantomData;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -25,7 +27,10 @@ const THREAD: &str = "dysflow-mlx";
 
 /// Les modèles, par numéro de case. N'existe que sur le fil MLX.
 type Slots = HashMap<u64, Box<dyn Any>>;
-type Job = Box<dyn FnOnce(&mut Slots) + Send>;
+/// Un travail, qui rend sa fin : elle passe quand ses flux ont fini, avec
+/// l'erreur qu'ils ont pu garder.
+type Job = Box<dyn FnOnce(&mut Slots) -> Finish + Send>;
+type Finish = Box<dyn FnOnce(Result<()>)>;
 
 thread_local! {
     static ON_WORKER: Cell<bool> = const { Cell::new(false) };
@@ -38,7 +43,9 @@ thread_local! {
 ///
 /// Le lâcher ne l'attend pas (un `Drop` peut avoir lieu dans un travail) :
 /// le fil MLX le libère ensuite, puis vide le cache. Un modèle calcule sur
-/// le flux GPU par défaut du fil : c'est lui qui est attendu avant ce vidage.
+/// les flux par défaut du fil (`Stream::gpu()`, `Stream::cpu()` avec
+/// `with_stream`) : un flux créé (`with_device` en crée un à chaque appel)
+/// reste à jamais, et ajoute ~15 µs à la fin de tous les travaux suivants.
 pub struct Held<T: 'static> {
     slot: u64,
     // `fn() -> T` : parle de `T` sans en posséder, donc `Send + Sync`.
@@ -52,7 +59,10 @@ impl<T: 'static> Held<T> {
     pub fn load(build: impl FnOnce() -> Result<T> + Send + 'static) -> Result<Self> {
         static NEXT: AtomicU64 = AtomicU64::new(0);
         let slot = NEXT.fetch_add(1, Ordering::Relaxed);
-        call(move |slots| match guarded(build) {
+        // Attendu avant d'être rangé : une erreur apparue après `async_eval`
+        // ne laisse pas de case sans propriétaire.
+        let built = move || build().and_then(|value| settle().map(|()| value));
+        call(move |slots| match guarded(built) {
             Ok(value) => {
                 slots.insert(slot, Box::new(value));
                 Ok(())
@@ -92,6 +102,7 @@ impl<T: 'static> Drop for Held<T> {
             }));
             // Même si la libération a paniqué.
             report(guarded(clear_cache));
+            Box::new(report)
         }));
     }
 }
@@ -110,7 +121,10 @@ pub(super) fn soon(work: impl FnOnce() -> Result<()> + Send + 'static) {
     if ON_WORKER.get() {
         work();
     } else {
-        post(Box::new(move |_| work()));
+        post(Box::new(move |_| {
+            work();
+            Box::new(report)
+        }));
     }
 }
 
@@ -125,10 +139,14 @@ fn call<R: Send + 'static>(work: impl FnOnce(&mut Slots) -> Result<R> + Send + '
     }
     let (reply, result) = crossbeam_channel::bounded(1);
     post(Box::new(move |slots| {
-        let _ = reply.send(guarded(|| {
+        let done = guarded(|| {
             ready()?;
             work(slots)
-        }));
+        });
+        // L'erreur du travail prime sur celle de ses flux.
+        Box::new(move |settled| {
+            let _ = reply.send(done.and_then(|value| settled.map(|()| value)));
+        })
     }));
     result
         .recv()
@@ -145,21 +163,64 @@ fn ready() -> Result<()> {
     Ok(())
 }
 
-/// Attend que Metal ait lâché les tampons du flux GPU par défaut de ce fil,
-/// puis vide le cache : `eval` revient quand le GPU a fini, un peu avant que
-/// le tampon de commandes lâche les siens, qui iraient sinon dans le cache
-/// juste après son vidage.
+/// Attend que Metal ait lâché les tampons de tous les flux, puis vide le
+/// cache : `eval` revient quand le GPU a fini, un peu avant que le tampon de
+/// commandes lâche les siens, qui iraient sinon dans le cache juste après
+/// son vidage.
 fn clear_cache() -> Result<()> {
-    extern "C" {
-        // mlx-c, que `mlx-sys` lie ; `mlx-rs` 0.34 ne l'expose pas.
-        fn mlx_synchronize_default() -> std::ffi::c_int;
-    }
-    // SAFETY : sans argument ; appelée sur le fil MLX une fois `ready`, qui a
-    // installé le gestionnaire d'erreurs de `mlx-rs` (une erreur rend 1).
-    let synchronized = unsafe { mlx_synchronize_default() } == 0;
+    let settled = settle();
     mlx_rs::memory::clear_cache()?;
-    if !synchronized {
-        return Err(anyhow!(crate::tr!("the GPU stream ended in error", "le flux du GPU a fini en erreur")));
+    settled
+}
+
+/// Attend la fin de tout ce qui est parti : `async_eval` (et une erreur ou
+/// une panique après lui) laisse du calcul en vol. MLX liste ses flux, et
+/// tous sont nés sur ce fil : ceux par défaut du GPU et du CPU comme ceux
+/// qu'un travail a créés. Rien à attendre avant `ready`, et rien de MLX n'est
+/// alors appelé. Un flux en erreur n'empêche pas d'attendre les autres.
+fn settle() -> Result<()> {
+    #[repr(C)]
+    #[derive(Clone, Copy)]
+    struct CStream {
+        ctx: *mut c_void,
+    }
+    #[repr(C)]
+    #[derive(Clone, Copy)]
+    struct CStreams {
+        ctx: *mut c_void,
+    }
+    extern "C" {
+        // mlx-c, que `mlx-sys` lie ; `mlx-rs` 0.34 ne les expose pas.
+        fn mlx_vector_stream_new() -> CStreams;
+        fn mlx_vector_stream_size(all: CStreams) -> usize;
+        fn mlx_vector_stream_get(res: *mut CStream, all: CStreams, index: usize) -> c_int;
+        fn mlx_vector_stream_free(all: CStreams) -> c_int;
+        fn mlx_get_streams(res: *mut CStreams) -> c_int;
+        fn mlx_stream_new() -> CStream;
+        fn mlx_stream_free(stream: CStream) -> c_int;
+        fn mlx_synchronize(stream: CStream) -> c_int;
+    }
+
+    if !READY.get() {
+        return Ok(());
+    }
+    // SAFETY : signatures de mlx-c 0.7 (`stream.h`, `vector.h`). Le vecteur et
+    // chaque flux sont créés ici et rendus une fois. Appelées sur le fil MLX
+    // une fois `ready`, qui a installé le gestionnaire d'erreurs de `mlx-rs`
+    // (une erreur rend 1).
+    let settled = unsafe {
+        let mut all = mlx_vector_stream_new();
+        let mut settled = mlx_get_streams(&mut all) == 0;
+        for index in 0..mlx_vector_stream_size(all) {
+            let mut stream = mlx_stream_new();
+            settled &= mlx_vector_stream_get(&mut stream, all, index) == 0 && mlx_synchronize(stream) == 0;
+            mlx_stream_free(stream);
+        }
+        mlx_vector_stream_free(all);
+        settled
+    };
+    if !settled {
+        return Err(anyhow!(crate::tr!("an MLX stream ended in error", "un flux de MLX a fini en erreur")));
     }
     Ok(())
 }
@@ -207,9 +268,19 @@ fn serve(jobs: Receiver<Job>) {
     for job in jobs {
         // Entre deux travaux, la copie Swift qui attendait passe.
         gpu::let_waiters_pass();
-        // `gpu::run` rend le verrou même si le travail panique, et le fil
-        // continue.
-        let _ = catch_unwind(AssertUnwindSafe(|| gpu::run(|| job(&mut slots))));
+        // Le seul endroit où le verrou est rendu : après la fin des flux,
+        // que le travail ait réussi, échoué ou paniqué. `gpu::run` le rend à
+        // toute sortie, et le fil continue.
+        let _ = catch_unwind(AssertUnwindSafe(|| {
+            gpu::run(|| {
+                let finish = catch_unwind(AssertUnwindSafe(|| job(&mut slots)));
+                let settled = guarded(settle);
+                match finish {
+                    Ok(finish) => finish(settled),
+                    Err(_) => report(settled),
+                }
+            })
+        }));
     }
 }
 
@@ -218,7 +289,8 @@ mod tests {
     use super::*;
     use crate::compute::gpu;
     use crate::compute::mlx::budget;
-    use mlx_rs::Array;
+    use mlx_rs::{with_stream, Array, Stream};
+    use std::cell::RefCell;
     use std::rc::Rc;
     use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
     use std::sync::{mpsc, Arc};
@@ -554,5 +626,221 @@ mod tests {
         // SAFETY : `qos_class_self` ne lit que le fil appelant.
         let class = run(|| Ok(unsafe { qos_class_self() })).unwrap();
         assert_eq!(class, libc::qos_class_t::QOS_CLASS_USER_INITIATED as u32);
+    }
+
+    #[repr(C)]
+    #[derive(Clone, Copy)]
+    struct CArray {
+        ctx: *mut std::ffi::c_void,
+    }
+
+    extern "C" {
+        // mlx-c : le tableau est-il calculé, sans l'attendre.
+        fn _mlx_array_is_available(res: *mut bool, array: CArray) -> std::ffi::c_int;
+    }
+
+    thread_local! {
+        /// Sur le fil MLX : les tableaux partis en `async_eval`, gardés le
+        /// temps que le témoin les regarde.
+        static LAUNCHED: RefCell<Vec<Array>> = const { RefCell::new(Vec::new()) };
+    }
+
+    /// `body` dans un processus où ne tourne que le test `name` : ses
+    /// tableaux (16 Mio) fausseraient `a_dropped_value_gives_its_buffers_back`,
+    /// qui compte la mémoire de tout MLX (0 passage sur 5 à côté de lui), et
+    /// le témoin n'a ici aucun autre fil devant lui.
+    fn alone(name: &str, body: fn()) {
+        const ALONE: &str = "DYSFLOW_TEST_ALONE";
+        if std::env::var_os(ALONE).is_some() {
+            return body();
+        }
+        let out = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([&format!("compute::mlx::worker::tests::{name}"), "--exact"])
+            .env(ALONE, "1")
+            .output()
+            .unwrap();
+        let (stdout, stderr) = (String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
+        assert!(out.status.success() && stdout.contains("1 passed"), "{stdout}{stderr}");
+    }
+
+    /// Une sortie de travail, un calcul : chacun avec son nom.
+    type Exit = (&'static str, fn(Launch));
+    type Graph = (&'static str, fn() -> Result<Array>);
+
+    /// Ce que le travail donne au témoin.
+    #[derive(Clone)]
+    struct Launch {
+        waiting: mpsc::Sender<()>,
+        launched: mpsc::Sender<usize>,
+    }
+
+    impl Launch {
+        fn start(&self, graph: fn() -> Result<Array>) -> Result<()> {
+            let array = graph()?;
+            self.waiting.send(())?;
+            // Le temps que le témoin attende le verrou.
+            std::thread::sleep(Duration::from_millis(5));
+            mlx_rs::transforms::async_eval([&array])?;
+            self.launched.send(array.as_ptr().ctx as usize)?;
+            LAUNCHED.with_borrow_mut(|all| all.push(array));
+            Ok(())
+        }
+    }
+
+    /// Vrai si le calcul lancé par `exit` est fini quand un autre fil obtient
+    /// le verrou : c'est ce que verrait la copie Swift de MLX.
+    fn finished_when_the_lock_is_free(exit: impl FnOnce(Launch)) -> bool {
+        let (waiting, is_waiting) = mpsc::channel();
+        let (launched, has_launched) = mpsc::channel();
+        let witness = std::thread::spawn(move || {
+            is_waiting.recv_timeout(PATIENCE).unwrap();
+            gpu::run(|| {
+                let array: usize = has_launched.recv_timeout(PATIENCE).unwrap();
+                let mut available = false;
+                // SAFETY : le tableau vit dans `LAUNCHED` jusqu'au travail du
+                // bas, et le fil MLX ne calcule rien tant que ce fil tient le
+                // verrou : personne d'autre ne le touche.
+                let done = unsafe { _mlx_array_is_available(&mut available, CArray { ctx: array as *mut _ }) };
+                assert_eq!(done, 0);
+                (array, available)
+            })
+        });
+        exit(Launch { waiting, launched });
+        let (array, available) = witness.join().unwrap();
+        run(move || {
+            LAUNCHED.with_borrow_mut(|all| {
+                all.retain(|kept| {
+                    let this = kept.as_ptr().ctx as usize == array;
+                    if this {
+                        // Une erreur du calcul est l'affaire du test.
+                        let _ = kept.eval();
+                    }
+                    !this
+                })
+            });
+            Ok(())
+        })
+        .unwrap();
+        available
+    }
+
+    /// Un calcul de quelques dizaines de millisecondes, sur le flux en cours.
+    fn long_work(side: i32, steps: usize) -> Result<Array> {
+        let ones = mlx_rs::ops::ones::<f32>(&[side, side])?;
+        let shrink = Array::from_f32(1.0 / side as f32);
+        let mut product = ones.clone();
+        for _ in 0..steps {
+            product = product.matmul(&ones)?.multiply(&shrink)?;
+        }
+        Ok(product)
+    }
+
+    fn long_on_the_gpu() -> Result<Array> {
+        long_work(2048, 8)
+    }
+
+    /// `async_eval` revient avant la fin du calcul : le verrou, lui, attend
+    /// cette fin, par toute sortie d'un travail.
+    #[test]
+    fn the_lock_covers_the_gpu_work_whatever_the_way_out_of_the_job() {
+        alone("the_lock_covers_the_gpu_work_whatever_the_way_out_of_the_job", every_way_out);
+    }
+
+    fn every_way_out() {
+        struct Parting(Launch);
+        impl Drop for Parting {
+            fn drop(&mut self) {
+                self.0.start(long_on_the_gpu).unwrap();
+            }
+        }
+        struct PartingBadly(Launch);
+        impl Drop for PartingBadly {
+            fn drop(&mut self) {
+                self.0.start(long_on_the_gpu).unwrap();
+                panic!("libération voulue après async_eval");
+            }
+        }
+        let exits: [Exit; 8] = [
+            ("succès", |job| run(move || job.start(long_on_the_gpu)).unwrap()),
+            ("erreur", |job| {
+                let failed = run(move || -> Result<()> {
+                    job.start(long_on_the_gpu)?;
+                    Err(anyhow!("refus voulu"))
+                });
+                assert!(failed.unwrap_err().to_string().contains("refus voulu"));
+            }),
+            ("panique", |job| {
+                let failed = run(move || -> Result<()> {
+                    job.start(long_on_the_gpu)?;
+                    panic!("panique voulue après async_eval")
+                });
+                assert!(failed.unwrap_err().to_string().contains("panique voulue"));
+            }),
+            ("chargement", |job| drop(Held::load(move || job.start(long_on_the_gpu)).unwrap())),
+            ("chargement en échec", |job| {
+                let failed = Held::<()>::load(move || {
+                    job.start(long_on_the_gpu)?;
+                    Err(anyhow!("poids tronqués"))
+                });
+                assert!(failed.is_err());
+            }),
+            ("libération", |job| drop(Held::load(move || Ok(Parting(job))).unwrap())),
+            ("libération qui panique", |job| drop(Held::load(move || Ok(PartingBadly(job))).unwrap())),
+            ("travail que personne n'attend", |job| soon(move || job.start(long_on_the_gpu))),
+        ];
+        let early: Vec<&str> =
+            exits.into_iter().filter(|(_, exit)| !finished_when_the_lock_is_free(exit)).map(|(name, _)| name).collect();
+        assert!(early.is_empty(), "verrou rendu pendant le calcul : {early:?}");
+    }
+
+    /// Tout flux où un travail peut laisser un calcul, pas seulement celui
+    /// par défaut du GPU.
+    #[test]
+    fn the_lock_covers_every_stream_a_job_can_compute_on() {
+        alone("the_lock_covers_every_stream_a_job_can_compute_on", every_stream);
+    }
+
+    fn every_stream() {
+        fn on_its_own_stream() -> Result<Array> {
+            with_stream(&Stream::new_with_device(&mlx_rs::Device::gpu()), long_on_the_gpu)
+        }
+        fn on_the_cpu() -> Result<Array> {
+            with_stream(&Stream::cpu(), || long_work(1536, 6))
+        }
+        fn cpu_feeding_the_gpu() -> Result<Array> {
+            let slow = on_the_cpu()?;
+            Ok(slow.add(Array::from_f32(1.0))?)
+        }
+        fn gpu_feeding_the_cpu() -> Result<Array> {
+            let slow = long_on_the_gpu()?;
+            with_stream(&Stream::cpu(), || Ok(slow.add(Array::from_f32(1.0))?))
+        }
+        let streams: [Graph; 5] = [
+            ("GPU par défaut", long_on_the_gpu),
+            ("GPU créé par le travail", on_its_own_stream),
+            ("CPU", on_the_cpu),
+            ("CPU qui nourrit le GPU", cpu_feeding_the_gpu),
+            ("GPU qui nourrit le CPU", gpu_feeding_the_cpu),
+        ];
+        let early: Vec<&str> = streams
+            .into_iter()
+            .filter(|&(_, graph)| !finished_when_the_lock_is_free(|job| run(move || job.start(graph)).unwrap()))
+            .map(|(name, _)| name)
+            .collect();
+        assert!(early.is_empty(), "verrou rendu pendant le calcul : {early:?}");
+    }
+
+    /// Une erreur qui n'arrive qu'après `async_eval` est celle du travail qui
+    /// l'a lancé, et le fil reste utilisable.
+    #[test]
+    fn an_error_after_async_eval_reaches_the_caller() {
+        let failed = run(|| {
+            let singular = mlx_rs::ops::zeros::<f32>(&[64, 64])?;
+            let inverse = with_stream(&Stream::cpu(), || mlx_rs::linalg::inv(&singular))?;
+            mlx_rs::transforms::async_eval([&inverse])?;
+            Ok(())
+        });
+        assert!(failed.is_err(), "l'erreur du calcul est perdue");
+        assert_eq!(crate::compute::mlx::smoke().unwrap(), 6.0);
     }
 }

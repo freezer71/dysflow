@@ -1,3 +1,4 @@
+import KokoroMLX
 import os
 
 /// Le passage unique vers MLX : tout calcul MLX de l'app (la voix Kokoro, les
@@ -8,8 +9,9 @@ import os
 /// `shared` est le verrou du cœur Rust (`compute::gpu`, par `gpuLock`) : la
 /// copie Rust de MLX et celle de Swift ne calculent jamais en même temps. Un
 /// `body` n'appelle donc jamais un calcul Rust : le fil MLX l'attendrait (le
-/// cœur le refuse par une erreur). `MLXGate()`, pour les tests, a son verrou
-/// propre.
+/// cœur le refuse par une erreur). Il n'est rendu que quand le GPU a fini ce
+/// que `body` a lancé, erreur comprise (`MLXStreams`). `MLXGate()`, pour les
+/// tests, a son verrou propre et n'attend rien.
 ///
 /// Un `os_unfair_lock` dans les deux cas : les appels arrivent de fils
 /// d'arrière-plan, de façon synchrone (pris et rendu sur le même fil), et la
@@ -33,7 +35,10 @@ final class MLXGate: @unchecked Sendable {
     func run<T>(_ body: () throws -> T) rethrows -> T {
         if let ownLock { return try ownLock.withLockUnchecked(body) }
         gpuLock()
-        defer { gpuUnlock() }
+        defer {
+            MLXStreams.synchronize()
+            gpuUnlock()
+        }
         return try body()
     }
 }

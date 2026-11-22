@@ -16,7 +16,8 @@ chaque étage d'upsampling de `KokoroGenerator` (fonction `stopsHere` : MLX
 étant paresseux, l'intermédiaire est évalué puis `shouldStop` consulté).
 S'il dit vrai, le passage rend `nil`. Sans `shouldStop`, ni évaluation ni
 test : le chemin d'origine. `KokoroRunner.swift` est un ajout de
-Dysflow.
+Dysflow, comme `MLXStreams.swift` (la fin des calculs attendue avant de
+rendre le verrou du GPU ; importe `Cmlx`, le C de mlx-swift).
 
 Corrections reprises de mlx-audio Python 0.5.8 (la chaîne du banc
 d'écoute) : le bloc upsample de `AdainResBlock1d` ôte la première trame de
