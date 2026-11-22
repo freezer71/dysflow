@@ -55,25 +55,42 @@ jobs:
         # partagent un seul build de MLX. Sans elle, cargo partage ces
         # dépendances avec le code en test mais pas en clippy (qui ne les
         # compile qu'en métadonnées), et MLX se recompile (~8 min).
+        # DYSFLOW_MLX_CACHE : la clé du cache de target/ (voir la garde de
+        # scripts/mlx-sources.sh). Elle suit ce que la garde vérifie (ses deux
+        # scripts, et le macOS de l'hôte, cible des noyaux) et Xcode, dont
+        # mlx-sys suit les en-têtes : sinon, un cache qu'elle refuse serait
+        # repris tel quel à chaque exécution, et MLX recompilé chaque fois.
         if: runner.os == 'macOS'
         run: |
           if ! xcrun -sdk macosx metal -v >/dev/null 2>&1; then
             xcodebuild -downloadComponent MetalToolchain
           fi
           echo "CARGO_BUILD_TARGET=aarch64-apple-darwin" >> "$GITHUB_ENV"
+          echo "DYSFLOW_MLX_CACHE=mlx-$({ cat scripts/mlx-sources.sh scripts/mlx-sources.cmake; sw_vers -productVersion | cut -d. -f1,2; xcodebuild -version; } | shasum -a 256 | cut -c1-12)" >> "$GITHUB_ENV"
       - uses: Swatinem/rust-cache@v2
         with:
-          # mlx-sys écrit ses noyaux Metal dans target/mlx-metallib (chemin
-          # inscrit dans le binaire, MLX_RS_METAL_PATH) : sans eux, un target/
-          # restauré donnerait un MLX qui ne trouve pas sa mlx.metallib.
-          cache-directories: ${{ runner.os == 'macOS' && 'target/mlx-metallib' || '' }}
+          # Vide hors de Mac : clé inchangée sous Linux et Windows.
+          key: ${{ env.DYSFLOW_MLX_CACHE }}
+      - name: Sources épinglées de MLX, en cache (Mac)
+        # Après rust-cache : son post, qui vide target/mlx-sources, passe
+        # après celui-ci, qui sauve.
+        if: runner.os == 'macOS'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: target/mlx-sources
+          key: mlx-sources-${{ hashFiles('scripts/mlx-sources.sh') }}
       - name: Sources épinglées de MLX (Mac)
-        # Après la restauration du cache : le script reprend ce qui est juste
-        # (commits et empreintes épinglés) et, si mlx.metallib manque à un
-        # target/ restauré, retire le build de mlx-sys pour qu'il soit refait.
+        # rust-cache vide target/mlx-metallib avant de sauver, mais chaque
+        # build de mlx-sys garde ses noyaux (out/build/lib). La copie la plus
+        # récente est celle d'avant la sauvegarde. La garde vérifie ensuite
+        # chaque build et ces noyaux : sans preuve, tout est retiré et refait.
         # Ni Linux ni Windows ne compilent MLX.
         if: runner.os == 'macOS'
         run: |
+          mkdir -p target/mlx-metallib
+          for copie in target/aarch64-apple-darwin/*/build/mlx-sys-*/out/build/lib/mlx.metallib; do
+            if [ "$copie" -nt target/mlx-metallib/mlx.metallib ]; then cp -p "$copie" target/mlx-metallib/; fi
+          done
           . scripts/mlx-sources.sh
           echo "CMAKE_TOOLCHAIN_FILE_aarch64_apple_darwin=$CMAKE_TOOLCHAIN_FILE_aarch64_apple_darwin" >> "$GITHUB_ENV"
           echo "MLX_RS_METAL_PATH=$MLX_RS_METAL_PATH" >> "$GITHUB_ENV"
@@ -239,18 +256,24 @@ jobs:
           rustup update stable --no-self-update
           rustup default stable
       - name: Metal Toolchain (noyaux MLX)
+        # DYSFLOW_MLX_CACHE : comme dans le job Rust, sans le macOS de l'hôte
+        # (les noyaux visent macOS 14).
         run: |
           if ! xcrun -sdk macosx metal -v >/dev/null 2>&1; then
             xcodebuild -downloadComponent MetalToolchain
           fi
+          echo "DYSFLOW_MLX_CACHE=mlx-$({ cat scripts/mlx-sources.sh scripts/mlx-sources.cmake; xcodebuild -version; } | shasum -a 256 | cut -c1-12)" >> "$GITHUB_ENV"
       # Garde target/, donc MLX compilé par mlx-sys (CMake, ~4 min) : il ne se
-      # recompile pas d'une exécution à l'autre tant que Cargo.lock ne bouge pas.
-      # target/mlx-metallib : ses noyaux Metal, que le build ne réécrit pas s'il
-      # est en cache. build-ffi.sh (scripts/mlx-sources.sh) refait le build de
-      # mlx-sys si un target/ restauré en est privé.
+      # recompile pas d'une exécution à l'autre tant que la clé ne change pas.
       - uses: Swatinem/rust-cache@v2
         with:
-          cache-directories: target/mlx-metallib
+          key: ${{ env.DYSFLOW_MLX_CACHE }}
+      - name: Sources épinglées de MLX, en cache
+        # Après rust-cache, pour la même raison que dans le job Rust.
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: target/mlx-sources
+          key: mlx-sources-${{ hashFiles('scripts/mlx-sources.sh') }}
       - name: dysflow-espeak
         run: ./scripts/build-espeak.sh
       - name: Moteur et liaison Swift
@@ -259,7 +282,12 @@ jobs:
         # livrée n'a pas avant le lot 3 (scripts/build-macos.sh la refuse).
         # MLXCoexistenceTests vérifie ainsi la décision « Lot 0 » ; sans
         # DYSFLOW_MLX_RUST, ce test serait sauté : la CI le refuse.
+        # Les noyaux du build en cache : comme dans le job Rust.
         run: |
+          mkdir -p target/mlx-metallib/macos-14.0
+          for copie in target/app/build/mlx-sys-*/out/build/lib/mlx.metallib; do
+            if [ "$copie" -nt target/mlx-metallib/macos-14.0/mlx.metallib ]; then cp -p "$copie" target/mlx-metallib/macos-14.0/; fi
+          done
           FEATURES=ocr,mlx ./scripts/build-ffi.sh
           grep -qx 'DYSFLOW_FFI_CONDITIONS = DYSFLOW_MLX_RUST' macos/Generated/Link.xcconfig
       - name: Tests de l'app
