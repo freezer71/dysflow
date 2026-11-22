@@ -84,6 +84,17 @@ Contents/Resources/licences (ce fichier compris) :
   metal-cpp-LICENSE), nlohmann/json (licence MIT, Niels Lohmann —
   nlohmann-json-LICENSE) et {fmt} (licence MIT avec exception pour les
   binaires, Victor Zverovich — fmt-LICENSE) ;
+- la copie de MLX que compile le moteur en Rust (mlx-rs 0.34.0, mlx-sys 0.7.0 :
+  crates MIT ou Apache 2.0, listées dans THIRD-PARTY-RUST.txt), à partir de
+  sources épinglées par commit ou par empreinte (scripts/mlx-sources.sh) : MLX
+  0.32.2 (licence MIT, Apple Inc. — mlx-rs-mlx-LICENSE), mlx-c (licence MIT,
+  ml-explore — mlx-rs-mlx-c-LICENSE), metal-cpp (licence Apache 2.0, Apple
+  Inc. — mlx-rs-metal-cpp-LICENSE), nlohmann/json 3.11.3 (licence MIT, Niels
+  Lohmann — mlx-rs-nlohmann-json-LICENSE), {fmt} 12.1.0 (licence MIT avec
+  exception pour les binaires, Victor Zverovich — mlx-rs-fmt-LICENSE) et
+  gguflib (gguf-tools, licence MIT, Copyright (c) 2022 Georgi
+  Gerganov — mlx-rs-gguflib-LICENSE). Ces licences sont jointes à l'app dès que son
+  moteur lie cette copie ;
 - KeyboardShortcuts, licence MIT, Sindre Sorhus — KeyboardShortcuts-LICENSE ;
 - les logos des éditeurs de modèles, dans les réglages
   (macos/Resources/Assets.xcassets) : NVIDIA, OpenAI, Mistral, Qwen et

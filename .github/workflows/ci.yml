@@ -63,10 +63,20 @@ jobs:
           echo "CARGO_BUILD_TARGET=aarch64-apple-darwin" >> "$GITHUB_ENV"
       - uses: Swatinem/rust-cache@v2
         with:
-          # mlx-sys écrit ses noyaux Metal dans ~/.mlx/lib (chemin inscrit
-          # dans le binaire) : sans eux, un target/ restauré donnerait un MLX
-          # qui ne trouve pas sa mlx.metallib.
-          cache-directories: ${{ runner.os == 'macOS' && '~/.mlx' || '' }}
+          # mlx-sys écrit ses noyaux Metal dans target/mlx-metallib (chemin
+          # inscrit dans le binaire, MLX_RS_METAL_PATH) : sans eux, un target/
+          # restauré donnerait un MLX qui ne trouve pas sa mlx.metallib.
+          cache-directories: ${{ runner.os == 'macOS' && 'target/mlx-metallib' || '' }}
+      - name: Sources épinglées de MLX (Mac)
+        # Après la restauration du cache : le script reprend ce qui est juste
+        # (commits et empreintes épinglés) et, si mlx.metallib manque à un
+        # target/ restauré, retire le build de mlx-sys pour qu'il soit refait.
+        # Ni Linux ni Windows ne compilent MLX.
+        if: runner.os == 'macOS'
+        run: |
+          . scripts/mlx-sources.sh
+          echo "CMAKE_TOOLCHAIN_FILE_aarch64_apple_darwin=$CMAKE_TOOLCHAIN_FILE_aarch64_apple_darwin" >> "$GITHUB_ENV"
+          echo "MLX_RS_METAL_PATH=$MLX_RS_METAL_PATH" >> "$GITHUB_ENV"
       - name: Tests
         # Sur Mac, avec MLX en Rust (compute::mlx_smoke) ; sans effet ailleurs.
         run: cargo test --workspace --locked ${{ runner.os == 'macOS' && '--features dysflow-ffi/mlx' || '' }}
@@ -74,6 +84,17 @@ jobs:
         run: cargo clippy --workspace --all-targets --locked ${{ runner.os == 'macOS' && '--features dysflow-ffi/mlx' || '' }} -- -D warnings
       - name: Clippy (Kokoro au terminal)
         run: cargo clippy -p dysflow --all-targets --features kokoro-onnx --locked -- -D warnings
+      - name: MSRV de MLX en Rust (Mac)
+        # La feature mlx (mlx-rs, mlx-sys) doit tenir dans les MSRV : 1.88 pour
+        # le cœur, 1.91 pour le moteur de l'app (ffi/). Un échec donne la
+        # version qu'elle demande : la MSRV ne se relève pas dans ce job.
+        if: runner.os == 'macOS'
+        run: |
+          rustup toolchain install 1.88 1.91 --profile minimal --no-self-update
+          cargo +1.88 check -p dysflow --features mlx --locked ||
+            { echo "::error::mlx demande plus que Rust 1.88 (MSRV du cœur) : voir la version requise ci-dessus" >&2; exit 1; }
+          cargo +1.91 check -p dysflow-ffi --features mlx --locked ||
+            { echo "::error::mlx demande plus que Rust 1.91 (MSRV de ffi/) : voir la version requise ci-dessus" >&2; exit 1; }
       - name: Tests d'ONNX Runtime (Windows)
         # Le chargement d'ONNX Runtime par chemin absolu (lot W) : les essais
         # qui demandent la vraie bibliothèque et le modèle sont ignorés.
@@ -223,10 +244,12 @@ jobs:
           fi
       # Garde target/, donc MLX compilé par mlx-sys (CMake, ~4 min) : il ne se
       # recompile pas d'une exécution à l'autre tant que Cargo.lock ne bouge pas.
-      # ~/.mlx : ses noyaux Metal, que le build ne réécrit pas s'il est en cache.
+      # target/mlx-metallib : ses noyaux Metal, que le build ne réécrit pas s'il
+      # est en cache. build-ffi.sh (scripts/mlx-sources.sh) refait le build de
+      # mlx-sys si un target/ restauré en est privé.
       - uses: Swatinem/rust-cache@v2
         with:
-          cache-directories: ~/.mlx
+          cache-directories: target/mlx-metallib
       - name: dysflow-espeak
         run: ./scripts/build-espeak.sh
       - name: Moteur et liaison Swift

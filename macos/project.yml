@@ -206,6 +206,17 @@ targets:
           joindre "$CMLX/json/LICENSE.MIT" nlohmann-json-LICENSE
           joindre "$CMLX/fmt/LICENSE" fmt-LICENSE
           joindre "$CHECKOUTS/KeyboardShortcuts/license" KeyboardShortcuts-LICENSE
+          # La copie Rust de MLX (feature mlx du moteur, Link.xcconfig) : ses
+          # licences, prises dans les sources épinglées par scripts/mlx-sources.sh
+          # (MLX, mlx-c, metal-cpp, nlohmann/json, fmt, gguflib). Une seule fois
+          # quand le moteur la lie : sans elle, l'app n'en porte pas.
+          case " $DYSFLOW_FFI_CONDITIONS " in
+          *" DYSFLOW_MLX_RUST "*)
+            for nom in mlx mlx-c metal-cpp nlohmann-json fmt gguflib; do
+              joindre "$SRCROOT/../target/mlx-sources/licences/mlx-rs-$nom-LICENSE" "mlx-rs-$nom-LICENSE"
+            done
+            ;;
+          esac
           # Le moteur Rust (libdysflow_ffi.a) : ses crates, et Tesseract et
           # Leptonica que la crate tesseract-rs compile dedans (feature ocr).
           joindre "$SRCROOT/../THIRD-PARTY-RUST.txt" THIRD-PARTY-RUST.txt

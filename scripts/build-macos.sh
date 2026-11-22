@@ -84,6 +84,14 @@ done
 licences=(NOTICE sonic-LICENSE mlx-audio-swift-LICENSE mlx-swift-lm-LICENSE mlx-swift-LICENSE mlx-LICENSE mlx-c-LICENSE
     metal-cpp-LICENSE nlohmann-json-LICENSE fmt-LICENSE KeyboardShortcuts-LICENSE
     THIRD-PARTY-RUST.txt tesseract-LICENSE leptonica-LICENSE speech-swift-LICENSE cmudict-LICENSE lobe-icons-LICENSE)
+# La copie Rust de MLX : ses licences (scripts/mlx-sources.sh) quand le moteur
+# lié l'a (DYSFLOW_MLX_RUST dans Link.xcconfig). Refusée plus haut avant le
+# lot 3 ; la vérification suit déjà la liaison, pour ne pas l'oublier alors.
+if grep -q 'DYSFLOW_MLX_RUST' macos/Generated/Link.xcconfig; then
+    for nom in mlx mlx-c metal-cpp nlohmann-json fmt gguflib; do
+        licences+=("mlx-rs-$nom-LICENSE")
+    done
+fi
 for f in "${licences[@]}"; do
     if [ ! -s "$APP_BUILT/Contents/Resources/licences/$f" ]; then
         echo "Erreur : $f manque dans l'app (Contents/Resources/licences)" >&2

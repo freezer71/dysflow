@@ -7,6 +7,9 @@
 #
 # mlx (MLX en Rust, mlx_rust_smoke) n'entre pas dans l'app livrée avant le
 # lot 3 : seul le build de test de la CI l'active, pour MLXCoexistenceTests.
+# Avec mlx, les sources de MLX viennent de scripts/mlx-sources.sh (commits et
+# empreintes épinglés, aucun téléchargement de CMake) ; sans mlx, ce script ne
+# télécharge rien.
 #
 # Produit macos/Generated (Swift, en-tête, module, Link.xcconfig) et
 # macos/Libraries (libdysflow_ffi.a).
@@ -41,6 +44,15 @@ mkdir -p "$GEN" "$LIB"
 
 # L'app vise macOS 14 : rustc et cc lisent cette variable.
 export MACOSX_DEPLOYMENT_TARGET=14.0
+
+# Les sources épinglées de MLX et l'emplacement de mlx.metallib (target/
+# mlx-metallib) : avant cargo, qui compile mlx-sys.
+case ",$FEATURES," in
+*,mlx,*)
+    # shellcheck source=scripts/mlx-sources.sh
+    . scripts/mlx-sources.sh
+    ;;
+esac
 
 # Un seul build du moteur : MLX (mlx-sys, CMake) se compile une fois. La
 # liaison se lit dans la bibliothèque finale ; l'outil (ffi/bindgen) est un
