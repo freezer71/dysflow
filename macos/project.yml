@@ -261,6 +261,25 @@ targets:
         # Les tests tournent sans rien montrer (Tests/Headless) : XCTest crée
         # cette classe au chargement du bundle, avant le premier test.
         INFOPLIST_KEY_NSPrincipalClass: DysflowHeadlessTestHost
+  # La porte du lot 3 (MLXLoadTests) en Release, seule : le reste de
+  # DysflowTests s'appuie sur DEBUG et ne se compile pas en Release. Par
+  # scripts/mlx-charge.sh (DYSFLOW_TESTS_RELEASE=1 ./scripts/test-macos.sh).
+  DysflowChargeTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests
+        includes: [MLXLoadTests.swift, Headless/*.swift]
+    dependencies:
+      - target: Dysflow
+    settings:
+      base:
+        SWIFT_INCLUDE_PATHS: $(SRCROOT)/Generated
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) $(DYSFLOW_FFI_CONDITIONS)
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/Dysflow.app/Contents/MacOS/Dysflow
+        BUNDLE_LOADER: $(TEST_HOST)
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_NSPrincipalClass: DysflowHeadlessTestHost
   DysflowUITests:
     type: bundle.ui-testing
     platform: macOS
@@ -285,3 +304,13 @@ schemes:
       # launchInFrench() (UITests/LaunchLanguage.swift).
       commandLineArguments:
         "-AppleLanguages (fr)": true
+  # La porte du lot 3, en Release : seulement par scripts/test-macos.sh avec
+  # DYSFLOW_TESTS_RELEASE=1 (scripts/mlx-charge.sh). Le schéma Dysflow, celui
+  # de l'app livrée (scripts/build-macos.sh), n'en sait rien.
+  DysflowCharge:
+    build:
+      targets:
+        Dysflow: all
+    test:
+      config: Release
+      targets: [DysflowChargeTests]

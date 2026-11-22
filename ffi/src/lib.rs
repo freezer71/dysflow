@@ -1015,6 +1015,84 @@ pub fn mlx_rust_smoke() -> Result<f32, DysflowError> {
     dysflow::compute::mlx::smoke().map_err(failed)
 }
 
+/// Ce que la porte du lot 3 (`MLXLoadTests`) compte : appelé au début et à
+/// la fin de chaque calcul, sous le verrou du GPU, par les deux copies de
+/// MLX. Seulement avec la feature `mlx`.
+#[cfg(all(feature = "mlx", target_os = "macos", target_arch = "aarch64"))]
+#[uniffi::export(with_foreign)]
+pub trait MlxComputeProbe: Send + Sync {
+    fn enter(&self);
+    fn leave(&self);
+}
+
+/// Un passage Kokoro de la copie Rust de MLX, et sa mémoire juste après.
+#[cfg(all(feature = "mlx", target_os = "macos", target_arch = "aarch64"))]
+#[derive(uniffi::Record)]
+pub struct MlxRustKokoroPass {
+    pub durations: Vec<u32>,
+    pub samples: Vec<f32>,
+    /// Octets de la copie Rust : en usage, au plus haut depuis le lancement,
+    /// en cache.
+    pub mlx_active: u64,
+    pub mlx_peak: u64,
+    pub mlx_cache: u64,
+    /// Le plafond de mémoire posé (la somme des besoins inscrits).
+    pub mlx_memory_limit: u64,
+}
+
+/// L'essai de charge de la porte du lot 3 : un passage Kokoro de la copie
+/// Rust, graine `seed`, sur le modèle de `model_dir`, chargé au premier appel
+/// et gardé (un autre dossier le remplace). `probe` encadre le calcul, sur le
+/// fil MLX, verrou du GPU tenu. Seulement avec la feature `mlx`, que seul le
+/// build de test active : jamais dans l'app livrée.
+#[cfg(all(feature = "mlx", target_os = "macos", target_arch = "aarch64"))]
+#[uniffi::export]
+pub fn mlx_rust_kokoro_check(
+    model_dir: String,
+    ids: Vec<i64>,
+    style: Vec<f32>,
+    seed: u64,
+    probe: Arc<dyn MlxComputeProbe>,
+) -> Result<MlxRustKokoroPass, DysflowError> {
+    use dysflow::compute::mlx;
+    use dysflow::tts::kokoro::mlx::MlxBackend;
+    use std::sync::Mutex;
+
+    static LOADED: Mutex<Option<(String, MlxBackend)>> = Mutex::new(None);
+    struct Leave(Arc<dyn MlxComputeProbe>);
+    impl Drop for Leave {
+        fn drop(&mut self) {
+            self.0.leave();
+        }
+    }
+
+    let mut loaded = LOADED.lock().unwrap_or_else(|e| e.into_inner());
+    if loaded.as_ref().is_none_or(|(dir, _)| *dir != model_dir) {
+        if let Some((_, old)) = loaded.take() {
+            old.release();
+        }
+        let backend = MlxBackend::new();
+        backend.load(std::path::Path::new(&model_dir)).map_err(failed)?;
+        *loaded = Some((model_dir, backend));
+    }
+    let (_, backend) = loaded.as_ref().expect("chargé ci-dessus");
+    let raw = backend
+        .infer_seeded(&ids, &style, seed, move || {
+            probe.enter();
+            Leave(probe)
+        })
+        .map_err(failed)?;
+    let memory = mlx::memory().map_err(failed)?;
+    Ok(MlxRustKokoroPass {
+        durations: raw.durations,
+        samples: raw.samples,
+        mlx_active: memory.active as u64,
+        mlx_peak: memory.peak as u64,
+        mlx_cache: memory.cache as u64,
+        mlx_memory_limit: mlx::budget::total().memory as u64,
+    })
+}
+
 /// Prend le verrou du GPU, commun aux deux copies de MLX (`MLXGate.shared`),
 /// en attendant s'il le faut. Synchrone : le fil qui l'appelle est celui qui
 /// le rendra. En le tenant, ne jamais appeler un calcul Rust. Hors de la
@@ -1654,5 +1732,51 @@ mod tests {
         assert!(refused, "un calcul sous le verrou attendrait sans fin");
         assert!(waited, "le calcul Rust a commencé pendant que le verrou est tenu");
         assert_eq!(is_done.recv_timeout(Duration::from_secs(20)).expect("verrou jamais rendu").expect("MLX"), 6.0);
+    }
+
+    /// Compte ses appels : `enter`, puis `leave`.
+    #[cfg(all(feature = "mlx", target_os = "macos", target_arch = "aarch64"))]
+    #[derive(Default)]
+    struct CountingProbe(std::sync::Mutex<Vec<(&'static str, bool)>>);
+
+    #[cfg(all(feature = "mlx", target_os = "macos", target_arch = "aarch64"))]
+    impl MlxComputeProbe for CountingProbe {
+        fn enter(&self) {
+            self.0.lock().unwrap().push(("enter", dysflow::compute::gpu::held_by_this_thread()));
+        }
+        fn leave(&self) {
+            self.0.lock().unwrap().push(("leave", dysflow::compute::gpu::held_by_this_thread()));
+        }
+    }
+
+    /// Un dossier sans modèle : une erreur, et la sonde jamais appelée.
+    #[cfg(all(feature = "mlx", target_os = "macos", target_arch = "aarch64"))]
+    #[test]
+    fn the_kokoro_check_without_a_model_is_an_error() {
+        let probe = Arc::new(CountingProbe::default());
+        let dir = std::env::temp_dir().join("dysflow-sans-kokoro");
+        let result = mlx_rust_kokoro_check(dir.display().to_string(), vec![0], vec![0.0; 256], 7, probe.clone());
+        assert!(result.is_err());
+        assert!(probe.0.lock().unwrap().is_empty());
+    }
+
+    /// Avec le vrai modèle (`DYSFLOW_MODELS`, le dossier qui contient
+    /// `kokoro/`) : une durée par jeton, la sonde appelée une fois de chaque
+    /// côté, verrou tenu, la mémoire de la copie Rust relevée et le plafond
+    /// de Kokoro posé. La parité avec la fixture : `tts::kokoro::mlx`.
+    #[cfg(all(feature = "mlx", target_os = "macos", target_arch = "aarch64"))]
+    #[test]
+    #[ignore = "poids Kokoro"]
+    fn the_kokoro_check_computes_and_calls_the_probe_under_the_lock() {
+        let models = std::env::var_os("DYSFLOW_MODELS").expect("DYSFLOW_MODELS : le dossier des modèles");
+        let dir = std::path::PathBuf::from(models).join("kokoro").display().to_string();
+        let ids = dysflow::tts::kokoro::mlx::warm_up_ids();
+        let probe = Arc::new(CountingProbe::default());
+        let pass = mlx_rust_kokoro_check(dir, ids.clone(), vec![0.0; 256], 7, probe.clone()).unwrap();
+        assert_eq!(pass.durations.len(), ids.len());
+        assert!(!pass.samples.is_empty());
+        assert_eq!(*probe.0.lock().unwrap(), [("enter", true), ("leave", true)]);
+        assert!(pass.mlx_peak >= pass.mlx_active && pass.mlx_active > 0, "{:?}", (pass.mlx_peak, pass.mlx_active));
+        assert_eq!(pass.mlx_memory_limit, 1 << 30, "le besoin de Kokoro");
     }
 }

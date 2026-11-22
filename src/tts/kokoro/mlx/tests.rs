@@ -8,6 +8,7 @@ use super::*;
 use crate::tts::{self, Cancelled};
 use std::path::PathBuf;
 use std::sync::atomic::AtomicUsize;
+use std::sync::mpsc;
 
 /// Les essais qui chargent posent et retirent le besoin `"kokoro"` dans les
 /// plafonds, globaux au processus : un à la fois.
@@ -136,6 +137,56 @@ fn parity() {
     assert_eq!(stoppable.samples.len(), expected.len());
     assert!(error < 0.01, "écart moyen {error}");
     backend.release();
+}
+
+/// Le passage de la porte du lot 3 (`mlx_rust_kokoro_check`) : graine fixée,
+/// il rend la fixture ; `inside` est appelé sur le fil MLX, verrou du GPU
+/// tenu, et ce qu'il rend n'est lâché qu'à la fin du calcul, verrou encore
+/// tenu.
+#[test]
+#[ignore = "poids Kokoro"]
+fn a_seeded_pass_gives_the_fixture_and_brackets_the_compute_under_the_lock() {
+    struct Leave(mpsc::Sender<(&'static str, bool)>);
+    impl Drop for Leave {
+        fn drop(&mut self) {
+            let _ = self.0.send(("leave", crate::compute::gpu::held_by_this_thread()));
+        }
+    }
+
+    let _serial = serial();
+    let reference = reference();
+    let expected = expected_audio(&reference);
+    let backend = loaded();
+    let (said, heard) = mpsc::channel();
+    for _ in 0..2 {
+        let said = said.clone();
+        let out = backend
+            .infer_seeded(&reference.ids, &reference.style, 7, move || {
+                let on_worker = std::thread::current().name() == Some("dysflow-mlx");
+                let _ = said.send(("enter", on_worker && crate::compute::gpu::held_by_this_thread()));
+                Leave(said)
+            })
+            .unwrap();
+        assert_eq!(heard.try_recv(), Ok(("enter", true)), "sur le fil MLX, verrou tenu");
+        assert_eq!(heard.try_recv(), Ok(("leave", true)), "lâché dans le calcul, verrou tenu");
+        assert_eq!(out.durations, reference.durations);
+        assert_eq!(out.samples.len(), expected.len());
+        let error = mean_error(&out.samples, &expected);
+        assert!(error < 0.01, "écart moyen {error}");
+    }
+    backend.release();
+}
+
+/// Sans modèle chargé, le passage à graine fixe est une erreur, et `inside`
+/// n'est pas appelé. Sans MLX ni poids.
+#[test]
+fn a_seeded_pass_without_weights_is_an_error() {
+    let backend = MlxBackend::new();
+    let called = Arc::new(AtomicUsize::new(0));
+    let counter = Arc::clone(&called);
+    let err = backend.infer_seeded(&[0], &zero_style(), 7, move || counter.fetch_add(1, Ordering::SeqCst));
+    assert!(err.is_err());
+    assert_eq!(called.load(Ordering::SeqCst), 0);
 }
 
 // ---------- abandon (KokoroMLXComputeTests) ----------

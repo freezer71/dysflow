@@ -111,6 +111,31 @@ impl MlxBackend {
             Ok(Some(raw))
         })
     }
+
+    /// Un passage complet aux tirages de graine `seed`, jamais abandonné :
+    /// celui des essais de charge (`mlx_rust_kokoro_check`, porte du lot 3).
+    /// `inside` est appelé sur le fil MLX, sous le verrou du GPU, avant le
+    /// calcul ; ce qu'il rend est lâché après, verrou encore tenu. Sans
+    /// modèle chargé : une erreur, `inside` jamais appelé.
+    pub fn infer_seeded<G: 'static>(
+        &self,
+        ids: &[i64],
+        style: &[f32],
+        seed: u64,
+        inside: impl FnOnce() -> G + Send + 'static,
+    ) -> Result<KokoroRaw> {
+        let held = self.held().ok_or_else(not_loaded)?;
+        let (ids, style) = (ids.to_vec(), style.to_vec());
+        let passes = Arc::clone(&self.passes);
+        held.with(move |kokoro| {
+            let _inside = inside();
+            kokoro.rng = RandomState::with_seed(seed)?;
+            passes.fetch_add(1, Ordering::SeqCst);
+            let raw = kokoro.forward(&ids, &style, &Cancel::never())?;
+            KERNELS_COMPILED.store(true, Ordering::SeqCst);
+            Ok(raw)
+        })
+    }
 }
 
 fn not_loaded() -> anyhow::Error {
