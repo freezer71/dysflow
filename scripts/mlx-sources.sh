@@ -20,8 +20,8 @@
 #     macos-<version>. Le jeu de noyaux suit cette version (NAX dès 26.2) et
 #     ne va qu'avec le MLX bâti pour elle : dans un seul dossier, le dernier
 #     build effaçait l'autre, et `matmul` ne trouvait plus ses noyaux. À relire
-#     après tout changement de cette variable. Des noyaux ou un build de
-#     mlx-sys d'une autre cible que leur dossier sont retirés, et refaits ;
+#     après tout changement de cette variable ou de branche : ce qui n'est pas
+#     prouvé bâti par ce script (cible, épingles, noyaux) est retiré, et refait ;
 #   DYSFLOW_MLX_METALLIB : ce fichier, que compute::mlx lit à l'exécution
 #     (tests de ffi/, exemples : rien n'est à côté de leur exécutable) ;
 #   et prépare target/mlx-sources/licences (préfixe mlx-rs-), que l'app joint.
@@ -150,54 +150,78 @@ mlx_cible_de() {
     esac
 }
 
-# mlx_noyaux_justes DOSSIER : sa mlx.metallib vise bien la cible du dossier.
-# L'en-tête d'une metallib porte cette cible : octets 12-13 la majeure (petit
-# boutiste), 14 la mineure. Pour l'hôte, MLX prend la version de ce macOS.
+# mlx_noyaux_justes DOSSIER : sa mlx.metallib est entière et vise la cible du
+# dossier. L'en-tête porte l'une et l'autre : octets 12-13 la majeure (petit
+# boutiste), 14 la mineure, 16-23 la taille du fichier. Pour l'hôte, MLX prend
+# la version de ce macOS.
 mlx_noyaux_justes() {
     [ -s "$1/mlx.metallib" ] || return 1
     mlx_voulue=$(mlx_cible_de "$1")
     if [ -z "$mlx_voulue" ]; then mlx_voulue=$(sw_vers -productVersion); fi
     mlx_voulue=$(echo "$mlx_voulue" | awk -F. '{ printf "%d.%d", $1, $2 }')
     mlx_ecrite=$(od -An -tu1 -j12 -N3 "$1/mlx.metallib" | awk 'NF == 3 { printf "%d.%d", $1 + 256 * $2, $3 }')
-    [ "$mlx_ecrite" = "$mlx_voulue" ]
+    [ "$mlx_ecrite" = "$mlx_voulue" ] || return 1
+    mlx_annoncee=$(od -An -tu8 -j16 -N8 "$1/mlx.metallib" | tr -d ' ')
+    [ "$mlx_annoncee" = "$(wc -c < "$1/mlx.metallib" | tr -d ' ')" ]
 }
 
-# Un fichier au bon nom ne prouve rien : des noyaux d'une autre cible (build
-# d'avant, cache de la CI) sont retirés, comme tout build de mlx-sys qui ne les
-# réécrirait pas (noyaux absents) ou que CMake a configuré pour une autre
-# cible que celle de son dossier (CMAKE_OSX_DEPLOYMENT_TARGET de son cache).
-# Cargo refait alors ce build, noyaux compris.
+# mlx_build_prouve BUILD : ce build de mlx-sys a fini, et son cache porte la
+# preuve qu'écrit mlx-sources.cmake (cette chaîne d'outils, ces épingles, ce
+# dossier de noyaux), la cible de ce dossier, et les noyaux y sont justes.
+mlx_build_prouve() {
+    mlx_cache=$1/out/build/CMakeCache.txt
+    [ -f "$1/output" ] && [ -r "$mlx_cache" ] || return 1
+    mlx_sortie=$(sed -n "s/^DYSFLOW_MLX_PREUVE:INTERNAL=$mlx_empreinte //p" "$mlx_cache") || return 1
+    case "$mlx_sortie" in
+    "$mlx_racine" | "$mlx_racine"/macos-*) ;;
+    *) return 1 ;;
+    esac
+    grep -qxF "CMAKE_OSX_DEPLOYMENT_TARGET:STRING=$(mlx_cible_de "$mlx_sortie")" "$mlx_cache" || return 1
+    mlx_noyaux_justes "$mlx_sortie"
+}
+
+# La garde échoue fermée : elle ne garde que ce qui est prouvé. CMake ignore la
+# chaîne d'outils dans un dossier déjà configuré sans elle (un build de main) :
+# le relancer ne répare rien, il faut le retirer. Et les noyaux sont partagés
+# entre builds, sans dire qui les a écrits : un seul doute retire donc tous les
+# builds de mlx-sys de target/ et tous les noyaux, que cargo refait (~3 min).
+# Rien d'autre n'est effacé : seulement ce que les deux `find` ont listé.
 mlx_metallib_garde() {
     mlx_racine=$PWD/target/mlx-metallib
-    mlx_liste=$(find "$mlx_racine" -mindepth 1 -maxdepth 2 -name mlx.metallib)
-    echo "$mlx_liste" | while IFS= read -r mlx_fichier; do
-        [ -n "$mlx_fichier" ] || continue
-        mlx_noyaux_justes "${mlx_fichier%/*}" && continue
-        echo "MLX : $mlx_fichier ne vise pas la cible de son dossier, retiré / is not built for its directory's target, removed" >&2
-        rm -f "$mlx_fichier"
-    done
+    mlx_empreinte="$(shasum -a 256 < scripts/mlx-sources.sh | cut -c1-64) $(shasum -a 256 < scripts/mlx-sources.cmake | cut -c1-64)"
+    mlx_builds=$(find target -maxdepth 5 -type d -path '*/build/mlx-sys-*' -prune -print) || return 1
+    mlx_noyaux=$(find "$mlx_racine" -maxdepth 2 -name mlx.metallib) || return 1
 
-    mlx_liste=$(find target -maxdepth 5 -type d -path '*/build/mlx-sys-*' -prune -print)
-    echo "$mlx_liste" | while IFS= read -r mlx_build; do
-        # `output` : le script de build a tourné (sinon, ce n'est que lui).
-        [ -n "$mlx_build" ] && [ -f "$mlx_build/output" ] || continue
-        mlx_cache=$mlx_build/out/build/CMakeCache.txt
-        if [ -f "$mlx_cache" ]; then
-            mlx_sortie=$(sed -n 's/^MLX_METAL_PATH:[^=]*=//p' "$mlx_cache")
-            case "$mlx_sortie" in
-            "$mlx_racine" | "$mlx_racine"/macos-*)
-                mlx_batie=$(sed -n 's/^CMAKE_OSX_DEPLOYMENT_TARGET:[^=]*=//p' "$mlx_cache")
-                if [ "$mlx_batie" = "$(mlx_cible_de "$mlx_sortie")" ] && [ -s "$mlx_sortie/mlx.metallib" ]; then
-                    continue
-                fi
-                ;;
-            # Écrit ailleurs : le changement de MLX_RS_METAL_PATH le relance.
-            *) continue ;;
-            esac
-        fi
-        echo "MLX : $mlx_build sera refait (cible ou noyaux) / will be rebuilt (target or kernels)" >&2
-        rm -rf "$mlx_build" "${mlx_build%/build/*}/.fingerprint/${mlx_build##*/}"
-    done
+    mlx_doute=
+    while IFS= read -r mlx_un; do
+        [ -n "$mlx_un" ] || continue
+        # Le script de build compilé, qui n'a encore rien bâti.
+        if [ -f "$mlx_un/build-script-build" ] && [ ! -e "$mlx_un/out" ]; then continue; fi
+        mlx_build_prouve "$mlx_un" || mlx_doute=$mlx_un
+    done <<EOF
+$mlx_builds
+EOF
+    while IFS= read -r mlx_un; do
+        [ -n "$mlx_un" ] || continue
+        mlx_noyaux_justes "${mlx_un%/*}" || mlx_doute=$mlx_un
+    done <<EOF
+$mlx_noyaux
+EOF
+    [ -n "$mlx_doute" ] || return 0
+
+    echo "MLX : $mlx_doute n'est pas prouvé, mlx-sys et ses noyaux seront refaits / is not proven, mlx-sys and its kernels will be rebuilt" >&2
+    while IFS= read -r mlx_un; do
+        [ -n "$mlx_un" ] || continue
+        rm -rf "$mlx_un" "${mlx_un%/build/*}/.fingerprint/${mlx_un##*/}" || return 1
+    done <<EOF
+$mlx_builds
+EOF
+    while IFS= read -r mlx_un; do
+        [ -n "$mlx_un" ] || continue
+        rm -f "$mlx_un" || return 1
+    done <<EOF
+$mlx_noyaux
+EOF
 }
 
 case "$(uname -s)-$(uname -m)" in

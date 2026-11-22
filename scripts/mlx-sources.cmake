@@ -43,4 +43,10 @@ if(DEFINED MLX_METAL_PATH)
   if(_dedans EQUAL 0 AND NOT _sortie STREQUAL _attendu)
     message(FATAL_ERROR "${_sortie} n'est pas le dossier des noyaux de la cible [$ENV{MACOSX_DEPLOYMENT_TARGET}] (relire . scripts/mlx-sources.sh) / ${_sortie} is not the kernel directory of this target (source scripts/mlx-sources.sh again)")
   endif()
+
+  # La preuve que lit la garde de mlx-sources.sh, et que seul ce fichier écrit :
+  # un cache configuré sans lui, ou avec d'autres épingles, ne l'a pas.
+  file(SHA256 "${CMAKE_CURRENT_LIST_DIR}/mlx-sources.sh" _epingles)
+  file(SHA256 "${CMAKE_CURRENT_LIST_FILE}" _chaine)
+  set(DYSFLOW_MLX_PREUVE "${_epingles} ${_chaine} ${_sortie}" CACHE INTERNAL "preuve de configuration")
 endif()
