@@ -19,7 +19,9 @@
 #     avec MACOSX_DEPLOYMENT_TARGET (build-ffi.sh : 14.0), son sous-dossier
 #     macos-<version>. Le jeu de noyaux suit cette version (NAX dès 26.2) et
 #     ne va qu'avec le MLX bâti pour elle : dans un seul dossier, le dernier
-#     build effaçait l'autre, et `matmul` ne trouvait plus ses noyaux ;
+#     build effaçait l'autre, et `matmul` ne trouvait plus ses noyaux. À relire
+#     après tout changement de cette variable. Des noyaux ou un build de
+#     mlx-sys d'une autre cible que leur dossier sont retirés, et refaits ;
 #   DYSFLOW_MLX_METALLIB : ce fichier, que compute::mlx lit à l'exécution
 #     (tests de ffi/, exemples : rien n'est à côté de leur exécutable) ;
 #   et prépare target/mlx-sources/licences (préfixe mlx-rs-), que l'app joint.
@@ -139,15 +141,63 @@ for p in json.load(sys.stdin)["packages"]:
     mlx_licence "$MLX_SOURCES_DIR/gguflib/LICENSE" mlx-rs-gguflib-LICENSE
 }
 
-# Les noyaux Metal : si mlx.metallib manque, un build de mlx-sys restauré (cache
-# de la CI) ne les réécrirait pas, et MLX ne trouverait pas ses noyaux à
-# l'exécution. On retire alors ce build : cargo le refait, noyaux compris.
+# mlx_cible_de DOSSIER : la cible des noyaux de ce dossier de
+# target/mlx-metallib (macos-14.0 : 14.0 ; le dossier lui-même : vide, l'hôte).
+mlx_cible_de() {
+    case "${1##*/}" in
+    macos-*) echo "${1##*/macos-}" ;;
+    *) echo ;;
+    esac
+}
+
+# mlx_noyaux_justes DOSSIER : sa mlx.metallib vise bien la cible du dossier.
+# L'en-tête d'une metallib porte cette cible : octets 12-13 la majeure (petit
+# boutiste), 14 la mineure. Pour l'hôte, MLX prend la version de ce macOS.
+mlx_noyaux_justes() {
+    [ -s "$1/mlx.metallib" ] || return 1
+    mlx_voulue=$(mlx_cible_de "$1")
+    if [ -z "$mlx_voulue" ]; then mlx_voulue=$(sw_vers -productVersion); fi
+    mlx_voulue=$(echo "$mlx_voulue" | awk -F. '{ printf "%d.%d", $1, $2 }')
+    mlx_ecrite=$(od -An -tu1 -j12 -N3 "$1/mlx.metallib" | awk 'NF == 3 { printf "%d.%d", $1 + 256 * $2, $3 }')
+    [ "$mlx_ecrite" = "$mlx_voulue" ]
+}
+
+# Un fichier au bon nom ne prouve rien : des noyaux d'une autre cible (build
+# d'avant, cache de la CI) sont retirés, comme tout build de mlx-sys qui ne les
+# réécrirait pas (noyaux absents) ou que CMake a configuré pour une autre
+# cible que celle de son dossier (CMAKE_OSX_DEPLOYMENT_TARGET de son cache).
+# Cargo refait alors ce build, noyaux compris.
 mlx_metallib_garde() {
-    [ -s "$MLX_RS_METAL_PATH/mlx.metallib" ] && return 0
-    mlx_restes=$(find target -maxdepth 5 -type d \( -path '*/build/mlx-sys-*' -o -path '*/.fingerprint/mlx-sys-*' \) 2>/dev/null)
-    [ -n "$mlx_restes" ] || return 0
-    echo "MLX : mlx.metallib manque, le build de mlx-sys sera refait / mlx.metallib is missing, mlx-sys will be rebuilt" >&2
-    echo "$mlx_restes" | while IFS= read -r mlx_reste; do rm -rf "$mlx_reste"; done
+    mlx_racine=$PWD/target/mlx-metallib
+    mlx_liste=$(find "$mlx_racine" -mindepth 1 -maxdepth 2 -name mlx.metallib)
+    echo "$mlx_liste" | while IFS= read -r mlx_fichier; do
+        [ -n "$mlx_fichier" ] || continue
+        mlx_noyaux_justes "${mlx_fichier%/*}" && continue
+        echo "MLX : $mlx_fichier ne vise pas la cible de son dossier, retiré / is not built for its directory's target, removed" >&2
+        rm -f "$mlx_fichier"
+    done
+
+    mlx_liste=$(find target -maxdepth 5 -type d -path '*/build/mlx-sys-*' -prune -print)
+    echo "$mlx_liste" | while IFS= read -r mlx_build; do
+        # `output` : le script de build a tourné (sinon, ce n'est que lui).
+        [ -n "$mlx_build" ] && [ -f "$mlx_build/output" ] || continue
+        mlx_cache=$mlx_build/out/build/CMakeCache.txt
+        if [ -f "$mlx_cache" ]; then
+            mlx_sortie=$(sed -n 's/^MLX_METAL_PATH:[^=]*=//p' "$mlx_cache")
+            case "$mlx_sortie" in
+            "$mlx_racine" | "$mlx_racine"/macos-*)
+                mlx_batie=$(sed -n 's/^CMAKE_OSX_DEPLOYMENT_TARGET:[^=]*=//p' "$mlx_cache")
+                if [ "$mlx_batie" = "$(mlx_cible_de "$mlx_sortie")" ] && [ -s "$mlx_sortie/mlx.metallib" ]; then
+                    continue
+                fi
+                ;;
+            # Écrit ailleurs : le changement de MLX_RS_METAL_PATH le relance.
+            *) continue ;;
+            esac
+        fi
+        echo "MLX : $mlx_build sera refait (cible ou noyaux) / will be rebuilt (target or kernels)" >&2
+        rm -rf "$mlx_build" "${mlx_build%/build/*}/.fingerprint/${mlx_build##*/}"
+    done
 }
 
 case "$(uname -s)-$(uname -m)" in

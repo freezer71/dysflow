@@ -59,6 +59,15 @@ esac
 # liaison se lit dans la bibliothèque finale ; l'outil (ffi/bindgen) est un
 # paquet à part, qui ne recompile ni le moteur ni MLX.
 cargo build --profile app -p dysflow-ffi ${FEATURES:+--features "$FEATURES"}
+# Les noyaux que l'app joindra sont bien ceux de sa cible.
+case ",$FEATURES," in
+*,mlx,*)
+    if ! mlx_noyaux_justes "$MLX_RS_METAL_PATH"; then
+        echo "Erreur : $DYSFLOW_MLX_METALLIB ne vise pas macOS $MACOSX_DEPLOYMENT_TARGET / is not built for this macOS target" >&2
+        exit 1
+    fi
+    ;;
+esac
 cp target/app/libdysflow_ffi.a "$LIB/"
 cargo run --profile app -p dysflow-uniffi-bindgen -- \
     generate --library target/app/libdysflow_ffi.dylib --language swift --out-dir "$GEN"
