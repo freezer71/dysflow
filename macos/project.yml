@@ -258,6 +258,9 @@ targets:
         TEST_HOST: $(BUILT_PRODUCTS_DIR)/Dysflow.app/Contents/MacOS/Dysflow
         BUNDLE_LOADER: $(TEST_HOST)
         GENERATE_INFOPLIST_FILE: YES
+        # Les tests tournent sans rien montrer (Tests/Headless) : XCTest crée
+        # cette classe au chargement du bundle, avant le premier test.
+        INFOPLIST_KEY_NSPrincipalClass: DysflowHeadlessTestHost
   DysflowUITests:
     type: bundle.ui-testing
     platform: macOS

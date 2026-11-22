@@ -292,13 +292,9 @@ jobs:
           grep -qx 'DYSFLOW_FFI_CONDITIONS = DYSFLOW_MLX_RUST' macos/Generated/Link.xcconfig
       - name: Tests de l'app
         # Les tests d'interface (DysflowUITests) pilotent l'app à l'écran et
-        # demandent l'accès Accessibilité : hors CI.
-        working-directory: macos
-        run: |
-          xcodegen generate
-          xcodebuild -project Dysflow.xcodeproj -scheme Dysflow \
-            -destination 'platform=macOS,arch=arm64' -derivedDataPath build/derived \
-            test -only-testing:DysflowTests
+        # demandent l'accès Accessibilité : hors CI. Le script ne lance que
+        # DysflowTests, en headless, comme en local.
+        run: ./scripts/test-macos.sh
       - name: Textes sans français (catalogue)
         # Bloquant : après la compilation des tests (le script lit les
         # .stringsdata de build/derived), même si les tests ont échoué, du

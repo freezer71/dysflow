@@ -661,8 +661,17 @@ sous `#![cfg(feature = "ocr")]`, comme le test du PDF photocopié de
 `tests/pdf_input.rs`. Sans elle, ces chemins ne sont pas *ignorés* — ils
 n'existent pas dans le binaire de test, et rien ne signale leur absence.
 
-Les tests de l'app (`DysflowTests`) tournent sur la CI : en local, `xcodebuild
-test` ouvre l'app et prend la main sur le Mac.
+Les tests de l'app (`DysflowTests`) se lancent par un seul script, en local
+comme sur la CI. Ils tournent sans rien montrer : aucune fenêtre visible,
+aucune activation, ni icône dans la barre des menus ni presse-papiers général
+(`macos/Tests/Headless`) ; un test échoue si l'hôte se montre quand même. Les
+tests d'interface (`DysflowUITests`) n'en font jamais partie.
+
+```bash
+./scripts/build-ffi.sh
+./scripts/test-macos.sh                       # toute la suite
+./scripts/test-macos.sh PanelControllerTests  # une classe
+```
 
 Deux sondes ne tournent qu'à la demande, faute d'être vérifiables par une
 assertion : elles rendent un son ou une mesure, à écouter ou à lire.
