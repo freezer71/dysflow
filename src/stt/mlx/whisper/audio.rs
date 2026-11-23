@@ -42,7 +42,10 @@ fn reflect_pad(audio: &Array, pad: i32) -> Result<Array> {
     let n = audio.shape().first().copied().unwrap_or(0);
     ensure!(
         n > 1,
-        "Whisper : {n} échantillon(s), trop peu pour la marge en miroir"
+        crate::tr!(
+            en = "Whisper: {n} sample(s), too few for the reflected margin",
+            fr = "Whisper : {n} échantillon(s), trop peu pour la marge en miroir",
+        )
     );
     let count = pad.min(n - 1);
     let left = dsp::reversed(&audio.try_index(1..count + 1)?)?;

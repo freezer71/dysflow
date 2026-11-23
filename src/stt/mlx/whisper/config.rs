@@ -6,6 +6,7 @@
 
 use anyhow::{anyhow, ensure, Context, Result};
 use serde_json::Value;
+use std::io::Read;
 use std::path::Path;
 
 use super::tokenizer::SUPPORTED_VOCABULARY_SIZES;
@@ -30,16 +31,39 @@ pub struct Config {
     pub quantization: Option<Quantization>,
 }
 
-/// Une dimension au plus (largeur, couches, positions) : bien au-delà de
-/// large-v3 (1 280, 32 couches, 1 500 positions).
+/// Une dimension au plus (couches, positions, largeur des MLP) : bien
+/// au-delà de large-v3 (32 couches, 1 500 positions, 5 120).
 const MAX_DIM: i64 = 1 << 16;
+/// La largeur au plus : plus de trois fois celle de large-v3 (1 280). Les
+/// positions sinusoïdales de l'encodeur (1 500 × `d_model`) sont calculées
+/// avant que la forme des poids soit vérifiée : 4 096 les tient à ~50 Mo.
+pub const MAX_D_MODEL: i64 = 4096;
+/// La longueur de l'invite : `<|startoftranscript|> <|langue|>
+/// <|transcribe|> <|notimestamps|>` (`Tokenizer::prompt`).
+pub const PROMPT_LEN: i64 = 4;
+/// Les positions du décodeur au moins : l'invite, puis un jeton.
+pub const MIN_TARGET_POSITIONS: i64 = PROMPT_LEN + 2;
+/// `config.json` plus gros que cela : refusé sans être lu.
+const MAX_CONFIG_BYTES: u64 = 1 << 20;
 
 impl Config {
     /// Lit `config.json` dans `dir`.
     pub fn load(dir: &Path) -> Result<Self> {
         let path = dir.join("config.json");
-        let text = std::fs::read_to_string(&path)
-            .with_context(|| crate::tr!(en = "reading {}", fr = "lecture de {}", path.display()))?;
+        let reading = || crate::tr!(en = "reading {}", fr = "lecture de {}", path.display());
+        let size = std::fs::metadata(&path).with_context(reading)?.len();
+        ensure!(
+            size <= MAX_CONFIG_BYTES,
+            crate::tr!(
+                en = "Whisper configuration {}: {size} bytes, more than {MAX_CONFIG_BYTES}",
+                fr = "configuration de Whisper {} : {size} octets, plus de {MAX_CONFIG_BYTES}",
+                path.display()
+            )
+        );
+        let mut text = String::new();
+        std::fs::File::open(&path)
+            .and_then(|f| f.take(MAX_CONFIG_BYTES).read_to_string(&mut text))
+            .with_context(reading)?;
         Self::parse(&text).with_context(|| {
             crate::tr!(
                 en = "Whisper configuration {}",
@@ -93,6 +117,20 @@ impl Config {
             );
             Ok(v as i32)
         };
+        ensure!(
+            d_model <= MAX_D_MODEL,
+            crate::tr!(
+                en = "d_model = {d_model}, more than {MAX_D_MODEL}",
+                fr = "d_model = {d_model}, plus de {MAX_D_MODEL}",
+            )
+        );
+        ensure!(
+            max_target_positions >= MIN_TARGET_POSITIONS,
+            crate::tr!(
+                en = "max_target_positions = {max_target_positions}, fewer than the prompt ({PROMPT_LEN} tokens) and one token ({MIN_TARGET_POSITIONS})",
+                fr = "max_target_positions = {max_target_positions}, moins que l'invite ({PROMPT_LEN} jetons) et un jeton ({MIN_TARGET_POSITIONS})",
+            )
+        );
         let config = Self {
             vocab_size: vocab_size.try_into().unwrap_or(0),
             num_mel_bins: dim("num_mel_bins", num_mel_bins)?,
@@ -237,6 +275,8 @@ mod tests {
             (r#"{"n_audio_head": 7}"#, "encoder_attention_heads"),
             (r#"{"n_mels": -3}"#, "num_mel_bins"),
             (r#"{"n_text_ctx": "beaucoup"}"#, "n_text_ctx"),
+            (r#"{"n_audio_state": 8192, "n_audio_head": 8}"#, "d_model"),
+            (r#"{"n_text_ctx": 5}"#, "max_target_positions"),
         ] {
             let err = format!("{:#}", Config::parse(text).unwrap_err());
             assert!(err.contains(name), "{text} : {err}");

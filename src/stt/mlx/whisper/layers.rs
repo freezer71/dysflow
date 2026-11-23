@@ -40,9 +40,10 @@ fn linear(w: &mut Weights, prefix: &str, input: i32, output: i32, bias: bool) ->
 fn batch_and_time(x: &Array) -> Result<(i32, i32)> {
     match x.shape() {
         [b, t, ..] => Ok((*b, *t)),
-        shape => Err(anyhow!(
-            "{NAME} : forme {shape:?}, au moins deux axes attendus"
-        )),
+        shape => Err(anyhow!(crate::tr!(
+            en = "{NAME}: shape {shape:?}, at least two axes expected",
+            fr = "{NAME} : forme {shape:?}, au moins deux axes attendus",
+        ))),
     }
 }
 
@@ -92,7 +93,12 @@ impl Attention {
     ) -> Result<Array> {
         let (b, _, tq) = match q.shape() {
             [b, h, t, ..] => (*b, *h, *t),
-            shape => return Err(anyhow!("{NAME} : requêtes de forme {shape:?}")),
+            shape => {
+                return Err(anyhow!(crate::tr!(
+                    en = "{NAME}: queries of shape {shape:?}, four axes expected",
+                    fr = "{NAME} : requêtes de forme {shape:?}, quatre axes attendus",
+                )))
+            }
         };
         let attn = fast::scaled_dot_product_attention(
             q,

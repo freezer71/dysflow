@@ -146,8 +146,13 @@ fn base64(text: &str) -> Option<Vec<u8>> {
             _ => return None,
         } as u32)
     };
-    let mut out = Vec::with_capacity(bytes.len() / 4 * 3);
+    // Un `=` avant le remplissage final : invalide. Vérifié avant le décodage,
+    // qui compte au moins deux caractères réels par groupe de 4.
     let body = bytes.len() - padding;
+    if bytes[..body].contains(&b'=') {
+        return None;
+    }
+    let mut out = Vec::with_capacity(bytes.len() / 4 * 3);
     for chunk in bytes.chunks(4) {
         let mut word = 0u32;
         let mut real = 0;
@@ -160,12 +165,8 @@ fn base64(text: &str) -> Option<Vec<u8>> {
         }
         out.extend_from_slice(&word.to_be_bytes()[1..]);
         if real < 4 {
-            out.truncate(out.len() - (4 - real));
+            out.truncate(out.len().saturating_sub(4 - real));
         }
-    }
-    // Un `=` au milieu : invalide.
-    if bytes[..body].contains(&b'=') {
-        return None;
     }
     Some(out)
 }
@@ -463,6 +464,8 @@ mod tests {
             ("SGVsbG8= x\n", "1"),
             ("SGVsbG8 0\n", "1"),
             ("SG=sbG8= 0\n", "1"),
+            ("====AAAA 0\n", "1"),
+            ("SGVsbG8= 0\nAA==AAAA 1\n", "2"),
         ] {
             let err = Tiktoken::parse(text).err().expect(text).to_string();
             assert!(
@@ -499,6 +502,10 @@ mod tests {
         assert_eq!(
             tokenizer.prompt("fr").unwrap(),
             vec![50258, 50265, 50359, 50363]
+        );
+        assert_eq!(
+            tokenizer.prompt("en").unwrap().len() as i64,
+            super::super::config::PROMPT_LEN
         );
         for unknown in ["", "fr-FR", "xx"] {
             let err = tokenizer.prompt(unknown).unwrap_err().to_string();

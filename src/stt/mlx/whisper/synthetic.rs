@@ -341,6 +341,43 @@ fn an_unsupported_vocabulary_is_refused_before_the_weights() {
 }
 
 #[test]
+fn too_few_decoder_positions_for_the_prompt_are_refused_by_name() {
+    // 5 positions : l'invite (4) et pas un jeton de plus ; sans ce refus, le
+    // décodeur lirait `embed_positions` hors de ses bornes.
+    let mut config = tiny_config(false);
+    config["n_text_ctx"] = serde_json::json!(5);
+    let err = load_error(&synthetic("positions", &config, b"pas des poids"));
+    assert!(
+        err.contains("max_target_positions") && err.contains(model::CONFIG_FILE),
+        "{err}"
+    );
+}
+
+#[test]
+fn a_width_too_large_is_refused_before_the_sinusoids() {
+    let mut config = tiny_config(false);
+    config["n_audio_state"] = serde_json::json!(65_536);
+    config["n_text_state"] = serde_json::json!(65_536);
+    let err = load_error(&synthetic("largeur", &config, b"pas des poids"));
+    assert!(
+        err.contains("d_model") && err.contains("4096") && err.contains(model::CONFIG_FILE),
+        "{err}"
+    );
+}
+
+#[test]
+fn a_config_too_large_is_refused_without_reading_it() {
+    let dir = complete("config-geante");
+    let file = std::fs::File::create(dir.join(model::CONFIG_FILE)).unwrap();
+    file.set_len((1 << 20) + 1).unwrap();
+    let err = load_error(&dir);
+    assert!(
+        err.contains(model::CONFIG_FILE) && err.contains("1048577"),
+        "{err}"
+    );
+}
+
+#[test]
 fn a_generation_config_changes_the_suppressed_tokens() {
     // Sans jetons interdits au premier pas, la fin vient tout de suite.
     let dir = complete("generation");
