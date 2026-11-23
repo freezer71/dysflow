@@ -123,7 +123,7 @@ fn fixture(id: &str) -> Fixture {
 
 /// `clips` à la suite, recommencés, jusqu'à `count` échantillons : la même
 /// construction que le générateur Swift (`cycled`).
-fn cycled(clips: &[&[f32]], count: usize) -> Vec<f32> {
+pub(in crate::stt::mlx) fn cycled(clips: &[&[f32]], count: usize) -> Vec<f32> {
     let mut out = Vec::with_capacity(count);
     while out.len() < count {
         for clip in clips {
@@ -135,7 +135,7 @@ fn cycled(clips: &[&[f32]], count: usize) -> Vec<f32> {
 }
 
 /// Les cinq entrées de la tâche, construites comme la fixture.
-fn inputs() -> Vec<(&'static str, Vec<f32>)> {
+pub(in crate::stt::mlx) fn inputs() -> Vec<(&'static str, Vec<f32>)> {
     let wav = |path: &str| crate::stt::file::read_wav(&repo().join(path)).unwrap();
     let fr = wav("macos/Tests/Fixtures/dictee-charge.wav");
     let en = wav("tests/fixtures/mlx/dictee-en.wav");
@@ -150,7 +150,7 @@ fn inputs() -> Vec<(&'static str, Vec<f32>)> {
     ]
 }
 
-fn sha256(samples: &[f32]) -> String {
+pub(in crate::stt::mlx) fn sha256(samples: &[f32]) -> String {
     let mut hasher = Sha256::new();
     for s in samples {
         hasher.update(s.to_le_bytes());

@@ -2,7 +2,8 @@
 //! de `macos/Vendor/KokoroMLX/STT`, à parité avec eux. Les briques communes
 //! (`dsp`, `nemo`, les couches de `nn`, la lecture des poids de `weights`)
 //! servent à chaque modèle ; Parakeet v2 et v3 sont les premiers, Phonon-2
-//! (le graphe de Parakeet, ses poids dans une archive) le suivant.
+//! (le graphe de Parakeet, ses poids dans une archive) le suivant, puis
+//! Whisper (tiny, small, large-v3-turbo).
 //!
 //! Un modèle de dictée chargé inscrit son besoin dans les plafonds de MLX
 //! sous la clé `"dictee"` (`need`), comme `SpeechModels.load` de l'app.
@@ -13,6 +14,7 @@ pub mod nn;
 pub mod parakeet;
 pub mod phonon;
 pub mod weights;
+pub mod whisper;
 
 use crate::compute::mlx::budget::Need;
 use std::path::Path;

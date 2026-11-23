@@ -133,6 +133,11 @@ pub fn recognizer_for(
             let _ = threads;
             Ok(std::sync::Arc::new(mlx::phonon::PhononMlx::new()))
         }
+        #[cfg(all(feature = "mlx", target_os = "macos", target_arch = "aarch64"))]
+        crate::models::Runtime::WhisperMlx => {
+            let _ = threads;
+            Ok(std::sync::Arc::new(mlx::whisper::WhisperMlx::new()))
+        }
         // Un moteur que ce binaire ne sait pas calculer : seul l'app, ou un
         // binaire construit avec la feature, le fait.
         runtime => {
@@ -267,8 +272,9 @@ mod tests {
         }
     }
 
-    /// Parakeet MLX (v3 et v2) et Phonon-2 : un reconnaisseur et un moteur
-    /// là où le binaire a MLX ; refusés par leur nom ailleurs.
+    /// Parakeet MLX (v3 et v2), Phonon-2 et les trois Whisper : un
+    /// reconnaisseur et un moteur là où le binaire a MLX ; refusés par leur
+    /// nom ailleurs.
     #[test]
     fn parakeet_mlx_is_recognized_where_the_build_has_mlx_and_refused_by_name_elsewhere() {
         let mlx = cfg!(all(
@@ -280,6 +286,9 @@ mod tests {
             ("parakeet_tdt_v3", "ParakeetMlx"),
             ("parakeet_tdt_v2", "ParakeetMlx"),
             ("phonon_2", "PhononMlx"),
+            ("whisper_tiny_4bit", "WhisperMlx"),
+            ("whisper_small_4bit", "WhisperMlx"),
+            ("whisper_large_v3_turbo_4bit", "WhisperMlx"),
         ] {
             let recognizer = recognizer_for(package(id), 4);
             let engine = engine_for(package(id), 4);
@@ -300,10 +309,10 @@ mod tests {
 
     #[test]
     fn an_engine_this_binary_cannot_compute_is_refused_by_name() {
-        let err = engine_for(package("whisper_tiny_4bit"), 4)
+        let err = engine_for(package("canary_1b_v2_q8"), 4)
             .err()
-            .expect("Whisper MLX : pas porté")
+            .expect("Canary MLX : pas porté")
             .to_string();
-        assert!(err.contains("WhisperMlx"), "{err}");
+        assert!(err.contains("CanaryMlx"), "{err}");
     }
 }

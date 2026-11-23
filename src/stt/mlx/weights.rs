@@ -41,6 +41,27 @@ impl Weights {
         quantization: Option<Quantization>,
         rename: impl Fn(&str) -> Option<String>,
     ) -> Result<Self> {
+        Self::read(dir, model, Some(compute), quantization, rename)
+    }
+
+    /// Comme `load`, chaque tenseur à son type du fichier : le Swift de
+    /// Whisper ne convertit rien.
+    pub fn load_as_stored(
+        dir: &Path,
+        model: &'static str,
+        quantization: Option<Quantization>,
+        rename: impl Fn(&str) -> Option<String>,
+    ) -> Result<Self> {
+        Self::read(dir, model, None, quantization, rename)
+    }
+
+    fn read(
+        dir: &Path,
+        model: &'static str,
+        compute: Option<Dtype>,
+        quantization: Option<Quantization>,
+        rename: impl Fn(&str) -> Option<String>,
+    ) -> Result<Self> {
         let mut tensors = BTreeMap::new();
         for file in weight_files(dir, model)? {
             let unreadable = |err: &dyn std::fmt::Display| {
@@ -92,7 +113,7 @@ impl Weights {
                 ));
             }
         }
-        let tensors = computed(arrays, compute)
+        let tensors = computed(arrays, Some(compute))
             .map_err(|err| unreadable(&err))?
             .into_iter()
             .map(|(key, array)| (key, (array, file.to_path_buf())))
@@ -102,6 +123,13 @@ impl Weights {
             tensors,
             quantization: None,
         })
+    }
+
+    /// Ajoute un tenseur calculé (les positions de l'encodeur de Whisper,
+    /// que mlx-whisper n'écrit pas), au nom de `file` dans les messages.
+    pub fn insert(&mut self, key: &str, array: Array, file: &Path) {
+        self.tensors
+            .insert(key.to_string(), (array, file.to_path_buf()));
     }
 
     /// La clé est là (une couche quantifiée a ses `scales`).
@@ -146,20 +174,21 @@ impl Weights {
     }
 }
 
-/// Les flottants au type de calcul (les mots quantifiés `uint32` restent
-/// tels quels), comme la passe du Swift qui suit `update(parameters:)` ;
-/// tout évalué ici, pour que des données fausses soient une erreur du
-/// chargement.
+/// Les flottants au type de calcul, s'il y en a un (les mots quantifiés
+/// `uint32` restent tels quels), comme la passe du Swift qui suit
+/// `update(parameters:)` ; tout évalué ici, pour que des données fausses
+/// soient une erreur du chargement.
 fn computed(
     arrays: impl IntoIterator<Item = (String, Array)>,
-    compute: Dtype,
+    compute: Option<Dtype>,
 ) -> std::result::Result<Vec<(String, Array)>, mlx_rs::error::Exception> {
     let mut read = Vec::new();
     for (key, array) in arrays {
-        let array = if array.dtype().is_float() && array.dtype() != compute {
-            array.as_dtype(compute)?
-        } else {
-            array
+        let array = match compute {
+            Some(compute) if array.dtype().is_float() && array.dtype() != compute => {
+                array.as_dtype(compute)?
+            }
+            _ => array,
         };
         read.push((key, array));
     }

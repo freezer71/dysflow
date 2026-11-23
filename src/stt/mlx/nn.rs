@@ -229,6 +229,15 @@ impl Embedding {
             }
         }
     }
+
+    /// `asLinear` : la projection par la matrice liée, `x · weightᵀ`, ou
+    /// `quantizedMM(x, …, transpose: true)` (logits de Whisper).
+    pub fn as_linear(&self, x: &Array) -> Result<Array> {
+        match self {
+            Self::Dense { weight } => Ok(x.matmul(weight.transpose()?)?),
+            Self::Quantized { packed } => packed.matmul(x),
+        }
+    }
 }
 
 /// `LayerNorm` affine (`MLXFast.layerNorm`), eps 1e-5 par défaut.

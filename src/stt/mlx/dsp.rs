@@ -211,8 +211,9 @@ pub fn mel_filter_values(
     bank
 }
 
-/// `audio` à l'envers sur son premier axe.
-fn reversed(audio: &Array) -> Result<Array> {
+/// `audio` à l'envers sur son premier axe (une prise d'indices `i32`,
+/// comme `reverseAlongFirstAxis` du Swift).
+pub fn reversed(audio: &Array) -> Result<Array> {
     let len = audio.shape().first().copied().unwrap_or(0);
     let indices: Vec<i32> = (0..len).rev().collect();
     Ok(audio.take_axis(Array::from_slice(&indices, &[len]), 0)?)

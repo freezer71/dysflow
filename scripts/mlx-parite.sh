@@ -15,20 +15,22 @@
 #
 # `--livre` : la garde de fumée du build livré, au lieu de la parité. Le build
 # standard du dépôt (target/, le mlx.metallib de mlx-sys, sans metal-jit), et
-# par défaut stt::mlx::parakeet::tests::shipped_smoke (2 essais) puis
-# stt::mlx::phonon::tests::shipped_smoke (1). Sur chaque entrée : le mel à
+# par défaut stt::mlx::parakeet::tests::shipped_smoke (2 essais),
+# stt::mlx::phonon::tests::shipped_smoke (1) puis
+# stt::mlx::whisper::tests::shipped_smoke (3). Sur chaque entrée : le mel à
 # l'octet, le nombre de pas à 10 % près (arrondi vers le bas), et le texte de
-# la fixture (Parakeet v3 partout ; v2 et Phonon-2 sur l'anglais et le
-# silence). Ce n'est pas une preuve de parité : celle-ci reste le build JIT.
+# la fixture (Parakeet v3 et Whisper partout ; v2 et Phonon-2 sur l'anglais
+# et le silence). Ce n'est pas une preuve de parité : celle-ci reste le build
+# JIT.
 #
 #   DYSFLOW_MODELS=/chemin/des/modeles ./scripts/mlx-parite.sh [--livre] [FILTRE NOMBRE]…
 #
 # DYSFLOW_MODELS : le dossier qui contient un sous-dossier par modèle
-# (parakeet_tdt_v3/, parakeet_tdt_v2/, phonon_2/…). Les noyaux du Swift sont
+# (parakeet_tdt_v3/, parakeet_tdt_v2/, phonon_2/, whisper_tiny_4bit/…). Les noyaux du Swift sont
 # ceux de macos/build/derived, que ./scripts/test-macos.sh construit
 # (DYSFLOW_SWIFT_METALLIB pour un autre fichier). Par défaut :
-# stt::mlx::parakeet::tests::parity (2 essais), puis
-# stt::mlx::phonon::tests::parity (1). Un essai sauté (« ignored ») ou un
+# stt::mlx::parakeet::tests::parity (2 essais), stt::mlx::phonon::tests::parity
+# (1), puis stt::mlx::whisper::tests::parity (3). Un essai sauté (« ignored ») ou un
 # nombre d'essais passés différent fait échouer le script.
 set -eu
 cd "$(dirname "$0")/.."
@@ -43,9 +45,11 @@ if [ "${1:-}" = --livre ]; then
 fi
 if [ "$#" -eq 0 ]; then
     if [ -n "$LIVRE" ]; then
-        set -- stt::mlx::parakeet::tests::shipped_smoke 2 stt::mlx::phonon::tests::shipped_smoke 1
+        set -- stt::mlx::parakeet::tests::shipped_smoke 2 stt::mlx::phonon::tests::shipped_smoke 1 \
+            stt::mlx::whisper::tests::shipped_smoke 3
     else
-        set -- stt::mlx::parakeet::tests::parity 2 stt::mlx::phonon::tests::parity 1
+        set -- stt::mlx::parakeet::tests::parity 2 stt::mlx::phonon::tests::parity 1 \
+            stt::mlx::whisper::tests::parity 3
     fi
 fi
 
