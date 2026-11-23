@@ -251,13 +251,14 @@ fn tiny_config() -> serde_json::Value {
 }
 
 /// Un tenseur F32 : nom du fichier, forme, valeurs (nulles si vides).
-struct Tensor {
-    name: String,
-    shape: Vec<usize>,
-    values: Vec<f32>,
+/// Nemotron s'en sert aussi.
+pub(in crate::stt::mlx) struct Tensor {
+    pub name: String,
+    pub shape: Vec<usize>,
+    pub values: Vec<f32>,
 }
 
-fn zeros(name: &str, shape: &[usize]) -> Tensor {
+pub(in crate::stt::mlx) fn zeros(name: &str, shape: &[usize]) -> Tensor {
     Tensor {
         name: name.to_string(),
         shape: shape.to_vec(),
@@ -319,7 +320,7 @@ fn tiny_tensors(winner: usize) -> Vec<Tensor> {
 }
 
 /// Un safetensors des tenseurs.
-fn safetensors(tensors: &[Tensor]) -> Vec<u8> {
+pub(in crate::stt::mlx) fn safetensors(tensors: &[Tensor]) -> Vec<u8> {
     let (mut header, mut data) = (serde_json::Map::new(), Vec::<u8>::new());
     for t in tensors {
         let count = t.shape.iter().product::<usize>();

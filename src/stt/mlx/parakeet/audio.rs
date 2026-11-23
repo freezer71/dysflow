@@ -14,6 +14,32 @@ use crate::stt::mlx::nn::scalar_like;
 /// `audio` : `[échantillons]` ; rend `[1, trames, bandes]`.
 pub fn log_mel_spectrogram(audio: &Array, config: &PreprocessConfig) -> Result<Array> {
     let original = audio.dtype();
+    let mel = raw_log_mel(audio, config)?;
+
+    let eps = Array::from_f32(1e-5).as_dtype(mel.dtype())?;
+    let normalized = if config.normalize == "per_feature" {
+        let mean = mel.mean_axis(0, true)?;
+        let denominator = (mel.shape()[0] - 1).max(1) as f32;
+        let centered = mel.subtract(&mean)?;
+        let variance = centered
+            .square()?
+            .sum_axis(0, true)?
+            .divide(scalar_like(denominator, &mel)?)?;
+        centered.divide(variance.sqrt()?.add(&eps)?)?
+    } else {
+        let mean = mel.mean(None)?;
+        let std = ops::std(&mel, None, None)?;
+        mel.subtract(&mean)?.divide(std.add(&eps)?)?
+    };
+    Ok(normalized.expand_dims(0)?.as_dtype(original)?)
+}
+
+/// Le mel logarithmique avant toute normalisation, `[trames, bandes]`, au
+/// type de l'audio : préaccentuation, fenêtre, STFT, filtres, `log(x +
+/// garde)`. Le préprocesseur de Nemotron (`NemotronASRAudio`) fait les mêmes
+/// opérations, dans le même ordre.
+pub(in crate::stt::mlx) fn raw_log_mel(audio: &Array, config: &PreprocessConfig) -> Result<Array> {
+    let original = audio.dtype();
     let mut x = audio.clone();
     let len = x.shape()[0] as usize;
 
@@ -52,24 +78,7 @@ pub fn log_mel_spectrogram(audio: &Array, config: &PreprocessConfig) -> Result<A
         MelScale::Slaney,
     );
     let mel = power.matmul(filters.as_dtype(power.dtype())?)?;
-    let mel = mel
+    Ok(mel
         .add(Array::from_f32(config.log_zero_guard_value).as_dtype(mel.dtype())?)?
-        .log()?;
-
-    let eps = Array::from_f32(1e-5).as_dtype(mel.dtype())?;
-    let normalized = if config.normalize == "per_feature" {
-        let mean = mel.mean_axis(0, true)?;
-        let denominator = (mel.shape()[0] - 1).max(1) as f32;
-        let centered = mel.subtract(&mean)?;
-        let variance = centered
-            .square()?
-            .sum_axis(0, true)?
-            .divide(scalar_like(denominator, &mel)?)?;
-        centered.divide(variance.sqrt()?.add(&eps)?)?
-    } else {
-        let mean = mel.mean(None)?;
-        let std = ops::std(&mel, None, None)?;
-        mel.subtract(&mean)?.divide(std.add(&eps)?)?
-    };
-    Ok(normalized.expand_dims(0)?.as_dtype(original)?)
+        .log()?)
 }

@@ -10,21 +10,21 @@ use crate::stt::mlx::nemo::attention::{RelPositionMultiHeadAttention, RelPositio
 use crate::stt::mlx::nn::{scalar_like, BatchNorm, Conv1d, Conv2d, ConvShape, LayerNorm, Linear};
 use crate::stt::mlx::weights::Weights;
 
-/// `linear2(silu(linear1(x)))`.
-struct FeedForward {
+/// `linear2(silu(linear1(x)))` (Nemotron s'en sert aussi).
+pub(in crate::stt::mlx) struct FeedForward {
     linear1: Linear,
     linear2: Linear,
 }
 
 impl FeedForward {
-    fn load(w: &mut Weights, prefix: &str, d_model: i32, d_ff: i32, bias: bool) -> Result<Self> {
+    pub(in crate::stt::mlx) fn load(w: &mut Weights, prefix: &str, d_model: i32, d_ff: i32, bias: bool) -> Result<Self> {
         Ok(Self {
             linear1: Linear::load(w, &format!("{prefix}.linear1"), d_model, d_ff, bias)?,
             linear2: Linear::load(w, &format!("{prefix}.linear2"), d_ff, d_model, bias)?,
         })
     }
 
-    fn forward(&self, x: &Array) -> Result<Array> {
+    pub(in crate::stt::mlx) fn forward(&self, x: &Array) -> Result<Array> {
         self.linear2.forward(&nn::silu(self.linear1.forward(x)?)?)
     }
 }

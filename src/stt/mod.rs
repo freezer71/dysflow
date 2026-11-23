@@ -156,6 +156,20 @@ pub fn recognizer_for(
     }
 }
 
+/// Le reconnaisseur en flux d'un paquet, pas encore chargé, si ce binaire
+/// en calcule un pour lui : la liste des moteurs de dictée en flux du cœur
+/// (`recognizer_for` a ceux qui lisent un énoncé entier). `None` : ce n'est
+/// pas un moteur en flux que ce binaire sait calculer.
+pub fn streaming_recognizer_for(
+    package: &ModelPackage,
+) -> Option<std::sync::Arc<dyn recognizer::StreamingRecognizer>> {
+    match package.runtime {
+        #[cfg(all(feature = "mlx", target_os = "macos", target_arch = "aarch64"))]
+        crate::models::Runtime::NemotronMlx => Some(std::sync::Arc::new(mlx::nemotron::NemotronMlx::new())),
+        _ => None,
+    }
+}
+
 /// Le détecteur de parole d'un paquet : Silero ou l'énergie pour sherpa
 /// (`sherpa_detector`, R46), l'énergie pour MLX (D5).
 fn detector_for(package: &ModelPackage) -> Result<Box<dyn detector::SpeechDetector>> {
@@ -173,11 +187,15 @@ fn detector_for(package: &ModelPackage) -> Result<Box<dyn detector::SpeechDetect
 }
 
 /// Le moteur de dictée d'un paquet installé, prêt à passer à
-/// `Dictation::start` : son reconnaisseur (`recognizer_for`) et son
-/// détecteur. Le reconnaisseur n'est pas chargé ici (`Dictation` le
+/// `Dictation::start` : son reconnaisseur en flux
+/// (`streaming_recognizer_for`), sinon son reconnaisseur (`recognizer_for`)
+/// et son détecteur. Le reconnaisseur n'est pas chargé ici (`Dictation` le
 /// charge) ; Silero VAD, petit, l'est (`sherpa_detector`), et son erreur
 /// vient avant toute lecture.
 pub fn engine_for(package: &ModelPackage, threads: u32) -> Result<Engine> {
+    if let Some(streaming) = streaming_recognizer_for(package) {
+        return Ok(Engine::Streaming(streaming));
+    }
     let recognizer = recognizer_for(package, threads)?;
     Ok(Engine::Segmented(recognizer, detector_for(package)?))
 }
@@ -315,10 +333,35 @@ mod tests {
 
     #[test]
     fn an_engine_this_binary_cannot_compute_is_refused_by_name() {
-        let err = engine_for(package("nemotron_35_asr_streaming_8bit"), 4)
+        let err = engine_for(package("voxtral_realtime_4bit"), 4)
             .err()
-            .expect("Nemotron MLX : pas porté")
+            .expect("Voxtral Realtime MLX : pas porté")
             .to_string();
+        assert!(err.contains("VoxtralRealtimeMlx"), "{err}");
+    }
+
+    /// Nemotron : un moteur en flux là où le binaire a MLX ; refusé par son
+    /// nom ailleurs. Il n'a pas de reconnaisseur d'énoncé entier : l'app,
+    /// qui ne passe que par `recognizer_for`, ne le dicte pas encore par le
+    /// cœur (`core_dictation_supports`).
+    #[test]
+    fn nemotron_is_a_streaming_engine_where_the_build_has_mlx() {
+        let nemotron = package("nemotron_35_asr_streaming_8bit");
+        let mlx = cfg!(all(
+            feature = "mlx",
+            target_os = "macos",
+            target_arch = "aarch64"
+        ));
+        assert_eq!(streaming_recognizer_for(nemotron).is_some(), mlx);
+        let engine = engine_for(nemotron, 4);
+        if mlx {
+            assert!(matches!(engine, Ok(Engine::Streaming(_))));
+        } else {
+            let err = engine.err().expect("MLX : pas ici").to_string();
+            assert!(err.contains("NemotronMlx"), "{err}");
+        }
+        let err = recognizer_for(nemotron, 4).err().expect("pas d'énoncé entier").to_string();
         assert!(err.contains("NemotronMlx"), "{err}");
+        assert!(streaming_recognizer_for(package("canary_1b_v2_q8")).is_none());
     }
 }

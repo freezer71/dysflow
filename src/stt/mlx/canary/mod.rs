@@ -18,7 +18,7 @@ mod model;
 mod tokenizer;
 
 #[cfg(test)]
-mod synthetic;
+pub(in crate::stt::mlx) mod synthetic;
 #[cfg(test)]
 mod tests;
 

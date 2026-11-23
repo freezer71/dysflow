@@ -272,6 +272,14 @@ pub fn remap_key(key: &str) -> Option<String> {
         .replace("joint.joint_net.2.", "joint.joint_net.")
         .replace(".pos_bias_u", ".posBiasU")
         .replace(".pos_bias_v", ".posBiasV");
+    remap_pre_encode_key(key)
+}
+
+/// La liste `encoder.pre_encode.conv.N` de NeMo en `conv0`, puis
+/// `depthwise_layers.i` et `pointwise_layers.i` (les ReLU de la liste,
+/// sans poids, sont écartées) ; `conv.1` et toute autre clé restent telles
+/// quelles. Commun à Parakeet et Nemotron (`remapPreEncodeConvListKey`).
+pub(in crate::stt::mlx) fn remap_pre_encode_key(key: String) -> Option<String> {
     let pieces: Vec<&str> = key.split('.').collect();
     if pieces.len() >= 5 && pieces[..3] == ["encoder", "pre_encode", "conv"] {
         if let Ok(index) = pieces[3].parse::<usize>() {

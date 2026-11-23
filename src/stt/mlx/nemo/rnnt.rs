@@ -125,6 +125,26 @@ impl PredictNetwork {
         })
     }
 
+    /// `callAsFunction(_:state:)` : le plongement de `token` (`[1, 1]`,
+    /// `int32`), ou sans jeton des zéros `f32` `[lot, 1, pred_hidden]` (le
+    /// lot pris de l'état, 1 sans état), puis les LSTM. Le RNN-T de Nemotron.
+    pub fn predict(
+        &self,
+        token: Option<&Array>,
+        state: Option<&LstmState>,
+    ) -> Result<(Array, LstmState)> {
+        let embedded = match token {
+            Some(token) => self.embed.forward(token)?,
+            None => {
+                let batch = state
+                    .and_then(|s| s.hidden.shape().get(1).copied())
+                    .unwrap_or(1);
+                Array::zeros::<f32>(&[batch, 1, self.pred_hidden])?
+            }
+        };
+        self.dec_rnn.forward(&embedded, state)
+    }
+
     /// Un pas : le plongement de `token` (`[1, 1]`, `int32`), mis à zéro si
     /// c'est le blanc, puis les LSTM. Comme l'étape compilée du Swift.
     pub fn step(

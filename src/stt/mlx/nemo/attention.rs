@@ -227,7 +227,13 @@ impl RelPositionalEncoding {
     /// `x` mis à l'échelle et les positions de `[1, 2T − 1, d]`, au type de
     /// `x`.
     pub fn forward(&mut self, x: &Array) -> Result<(Array, Array)> {
-        let len = x.shape()[1];
+        self.forward_offset(x, 0)
+    }
+
+    /// `callAsFunction(_:offset:)` : comme `forward`, pour `T + offset`
+    /// positions (`offset` trames déjà en cache devant `x`, Nemotron en flux).
+    pub fn forward_offset(&mut self, x: &Array, offset: i32) -> Result<(Array, Array)> {
+        let len = x.shape()[1] + offset;
         if len > self.max_len {
             self.max_len = len + 1;
             self.calculate()?;
