@@ -1303,6 +1303,22 @@ mod tests {
         LANGUE.lock().unwrap_or_else(|e| e.into_inner())
     }
 
+    /// R21 : aucun essai de ffi ne résout les répertoires de l'utilisateur.
+    /// `SCRATCH_PATHS` d'abord : sans lui, `data_dir()` résoudrait (et
+    /// reprendrait) les vrais répertoires avant que l'essai n'échoue.
+    #[test]
+    fn the_tests_never_resolve_the_user_directories() {
+        assert!(
+            dysflow::paths::SCRATCH_PATHS,
+            "dysflow est lié sans la feature test-paths : les essais de ffi verraient les répertoires de l'utilisateur"
+        );
+        let scratch = std::env::temp_dir().join(format!("dysflow-tests-{}", std::process::id()));
+        for dir in [dysflow::paths::data_dir(), dysflow::paths::config_dir(), dysflow::paths::cache_dir()] {
+            let dir = dir.expect("répertoire de test");
+            assert!(dir.starts_with(&scratch), "{} n'est pas sous {}", dir.display(), scratch.display());
+        }
+    }
+
     #[test]
     fn a_silent_reader_opens_text_and_follows_commands() {
         let reader = DysflowReader::silent();

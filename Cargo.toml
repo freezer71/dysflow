@@ -98,6 +98,11 @@ mlx = ["dep:mlx-rs"]
 # Dictée par sherpa-onnx, sur le même ONNX Runtime que Kokoro. Jamais dans
 # l'app macOS, qui dicte en MLX.
 stt-sherpa = ["dep:sherpa-onnx", "kokoro-onnx"]
+# Les répertoires de configuration, de données et de cache des essais
+# (paths::test_root), pour les crates qui lient dysflow dans leurs essais :
+# activée par la dev-dependency de ffi/ seulement, jamais dans un build livré
+# (règle R21 : un essai ne touche jamais aux fichiers de l'utilisateur).
+test-paths = []
 
 [[bin]]
 name = "dysflow"

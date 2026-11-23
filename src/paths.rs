@@ -7,6 +7,10 @@
 //! ancien nom est repris tel quel — les modèles y pèsent des gigaoctets, les
 //! recopier serait absurde, et perdre les positions ne se pardonne pas.
 
+// Avec `test-paths` hors `cargo test` du moteur (les essais de ffi/), les
+// répertoires de l'utilisateur et leur reprise ne servent pas.
+#![cfg_attr(all(feature = "test-paths", not(test)), allow(dead_code))]
+
 use std::path::{Path, PathBuf};
 
 /// Nom du lecteur, tel qu'il apparaît dans les chemins.
@@ -15,34 +19,40 @@ pub const APP: &str = "dysflow";
 /// récent au plus ancien : le premier trouvé est repris.
 const FORMER: &[&str] = &["sillage", "sillon", "rs-reader"];
 
+/// Vrai quand les répertoires sont ceux des essais (`test_root`) : sous
+/// `cargo test` du moteur, ou avec la feature `test-paths`, que seuls les
+/// essais de `ffi/` activent (dev-dependency). Jamais dans un build livré.
+pub const SCRATCH_PATHS: bool = cfg!(any(test, feature = "test-paths"));
+
 /// Configuration : `config.toml`.
 pub fn config_dir() -> Option<PathBuf> {
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-paths"))]
     return Some(test_root("config"));
-    #[cfg(not(test))]
+    #[cfg(not(any(test, feature = "test-paths")))]
     dirs::config_dir().map(|base| adopt(&base))
 }
 
 /// Données : modèles, signets, positions, journal.
 pub fn data_dir() -> Option<PathBuf> {
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-paths"))]
     return Some(test_root("data"));
-    #[cfg(not(test))]
+    #[cfg(not(any(test, feature = "test-paths")))]
     dirs::data_local_dir().map(|base| adopt(&base))
 }
 
 /// Cache : documents extraits, données de langue.
 pub fn cache_dir() -> Option<PathBuf> {
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-paths"))]
     return Some(test_root("cache"));
-    #[cfg(not(test))]
+    #[cfg(not(any(test, feature = "test-paths")))]
     dirs::cache_dir().map(|base| adopt(&base))
 }
 
-/// Sous `cargo test`, jamais les répertoires de l'utilisateur : un dossier
+/// Sous `cargo test` (ou la feature `test-paths` des essais de `ffi/`),
+/// jamais les répertoires de l'utilisateur : un dossier
 /// temporaire propre au processus, créé au premier usage. Aucun test du
 /// moteur ne peut ainsi lire ni écrire ses signets, positions ou modèles.
-#[cfg(test)]
+#[cfg(any(test, feature = "test-paths"))]
 fn test_root(kind: &str) -> PathBuf {
     test_scratch(kind)
 }
@@ -53,7 +63,7 @@ fn test_root(kind: &str) -> PathBuf {
 /// Les tests en laissaient des milliers dans le dossier temporaire du
 /// système (8 400 dossiers, 1 Go, relevés le 18 oct. 2026) : tout passe
 /// désormais par une seule racine, retirée à la sortie du processus.
-#[cfg(test)]
+#[cfg(any(test, feature = "test-paths"))]
 pub(crate) fn test_scratch(name: &str) -> PathBuf {
     let dir = test_base().join(name);
     let _ = std::fs::create_dir_all(&dir);
@@ -63,7 +73,7 @@ pub(crate) fn test_scratch(name: &str) -> PathBuf {
 /// `dysflow-tests-<pid>` : créée au premier usage, retirée par `atexit` à la
 /// sortie du processus de test. Au même moment, sous Unix, les racines
 /// laissées par un processus mort (test interrompu, plantage) partent aussi.
-#[cfg(test)]
+#[cfg(any(test, feature = "test-paths"))]
 fn test_base() -> PathBuf {
     // Sous Windows, `libc` n'est pas une dépendance : l'`atexit` du CRT.
     #[cfg(unix)]
@@ -87,13 +97,13 @@ fn test_base() -> PathBuf {
     base
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-paths"))]
 const TEST_PREFIX: &str = "dysflow-tests-";
 
 /// Retire les racines de test dont le processus n'existe plus. Unix
 /// seulement : sous Windows, savoir si un processus vit demanderait l'API
 /// Win32, et une racine laissée par un plantage y reste.
-#[cfg(all(test, unix))]
+#[cfg(all(any(test, feature = "test-paths"), unix))]
 fn sweep_dead_test_roots() {
     let Ok(entries) = std::fs::read_dir(std::env::temp_dir()) else { return };
     for entry in entries.flatten() {
@@ -247,9 +257,9 @@ fn same_contents(a: &Path, b: &Path) -> bool {
 /// Un chemin écrit dans un répertoire d'un ancien nom (`model_path` de la
 /// configuration), ramené dans le répertoire actuel si le fichier y est.
 pub fn relocated(path: &str) -> String {
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-paths"))]
     return path.to_string();
-    #[cfg(not(test))]
+    #[cfg(not(any(test, feature = "test-paths")))]
     match dirs::data_local_dir() {
         Some(base) => relocated_in(path, &base),
         None => path.to_string(),
