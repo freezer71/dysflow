@@ -7,8 +7,9 @@
 #
 #   ./scripts/paquet-bout-en-bout.sh PAQUET MODÈLES
 #
-# MODÈLES : le cache des modèles (en CI, celui de la porte, un par système,
-# sous la clé de scripts/modeles-epingles.txt). Chaque fichier y est vérifié
+# MODÈLES : le dossier des modèles (en CI, MODELS : le cache de la porte,
+# Silero et Kokoro, et celui de Parakeet, chacun sous l'empreinte de ses
+# lignes de scripts/modeles-epingles.txt). Chaque fichier y est vérifié
 # par son SHA-256 et téléchargé de son adresse épinglée seulement s'il manque
 # ou n'a pas la bonne empreinte (scripts/modeles-epingles.sh).
 #

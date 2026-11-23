@@ -154,31 +154,41 @@ jobs:
             target/ort/*.nupkg
             target/sherpa-onnx/*.tar.bz2
           key: archives-${{ runner.os }}-${{ runner.arch }}-${{ steps.archives.outputs.cle }}
-      - name: Modèles des essais (cache)
-        # Un seul cache de modèles par système, partagé par la porte et le
-        # bout en bout : Silero VAD, Kokoro int8 (une fois), et sous Linux
-        # x86_64 et Windows Parakeet v3 int8 avec son échantillon français,
-        # sous la clé de leurs empreintes épinglées
-        # (scripts/modeles-epingles.txt) et rien d'autre. runner.arch dans
-        # la clé : Linux x86_64, qui a le bout en bout, et Linux ARM64, qui
-        # ne l'a pas, n'ont pas le même contenu.
-        id: modeles
+      - name: Clés des caches de modèles (lignes épinglées)
+        # Chaque cache sous l'empreinte des seules lignes de
+        # scripts/modeles-epingles.txt qu'il garde : une épingle de Parakeet
+        # qui change ne vide pas le cache de la porte, ni l'inverse.
+        id: cles
+        shell: bash
+        run: |
+          echo "porte=$(tr -d '\r' < scripts/modeles-epingles.txt | grep -E '^(silero_vad\.onnx |kokoro/)' | git hash-object --stdin)" >> "$GITHUB_OUTPUT"
+          echo "parakeet=$(tr -d '\r' < scripts/modeles-epingles.txt | grep -E '^parakeet_tdt_v3/' | git hash-object --stdin)" >> "$GITHUB_OUTPUT"
+      - name: Modèles de la porte (cache)
+        # R51 : Silero VAD et Kokoro int8 (≈ 93 Mo ; avec les 29 voix sous
+        # Linux x86_64 et Windows, ≈ 108 Mo), restaurés partout, puisque la
+        # porte tourne partout. Kokoro n'est gardé qu'ici : le bout en bout le
+        # lit dans ce cache. runner.arch dans la clé : Linux x86_64 et ARM64
+        # n'ont pas le même contenu.
+        id: modeles-porte
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ${{ runner.temp }}/modeles
-          key: modeles-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/modeles-epingles.txt') }}
+          path: |
+            ${{ runner.temp }}/modeles/silero_vad.onnx
+            ${{ runner.temp }}/modeles/kokoro
+          key: modeles-porte-${{ runner.os }}-${{ runner.arch }}-${{ steps.cles.outputs.porte }}
       - name: Dossier des modèles des essais (MODELS)
         # Lu par la porte (ort-gate.sh) et par package.sh, qui y prend
         # silero_vad.onnx au lieu de le retélécharger.
         shell: bash
         run: echo "MODELS=$(cd "$RUNNER_TEMP" && pwd)/modeles" >> "$GITHUB_ENV"
-      - name: Modèles du bout en bout, cache absent (Linux x86_64, Windows)
-        # Un cache refait l'est en entier là où le bout en bout tourne, même
-        # sur une PR qui ne le lance pas : sinon le cache sauvé sans Parakeet
-        # serait repris tel quel, et Parakeet retéléchargé à chaque passage.
-        if: steps.modeles.outputs.cache-hit != 'true' && (runner.os == 'Windows' || matrix.os == 'ubuntu-24.04')
+      - name: Voix de Kokoro, cache de la porte absent (Linux x86_64, Windows)
+        # Un cache de la porte refait l'est avec les voix là où le bout en
+        # bout tourne, même sur une PR qui ne le lance pas : sinon, sauvé
+        # sans elles, il serait repris tel quel et les voix retéléchargées à
+        # chaque bout en bout.
+        if: steps.modeles-porte.outputs.cache-hit != 'true' && (runner.os == 'Windows' || matrix.os == 'ubuntu-24.04')
         shell: bash
-        run: ./scripts/modeles-epingles.sh "$MODELS"
+        run: ./scripts/modeles-epingles.sh "$MODELS" silero_vad.onnx kokoro/
       - name: Tests
         # Sur Mac, avec MLX en Rust (compute::mlx) ; sans effet ailleurs.
         run: cargo test --workspace --locked ${{ runner.os == 'macOS' && '--features dysflow-ffi/mlx' || '' }}
@@ -282,13 +292,23 @@ jobs:
         run: |
           DYSFLOW_ESPEAK="$PWD/dist/dysflow-espeak.exe" DYSFLOW_ESPEAK_DATA="$PWD/dist" \
             cargo test --workspace --locked --lib tts::kokoro::phonemes::tests::the_ -- --ignored --nocapture --test-threads=1
+      - name: Modèles de Parakeet (cache, bout en bout seulement)
+        # R51 : Parakeet v3 int8 et son échantillon français (≈ 671 Mo),
+        # restaurés seulement quand le bout en bout tourne. Un cache absent
+        # est rempli par le bout en bout lui-même (modeles-epingles.sh).
+        if: (runner.os == 'Windows' || matrix.os == 'ubuntu-24.04') && steps.lourd.outputs.oui == 'true'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/modeles/parakeet_tdt_v3
+          key: modeles-parakeet-${{ runner.os }}-${{ runner.arch }}-${{ steps.cles.outputs.parakeet }}
       - name: Bout en bout depuis le paquet (Linux x86_64, Windows)
         # Depuis le paquet (sous Windows, l'archive décompressée sous
         # « Łukasz Gaweł ») : dysflow -o écrit le texte de référence avec
         # Kokoro, puis --transcribe dicte l'échantillon français de référence
         # et ce WAV (Parakeet v3 int8, Silero VAD du paquet), WER bornés.
-        # Les modèles du cache des essais : liés sous Linux, copiés sous
-        # Windows (le profil du runner). Sur main, les étiquettes v*, à la
+        # Les modèles des deux caches (Kokoro et Silero : celui de la porte ;
+        # Parakeet : le sien) : liés sous Linux, copiés sous Windows (le
+        # profil du runner). Sur main, les étiquettes v*, à la
         # demande, ou une PR qui touche le paquet (R49).
         if: (runner.os == 'Windows' || matrix.os == 'ubuntu-24.04') && steps.lourd.outputs.oui == 'true'
         shell: bash
