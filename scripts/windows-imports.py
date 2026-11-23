@@ -4,22 +4,26 @@ leurs tables d'import, directe et différée. Aucun outil à installer.
 
     python3 scripts/windows-imports.py list FICHIER...
     python3 scripts/windows-imports.py deploy-crt DOSSIER_CRT DIST
-    python3 scripts/windows-imports.py check DIST
+    python3 scripts/windows-imports.py check [--sans-espeak] DIST
 
-deploy-crt : copie dans DIST les DLL du runtime Visual C++ (DOSSIER_CRT :
-VC\\Redist\\MSVC\\<version>\\x64\\Microsoft.VC14x.CRT de Visual Studio) que
-les binaires de DIST importent, et celles qu'elles importent à leur tour.
+deploy-crt : copie, à côté de chaque binaire de DIST, les DLL du runtime
+Visual C++ (DOSSIER_CRT : VC\\Redist\\MSVC\\<version>\\x64\\Microsoft.VC14x.CRT
+de Visual Studio) qu'il importe, et celles qu'elles importent à leur tour.
 Le déploiement local, à côté de dysflow.exe, est permis par la licence de
 Visual Studio : un PC sans le redistribuable lance quand même dysflow.exe.
 
-check : chaque DLL importée par un .exe ou un .dll de DIST est soit dans
-DIST, soit une DLL de Windows ; aucune ne vient d'un redistribuable (Visual
-C++, MinGW). dysflow-espeak.exe, lié statiquement, n'importe que KERNEL32,
-ADVAPI32, msvcrt, ucrtbase et api-ms-win-crt-*. Les imports de chaque
-binaire sont affichés.
+check : chaque DLL importée par un .exe ou un .dll de DIST, sous-dossiers
+compris, est soit dans le dossier de ce binaire (le seul où Windows la
+cherche avant System32), soit une DLL de Windows de la liste blanche
+SYSTEM (ou un jeu d'API api-ms-win-*, ext-ms-win-*). Rien d'autre : une DLL
+inconnue est une erreur, même présente dans le System32 de la machine qui
+vérifie (elle peut manquer sur un autre PC). Aucune ne vient d'un
+redistribuable (Visual C++, MinGW). dysflow-espeak.exe doit être là (sauf
+--sans-espeak : la porte d'ONNX Runtime n'en a pas) ; lié statiquement, il
+n'importe que KERNEL32, ADVAPI32, msvcrt, ucrtbase et api-ms-win-crt-*. Les
+imports de chaque binaire sont affichés.
 """
 
-import os
 import re
 import shutil
 import struct
@@ -32,8 +36,9 @@ REDISTRIBUTABLE = re.compile(
     r"^(vcruntime|msvcp|concrt|vccorlib|vcomp|vcamp|mfc|libgcc|libstdc\+\+|libwinpthread|libgomp)",
     re.IGNORECASE,
 )
-# DLL de Windows connues (en minuscules), pour un contrôle hors de Windows ;
-# sous Windows, une DLL présente dans System32 compte aussi.
+# La liste blanche des DLL de Windows (en minuscules) : celles que
+# Windows livre partout. Une DLL qui n'y est pas fait échouer `check`, sur
+# Windows comme ailleurs : on l'ajoute ici en connaissance de cause.
 SYSTEM = {
     "kernel32.dll", "kernelbase.dll", "ntdll.dll", "advapi32.dll", "user32.dll", "gdi32.dll",
     "shell32.dll", "ole32.dll", "oleaut32.dll", "ucrtbase.dll", "msvcrt.dll", "ws2_32.dll",
@@ -100,18 +105,17 @@ def imports(path):
 
 
 def binaries(directory):
-    return sorted(p for p in Path(directory).iterdir()
+    """Les .exe et .dll de `directory`, sous-dossiers compris."""
+    return sorted(p for p in Path(directory).rglob("*")
                   if p.is_file() and p.suffix.lower() in (".exe", ".dll"))
 
 
 def is_system(name):
+    """Une DLL de Windows de la liste blanche, ou un jeu d'API de Windows."""
     lower = name.lower()
     if REDISTRIBUTABLE.match(lower):
         return False
-    if lower.startswith(("api-ms-win-", "ext-ms-win-")) or lower in SYSTEM:
-        return True
-    root = os.environ.get("SystemRoot")
-    return bool(root) and sys.platform == "win32" and (Path(root) / "System32" / name).is_file()
+    return lower.startswith(("api-ms-win-", "ext-ms-win-")) or lower in SYSTEM
 
 
 def deploy_crt(crt, dist):
@@ -121,29 +125,34 @@ def deploy_crt(crt, dist):
     copied = []
     pending = binaries(dist)
     while pending:
-        for name in imports(pending.pop()):
+        binary = pending.pop()
+        for name in imports(binary):
             source = available.get(name.lower())
-            target = Path(dist) / source.name if source else None
+            target = binary.parent / source.name if source else None
             if source and not target.exists():
                 shutil.copy2(source, target)
-                copied.append(source.name)
+                copied.append(target.relative_to(dist).as_posix())
                 pending.append(target)
     print("Runtime Visual C++ joint : " + (", ".join(sorted(copied)) or "rien à joindre"))
 
 
-def check(dist):
-    present = {p.name.lower() for p in binaries(dist)}
+def check(dist, espeak=True):
     errors = []
-    for binary in binaries(dist):
+    found = binaries(dist)
+    if espeak and not any(p.name.lower() in STATIC_ONLY for p in found):
+        errors.append(f"dysflow-espeak.exe absent de {dist}")
+    for binary in found:
+        beside = {p.name.lower() for p in binary.parent.iterdir() if p.is_file()}
         names = imports(binary)
-        print(f"{binary.name} : {', '.join(names)}")
+        shown = binary.relative_to(dist).as_posix()
+        print(f"{shown} : {', '.join(names)}")
         for name in names:
             lower = name.lower()
             if binary.name.lower() in STATIC_ONLY:
                 if not (lower in STATIC_ALLOWED or lower.startswith("api-ms-win-crt-")):
-                    errors.append(f"{binary.name} importe {name} (il doit être lié statiquement)")
-            elif lower not in present and not is_system(name):
-                errors.append(f"{binary.name} importe {name}, ni dans le paquet ni DLL de Windows")
+                    errors.append(f"{shown} importe {name} (il doit être lié statiquement)")
+            elif lower not in beside and not is_system(name):
+                errors.append(f"{shown} importe {name}, ni à côté de lui ni DLL de Windows de la liste blanche")
     if errors:
         sys.stdout.flush()
         for e in errors:
@@ -161,6 +170,8 @@ def main():
         deploy_crt(args[1], args[2])
     elif len(args) == 2 and args[0] == "check":
         check(args[1])
+    elif len(args) == 3 and args[0] == "check" and args[1] == "--sans-espeak":
+        check(args[2], espeak=False)
     else:
         sys.exit(__doc__)
 

@@ -57,16 +57,11 @@ OUT="${OUT:-target/ort-gate}"
 MODELS="${MODELS:-target/ort-gate-models}"
 
 # Parakeet int8 : ses fichiers, et leurs empreintes (le paquet
-# parakeet_tdt_v3_int8 de src/models.rs, plus l'échantillon du dépôt).
+# parakeet_tdt_v3_int8 de src/models.rs, plus l'échantillon du dépôt), celles
+# de scripts/modeles-epingles.txt.
 PARAKEET_FILES="encoder.int8.onnx decoder.int8.onnx joiner.int8.onnx tokens.txt test_wavs/fr.wav"
 parakeet_sha256() {
-    case "$1" in
-    encoder.int8.onnx) echo 1afbe69c1ffdabee94755f42e4daf1d93549131a3da11356bda84fcef0f2c479 ;;
-    decoder.int8.onnx) echo 0222a86147299d4dee90edf95b6d13827edb42ad8b7c9cf0b2582f030937c0b5 ;;
-    joiner.int8.onnx) echo cbd02f3696e9944970111fb439d9c3fd365a80374565f13f2b9c7007d253fc98 ;;
-    tokens.txt) echo d58544679ea4bc6ac563d1f545eb7d474bd6cfa467f0a6e2c1dc1c7d37e3c35d ;;
-    test_wavs/fr.wav) echo b59be4349b92d344fb903677165eaf4694025d1ab119c608726ecbcb3164b528 ;;
-    esac
+    pin_sha256 "parakeet_tdt_v3/$1"
 }
 PARAKEET=""
 if [ -n "${DYSFLOW_MODELS:-}" ]; then
@@ -91,26 +86,39 @@ cargo build --release --locked --example ort_single_copy --features stt-sherpa \
 
 # Les tests unitaires de stt::sherpa : sans modèle, mais le binaire de test est
 # lié à la bibliothèque C de sherpa-onnx. On le compile avec les mêmes --config,
-# puis on le lance à côté d'elle, dans $OUT (plus bas).
-test_exe=$(cargo test --release --locked --lib --features stt-sherpa --no-run --message-format=json \
+# puis on le lance à côté d'elle, dans $OUT (plus bas). En profil dev (les
+# dépendances y sont en opt-level 2, Cargo.toml) : ni LTO ni unité de code
+# unique, que le profil release imposait à un binaire qui n'est pas livré.
+# Exactement un binaire de tests de la bibliothèque doit sortir : en prendre un
+# parmi plusieurs pourrait lancer celui d'un autre build.
+test_exes=$(cargo test --locked --lib --features stt-sherpa --no-run --message-format=json \
     --config "$SHERPA_CONFIG_SEARCH" --config "$SHERPA_CONFIG_LIB" \
     | "$PYTHON" -c 'import json,sys
+found=[]
 for l in sys.stdin:
     try: m=json.loads(l)
     except ValueError: continue
     if m.get("reason")=="compiler-artifact" and m.get("executable") and m["target"]["kind"]==["lib"] and m["profile"]["test"]:
-        print(m["executable"])' | tail -n 1)
-[ -n "$test_exe" ] || { echo "Erreur : binaire des tests de la bibliothèque introuvable" >&2; exit 1; }
+        if m["executable"] not in found: found.append(m["executable"])
+print("\n".join(found))' | tr -d '\r')
+test_exe=$test_exes
+case "$test_exes" in
+"") echo "Erreur : binaire des tests de la bibliothèque introuvable" >&2; exit 1 ;;
+*"
+"*)
+    echo "Erreur : plusieurs binaires de tests de la bibliothèque, lequel lancer ?" >&2
+    printf '  %s\n' "$test_exes" >&2
+    exit 1 ;;
+esac
 
 # Les modèles, empreintes épinglées. Silero VAD : publié par k2-fsa avec
-# sherpa-onnx. Kokoro int8 et sa configuration : les fichiers et révisions du
-# catalogue (src/models.rs, kokoro_82m_int8).
-fetch_verified https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx \
-    9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6 "$MODELS/silero_vad.onnx"
-fetch_verified https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX-timestamped/resolve/dd4401a9add81ac692d20e240d22ec9dda82cc29/onnx/model_quantized.onnx \
-    c0c02b3299fd97c34ea92a98e6d41eaa1a739c8f77bf685aac34bd7b34c1132c "$MODELS/kokoro/model_quantized.onnx"
-fetch_verified https://huggingface.co/mlx-community/Kokoro-82M-bf16/resolve/a71e4d38b236d968966a2002c4c895dbd12b1c3c/config.json \
-    5abb01e2403b072bf03d04fde160443e209d7a0dad49a423be15196b9b43c17f "$MODELS/kokoro/config.json"
+# sherpa-onnx, celui que le paquet livre (SILERO_*, scripts/paquet-commun.sh).
+# Kokoro int8 et sa configuration : les fichiers et révisions du
+# catalogue (src/models.rs, kokoro_82m_int8), épinglés dans
+# scripts/modeles-epingles.txt.
+silero_fetch "$MODELS/silero_vad.onnx"
+fetch_pinned kokoro/model_quantized.onnx "$MODELS/kokoro/model_quantized.onnx"
+fetch_pinned kokoro/config.json "$MODELS/kokoro/config.json"
 
 rm -rf "$OUT" "$OUT.tar.gz"
 mkdir -p "$OUT/models/kokoro"
@@ -122,9 +130,14 @@ cp "$MODELS/silero_vad.onnx" "$OUT/models/"
 cp "$MODELS/kokoro/model_quantized.onnx" "$MODELS/kokoro/config.json" "$OUT/models/kokoro/"
 if [ -n "$WINDOWS" ]; then
     vc_crt_deploy "$OUT"
-    "$PYTHON" -I scripts/windows-imports.py check "$OUT"
+    "$PYTHON" -I scripts/windows-imports.py check --sans-espeak "$OUT"
 fi
 cp "$test_exe" "$OUT/dysflow_lib_tests$EXE"
+# Le profil dev garde les infos de débogage dans le binaire sous Linux
+# (DWARF) : retirées de la copie, que l'archive de la porte emporte.
+case "$ORT_RID" in
+linux-*) strip --strip-debug "$OUT/dysflow_lib_tests" ;;
+esac
 ls -l "$OUT"
 # Ce que le binaire et sherpa-onnx demandent au chargement.
 case "$ORT_RID" in

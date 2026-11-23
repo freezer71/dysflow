@@ -1,12 +1,20 @@
 #!/bin/sh
 # Assemble un dossier distribuable : le binaire et les bibliothèques et
 # programmes qu'il charge (pour Kokoro, ONNX Runtime et dysflow-espeak avec ses
-# données et ses sources GPL).
+# données et ses sources GPL ; pour la dictée, la bibliothèque C de sherpa-onnx
+# et Silero VAD ; sur Mac, les noyaux de MLX).
+#
+#   ./scripts/package.sh                          # features de default_features
+#   FEATURES=ocr,kokoro-onnx ./scripts/package.sh # sans la dictée
+#
+# Les features par défaut (default_features, scripts/paquet-commun.sh) :
+# ocr,kokoro-onnx,stt-sherpa, plus mlx sur un Mac Apple Silicon.
 #
 # Sous Windows (bash de Git for Windows ; dysflow.exe par MSVC,
 # dysflow-espeak.exe par MinGW-w64, voir build-espeak.sh) : dysflow.exe,
-# dysflow-espeak.exe et onnxruntime.dll, et en plus du dossier une archive
-# $OUT/dysflow-windows-x86_64.zip de son contenu, à décompresser n'importe où.
+# dysflow-espeak.exe, onnxruntime.dll et sherpa-onnx-c-api.dll, et en plus du
+# dossier une archive $OUT/dysflow-windows-x86_64.zip de son contenu, à
+# décompresser n'importe où.
 set -eu
 cd "$(dirname "$0")/.."
 
@@ -26,11 +34,12 @@ else
     exit 1
 fi
 
-# ort_fetch (ONNX Runtime du paquet NuGet) et vc_crt_deploy (Windows).
+# default_features, ort_fetch (ONNX Runtime du paquet NuGet), silero_fetch et
+# vc_crt_deploy (Windows).
 # shellcheck source=scripts/paquet-commun.sh
 . scripts/paquet-commun.sh
 
-FEATURES="${FEATURES:-ocr,kokoro-onnx}"
+FEATURES="${FEATURES:-$(default_features)}"
 OUT="${OUT:-dist}"
 
 # Les licences des crates Rust liées : THIRD-PARTY-RUST.txt doit suivre
@@ -39,12 +48,36 @@ OUT="${OUT:-dist}"
 # décrit les features par défaut ci-dessous : avec d'autres, le régénérer.
 "$PYTHON" -I scripts/third-party-rust.py --check
 
+# La dictée : la bibliothèque C de sherpa-onnx (scripts/sherpa-onnx.sh), et
+# les --config qui remplacent le script de build de sherpa-onnx-sys (sans
+# eux, il téléchargerait son propre ONNX Runtime 1.28.2).
+set --
+case ",$FEATURES," in
+*,stt-sherpa,*)
+    # shellcheck source=scripts/sherpa-onnx.sh
+    . scripts/sherpa-onnx.sh
+    sherpa_fetch
+    set -- --config "$SHERPA_CONFIG_SEARCH" --config "$SHERPA_CONFIG_LIB"
+    ;;
+esac
+# MLX en Rust (Mac) : ses sources épinglées, et l'emplacement de ses noyaux
+# (MLX_RS_METAL_PATH), avant cargo.
+case ",$FEATURES," in
+*,mlx,*)
+    # shellcheck source=scripts/mlx-sources.sh
+    . scripts/mlx-sources.sh
+    ;;
+esac
+
 echo "Compilation (features : $FEATURES)…"
-cargo build --release --features "$FEATURES"
+# DYSFLOW_PACKAGE_BUILD : le binaire se sait livré en paquet, et refuse de
+# dicter si Silero VAD manque à côté de lui (stt::engine_for).
+DYSFLOW_PACKAGE_BUILD=1 cargo build --release --locked --features "$FEATURES" "$@"
 
 rm -rf "$OUT"
 mkdir -p "$OUT"
-cp "target/release/dysflow$EXE" "$OUT/"
+# CARGO_BUILD_TARGET (posé par la CI macOS) range le binaire sous sa cible.
+cp "target/${CARGO_BUILD_TARGET:+$CARGO_BUILD_TARGET/}release/dysflow$EXE" "$OUT/"
 
 # Kokoro au terminal : ONNX Runtime 1.31 à côté du binaire, et la
 # phonétisation dysflow-espeak (GPL-3.0, programme séparé que Dysflow lance) avec
@@ -88,6 +121,59 @@ case ",$FEATURES," in
 esac
 echo "Joint : NOTICE, THIRD-PARTY-RUST.txt et licences/"
 
+# La dictée : la bibliothèque C de sherpa-onnx (Apache-2.0), qui charge
+# l'ONNX Runtime joint plus haut, et Silero VAD (MIT), le détecteur de parole,
+# à côté du binaire, chacun avec sa licence. Le binaire refuse de dicter sans
+# Silero (installation abîmée) ; sans la bibliothèque C, il ne démarre pas du
+# tout (README, LISEZMOI.txt : réinstaller le paquet entier).
+case ",$FEATURES," in
+*,stt-sherpa,*)
+    cp "$SHERPA_LIB_DIR/$SHERPA_LIB" "$OUT/"
+    silero_fetch target/paquet/silero_vad.onnx
+    cp target/paquet/silero_vad.onnx "$OUT/"
+    cp third_party/licences/sherpa-onnx-LICENSE third_party/licences/silero-vad-LICENSE "$OUT/licences/"
+    echo "Joint : sherpa-onnx $SHERPA_VERSION ($SHERPA_LIB) et Silero VAD (silero_vad.onnx)"
+    ;;
+esac
+
+# MLX en Rust (Mac) : ses noyaux Metal (mlx.metallib, vérifiés : entiers et
+# pour ce macOS), que compute::mlx cherche à côté du binaire, et les licences
+# de ses sources (scripts/mlx-sources.sh).
+case ",$FEATURES," in
+*,mlx,*)
+    if [ -n "${MLX_RS_METAL_PATH:-}" ]; then
+        if ! mlx_noyaux_justes "$MLX_RS_METAL_PATH"; then
+            echo "Erreur : $MLX_RS_METAL_PATH/mlx.metallib absent, tronqué ou pour un autre macOS" >&2
+            exit 1
+        fi
+        cp "$MLX_RS_METAL_PATH/mlx.metallib" "$OUT/"
+        cp target/mlx-sources/licences/mlx-rs-* "$OUT/licences/"
+        echo "Joint : mlx.metallib et les licences de MLX (licences/mlx-rs-*)"
+    fi
+    ;;
+esac
+
+# Windows : dysflow-espeak.exe est lié statiquement au runtime de MinGW-w64
+# (démarrage du CRT, libmingwex, winpthreads) et à libgcc : leurs avis,
+# tirés de l'installation MSYS2 qui l'a compilé (MINGW_BIN, comme
+# build-espeak.sh). Celui du runtime de MinGW-w64 est exigé ; ceux de
+# winpthreads et l'exception de libgcc sont joints quand MSYS2 les porte.
+if [ -n "$WINDOWS" ]; then
+    mingw=$(cygpath -u "${MINGW_BIN:-C:\msys64\ucrt64\bin}")/../share/licenses
+    runtime=$(find "$mingw" -type f -iname 'COPYING.MinGW-w64-runtime*' 2>/dev/null | head -1)
+    if [ -z "$runtime" ]; then
+        echo "Erreur : l'avis du runtime de MinGW-w64 (COPYING.MinGW-w64-runtime.txt) introuvable sous $mingw" >&2
+        ls "$mingw" >&2 || true
+        exit 1
+    fi
+    cp "$runtime" "$OUT/licences/mingw-w64-runtime-COPYING.txt"
+    winpthreads=$(find "$mingw" -type f -ipath '*winpthread*' -iname 'COPYING*' 2>/dev/null | head -1)
+    if [ -n "$winpthreads" ]; then cp "$winpthreads" "$OUT/licences/mingw-w64-winpthreads-COPYING.txt"; fi
+    exception=$(find "$mingw" -type f -iname 'RUNTIME.LIBRARY.EXCEPTION*' 2>/dev/null | head -1)
+    if [ -n "$exception" ]; then cp "$exception" "$OUT/licences/gcc-RUNTIME.LIBRARY.EXCEPTION.txt"; fi
+    echo "Joint : avis de MinGW-w64 pour dysflow-espeak.exe (runtime${winpthreads:+, winpthreads}${exception:+, exception de libgcc})"
+fi
+
 # Windows : le runtime Visual C++ qu'importent dysflow.exe et onnxruntime.dll,
 # joint à côté d'eux (vc_crt_deploy, scripts/paquet-commun.sh).
 if [ -n "$WINDOWS" ]; then
@@ -95,14 +181,17 @@ if [ -n "$WINDOWS" ]; then
 
     # Un mot d'accueil, en français puis en anglais.
     cat > "$OUT/LISEZMOI.txt" <<'LISEZMOI'
-Dysflow pour Windows — lecteur au terminal
-==========================================
+Dysflow pour Windows — lecteur et dictée au terminal
+====================================================
 
 Contenu
   dysflow.exe            le lecteur (lancez-le depuis PowerShell ou cmd)
   dysflow-espeak.exe     la phonétisation de la voix Kokoro (espeak-ng, GPL-3.0),
   espeak-ng-data\        ses données ; sources dans dysflow-espeak-source\
   onnxruntime.dll        ONNX Runtime de Microsoft, le calcul de la voix Kokoro
+                         et de la dictée
+  sherpa-onnx-c-api.dll  sherpa-onnx (k2-fsa, Apache-2.0), la dictée
+  silero_vad.onnx        Silero VAD (MIT), qui entend où la parole commence et finit
   vcruntime140*.dll, msvcp140*.dll
                          le runtime Visual C++ de Microsoft, joint pour les PC
                          qui ne l'ont pas
@@ -115,15 +204,29 @@ Utilisation
     .\dysflow.exe -o lecture.wav fichier.txt   l'écrit en WAV
   Au premier lancement du lecteur, Dysflow télécharge la voix Kokoro (une fois).
 
+  Dicter un fichier WAV (16 kHz, mono) :
+    .\dysflow.exe --install-model parakeet_tdt_v3_int8   une fois : le modèle
+    .\dysflow.exe --transcribe note.wav > note.txt       le texte seul
+
+Installation abîmée
+  Si dysflow.exe ne démarre pas (« sherpa-onnx-c-api.dll » ou une autre DLL
+  introuvable), ou s'il dit qu'un fichier du paquet manque (silero_vad.onnx…),
+  ne copiez pas un fichier seul : réinstallez le paquet entier. Décompressez
+  de nouveau toute l'archive dans un dossier vide. Vos modèles et vos réglages
+  ne sont pas dans ce dossier : ils restent.
+
 -----------------------------------------------------------------------------
 
-Dysflow for Windows — terminal reader
+Dysflow for Windows — terminal reader and dictation
 
 Contents
   dysflow.exe            the reader (run it from PowerShell or cmd)
   dysflow-espeak.exe     phonemization for the Kokoro voice (espeak-ng, GPL-3.0),
   espeak-ng-data\        its data; sources in dysflow-espeak-source\
   onnxruntime.dll        Microsoft ONNX Runtime, which computes the Kokoro voice
+                         and dictation
+  sherpa-onnx-c-api.dll  sherpa-onnx (k2-fsa, Apache-2.0), dictation
+  silero_vad.onnx        Silero VAD (MIT), which hears where speech starts and ends
   vcruntime140*.dll, msvcp140*.dll
                          Microsoft's Visual C++ runtime, included for PCs that
                          lack it
@@ -135,6 +238,17 @@ Usage
     .\dysflow.exe file.txt              reads the file aloud
     .\dysflow.exe -o reading.wav file.txt      writes it as WAV
   On the reader's first launch, Dysflow downloads the Kokoro voice (once).
+
+  Dictating a WAV file (16 kHz, mono):
+    .\dysflow.exe --install-model parakeet_tdt_v3_int8   once: the model
+    .\dysflow.exe --transcribe note.wav > note.txt       the text only
+
+Damaged installation
+  If dysflow.exe does not start ("sherpa-onnx-c-api.dll" or another DLL not
+  found), or says that a file of the package is missing (silero_vad.onnx…),
+  do not copy a single file: reinstall the whole package. Unzip the whole
+  archive again into an empty folder. Your models and settings are not in
+  this folder: they stay.
 LISEZMOI
 fi
 

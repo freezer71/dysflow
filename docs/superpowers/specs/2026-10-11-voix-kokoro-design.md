@@ -175,7 +175,7 @@ la même bibliothèque appelée depuis Python.
 | Paquet | Où il apparaît | Contenu | Taille | Licences |
 |---|---|---|---|---|
 | **Kokoro 82M · MLX** (recommandé) | app macOS seulement | `kokoro-v1_0.safetensors` et `config.json` (`mlx-community/Kokoro-82M-bf16`, révision `a71e4d38`) | 327 Mo | poids et voix Apache-2.0 ; code MLX MIT ; espeak-ng GPL-3.0 (processus séparé) |
-| **Kokoro 82M · int8** | terminal (Linux, macOS) | `onnx/model_quantized.onnx` (`onnx-community/Kokoro-82M-v1.0-ONNX-timestamped`, 92 361 055 octets) et `config.json` | 92 Mo, plus ONNX Runtime (≈ 30 Mo, livré par `package.sh` sous Linux) | Apache-2.0 ; ORT MIT ; `ort` MIT/Apache |
+| **Kokoro 82M · int8** | terminal (Linux, macOS) | `onnx/model_quantized.onnx` (`onnx-community/Kokoro-82M-v1.0-ONNX-timestamped`, 92 361 055 octets) et `config.json` | 92 Mo, plus ONNX Runtime (≈ 30 Mo, livré par `package.sh` à côté du binaire, pris dans le paquet NuGet de Microsoft) | Apache-2.0 ; ORT MIT ; `ort` MIT/Apache |
 | Voix (communes aux deux) | – | les 29 voix françaises et anglaises officielles (510 × 256, safetensors) | ≈ 15 Mo | Apache-2.0 |
 
 - La fiche affiche les langues (« Français, anglais »), les voix (« Française :
@@ -417,6 +417,14 @@ pub struct KokoroOutput { pub samples: Vec<f32>, pub durations: Vec<u32> }
     `SILLON_ESPEAK_DATA`).
   - Au terminal, `scripts/package.sh` joint `sillon-espeak`, ses données et
     ses sources à côté du binaire.
+  - Au terminal, ONNX Runtime 1.31.0 vient du paquet NuGet officiel de
+    Microsoft, `microsoft.ml.onnxruntime` 1.31.0
+    (`https://api.nuget.org/v3-flatcontainer/microsoft.ml.onnxruntime/1.31.0/microsoft.ml.onnxruntime.1.31.0.nupkg`),
+    une seule archive pour tous les systèmes, empreinte SHA-256 épinglée
+    (`ort_source`, `scripts/paquet-commun.sh`) ; `package.sh` en extrait la
+    bibliothèque du système (`runtimes/<RID>/native/`), sa licence et ses
+    avis. Les archives de publication du dépôt GitHub `microsoft/onnxruntime`
+    ne servent plus : ce dépôt a disparu, et elles avec lui.
   - Au terminal, le moteur cherche dans cet ordre : `SILLON_ESPEAK`, à côté du
     binaire, puis `PATH`.
 - **Onglet Voix** (famille `kokoro`) :

@@ -31,6 +31,10 @@ et quantifié les poids. Le chargeur de Dysflow
 (macos/Vendor/KokoroMLX/STT/Parakeet/PhononLoader.swift) suit le format
 décrit par fermion_container.py du même dépôt (Apache 2.0).
 Les autres, chacun depuis son dépôt, à la révision épinglée :
+- Parakeet TDT 0.6B v3 en int8 pour sherpa-onnx (NVIDIA Corporation,
+  CC-BY-4.0 ; exporté par sherpa-onnx), la dictée du terminal :
+  csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8, révision
+  ed5d745623472f97cfc2e6c2916ee248798fc5a8 ;
 - Parakeet TDT 0.6B v2 (NVIDIA Corporation, CC-BY-4.0) :
   mlx-community/parakeet-tdt-0.6b-v2, révision
   8ae155301e23d820d82aa60d24817c900e69e487 ;
@@ -143,10 +147,31 @@ Avec la feature ocr, le binaire embarque aussi les données de langue
 française et anglaise de Tesseract (assets/tessdata, fra.traineddata et
 eng.traineddata, tirées de tesseract-ocr/tessdata_fast, licence Apache 2.0 —
 même texte que tesseract-LICENSE).
-La feature kokoro-onnx charge ONNX Runtime 1.31.0 (licence MIT, Microsoft),
-livré à côté du binaire sous Linux (x86_64, ARM64) et sous macOS (Apple
-Silicon) avec sa licence et ses avis
-(LICENSE-onnxruntime, ThirdPartyNotices-onnxruntime.txt), et dysflow-espeak
-(GPL-3.0, programme séparé, comme dans l'app) avec ses données
-(espeak-ng-data), sa licence, l'adresse des sources d'espeak-ng et ses
+La feature kokoro-onnx charge ONNX Runtime 1.31.0 (licence MIT, Microsoft,
+pris dans son paquet NuGet officiel), livré à côté du binaire sous Linux
+(x86_64, ARM64), sous Windows (x86_64) et sous macOS (Apple Silicon) avec sa
+licence et ses avis (LICENSE-onnxruntime, ThirdPartyNotices-onnxruntime.txt),
+et dysflow-espeak (GPL-3.0, programme séparé, comme dans l'app) avec ses
+données (espeak-ng-data), sa licence, l'adresse des sources d'espeak-ng et ses
 propres sources (dysflow-espeak-source/).
+La feature stt-sherpa (la dictée) joint à côté du binaire :
+- la bibliothèque C de sherpa-onnx 2.0.2 (projet k2-fsa, licence Apache 2.0 —
+  licences/sherpa-onnx-LICENSE), telle que publiée par k2-fsa
+  (https://github.com/k2-fsa/sherpa-onnx/releases/tag/v2.0.2, empreintes
+  dans scripts/sherpa-onnx.sh), qui calcule sur le même ONNX Runtime que
+  Kokoro ; les crates sherpa-onnx et sherpa-onnx-sys sont dans
+  THIRD-PARTY-RUST.txt ;
+- le modèle Silero VAD (silero_vad.onnx, Copyright (c) 2020-present Silero
+  Team, licence MIT — licences/silero-vad-LICENSE), tel que k2-fsa le publie
+  pour sherpa-onnx (publication asr-models, empreinte SHA-256 dans
+  scripts/paquet-commun.sh).
+Sur Mac, la feature mlx joint les noyaux Metal de la copie de MLX que compile
+le binaire (mlx.metallib), avec les licences de ses sources (licences/mlx-rs-*,
+les mêmes que dans l'app, voir plus haut).
+Sous Windows, dysflow-espeak.exe est compilé par MinGW-w64 (gcc de MSYS2,
+UCRT64) et lié statiquement à son runtime (démarrage du CRT, libmingwex,
+winpthreads) et à libgcc (GPL-3.0 avec la GCC Runtime Library Exception
+3.1) : l'avis du runtime de MinGW-w64 est joint
+(licences/mingw-w64-runtime-COPYING.txt), avec, quand MSYS2 les porte, celui
+de winpthreads (licences/mingw-w64-winpthreads-COPYING.txt) et le texte de
+l'exception de libgcc (licences/gcc-RUNTIME.LIBRARY.EXCEPTION.txt).

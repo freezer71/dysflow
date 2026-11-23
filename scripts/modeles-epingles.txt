@@ -1,0 +1,48 @@
+# Les modèles des essais de bout en bout du paquet (scripts/paquet-bout-en-bout.sh)
+# et de la porte (scripts/ort-gate.sh) : une ligne par fichier,
+#   <chemin dans le dossier des modèles> <SHA-256> <adresse, à une révision épinglée>
+# Le chemin est celui où Dysflow range le fichier (src/models.rs : la famille,
+# puis le nom), sauf test_wavs/fr.wav, l'échantillon français du dépôt de
+# Parakeet. La CI garde ces fichiers en cache sous la clé de ce fichier
+# (hashFiles) ; un fichier absent ou d'une autre empreinte est retéléchargé de
+# son adresse, et refusé s'il n'a pas l'empreinte.
+#
+# Kokoro int8 (kokoro_82m_int8) : le modèle d'onnx-community, la configuration
+# et les 29 voix de mlx-community (révisions de src/models.rs).
+kokoro/model_quantized.onnx c0c02b3299fd97c34ea92a98e6d41eaa1a739c8f77bf685aac34bd7b34c1132c https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX-timestamped/resolve/dd4401a9add81ac692d20e240d22ec9dda82cc29/onnx/model_quantized.onnx
+kokoro/config.json 5abb01e2403b072bf03d04fde160443e209d7a0dad49a423be15196b9b43c17f https://huggingface.co/mlx-community/Kokoro-82M-bf16/resolve/a71e4d38b236d968966a2002c4c895dbd12b1c3c/config.json
+kokoro/voices/ff_siwis.safetensors 5c659c9b9e12be28b98a4aa0cd6b1e66f359b6381ba5680264e9072945ac32b8 https://huggingface.co/mlx-community/Kokoro-82M-bf16/resolve/a71e4d38b236d968966a2002c4c895dbd12b1c3c/voices/ff_siwis.safetensors
+kokoro/voices/af_bella.safetensors 112d310468cbb3cf23404d3d0b50ad3adf017b87bf38bf9edd15f4ad572df6a3 https://huggingface.co/mlx-community/Kokoro-82M-bf16/resolve/a71e4d38b236d968966a2002c4c895dbd12b1c3c/voices/af_bella.safetensors
+kokoro/voices/af_alloy.safetensors 5bb848d02ade7e37981809acad52a1761ef7a586ff9f30d02d65fd71c4af95f9 https://huggingface.co/mlx-community/Kokoro-82M-bf16/resolve/a71e4d38b236d968966a2002c4c895dbd12b1c3c/voices/af_alloy.safetensors
+kokoro/voices/af_aoede.safetensors 23809148777f2a2378983dd856bc14b9c261018279f916f98c23d86e844409a5 https://huggingface.co/mlx-community/Kokoro-82M-bf16/resolve/a71e4d38b236d968966a2002c4c895dbd12b1c3c/voices/af_aoede.safetensors
+kokoro/voices/af_heart.safetensors 2c1c733b0e6576c810e268d3e440c21dea4e0f0131a3ba4cfc98d7fe6136d094 https://huggingface.co/mlx-community/Kokoro-82M-bf16/resolve/a71e4d38b236d968966a2002c4c895dbd12b1c3c/voices/af_heart.safetensors
+kokoro/voices/af_jessica.safetensors c358448e4277b79e8b13b92033711660a1a2205c3940c2dfb16698b99fed58a8 https://huggingface.co/mlx-community/Kokoro-82M-bf16/resolve/a71e4d38b236d968966a2002c4c895dbd12b1c3c/voices/af_jessica.safetensors
+kokoro/voices/af_kore.safetensors c491174280cb1ad25210a842f2f34b46a9ef904ec6f6a8e784839531795fa278 https://huggingface.co/mlx-community/Kokoro-82M-bf16/resolve/a71e4d38b236d968966a2002c4c895dbd12b1c3c/voices/af_kore.safetensors
+kokoro/voices/af_nicole.safetensors 574656386022c81a029e9a72558191925f44c3de2dad2fa2e45751938557d062 https://huggingface.co/mlx-community/Kokoro-82M-bf16/resolve/a71e4d38b236d968966a2002c4c895dbd12b1c3c/voices/af_nicole.safetensors
+kokoro/voices/af_nova.safetensors 242b9a0a01eac1ac2865c69fc617a756b20d86df82d5fae3970533e2312ca50e https://huggingface.co/mlx-community/Kokoro-82M-bf16/resolve/a71e4d38b236d968966a2002c4c895dbd12b1c3c/voices/af_nova.safetensors
+kokoro/voices/af_river.safetensors 82c866b0b976d50e82cbd781ac7bc771471ce5bd21decf05ab92812a08fb1c04 https://huggingface.co/mlx-community/Kokoro-82M-bf16/resolve/a71e4d38b236d968966a2002c4c895dbd12b1c3c/voices/af_river.safetensors
+kokoro/voices/af_sarah.safetensors 4940072182542f54c1035d1daf4c1cf3136ca9baa9ac57c8e006b4befcc50be6 https://huggingface.co/mlx-community/Kokoro-82M-bf16/resolve/a71e4d38b236d968966a2002c4c895dbd12b1c3c/voices/af_sarah.safetensors
+kokoro/voices/af_sky.safetensors 957af332330db8e9bd7f9dc449475a946cb0d7d689afef64b91007bbbf20eaa0 https://huggingface.co/mlx-community/Kokoro-82M-bf16/resolve/a71e4d38b236d968966a2002c4c895dbd12b1c3c/voices/af_sky.safetensors
+kokoro/voices/am_adam.safetensors a4f60a3b9c20353c2604a17485ba53260502a758681a84d41e8af53cc559d929 https://huggingface.co/mlx-community/Kokoro-82M-bf16/resolve/a71e4d38b236d968966a2002c4c895dbd12b1c3c/voices/am_adam.safetensors
+kokoro/voices/am_echo.safetensors 031fc608a900332c4e1a29bd0884f5d0e84bd0348261fa79981e5cbd138c950d https://huggingface.co/mlx-community/Kokoro-82M-bf16/resolve/a71e4d38b236d968966a2002c4c895dbd12b1c3c/voices/am_echo.safetensors
+kokoro/voices/am_eric.safetensors 1fb4a61dcee1f114f90886ecf29bc2feed05e29eed9caa6ddb109f1934d73274 https://huggingface.co/mlx-community/Kokoro-82M-bf16/resolve/a71e4d38b236d968966a2002c4c895dbd12b1c3c/voices/am_eric.safetensors
+kokoro/voices/am_fenrir.safetensors 9abed964b906c4cae6f404d9849e76260689aea862bc6ca85fc3f5207ba96538 https://huggingface.co/mlx-community/Kokoro-82M-bf16/resolve/a71e4d38b236d968966a2002c4c895dbd12b1c3c/voices/am_fenrir.safetensors
+kokoro/voices/am_liam.safetensors 66b65a96e16c3d91035a6e9019d9986ed524d27ce35b487270cdf61c99e3ebad https://huggingface.co/mlx-community/Kokoro-82M-bf16/resolve/a71e4d38b236d968966a2002c4c895dbd12b1c3c/voices/am_liam.safetensors
+kokoro/voices/am_michael.safetensors 3940147ded35deba0bb52e8132f89b719298e0520258c34584358aa5a24da2ea https://huggingface.co/mlx-community/Kokoro-82M-bf16/resolve/a71e4d38b236d968966a2002c4c895dbd12b1c3c/voices/am_michael.safetensors
+kokoro/voices/am_onyx.safetensors b5d6132a5747648d98c82c9c4aaa9cf52d7230e63e403c1cb9c12858446ca5f5 https://huggingface.co/mlx-community/Kokoro-82M-bf16/resolve/a71e4d38b236d968966a2002c4c895dbd12b1c3c/voices/am_onyx.safetensors
+kokoro/voices/am_puck.safetensors 9a8c2e56413bd2063f814cb4c3885fc425876157369117c3f8258d03c8a9ad89 https://huggingface.co/mlx-community/Kokoro-82M-bf16/resolve/a71e4d38b236d968966a2002c4c895dbd12b1c3c/voices/am_puck.safetensors
+kokoro/voices/am_santa.safetensors d1f433b57ffccf105ea9e434ea19af6c2a8a7916ba6d1a73c34f0046bd226084 https://huggingface.co/mlx-community/Kokoro-82M-bf16/resolve/a71e4d38b236d968966a2002c4c895dbd12b1c3c/voices/am_santa.safetensors
+kokoro/voices/bf_alice.safetensors 9c77e390d93d9db7c4a7526c3b1f393290a2be46f233b89a00b8188e850c20a8 https://huggingface.co/mlx-community/Kokoro-82M-bf16/resolve/a71e4d38b236d968966a2002c4c895dbd12b1c3c/voices/bf_alice.safetensors
+kokoro/voices/bf_emma.safetensors 8878a75a6661305849eeb1d6293a7177250193616e161b4c3100636434dfe69f https://huggingface.co/mlx-community/Kokoro-82M-bf16/resolve/a71e4d38b236d968966a2002c4c895dbd12b1c3c/voices/bf_emma.safetensors
+kokoro/voices/bf_isabella.safetensors f7b6076f025649699fcfed1a6debf13049a87afdc7aafc8c72b7d81246db6ead https://huggingface.co/mlx-community/Kokoro-82M-bf16/resolve/a71e4d38b236d968966a2002c4c895dbd12b1c3c/voices/bf_isabella.safetensors
+kokoro/voices/bf_lily.safetensors ee77a419046a765420ac82cb46e8b8cf5754a0b9d20c340fece1d4b18be7ecdb https://huggingface.co/mlx-community/Kokoro-82M-bf16/resolve/a71e4d38b236d968966a2002c4c895dbd12b1c3c/voices/bf_lily.safetensors
+kokoro/voices/bm_daniel.safetensors b195dec592ee024f57ddc5bf481464596082ba60998a2a295eba90bfc1064f4b https://huggingface.co/mlx-community/Kokoro-82M-bf16/resolve/a71e4d38b236d968966a2002c4c895dbd12b1c3c/voices/bm_daniel.safetensors
+kokoro/voices/bm_fable.safetensors 9fa80184e96d016a744bc13b0b2e7695e55d6b855556fa003325cb1e5ebf2c2b https://huggingface.co/mlx-community/Kokoro-82M-bf16/resolve/a71e4d38b236d968966a2002c4c895dbd12b1c3c/voices/bm_fable.safetensors
+kokoro/voices/bm_george.safetensors a3d9b8995cbbe5536f954b6be2a0f1f312f077118ba0d4d2178fc41dc8306672 https://huggingface.co/mlx-community/Kokoro-82M-bf16/resolve/a71e4d38b236d968966a2002c4c895dbd12b1c3c/voices/bm_george.safetensors
+kokoro/voices/bm_lewis.safetensors e1e68013c21a141efe527aaec561e1174c2f5a6951b3bcecc8396adab315b247 https://huggingface.co/mlx-community/Kokoro-82M-bf16/resolve/a71e4d38b236d968966a2002c4c895dbd12b1c3c/voices/bm_lewis.safetensors
+# Parakeet v3 int8 (parakeet_tdt_v3_int8), et l'échantillon français du dépôt.
+parakeet_tdt_v3/encoder.int8.onnx 1afbe69c1ffdabee94755f42e4daf1d93549131a3da11356bda84fcef0f2c479 https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8/resolve/ed5d745623472f97cfc2e6c2916ee248798fc5a8/encoder.int8.onnx
+parakeet_tdt_v3/decoder.int8.onnx 0222a86147299d4dee90edf95b6d13827edb42ad8b7c9cf0b2582f030937c0b5 https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8/resolve/ed5d745623472f97cfc2e6c2916ee248798fc5a8/decoder.int8.onnx
+parakeet_tdt_v3/joiner.int8.onnx cbd02f3696e9944970111fb439d9c3fd365a80374565f13f2b9c7007d253fc98 https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8/resolve/ed5d745623472f97cfc2e6c2916ee248798fc5a8/joiner.int8.onnx
+parakeet_tdt_v3/tokens.txt d58544679ea4bc6ac563d1f545eb7d474bd6cfa467f0a6e2c1dc1c7d37e3c35d https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8/resolve/ed5d745623472f97cfc2e6c2916ee248798fc5a8/tokens.txt
+parakeet_tdt_v3/test_wavs/fr.wav b59be4349b92d344fb903677165eaf4694025d1ab119c608726ecbcb3164b528 https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8/resolve/ed5d745623472f97cfc2e6c2916ee248798fc5a8/test_wavs/fr.wav

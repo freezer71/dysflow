@@ -1,21 +1,26 @@
 #!/bin/sh
 # Installe le lecteur au terminal : tout ce que package.sh assemble dans dist/
-# (le binaire, ONNX Runtime, dysflow-espeak et ses données, les licences) va
+# (le binaire, ONNX Runtime, dysflow-espeak et ses données, la bibliothèque C
+# de sherpa-onnx et Silero VAD pour la dictée, les licences) va
 # dans $PREFIX/lib/dysflow, et $PREFIX/bin/dysflow est un lien vers
 # ../lib/dysflow/dysflow. Le binaire résout ce lien pour trouver ses voisins.
 # Les modèles et la configuration vivent dans le répertoire de données.
 #
 #   ./scripts/install.sh                          # ~/.local, sans droits
 #   PREFIX=/usr/local sudo -E ./scripts/install.sh
-#   FEATURES=kokoro-onnx ./scripts/install.sh     # sans reconnaissance de texte
+#   FEATURES=kokoro-onnx ./scripts/install.sh     # sans reconnaissance de texte ni dictée
 #   REMPLACER=1 ./scripts/install.sh              # remplace sans question la commande de l'app
 #
 # Pour désinstaller : rm -r "$PREFIX/lib/dysflow" "$PREFIX/bin/dysflow"
 set -eu
 cd "$(dirname "$0")/.."
 
+# default_features : celles de package.sh (scripts/paquet-commun.sh).
+# shellcheck source=scripts/paquet-commun.sh
+. scripts/paquet-commun.sh
+
 PREFIX="${PREFIX:-$HOME/.local}"
-FEATURES="${FEATURES:-ocr,kokoro-onnx}"
+FEATURES="${FEATURES:-$(default_features)}"
 export FEATURES
 BIN="$PREFIX/bin/dysflow"
 LIB="$PREFIX/lib/dysflow"
@@ -54,7 +59,8 @@ mv "$LIB.nouveau" "$LIB"
 ln -sfn ../lib/dysflow/dysflow "$BIN"
 
 # Depuis la racine, sans les variables qui désignent ORT ou espeak ailleurs :
-# le binaire ne dépend que de ce qui est installé.
+# le binaire ne dépend que de ce qui est installé. Avec la dictée, qu'il
+# démarre prouve aussi que la bibliothèque C de sherpa-onnx se charge.
 echo "Vérification hors de l'arbre de compilation…"
 ( cd / && env -u DYSFLOW_ORT_LIB -u DYSFLOW_ESPEAK -u DYSFLOW_ESPEAK_DATA "$BIN" --show-config >/dev/null )
 case ",$FEATURES," in

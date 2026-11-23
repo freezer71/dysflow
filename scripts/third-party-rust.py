@@ -9,7 +9,10 @@ Deux livrables :
   (a) la bibliothèque de l'app macOS : dysflow-ffi, avec les features de
       build-ffi.sh (ocr), pour aarch64-apple-darwin ;
   (b) le binaire du terminal : dysflow, avec les features de package.sh
-      (ocr,kokoro-onnx), pour Linux x86_64 et ARM64, macOS et Windows x86_64.
+      (default_features de scripts/paquet-commun.sh : ocr,kokoro-onnx,
+      stt-sherpa, plus mlx sur Mac, dont les crates ne visent que
+      aarch64-apple-darwin), pour Linux x86_64 et ARM64, macOS et Windows
+      x86_64.
 
 Le graphe vient de `cargo tree -e normal,no-proc-macro` (dépendances liées
 seulement : ni build, ni dev, ni macros procédurales, avec la résolution
@@ -43,10 +46,10 @@ DELIVERABLES = [
     },
     {
         "key": "terminal",
-        "title": "binaire du terminal (dysflow, features ocr,kokoro-onnx)",
+        "title": "binaire du terminal (dysflow, features ocr,kokoro-onnx,stt-sherpa, et mlx sur Mac)",
         "package": "dysflow",
-        "features": "ocr,kokoro-onnx",
-        "metadata_features": "dysflow/ocr,dysflow/kokoro-onnx",
+        "features": "ocr,kokoro-onnx,stt-sherpa,mlx",
+        "metadata_features": "dysflow/ocr,dysflow/kokoro-onnx,dysflow/stt-sherpa,dysflow/mlx",
         "targets": [
             "x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu", "aarch64-apple-darwin",
             "x86_64-pc-windows-msvc",

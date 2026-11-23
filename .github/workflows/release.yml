@@ -1,7 +1,10 @@
 # Publication, à chaque tag `v*` :
 # - le lecteur au terminal pour Linux (x86_64 et ARM64) : scripts/install.sh
-#   assemble le paquet (ocr, kokoro-onnx), l'installe et le vérifie depuis / ;
-#   le dossier dist/ part en archive, avec son empreinte ;
+#   assemble le paquet (ocr, kokoro-onnx, stt-sherpa : la voix et la dictée,
+#   avec la bibliothèque C de sherpa-onnx et Silero VAD), l'installe et le
+#   vérifie depuis / ; le dossier dist/ part en archive, avec son empreinte.
+#   La CI (ci.yml) l'essaie avant : mise à jour depuis la dernière
+#   publication, et bout en bout (voix puis dictée) depuis le paquet ;
 # - l'app macOS, à la demande seulement (lancement manuel, case « macos ») :
 #   construite (signée Developer ID et notariée si les secrets MACOS_* et
 #   NOTARY_* sont là, sinon ad hoc), emballée en .zip (pour install.sh à la

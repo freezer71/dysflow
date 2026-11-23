@@ -249,7 +249,10 @@ l'app : le terminal parle alors avec la voix du système, et le dit.
 
 `--transcribe` fait l'inverse : il dicte un fichier WAV, sans écran, avec le
 modèle de dictée installé (Parakeet v3 · int8, pour un binaire construit avec
-la feature `stt-sherpa`). Le texte est écrit seul sur la sortie standard ; la
+la feature `stt-sherpa`, celui du paquet). Le paquet livre à côté du binaire
+la bibliothèque C de sherpa-onnx, qui calcule sur le même ONNX Runtime que
+Kokoro, et Silero VAD (`silero_vad.onnx`), qui entend où chaque phrase
+commence et finit. Le texte est écrit seul sur la sortie standard ; la
 progression (chargement du modèle, un énoncé après l'autre, les échecs) passe
 par la sortie d'erreur.
 
@@ -287,7 +290,8 @@ cargo install --path .          # voix du système seule, build en quelques seco
 
 `install.sh` assemble le paquet (`package.sh`, ci-dessous) et le copie en
 entier dans `$PREFIX/lib/dysflow` — le binaire, ONNX Runtime, dysflow-espeak et
-ses données, les licences —, puis pose `$PREFIX/bin/dysflow`, un lien vers
+ses données, la bibliothèque C de sherpa-onnx et Silero VAD pour la dictée, les
+licences —, puis pose `$PREFIX/bin/dysflow`, un lien vers
 `../lib/dysflow/dysflow` : le binaire suit ce lien pour trouver ses voisins.
 `~/.local` par défaut, sans droits ; `PREFIX=/usr/local sudo -E
 ./scripts/install.sh` pour toute la machine. Il vérifie ensuite, depuis la
@@ -295,6 +299,21 @@ racine, que `dysflow` démarre et que Kokoro se charge (`dysflow --check-kokoro`
 ONNX Runtime et dysflow-espeak, sans le modèle), et dit s'il manque le `bin/` au
 `PATH`. Modèles et configuration vivent dans le répertoire de données. Pour
 désinstaller, `rm -r $PREFIX/lib/dysflow $PREFIX/bin/dysflow`.
+
+**Installation abîmée.** Le paquet va d'un seul bloc : le binaire exige les
+fichiers posés à côté de lui. Sans la bibliothèque C de sherpa-onnx, `dysflow`
+ne démarre pas du tout, et c'est le système qui le dit (Linux : *error while
+loading shared libraries: libsherpa-onnx-c-api.so* ; macOS : *Library not
+loaded: @rpath/libsherpa-onnx-c-api.dylib* ; Windows : *sherpa-onnx-c-api.dll
+introuvable*). Sans `silero_vad.onnx`, ou avec un fichier tronqué, la dictée
+s'arrête sur une erreur qui le nomme. Dans tous ces cas, **réinstallez le
+paquet entier** — `curl -fsSL https://dysflow.koumalabs.org/install.sh | sh -s
+-- --force`, ou `./scripts/install.sh` depuis les sources, ou sous Windows
+l'archive décompressée de nouveau dans un dossier vide — plutôt que de copier
+un fichier seul. Les modèles et les réglages, rangés ailleurs, restent. Un
+modèle de dictée dont un fichier manque ou est tronqué n'est plus vu comme
+installé : `--transcribe` le dit, avec la commande `--install-model` qui le
+télécharge de nouveau.
 
 Sur Mac, la commande `dysflow` est soit le lecteur au terminal, soit celle qui
 ouvre l'app (`install-app-command.sh`, voir *L'app macOS*). Chacun des deux
@@ -305,14 +324,17 @@ retirer à la main.
 #### Distribuer le binaire
 
 `scripts/package.sh` assemble dans `dist/` le binaire et ce qu'il charge —
-ONNX Runtime et dysflow-espeak pour Kokoro —, avec les licences, et vérifie que
-l'ensemble s'exécute hors de l'arbre de compilation. ONNX Runtime 1.31.0 est
-téléchargé depuis sa publication officielle, empreinte SHA-256 vérifiée, pour
-Linux x86_64 et ARM64 et pour macOS sur Apple Silicon :
+ONNX Runtime et dysflow-espeak pour Kokoro, la bibliothèque C de sherpa-onnx et
+Silero VAD pour la dictée, sur Mac les noyaux de MLX (`mlx.metallib`) —, avec
+les licences, et vérifie que l'ensemble s'exécute hors de l'arbre de
+compilation. ONNX Runtime 1.31.0 vient du paquet NuGet officiel de Microsoft,
+sherpa-onnx 2.0.2 et Silero VAD des publications de k2-fsa, chacun empreinte
+SHA-256 vérifiée, pour Linux x86_64 et ARM64, Windows x86_64 et macOS sur
+Apple Silicon :
 
 ```bash
-./scripts/package.sh                 # ocr + kokoro-onnx par défaut
-FEATURES=kokoro-onnx ./scripts/package.sh
+./scripts/package.sh                 # ocr, kokoro-onnx, stt-sherpa (et mlx sur Mac)
+FEATURES=ocr,kokoro-onnx ./scripts/package.sh   # sans la dictée
 ```
 
 Pour la **reconnaissance de texte** — images, dossiers de scans, images

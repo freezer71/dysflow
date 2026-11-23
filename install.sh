@@ -285,6 +285,11 @@ else
     if [ -z "$dossier" ] || [ ! -x "$dossier/dysflow" ]; then
         echec "$(t 'the archive does not contain the dysflow binary' "l'archive ne contient pas le binaire dysflow")"
     fi
+    # Le binaire exige ses bibliothèques (la dictée : sherpa-onnx, à côté de
+    # lui) : il doit démarrer depuis l'archive avant de remplacer quoi que ce
+    # soit.
+    "$dossier/dysflow" --version >/dev/null 2>&1 \
+        || echec "$(t 'the binary of the archive does not start (a library of the package is missing): nothing was replaced' "le binaire de l'archive ne démarre pas (il manque une bibliothèque du paquet) : rien n'est remplacé")"
     mkdir -p "$PREFIX/lib"
     rm -rf "$PREFIX/lib/dysflow"
     mv "$dossier" "$PREFIX/lib/dysflow"
@@ -308,5 +313,7 @@ if [ "$systeme" = Darwin ]; then
 else
     printf '\n%s %sdysflow document.md%s   ·   cat notes.md | dysflow\n' "$(t 'To read a file:' 'Pour lire un fichier :')" "$gras" "$fin" >&2
     printf '%s\n' "$(t 'The Kokoro voice (108 MB) is downloaded automatically the first time you read.' 'La voix Kokoro (108 Mo) se télécharge toute seule à la première lecture.')" >&2
+    printf '%s %sdysflow --install-model parakeet_tdt_v3_int8%s, %s %sdysflow --transcribe note.wav%s\n' \
+        "$(t 'To dictate a file:' 'Pour dicter un fichier :')" "$gras" "$fin" "$(t 'then' 'puis')" "$gras" "$fin" >&2
 fi
 printf '%s %scurl -fsSL https://dysflow.koumalabs.org/install.sh | sh -s -- --uninstall%s\n' "$(t 'To uninstall:' 'Pour désinstaller :')" "$gras" "$fin" >&2

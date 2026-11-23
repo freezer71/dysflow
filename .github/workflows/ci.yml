@@ -118,12 +118,23 @@ jobs:
         # qui demandent la vraie bibliothèque et le modèle sont ignorés.
         if: runner.os == 'Windows'
         run: cargo test -p dysflow --features kokoro-onnx --lib tts::kokoro::onnx --locked
-      - name: Paquet et installation du terminal (ocr, kokoro-onnx)
+      - name: Paquet et installation du terminal (ocr, kokoro-onnx, stt-sherpa)
         if: runner.os == 'Linux'
         # install.sh lance package.sh (build --features ocr,kokoro-onnx,
-        # ONNX Runtime vérifié, dysflow-espeak), installe sous PREFIX, puis
-        # vérifie depuis / que le binaire démarre et que Kokoro se charge.
+        # stt-sherpa, ONNX Runtime vérifié, dysflow-espeak, bibliothèque C de
+        # sherpa-onnx et Silero VAD), installe sous PREFIX, puis vérifie
+        # depuis / que le binaire démarre (bibliothèque C chargée) et que
+        # Kokoro se charge.
         run: PREFIX="$RUNNER_TEMP/prefix" ./scripts/install.sh
+      - name: Mise à jour depuis la dernière publication (Linux x86_64)
+        # install.sh de la racine installe la dernière version publiée sur
+        # GitHub, puis met à jour vers le paquet de dist/ (servi en local,
+        # comme GitHub le sert) : --version et --check-kokoro passent, et le
+        # dossier installé est bien le nouveau paquet (dictée comprise).
+        # x86_64 seulement : la logique ne dépend pas de l'architecture, et
+        # chaque passage télécharge la publication (~ la taille du paquet).
+        if: matrix.os == 'ubuntu-24.04'
+        run: ./scripts/test-mise-a-jour.sh dist
       - name: MinGW-w64 (dysflow-espeak, Windows)
         # espeak-ng 1.52.0 ne se compile pas avec MSVC : build-espeak.sh le
         # construit avec gcc d'MSYS2 (UCRT64). Rien n'est ajouté au PATH :
@@ -158,26 +169,67 @@ jobs:
             rm -rf "$dest"
             mkdir -p "$dest" && unzip -q dist/dysflow-windows-x86_64.zip -d "$dest"
             echo "Depuis $dest :"
+            # --version : dysflow.exe démarre, donc sherpa-onnx-c-api.dll et
+            # onnxruntime.dll se chargent depuis le dossier du paquet.
             for option in --version --check-kokoro; do
               ( cd / && env -u DYSFLOW_ORT_LIB -u DYSFLOW_ESPEAK -u DYSFLOW_ESPEAK_DATA \
                   PATH="/c/Windows/System32:/c/Windows" "$dest/dysflow.exe" "$option" )
             done
           done
       - name: Imports des binaires (Windows)
-        # Chaque DLL qu'importent dysflow.exe, onnxruntime.dll, le runtime
-        # Visual C++ joint et dysflow-espeak.exe est dans le paquet ou dans
-        # Windows ; dysflow-espeak.exe n'importe que KERNEL32, ADVAPI32 et le
-        # CRT de Windows (rien de MinGW).
+        # Chaque DLL qu'importent dysflow.exe, onnxruntime.dll,
+        # sherpa-onnx-c-api.dll, le runtime Visual C++ joint et
+        # dysflow-espeak.exe (exigé) est à côté de son binaire ou dans la
+        # liste blanche des DLL de Windows, sous-dossiers compris ;
+        # dysflow-espeak.exe n'importe que KERNEL32, ADVAPI32 et le CRT de
+        # Windows (rien de MinGW).
         if: runner.os == 'Windows'
         shell: bash
         run: python -I scripts/windows-imports.py check dist
+      - name: Phonétisation réelle et coût des lots de 2 Kio (Windows)
+        # Le vrai dysflow-espeak.exe du paquet, par les tubes de Windows et
+        # le fil d'écriture : chaque entrée reçoit ses phonèmes, une entrée
+        # trop longue l'arrête, et le temps d'une requête de 39 Ko en lots de
+        # 2 Kio puis de 8 Kio est affiché (the_cost_of_small_batches).
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          DYSFLOW_ESPEAK="$PWD/dist/dysflow-espeak.exe" DYSFLOW_ESPEAK_DATA="$PWD/dist" \
+            cargo test --workspace --locked --lib tts::kokoro::phonemes::tests::the_ -- --ignored --nocapture --test-threads=1
+      - name: Modèles du bout en bout (cache)
+        # Kokoro int8 (modèle, configuration, 29 voix) et Parakeet v3 int8
+        # avec son échantillon français : 778 Mo, sous la clé de leurs
+        # empreintes épinglées (scripts/modeles-epingles.txt). Un cache
+        # absent est refait depuis les révisions épinglées, chaque fichier
+        # vérifié par son SHA-256 (scripts/paquet-bout-en-bout.sh).
+        if: runner.os == 'Windows' || matrix.os == 'ubuntu-24.04'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/paquet-modeles
+          key: paquet-modeles-${{ hashFiles('scripts/modeles-epingles.txt') }}
+      - name: Bout en bout depuis le paquet (Linux x86_64, Windows)
+        # Depuis le paquet (sous Windows, l'archive décompressée sous
+        # « Łukasz Gaweł ») : dysflow -o écrit le texte de référence avec
+        # Kokoro, puis --transcribe dicte l'échantillon français de référence
+        # et ce WAV (Parakeet v3 int8, Silero VAD du paquet), WER bornés.
+        if: runner.os == 'Windows' || matrix.os == 'ubuntu-24.04'
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = Windows ]; then
+            paquet="$(cygpath -u "$RUNNER_TEMP")/Łukasz Gaweł/dysflow"
+          else
+            paquet=dist
+          fi
+          ./scripts/paquet-bout-en-bout.sh "$paquet" "$RUNNER_TEMP/paquet-modeles"
       - name: Modèles de la porte ONNX Runtime (cache)
         # Silero VAD, Kokoro int8 et sa configuration : empreintes épinglées
-        # dans scripts/ort-gate.sh, qui ne retélécharge pas un fichier juste.
+        # (scripts/paquet-commun.sh, scripts/modeles-epingles.txt), que
+        # scripts/ort-gate.sh vérifie et ne retélécharge pas quand elles sont
+        # justes.
         uses: actions/cache@v4
         with:
           path: target/ort-gate-models
-          key: ort-gate-models-${{ hashFiles('scripts/ort-gate.sh') }}
+          key: ort-gate-models-${{ hashFiles('scripts/ort-gate.sh', 'scripts/paquet-commun.sh', 'scripts/modeles-epingles.txt') }}
       - name: Une seule copie d'ONNX Runtime (Kokoro et sherpa-onnx, lot 1)
         # La porte du lot 1 : examples/ort_single_copy.rs (Clippy compris),
         # compilé avec la bibliothèque C de sherpa-onnx de
@@ -222,7 +274,17 @@ jobs:
         run: rustup toolchain install 1.88 1.91 --profile minimal --no-self-update
       - uses: Swatinem/rust-cache@v2
       - name: dysflow en 1.88, toutes features
-        run: cargo +1.88 check -p dysflow --all-features --all-targets --locked
+        # stt-sherpa avec les --config de scripts/sherpa-onnx.sh, comme le
+        # paquet et la porte : sans eux, le script de build de
+        # sherpa-onnx-sys téléchargerait sa propre archive, avec ONNX Runtime
+        # 1.28.2.
+        run: |
+          PYTHON=python3
+          . scripts/paquet-commun.sh
+          . scripts/sherpa-onnx.sh
+          sherpa_fetch
+          cargo +1.88 check -p dysflow --all-features --all-targets --locked \
+            --config "$SHERPA_CONFIG_SEARCH" --config "$SHERPA_CONFIG_LIB"
       - name: Espace de travail en 1.91
         run: cargo +1.91 check --workspace --all-targets --locked
 
@@ -235,6 +297,10 @@ jobs:
         run: python3 -I scripts/third-party-rust.py --check
       - name: shellcheck
         run: shellcheck install.sh scripts/*.sh
+      - name: Imports Windows (binaires fabriqués)
+        # La liste blanche de scripts/windows-imports.py, sur des PE32+
+        # fabriqués : sous-dossiers, dysflow-espeak.exe exigé, DLL inconnue.
+        run: python3 -I scripts/test_windows_imports.py
       - name: langue de install.sh
         run: sh scripts/test-install-lang.sh
 
