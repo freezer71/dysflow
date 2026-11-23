@@ -7,17 +7,21 @@
 #
 #   ./scripts/paquet-bout-en-bout.sh PAQUET MODÈLES
 #
-# MODÈLES : le cache des modèles (la CI le garde sous la clé de
-# scripts/modeles-epingles.txt). Chaque fichier y est vérifié par son SHA-256,
-# et téléchargé de son adresse épinglée seulement s'il manque ou n'a pas la
-# bonne empreinte ; les octets téléchargés sont comptés et affichés.
+# MODÈLES : le cache des modèles (en CI, celui de la porte, un par système,
+# sous la clé de scripts/modeles-epingles.txt). Chaque fichier y est vérifié
+# par son SHA-256 et téléchargé de son adresse épinglée seulement s'il manque
+# ou n'a pas la bonne empreinte (scripts/modeles-epingles.sh).
 #
 # Le binaire est lancé depuis /, sans les variables qui désignent ORT, espeak
 # ou Silero ailleurs. Sous Linux et macOS, avec un HOME (et des XDG_*)
-# provisoires : rien n'est écrit chez l'utilisateur. Sous Windows, le dossier
-# des données vient du profil (dirs, Known Folders), qu'une variable ne
-# déplace pas : les modèles vont dans %LOCALAPPDATA%\dysflow\models, ce qui
-# convient à une machine de CI, jetable, pas au PC de quelqu'un.
+# provisoires, créés par le script : les familles de modèles y sont des liens
+# vers le cache, rien n'est copié, rien n'est écrit chez l'utilisateur. Sous
+# Windows, le dossier des données vient du profil (dirs, Known Folders), qu'une
+# variable ne déplace pas : les modèles sont copiés dans
+# %LOCALAPPDATA%\dysflow\models. Le script ne le fait que sur une machine de CI
+# (CI=true) ou sur demande explicite (DYSFLOW_BOUT_EN_BOUT_PROFIL=1), et
+# refuse si ce dossier a déjà des modèles Kokoro ou Parakeet : il ne retire
+# jamais que ce qu'il a créé, à la sortie, réussie ou non.
 #
 # Rien n'est joué ni enregistré : le WAV est écrit dans un fichier, la dictée
 # lit des fichiers.
@@ -39,6 +43,15 @@ case "$(uname -s)" in
 MINGW* | MSYS* | CYGWIN*) WINDOWS=1 EXE=.exe ;;
 *) WINDOWS="" EXE="" ;;
 esac
+if [ -n "$WINDOWS" ] && [ "${CI:-}" != true ] && [ "${DYSFLOW_BOUT_EN_BOUT_PROFIL:-}" != 1 ]; then
+    {
+        echo "Erreur : sous Windows, ce script copie les modèles dans le vrai profil (%LOCALAPPDATA%\dysflow\models) ;"
+        echo "  il ne tourne qu'en CI (CI=true), ou avec DYSFLOW_BOUT_EN_BOUT_PROFIL=1 pour l'accepter."
+        echo "Error: on Windows, this script copies the models into the real profile (%LOCALAPPDATA%\dysflow\models);"
+        echo "  it only runs in CI (CI=true), or with DYSFLOW_BOUT_EN_BOUT_PROFIL=1 to accept it."
+    } >&2
+    exit 2
+fi
 if python3 -c "" >/dev/null 2>&1; then
     PYTHON=python3
 elif python -c "import sys; sys.exit(sys.version_info[0] != 3)" >/dev/null 2>&1; then
@@ -47,29 +60,29 @@ else
     echo "Erreur : Python 3 introuvable (python3 ou python)" >&2
     exit 1
 fi
-# shellcheck source=scripts/paquet-commun.sh
-. scripts/paquet-commun.sh
 
 bin="$paquet/dysflow$EXE"
 [ -x "$bin" ] || { echo "Erreur : $bin absent" >&2; exit 1; }
 
-# Les modèles épinglés, vérifiés ; le coût d'un cache froid, compté.
-octets=0
-for chemin in $(pinned_paths); do
-    fichier="$cache/$chemin"
-    if ! { [ -f "$fichier" ] && sha256_ok "$(pin_sha256 "$chemin")" "$fichier"; }; then
-        fetch_pinned "$chemin" "$fichier"
-        octets=$((octets + $(wc -c < "$fichier")))
-    fi
-done
-echo "Modèles : tous vérifiés ($cache) ; téléchargés à l'instant : $octets octets"
-
-travail="$PWD/target/paquet-bout-en-bout"
-rm -rf "$travail"
-mkdir -p "$travail"
-
 # Le dossier des modèles du binaire (src/paths.rs : dirs::data_local_dir,
-# puis dysflow/models).
+# puis dysflow/models), vérifié avant tout téléchargement ou copie.
+travail=$(mktemp -d "${TMPDIR:-/tmp}/dysflow-bout-en-bout.XXXXXX")
+# Ce que le script crée dans le profil (Windows) : un dossier entier
+# (cree_dossier), ou les deux familles dans un dossier qui existait
+# (cree_familles=1).
+cree_dossier=""
+cree_familles=""
+# nettoie : ce que le script a créé, et seulement cela, à toute sortie.
+nettoie() {
+    if [ -n "$cree_dossier" ]; then
+        rm -rf "${cree_dossier:?}"
+    elif [ -n "$cree_familles" ]; then
+        rm -rf "${modeles:?}/kokoro" "${modeles:?}/parakeet_tdt_v3"
+    fi
+    rm -rf "${travail:?}"
+}
+trap nettoie EXIT
+trap 'exit 130' INT TERM
 if [ -n "$WINDOWS" ]; then
     donnees="$(cygpath -u "$LOCALAPPDATA")/dysflow"
 elif [ "$(uname -s)" = Darwin ]; then
@@ -78,9 +91,34 @@ else
     donnees="$travail/data/dysflow"
 fi
 modeles="$donnees/models"
-rm -rf "$modeles/kokoro" "$modeles/parakeet_tdt_v3"
-mkdir -p "$modeles"
-cp -R "$cache/kokoro" "$cache/parakeet_tdt_v3" "$modeles/"
+for famille in kokoro parakeet_tdt_v3; do
+    if [ -e "$modeles/$famille" ] || [ -L "$modeles/$famille" ]; then
+        {
+            echo "Erreur : $modeles/$famille existe déjà ; le script ne remplace pas des modèles qu'il n'a pas posés."
+            echo "Error: $modeles/$famille already exists; the script does not replace models it did not put there."
+        } >&2
+        exit 1
+    fi
+done
+
+./scripts/modeles-epingles.sh "$cache"
+
+if [ -n "$WINDOWS" ]; then
+    # Le profil : seulement ce qui n'y était pas, retiré à la sortie.
+    if [ ! -e "$donnees" ]; then
+        cree_dossier=$donnees
+    elif [ ! -e "$modeles" ]; then
+        cree_dossier=$modeles
+    else
+        cree_familles=1
+    fi
+    mkdir -p "$modeles"
+    cp -R "$cache/kokoro" "$cache/parakeet_tdt_v3" "$modeles/"
+else
+    mkdir -p "$modeles"
+    ln -s "$cache/kokoro" "$modeles/kokoro"
+    ln -s "$cache/parakeet_tdt_v3" "$modeles/parakeet_tdt_v3"
+fi
 
 # lance ARGUMENTS… : le binaire du paquet, depuis /, en anglais, sans les
 # variables qui désigneraient ORT, espeak ou Silero ailleurs. Sous Windows,
@@ -183,5 +221,4 @@ dicte() {
 cp "$cache/parakeet_tdt_v3/test_wavs/fr.wav" "$travail/fr.wav"
 dicte "$travail/fr.wav" 0.1
 dicte "$travail/synthese.wav" 0.25
-rm -rf "$modeles/kokoro" "$modeles/parakeet_tdt_v3"
 echo "Bout en bout : la voix et la dictée du paquet marchent"
