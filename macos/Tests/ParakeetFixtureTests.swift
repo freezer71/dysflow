@@ -88,16 +88,7 @@ final class ParakeetFixtureTests: XCTestCase {
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let output = repo.appendingPathComponent("tests/fixtures/mlx")
 
-        let fr = try Self.pcm16(repo.appendingPathComponent("macos/Tests/Fixtures/dictee-charge.wav"))
-        let en = try Self.pcm16(repo.appendingPathComponent("tests/fixtures/mlx/dictee-en.wav"))
-        let inputs: [(name: String, source: String, samples: [Float])] = [
-            ("francais", "macos/Tests/Fixtures/dictee-charge.wav", fr),
-            ("anglais", "tests/fixtures/mlx/dictee-en.wav", en),
-            ("douze_secondes", "francais, anglais, francais… à la suite, coupé à 192 000 échantillons",
-             Self.cycled([fr, en], count: 192_000)),
-            ("silence", "16 000 zéros (1 s)", [Float](repeating: 0, count: 16_000)),
-            ("dixieme", "francais[16 000 ..< 17 600] (0,1 s)", Array(fr[16_000..<17_600])),
-        ]
+        let inputs = try Self.inputs(repo)
 
         for (id, revision) in Self.models {
             let dir = URL(fileURLWithPath: root).appendingPathComponent(id)
@@ -113,18 +104,39 @@ final class ParakeetFixtureTests: XCTestCase {
                     model: id, revision: revision, commit: commit,
                     generator: "macos/Tests/ParakeetFixtureTests.swift",
                     compute_dtype: "\(model.computeDType)", quantization: quantization, seed: nil,
-                    inputs: inputs.map {
-                        Input(name: $0.name, source: $0.source, samples: $0.samples.count, sha256: Self.sha256($0.samples))
-                    },
-                    cases: cases)
-                let encoder = JSONEncoder()
-                encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
-                var data = try encoder.encode(fixture)
-                data.append(0x0A)
-                try data.write(to: output.appendingPathComponent("\(id).json"))
+                    inputs: Self.described(inputs), cases: cases)
+                try Self.write(fixture, to: output.appendingPathComponent("\(id).json"))
             }
             Memory.clearCache()
         }
+    }
+
+    /// Les cinq entrées de la tâche 14, reprises telles quelles par les
+    /// fixtures des modèles qui suivent (Phonon-2, tâche 16).
+    static func inputs(_ repo: URL) throws -> [(name: String, source: String, samples: [Float])] {
+        let fr = try pcm16(repo.appendingPathComponent("macos/Tests/Fixtures/dictee-charge.wav"))
+        let en = try pcm16(repo.appendingPathComponent("tests/fixtures/mlx/dictee-en.wav"))
+        return [
+            ("francais", "macos/Tests/Fixtures/dictee-charge.wav", fr),
+            ("anglais", "tests/fixtures/mlx/dictee-en.wav", en),
+            ("douze_secondes", "francais, anglais, francais… à la suite, coupé à 192 000 échantillons",
+             cycled([fr, en], count: 192_000)),
+            ("silence", "16 000 zéros (1 s)", [Float](repeating: 0, count: 16_000)),
+            ("dixieme", "francais[16 000 ..< 17 600] (0,1 s)", Array(fr[16_000..<17_600])),
+        ]
+    }
+
+    static func described(_ inputs: [(name: String, source: String, samples: [Float])]) -> [Input] {
+        inputs.map { Input(name: $0.name, source: $0.source, samples: $0.samples.count, sha256: sha256($0.samples)) }
+    }
+
+    /// La fixture en JSON trié, une ligne vide à la fin.
+    static func write(_ fixture: Fixture, to url: URL) throws {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        var data = try encoder.encode(fixture)
+        data.append(0x0A)
+        try data.write(to: url)
     }
 
     /// Une entrée : les étages comme `decodeTDT` les enchaîne, puis le texte
