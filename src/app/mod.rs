@@ -992,10 +992,10 @@ pub(crate) mod tests {
         assert_eq!(app.voice_install_status(), None);
     }
 
-    /// Sans `kokoro-onnx`, le catalogue du terminal est vide : rien à
-    /// télécharger. (Avec la feature, l'appel téléchargerait pour de bon :
-    /// le test n'existe pas.)
-    #[cfg(not(feature = "kokoro-onnx"))]
+    /// Sans `kokoro-onnx` ni MLX en Rust, le catalogue du terminal est vide :
+    /// rien à télécharger. (Avec l'une des deux, l'appel téléchargerait pour
+    /// de bon : le test n'existe pas.)
+    #[cfg(not(any(feature = "kokoro-onnx", all(feature = "mlx", target_os = "macos", target_arch = "aarch64"))))]
     #[test]
     fn a_terminal_without_kokoro_installs_nothing() {
         let mut app = app_reading(DOC);

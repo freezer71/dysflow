@@ -321,7 +321,9 @@ pub fn prepare(args: &Args) -> Result<Launch> {
     // celle que les options de la ligne de commande ont modifiée.
     if config_notice_is_none {
         let (on_disk, _) = Config::load();
-        let available = crate::models::available();
+        // Tout ce que le terminal sait charger : un Kokoro int8 installé sur
+        // un Mac qui calcule aussi MLX est adopté, rien ne se télécharge (D7).
+        let available = crate::models::loadable_with(false);
         if let Some(migrated) =
             migrate_for_launch(&mut config, on_disk, args, &mut notices, &available, crate::models::is_installed)
         {
@@ -601,7 +603,7 @@ fn read_clipboard() -> Result<String> {
 /// seule fois ; absent, il s'installe seul (`App::install_default_voice`)
 /// et rien n'est dit ici. Rend l'avis.
 pub fn migrate_terminal(config: &mut Config) -> Option<String> {
-    migrate_terminal_in(config, &crate::models::available(), crate::models::is_installed)
+    migrate_terminal_in(config, &crate::models::loadable_with(false), crate::models::is_installed)
 }
 
 fn migrate_terminal_in(

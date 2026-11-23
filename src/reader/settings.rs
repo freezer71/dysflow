@@ -802,8 +802,10 @@ mod tests {
     #[test]
     fn the_mlx_package_is_offered_only_once_the_app_provides_the_compute() {
         let mut r = reader();
-        assert!(!r.voices().iter().any(|v| v.id == "kokoro_82m_mlx"));
-        assert!(r.package("kokoro_82m_mlx").is_err());
+        // Sans l'app, seulement si le binaire calcule MLX (feature `mlx`).
+        let rust_mlx = cfg!(all(feature = "mlx", target_os = "macos", target_arch = "aarch64"));
+        assert_eq!(r.voices().iter().any(|v| v.id == "kokoro_82m_mlx"), rust_mlx);
+        assert_eq!(r.package("kokoro_82m_mlx").is_ok(), rust_mlx);
         r.set_mlx_compute(true);
         let mlx = r.voices().into_iter().find(|v| v.id == "kokoro_82m_mlx").expect("proposé");
         assert!(mlx.recommended);

@@ -259,9 +259,10 @@ impl Reader {
         Ok(())
     }
 
-    /// Un paquet du catalogue que ce lecteur sait charger.
+    /// Un paquet du catalogue que ce lecteur sait charger, montré ou non
+    /// (un Kokoro int8 installé sur un Mac qui calcule MLX).
     pub fn package(&self, id: &str) -> anyhow::Result<&'static crate::models::ModelPackage> {
-        crate::models::available_with(self.mlx)
+        crate::models::loadable_with(self.mlx)
             .into_iter()
             .find(|p| p.id == id)
             .ok_or_else(|| anyhow::anyhow!(crate::tr!(en = "unknown voice: {id}", fr = "voix inconnue : {id}")))

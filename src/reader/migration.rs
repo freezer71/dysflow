@@ -113,7 +113,9 @@ impl Reader {
             let _ = self.save_config();
         }
         let config = self.current_config().clone();
-        let available = models::available_with(self.mlx);
+        // Tout ce qui se charge ici, pas seulement le catalogue : un Kokoro
+        // int8 installé sur un Mac qui calcule aussi MLX est adopté (D7).
+        let available = models::loadable_with(self.mlx);
         let former = former_voice(&config);
         match plan(&config, &available, models::is_installed) {
             Step::Nothing => None,
@@ -209,8 +211,8 @@ impl Reader {
         if self.offer.is_some() {
             return self.accept_offer(now);
         }
-        let available = models::available_with(self.mlx);
-        match models::default_voice_to_install(&available, models::is_installed) {
+        let loadable = models::loadable_with(self.mlx);
+        match models::default_voice_to_install(&loadable, models::is_installed) {
             Some(package) => self.install_voice(package.id),
             None => Ok(()),
         }

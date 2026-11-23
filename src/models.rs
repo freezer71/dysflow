@@ -721,45 +721,113 @@ impl Runtime {
             | Runtime::MagpieMlx => Accelerator::Mlx,
         }
     }
+
+    /// Ce binaire sait le calculer : en Rust s'il est porté, sinon par l'app.
+    /// Sans joker : un moteur ajouté, ou porté, doit dire le sien.
+    pub fn loadable(self, app_mlx: bool) -> bool {
+        let rust_mlx = cfg!(all(feature = "mlx", target_os = "macos", target_arch = "aarch64"));
+        match self {
+            // Porté (tâche 3) ; l'app le calcule encore aussi (Swift).
+            Runtime::KokoroMlx => app_mlx || rust_mlx,
+            Runtime::KokoroOnnx => cfg!(feature = "kokoro-onnx"),
+            // Pas encore portés : seule l'app les calcule (Swift).
+            Runtime::ParakeetMlx
+            | Runtime::PhononMlx
+            | Runtime::WhisperMlx
+            | Runtime::CanaryMlx
+            | Runtime::VoxtralRealtimeMlx
+            | Runtime::NemotronMlx
+            | Runtime::Qwen3AsrMlx
+            | Runtime::CohereMlx
+            | Runtime::Qwen3TtsMlx
+            | Runtime::MagpieMlx => app_mlx,
+        }
+    }
 }
 
 /// Par famille, seulement les paquets du meilleur accélérateur disponible.
-/// Ordre du catalogue.
-pub fn available_for(accelerators: &[Accelerator]) -> Vec<&'static ModelPackage> {
-    let best = |family: &str| {
-        accelerators
-            .iter()
-            .position(|a| CATALOG.iter().any(|p| p.family == family && p.runtime.accelerator() == *a))
+/// Ordre du catalogue. `loadable` écarte d'abord ce que ce binaire ne sait
+/// pas calculer (`Runtime::loadable`) : une famille dont le moteur MLX n'est
+/// pas porté garde ainsi son paquet ONNX.
+pub fn available_for(accelerators: &[Accelerator], loadable: impl Fn(Runtime) -> bool) -> Vec<&'static ModelPackage> {
+    let rank = |p: &ModelPackage| {
+        loadable(p.runtime).then(|| accelerators.iter().position(|a| *a == p.runtime.accelerator())).flatten()
     };
+    let best = |family: &str| CATALOG.iter().filter(|p| p.family == family).filter_map(rank).min();
     CATALOG
         .iter()
-        .filter(|p| {
-            let rank = accelerators.iter().position(|a| *a == p.runtime.accelerator());
-            rank.is_some() && rank == best(p.family)
-        })
+        .filter(|p| rank(p).is_some_and(|r| Some(r) == best(p.family)))
+        .collect()
+}
+
+/// Tout ce que ce binaire sait charger ici, du meilleur accélérateur au
+/// moins bon, puis dans l'ordre du catalogue : pas seulement ce que le
+/// catalogue montre. Un Kokoro int8 installé sur un Mac en fait partie (D7).
+pub fn loadable_for(accelerators: &[Accelerator], loadable: impl Fn(Runtime) -> bool) -> Vec<&'static ModelPackage> {
+    accelerators
+        .iter()
+        .flat_map(|a| CATALOG.iter().filter(move |p| p.runtime.accelerator() == *a))
+        .filter(|p| loadable(p.runtime))
         .collect()
 }
 
 /// Les paquets installés de la famille, dans l'ordre des accélérateurs : le
 /// repli quand le meilleur ne se charge pas. La liste rend aussi le paquet qui
-/// vient d'échouer, s'il est installé : à exclure par l'appelant (lot 3).
+/// vient d'échouer, s'il est installé : à exclure par l'appelant.
 pub fn fallbacks(
     family: &str,
     accelerators: &[Accelerator],
+    loadable: impl Fn(Runtime) -> bool,
     is_installed: impl Fn(&ModelPackage) -> bool,
 ) -> Vec<&'static ModelPackage> {
-    accelerators
-        .iter()
-        .flat_map(|a| CATALOG.iter().filter(move |p| p.family == family && p.runtime.accelerator() == *a))
-        .filter(|p| is_installed(p))
+    loadable_for(accelerators, loadable)
+        .into_iter()
+        .filter(|p| p.family == family && is_installed(p))
         .collect()
 }
 
+/// Le paquet à charger pour un choix enregistré : lui, sinon un installé de sa famille.
+///
+/// `configured` est l'identifiant du paquet choisi. Il sert s'il est installé,
+/// chargeable ici et de l'accélérateur le mieux placé parmi les installés de
+/// sa famille ; sinon, le premier de ces installés (un identifiant MLX lu
+/// sous Linux, un accélérateur forcé). `None` : rien d'installé qui se charge
+/// — le repli ne télécharge jamais rien.
+pub fn resolve(
+    configured: &str,
+    accelerators: &[Accelerator],
+    loadable: impl Fn(Runtime) -> bool,
+    installed: impl Fn(&ModelPackage) -> bool,
+) -> Option<&'static ModelPackage> {
+    let chosen = CATALOG.iter().find(|p| p.id == configured)?;
+    let candidates = fallbacks(chosen.family, accelerators, loadable, installed);
+    let best = candidates.first()?.runtime.accelerator();
+    candidates
+        .iter()
+        .copied()
+        .find(|p| p.id == chosen.id && p.runtime.accelerator() == best)
+        .or_else(|| candidates.first().copied())
+}
+
 /// Catalogue restreint à ce que ce binaire sait charger : Kokoro MLX quand
-/// l'app fournit le calcul (`mlx`), et alors jamais le paquet ONNX à côté ;
-/// Kokoro int8 seulement avec la feature `kokoro-onnx`.
+/// l'app fournit le calcul (`mlx`) ou que le binaire le calcule (feature
+/// `mlx`), et alors jamais le paquet ONNX à côté ; Kokoro int8 avec la
+/// feature `kokoro-onnx`.
 pub fn available_with(mlx: bool) -> Vec<&'static ModelPackage> {
-    available_for(&crate::compute::available(mlx))
+    available_for(&crate::compute::available(mlx), |r| r.loadable(mlx))
+}
+
+/// Tout ce que ce lecteur sait charger (`loadable_for`), pour un lecteur dont
+/// l'app fournit (ou non) le calcul MLX.
+pub fn loadable_with(mlx: bool) -> Vec<&'static ModelPackage> {
+    loadable_for(&crate::compute::available(mlx), |r| r.loadable(mlx))
+}
+
+/// Le paquet de la famille `family` dont `model_path` est le fichier
+/// principal : chaque paquet d'une famille a son propre nom de fichier.
+pub fn package_of(family: &str, model_path: &str) -> Option<&'static ModelPackage> {
+    let name = Path::new(model_path.trim()).file_name()?.to_str()?;
+    CATALOG.iter().find(|p| p.family == family && p.file_name() == name)
 }
 
 /// Le catalogue du terminal : sans calcul MLX.
@@ -872,20 +940,23 @@ pub fn first_installed() -> Option<&'static ModelPackage> {
 /// Comme `first_installed`, pour un lecteur dont l'app fournit (ou non) le
 /// calcul MLX.
 pub fn first_installed_with(mlx: bool) -> Option<&'static ModelPackage> {
-    available_with(mlx).into_iter().find(|p| p.kind == Kind::Speech && is_installed(p))
+    loadable_with(mlx).into_iter().find(|p| p.kind == Kind::Speech && is_installed(p))
 }
 
-/// Le paquet que l'installation automatique télécharge : le Kokoro
-/// recommandé de ce catalogue, quand aucun Kokoro du catalogue n'est
-/// installé. `None` : déjà là, ou pas de Kokoro dans ce binaire.
+/// Le paquet que l'installation automatique télécharge : le premier Kokoro
+/// recommandé de `loadable` (`loadable_with`, du meilleur accélérateur au
+/// moins bon), quand aucun Kokoro de `loadable` n'est installé. `None` : déjà
+/// là, ou pas de Kokoro dans ce binaire.
 ///
 /// Seul compte ce que ce binaire sait charger : un Kokoro int8 posé par le
-/// terminal ne dispense pas l'app (MLX) d'installer le sien.
+/// terminal ne dispense pas l'app (MLX, sans ONNX Runtime) d'installer le
+/// sien ; sur le terminal d'un Mac qui calcule aussi MLX, il reste la voix et
+/// rien ne se télécharge (D7).
 pub fn default_voice_to_install(
-    available: &[&'static ModelPackage],
+    loadable: &[&'static ModelPackage],
     installed: impl Fn(&ModelPackage) -> bool,
 ) -> Option<&'static ModelPackage> {
-    let kokoro: Vec<&'static ModelPackage> = available.iter().copied().filter(|p| p.family == "kokoro").collect();
+    let kokoro: Vec<&'static ModelPackage> = loadable.iter().copied().filter(|p| p.family == "kokoro").collect();
     if kokoro.iter().any(|p| installed(p)) {
         return None;
     }
@@ -900,7 +971,7 @@ pub fn ensure_default_voice(mlx: bool, running: Option<&Download>) -> Result<Opt
     if running.is_some_and(|d| !d.is_finished()) {
         return Ok(None);
     }
-    match default_voice_to_install(&available_with(mlx), is_installed) {
+    match default_voice_to_install(&loadable_with(mlx), is_installed) {
         Some(package) => Download::start(package).map(Some),
         None => Ok(None),
     }
@@ -1625,19 +1696,129 @@ mod tests {
     #[test]
     fn each_family_shows_only_its_best_accelerator() {
         use crate::compute::Accelerator;
-        let ids: Vec<_> = super::available_for(&[Accelerator::Mlx, Accelerator::OrtCpu]).iter().map(|p| p.id).collect();
+        let ids: Vec<_> = super::available_for(&[Accelerator::Mlx, Accelerator::OrtCpu], |_| true).iter().map(|p| p.id).collect();
         assert!(ids.contains(&"kokoro_82m_mlx") && !ids.contains(&"kokoro_82m_int8"));
-        let ids: Vec<_> = super::available_for(&[Accelerator::OrtCpu]).iter().map(|p| p.id).collect();
+        let ids: Vec<_> = super::available_for(&[Accelerator::OrtCpu], |_| true).iter().map(|p| p.id).collect();
         assert_eq!(ids, vec!["kokoro_82m_int8"]);
     }
 
     #[test]
     fn fallback_lists_only_installed_packages_of_the_family_in_order() {
         use crate::compute::Accelerator;
-        let order = super::fallbacks("kokoro", &[Accelerator::Mlx, Accelerator::OrtCpu], |p| p.id == "kokoro_82m_int8");
+        let order = super::fallbacks("kokoro", &[Accelerator::Mlx, Accelerator::OrtCpu], |_| true, |p| p.id == "kokoro_82m_int8");
         assert_eq!(order.iter().map(|p| p.id).collect::<Vec<_>>(), vec!["kokoro_82m_int8"]);
-        let both = super::fallbacks("kokoro", &[Accelerator::Mlx, Accelerator::OrtCpu], |_| true);
+        let both = super::fallbacks("kokoro", &[Accelerator::Mlx, Accelerator::OrtCpu], |_| true, |_| true);
         assert_eq!(both.iter().map(|p| p.id).collect::<Vec<_>>(), vec!["kokoro_82m_mlx", "kokoro_82m_int8"]);
+    }
+
+    /// Le terminal d'un Mac qui calcule Kokoro en Rust (MLX et ONNX
+    /// Runtime) : seuls les deux Kokoro y sont portés.
+    fn mac_terminal(runtime: Runtime) -> bool {
+        matches!(runtime, Runtime::KokoroMlx | Runtime::KokoroOnnx)
+    }
+
+    const MAC: [crate::compute::Accelerator; 2] = [crate::compute::Accelerator::Mlx, crate::compute::Accelerator::OrtCpu];
+    const LINUX: [crate::compute::Accelerator; 1] = [crate::compute::Accelerator::OrtCpu];
+
+    fn ids(packages: &[&'static ModelPackage]) -> Vec<&'static str> {
+        packages.iter().map(|p| p.id).collect()
+    }
+
+    #[test]
+    fn the_app_still_sees_the_same_fifteen_packages() {
+        use crate::compute::Accelerator;
+        // L'app fournit le calcul : tout est chargeable, avec ou sans ONNX
+        // Runtime dans le binaire, avec ou sans MLX Rust.
+        assert_eq!(ids(&available_for(&[Accelerator::Mlx], |r| r.loadable(true))), BEFORE_LOT_2_MAC_IDS);
+        assert_eq!(ids(&available_for(&MAC, |r| r.loadable(true))), BEFORE_LOT_2_MAC_IDS);
+        assert_eq!(ids(&available_with(true)), BEFORE_LOT_2_MAC_IDS);
+    }
+
+    #[test]
+    fn the_mac_terminal_shows_only_ported_mlx_runtimes() {
+        let rust_mlx = cfg!(all(feature = "mlx", target_os = "macos", target_arch = "aarch64"));
+        assert_eq!(Runtime::KokoroMlx.loadable(false), rust_mlx, "Kokoro MLX : porté (tâche 3)");
+        for runtime in [Runtime::Qwen3TtsMlx, Runtime::MagpieMlx, Runtime::WhisperMlx, Runtime::ParakeetMlx] {
+            assert!(!runtime.loadable(false), "{runtime:?} : pas encore porté");
+            assert!(runtime.loadable(true), "{runtime:?} : calculé par l'app");
+        }
+        let shown = ids(&available_for(&MAC, |r| r.loadable(false)));
+        assert_eq!(shown.contains(&"kokoro_82m_mlx"), rust_mlx);
+        for id in ["qwen3_tts_06b_base_8bit", "magpie_tts_357m_8bit", "whisper_small_4bit"] {
+            assert!(!shown.contains(&id), "{id} : pas au terminal");
+        }
+        // La même chose, chargeabilité passée par le test.
+        assert_eq!(ids(&available_for(&MAC, mac_terminal)), vec!["kokoro_82m_mlx"]);
+    }
+
+    #[test]
+    fn an_unported_best_engine_gives_way_to_a_loadable_one() {
+        // Kokoro : deux paquets ; son moteur MLX supposé non porté.
+        let shown = available_for(&MAC, |r| r != Runtime::KokoroMlx);
+        let kokoro: Vec<_> = shown.iter().filter(|p| p.family == "kokoro").map(|p| p.id).collect();
+        assert_eq!(kokoro, vec!["kokoro_82m_int8"], "filtré après le choix du meilleur, Kokoro n'aurait plus rien");
+        let installed = fallbacks("kokoro", &MAC, |r| r != Runtime::KokoroMlx, |_| true);
+        assert_eq!(ids(&installed), vec!["kokoro_82m_int8"]);
+        assert_eq!(
+            resolve("kokoro_82m_mlx", &MAC, |r| r != Runtime::KokoroMlx, |_| true).map(|p| p.id),
+            Some("kokoro_82m_int8")
+        );
+    }
+
+    #[test]
+    fn an_installed_int8_on_a_mac_is_kept_and_nothing_downloads() {
+        let int8 = |p: &ModelPackage| p.id == "kokoro_82m_int8";
+        let loadable = loadable_for(&MAC, mac_terminal);
+        assert_eq!(default_voice_to_install(&loadable, int8), None, "D7 : pas les 327 Mo du MLX");
+        assert_eq!(resolve("kokoro_82m_int8", &MAC, mac_terminal, int8).map(|p| p.id), Some("kokoro_82m_int8"));
+        // Rien d'installé : c'est le meilleur qui s'installe.
+        assert_eq!(default_voice_to_install(&loadable, |_| false).map(|p| p.id), Some("kokoro_82m_mlx"));
+    }
+
+    #[test]
+    fn an_mlx_choice_read_on_linux_resolves_to_its_family() {
+        let int8 = |p: &ModelPackage| p.id == "kokoro_82m_int8";
+        // Les poids MLX copiés d'un Mac ne s'y chargent pas, même présents.
+        let both = |p: &ModelPackage| p.family == "kokoro";
+        assert_eq!(resolve("kokoro_82m_mlx", &LINUX, |_| true, int8).map(|p| p.id), Some("kokoro_82m_int8"));
+        assert_eq!(resolve("kokoro_82m_mlx", &LINUX, |_| true, both).map(|p| p.id), Some("kokoro_82m_int8"));
+    }
+
+    #[test]
+    fn an_mlx_choice_with_nothing_installed_downloads_nothing() {
+        assert_eq!(resolve("kokoro_82m_mlx", &LINUX, |_| true, |_| false), None);
+        assert_eq!(resolve("kokoro_82m_mlx", &MAC, mac_terminal, |_| false), None);
+        assert_eq!(resolve("n-existe-pas", &MAC, |_| true, |_| true), None);
+    }
+
+    #[test]
+    fn a_configured_package_that_loads_is_kept() {
+        let all = |_: &ModelPackage| true;
+        assert_eq!(resolve("kokoro_82m_mlx", &MAC, mac_terminal, all).map(|p| p.id), Some("kokoro_82m_mlx"));
+        // Installé mais non chargeable ici : sa famille sert.
+        assert_eq!(resolve("kokoro_82m_mlx", &MAC, |r| r == Runtime::KokoroOnnx, all).map(|p| p.id), Some("kokoro_82m_int8"));
+    }
+
+    #[test]
+    fn a_forced_accelerator_is_used() {
+        use crate::compute::{forced, Accelerator};
+        let (order, warning) = forced(MAC.to_vec(), Some("ort-cpu"));
+        assert_eq!(warning, None);
+        assert_eq!(order.first(), Some(&Accelerator::OrtCpu));
+        let all = |_: &ModelPackage| true;
+        assert_eq!(resolve("kokoro_82m_mlx", &order, mac_terminal, all).map(|p| p.id), Some("kokoro_82m_int8"));
+        assert_eq!(ids(&fallbacks("kokoro", &order, mac_terminal, all)), vec!["kokoro_82m_int8", "kokoro_82m_mlx"]);
+        // Forcé, mais rien d'installé pour lui : le choix reste.
+        let mlx_only = |p: &ModelPackage| p.id == "kokoro_82m_mlx";
+        assert_eq!(resolve("kokoro_82m_mlx", &order, mac_terminal, mlx_only).map(|p| p.id), Some("kokoro_82m_mlx"));
+    }
+
+    #[test]
+    fn a_main_file_names_its_package() {
+        assert_eq!(package_of("kokoro", "/x/kokoro/kokoro-v1_0.safetensors").map(|p| p.id), Some("kokoro_82m_mlx"));
+        assert_eq!(package_of("kokoro", "~/m/model_quantized.onnx").map(|p| p.id), Some("kokoro_82m_int8"));
+        assert_eq!(package_of("kokoro", "/x/autre.bin"), None);
+        assert_eq!(package_of("autre", "/x/kokoro/kokoro-v1_0.safetensors"), None);
     }
 
     #[test]
@@ -1966,9 +2147,12 @@ mod tests {
         let with_mlx: Vec<&str> = available_with(true).iter().map(|p| p.id).collect();
         assert!(with_mlx.contains(&"kokoro_82m_mlx"));
         assert!(!with_mlx.contains(&"kokoro_82m_int8"), "pas d'ORT dans l'app");
+        // Sans l'app : le MLX du binaire (feature `mlx`), et alors jamais
+        // l'int8 à côté.
+        let rust_mlx = cfg!(all(feature = "mlx", target_os = "macos", target_arch = "aarch64"));
         let without: Vec<&str> = available_with(false).iter().map(|p| p.id).collect();
-        assert!(!without.contains(&"kokoro_82m_mlx"));
-        assert_eq!(without.contains(&"kokoro_82m_int8"), cfg!(feature = "kokoro-onnx"));
+        assert_eq!(without.contains(&"kokoro_82m_mlx"), rust_mlx);
+        assert_eq!(without.contains(&"kokoro_82m_int8"), cfg!(feature = "kokoro-onnx") && !rust_mlx);
     }
 
     #[test]
@@ -2628,8 +2812,10 @@ mod tests {
         assert!(ensure_default_voice(true, Some(&running)).unwrap().is_none());
     }
 
-    /// Un terminal construit sans `kokoro-onnx` n'a aucun Kokoro à installer.
-    #[cfg(not(feature = "kokoro-onnx"))]
+    /// Un terminal construit sans `kokoro-onnx` ni MLX en Rust n'a aucun
+    /// Kokoro à installer. (Avec l'un des deux, l'appel téléchargerait pour de
+    /// bon : le test n'existe pas.)
+    #[cfg(not(any(feature = "kokoro-onnx", all(feature = "mlx", target_os = "macos", target_arch = "aarch64"))))]
     #[test]
     fn the_terminal_without_onnx_has_nothing_to_install() {
         assert!(ensure_default_voice(false, None).unwrap().is_none());

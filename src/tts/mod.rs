@@ -207,16 +207,52 @@ pub struct AppCompute {
 /// qu'un moteur relâché après le chargement du suivant ne vide pas ses
 /// poids. `compute.text` tient un modèle par dossier : la lecture et
 /// l'aperçu de la bibliothèque ne se marchent pas dessus.
+///
+/// L'avis rendu dit aussi un `DYSFLOW_ACCELERATOR` ignoré (une fois par
+/// processus) et le repli sur un autre paquet installé.
 pub fn build_engine_with(
     preference: EnginePreference,
     settings: &EngineSettings,
     compute: &AppCompute,
 ) -> (Arc<dyn TtsEngine>, Option<String>) {
+    let app_mlx = compute.kokoro.is_some() || compute.text.is_some();
+    let (accelerators, warning) = crate::compute::ordered(app_mlx);
+    let loadable = move |r: crate::models::Runtime| r.loadable(app_mlx);
+    let machine = Machine {
+        accelerators,
+        loadable: &loadable,
+        installed: &crate::models::is_installed,
+        path: &crate::models::install_path,
+    };
+    let (engine, note) = build_engine_on(preference, settings, compute, &machine);
+    let note = match (warning, note) {
+        (Some(warning), Some(note)) => Some(format!("{warning} · {note}")),
+        (warning, note) => warning.or(note),
+    };
+    (engine, note)
+}
+
+/// Ce que le choix d'un paquet lit de la machine ; les tests passent le leur.
+struct Machine<'a> {
+    /// Du meilleur au moins bon, accélérateur forcé en tête (`compute::ordered`).
+    accelerators: Vec<crate::compute::Accelerator>,
+    loadable: &'a dyn Fn(crate::models::Runtime) -> bool,
+    installed: &'a dyn Fn(&crate::models::ModelPackage) -> bool,
+    path: &'a dyn Fn(&crate::models::ModelPackage) -> Option<std::path::PathBuf>,
+}
+
+fn build_engine_on(
+    preference: EnginePreference,
+    settings: &EngineSettings,
+    compute: &AppCompute,
+    machine: &Machine,
+) -> (Arc<dyn TtsEngine>, Option<String>) {
     if preference == EnginePreference::System {
         return (Arc::new(system::SystemEngine::new()), None);
     }
     if settings.family == "kokoro" {
-        return build_kokoro(settings, compute.kokoro.clone());
+        let mlx = compute.kokoro.clone();
+        return build_kokoro(settings, machine, |settings, dir| kokoro_backend(settings, dir, mlx.clone()));
     }
     let text_package = crate::models::CATALOG.iter().find(|p| {
         p.family == settings.family
@@ -284,21 +320,84 @@ fn build_text_engine(
     (Arc::new(engine), None)
 }
 
-/// Kokoro : le calcul selon le fichier du paquet (`.onnx` : ORT ; sinon
-/// MLX, fourni par l'app), espeak-ng cherché au chargement.
+/// Kokoro : le paquet choisi s'il se charge ici (`models::resolve`), sinon
+/// les autres installés de sa famille dans l'ordre des accélérateurs, chacun
+/// essayé une fois, puis la voix du système. Rien ne se télécharge.
+///
+/// `backend_for` tranche ce qui se voit tout de suite (calcul absent,
+/// feature absente) ; seul le chargement réel part en arrière-plan.
 fn build_kokoro(
     settings: &EngineSettings,
-    mlx: Option<Arc<kokoro::SharedCompute>>,
+    machine: &Machine,
+    mut backend_for: impl FnMut(&EngineSettings, &std::path::Path) -> Result<Arc<dyn kokoro::KokoroBackend>, String>,
 ) -> (Arc<dyn TtsEngine>, Option<String>) {
+    use crate::models::ModelPackage;
     let fallback = fallback::fallback_engine(settings);
-    let Some(dir) = crate::models::kokoro_dir(&settings.model_path) else {
-        let note = crate::tr!("Kokoro is not installed — see the Models tab", "Kokoro n'est pas installé — voir l'onglet Modèles");
-        return noted(fallback, note.to_string());
+    let configured = crate::models::package_of(&settings.family, &settings.model_path);
+    // Le choix compte comme installé là où les réglages le désignent (un
+    // `--model` hors du dossier des modèles).
+    let here = |p: &ModelPackage| configured == Some(p) && crate::models::kokoro_dir(&settings.model_path).is_some();
+    let installed = |p: &ModelPackage| here(p) || (machine.installed)(p);
+    let loadable = |r| (machine.loadable)(r);
+    let resolved = configured.and_then(|c| crate::models::resolve(c.id, &machine.accelerators, loadable, installed));
+    let others = configured.map_or_else(Vec::new, |c| crate::models::fallbacks(c.family, &machine.accelerators, loadable, installed));
+    // Rien qui se charge ici : le choix tel quel, pour dire pourquoi il échoue.
+    let first = resolved.or(configured);
+    let settings_for = |p: Option<&'static ModelPackage>| match p {
+        Some(p) if Some(p) != configured => {
+            let path = (machine.path)(p)?;
+            Some(EngineSettings { model_path: path.to_string_lossy().into_owned(), ..settings.clone() })
+        }
+        _ => Some(settings.clone()),
     };
-    let backend = match kokoro_backend(settings, &dir, mlx) {
-        Ok(backend) => backend,
-        Err(reason) => return noted(fallback, reason),
+    let mut attempt = |settings: &EngineSettings| -> Result<(Arc<dyn kokoro::KokoroBackend>, std::path::PathBuf), String> {
+        let Some(dir) = crate::models::kokoro_dir(&settings.model_path) else {
+            return Err(crate::tr!("Kokoro is not installed — see the Models tab", "Kokoro n'est pas installé — voir l'onglet Modèles").to_string());
+        };
+        Ok((backend_for(settings, &dir)?, dir))
     };
+    let name = |p: Option<&'static ModelPackage>| p.map_or("Kokoro", |p| p.display_name.get());
+    let mut failed: Option<(Option<&'static ModelPackage>, String)> = None;
+    let order = std::iter::once(first).chain(others.into_iter().map(Some));
+    let mut tried: Vec<Option<&'static ModelPackage>> = Vec::new();
+    for package in order {
+        if tried.contains(&package) {
+            continue;
+        }
+        tried.push(package);
+        let Some(settings) = settings_for(package) else { continue };
+        match attempt(&settings) {
+            Ok((backend, dir)) => {
+                let note = failed.map(|(wanted, reason)| {
+                    crate::tr!(
+                        en = "{} unavailable ({}) — {} reads instead",
+                        fr = "{} indisponible ({}) — {} lit à la place",
+                        name(wanted),
+                        reason,
+                        name(package),
+                    )
+                });
+                return (lazy_kokoro(backend, dir, fallback), note);
+            }
+            Err(reason) => {
+                failed.get_or_insert((package, reason));
+            }
+        }
+    }
+    let reason = failed.map_or_else(
+        || crate::tr!("Kokoro is not installed — see the Models tab", "Kokoro n'est pas installé — voir l'onglet Modèles").to_string(),
+        |(_, reason)| reason,
+    );
+    noted(fallback, reason)
+}
+
+/// Kokoro chargé en arrière-plan ; `fallback` parle en attendant, ou s'il
+/// échoue.
+fn lazy_kokoro(
+    backend: Arc<dyn kokoro::KokoroBackend>,
+    dir: std::path::PathBuf,
+    fallback: Arc<dyn TtsEngine>,
+) -> Arc<dyn TtsEngine> {
     let repli = Arc::clone(&fallback);
     let engine = lazy::LazyEngine::spawn("Kokoro".to_string(), 1, fallback, move || {
         let phonemizer = kokoro::phonemes::EspeakProcess::locate()?;
@@ -306,9 +405,12 @@ fn build_kokoro(
         Ok(Arc::new(engine) as Arc<dyn TtsEngine>)
     })
     .splitting_first_clause();
-    (Arc::new(engine), None)
+    Arc::new(engine)
 }
 
+/// Le calcul selon le fichier du paquet : `.onnx`, ONNX Runtime ; sinon MLX.
+/// Le calcul de l'app gagne quand elle en fournit un (règle R3, jusqu'à la
+/// bascule de l'app) ; le Kokoro MLX en Rust ne sert que sans lui.
 fn kokoro_backend(
     settings: &EngineSettings,
     dir: &std::path::Path,
@@ -328,14 +430,31 @@ fn kokoro_backend(
             .to_string());
         }
     }
-    match mlx {
-        Some(backend) => Ok(backend as Arc<dyn kokoro::KokoroBackend>),
-        None => Err(crate::tr!(
-            "Metal compute unavailable — Kokoro MLX only runs in the app, on the GPU",
-            "Calcul Metal indisponible — Kokoro MLX ne tourne que dans l'app, sur la puce graphique"
-        )
-        .to_string()),
+    match mlx.map(|app| app as Arc<dyn kokoro::KokoroBackend>) {
+        Some(app) => Ok(app),
+        None => rust_mlx().ok_or_else(|| {
+            crate::tr!(
+                "Metal compute unavailable — Kokoro MLX only runs in the app, on the GPU",
+                "Calcul Metal indisponible — Kokoro MLX ne tourne que dans l'app, sur la puce graphique"
+            )
+            .to_string()
+        }),
     }
+}
+
+/// Le Kokoro MLX en Rust, un pour le processus, enveloppé une fois : les
+/// moteurs qui se succèdent partagent ses poids (`SharedCompute`). Vide tant
+/// qu'aucun moteur ne le tient.
+#[cfg(all(feature = "mlx", target_os = "macos", target_arch = "aarch64"))]
+fn rust_mlx() -> Option<Arc<dyn kokoro::KokoroBackend>> {
+    static SHARED: std::sync::OnceLock<Arc<kokoro::SharedCompute>> = std::sync::OnceLock::new();
+    let shared = SHARED.get_or_init(|| Arc::new(kokoro::SharedCompute::new(Arc::new(kokoro::mlx::MlxBackend::new()))));
+    Some(Arc::clone(shared) as Arc<dyn kokoro::KokoroBackend>)
+}
+
+#[cfg(not(all(feature = "mlx", target_os = "macos", target_arch = "aarch64")))]
+fn rust_mlx() -> Option<Arc<dyn kokoro::KokoroBackend>> {
+    None
 }
 
 /// Le calcul ORT d'un dossier et d'un nombre de fils, partagé entre les
@@ -435,6 +554,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(all(feature = "mlx", target_os = "macos", target_arch = "aarch64")))]
     fn kokoro_mlx_needs_the_compute_of_the_app() {
         let path = kokoro_files("mlx", "kokoro-v1_0.safetensors");
         let (_, note) = build_engine_with(EnginePreference::Auto, &kokoro_settings(&path.to_string_lossy()), &AppCompute::default());
@@ -491,6 +611,138 @@ mod tests {
         // Le nom dépend de l'issue du chargement (espeak-ng présent ou non
         // sur la machine de test) : seule la coupe, annoncée d'avance, est sûre.
         assert!(engine.splits_first_clause(), "annoncé avant la fin du chargement");
+    }
+
+    /// Un calcul Kokoro qui ne sert pas : seul compte qu'il soit choisi.
+    struct Idle(&'static str);
+    impl kokoro::KokoroBackend for Idle {
+        fn label(&self) -> &'static str {
+            self.0
+        }
+        fn load(&self, _: &std::path::Path) -> Result<()> {
+            Ok(())
+        }
+        fn warm_up(&self) -> Result<()> {
+            Ok(())
+        }
+        fn infer(&self, _: &[i64], _: &[f32], _: &Cancel) -> Result<kokoro::KokoroRaw> {
+            anyhow::bail!("non utilisé")
+        }
+        fn release(&self) {}
+    }
+
+    fn same_backend(a: &Arc<dyn kokoro::KokoroBackend>, b: &Arc<dyn kokoro::KokoroBackend>) -> bool {
+        std::ptr::eq(Arc::as_ptr(a) as *const (), Arc::as_ptr(b) as *const ())
+    }
+
+    /// R3 : tant que l'app n'a pas basculé (tâche 6), le calcul qu'elle
+    /// fournit sert, même dans un binaire qui calcule Kokoro MLX en Rust.
+    #[test]
+    fn the_compute_of_the_app_wins_over_rust_mlx() {
+        let path = kokoro_files("r3", "kokoro-v1_0.safetensors");
+        let settings = kokoro_settings(&path.to_string_lossy());
+        let app: Arc<dyn kokoro::KokoroBackend> = Arc::new(Idle("Swift"));
+        let shared = Arc::new(kokoro::SharedCompute::new(Arc::clone(&app)));
+        let chosen = kokoro_backend(&settings, path.parent().unwrap(), Some(Arc::clone(&shared))).unwrap();
+        assert!(same_backend(&chosen, &(shared as Arc<dyn kokoro::KokoroBackend>)), "le calcul de l'app, pas celui de Rust");
+        assert_eq!(chosen.label(), "Swift");
+    }
+
+    #[test]
+    #[cfg(all(feature = "mlx", target_os = "macos", target_arch = "aarch64"))]
+    fn without_the_app_rust_computes_kokoro_mlx() {
+        let path = kokoro_files("mlx-rust", "kokoro-v1_0.safetensors");
+        let settings = kokoro_settings(&path.to_string_lossy());
+        let first = kokoro_backend(&settings, path.parent().unwrap(), None).expect("MLX en Rust");
+        assert_eq!(first.label(), "MLX");
+        let again = kokoro_backend(&settings, path.parent().unwrap(), None).unwrap();
+        assert!(same_backend(&first, &again), "un calcul pour le processus : les poids ne sont pas chargés deux fois");
+        let (_, note) = build_engine_with(EnginePreference::Auto, &settings, &AppCompute::default());
+        assert_eq!(note, None, "le chargement part en arrière-plan");
+    }
+
+    /// Les deux Kokoro installés sous `root`, comme `models::install_path`
+    /// les range.
+    fn two_kokoros(name: &str) -> std::path::PathBuf {
+        let root = crate::paths::test_scratch(&format!("repli-{name}"));
+        let dir = root.join("kokoro");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("config.json"), "{}").unwrap();
+        for file in ["kokoro-v1_0.safetensors", "model_quantized.onnx"] {
+            std::fs::write(dir.join(file), b"x").unwrap();
+        }
+        root
+    }
+
+    fn mac_machine<'a>(
+        loadable: &'a dyn Fn(crate::models::Runtime) -> bool,
+        installed: &'a dyn Fn(&crate::models::ModelPackage) -> bool,
+        path: &'a dyn Fn(&crate::models::ModelPackage) -> Option<std::path::PathBuf>,
+    ) -> Machine<'a> {
+        Machine {
+            accelerators: vec![crate::compute::Accelerator::Mlx, crate::compute::Accelerator::OrtCpu],
+            loadable,
+            installed,
+            path,
+        }
+    }
+
+    #[test]
+    fn a_failed_mlx_load_falls_back_to_installed_int8() {
+        let root = two_kokoros("int8");
+        let path = |p: &crate::models::ModelPackage| Some(root.join(p.family).join(p.file_name()));
+        let machine = mac_machine(&|_| true, &|_| true, &path);
+        let settings = kokoro_settings(&root.join("kokoro/kokoro-v1_0.safetensors").to_string_lossy());
+        let mut tried = Vec::new();
+        let (engine, note) = build_kokoro(&settings, &machine, |settings, _| {
+            tried.push(settings.model_path.clone());
+            if settings.model_path.ends_with(".onnx") {
+                Ok(Arc::new(Idle("ORT")) as Arc<dyn kokoro::KokoroBackend>)
+            } else {
+                Err("MLX en panne".to_string())
+            }
+        });
+        let note = note.expect("le repli se dit");
+        assert!(note.contains("int8") && note.contains("MLX en panne"), "{note}");
+        assert_eq!(tried.len(), 2, "{tried:?}");
+        assert!(tried[1].ends_with("model_quantized.onnx"), "le moteur int8 : {tried:?}");
+        assert!(engine.splits_first_clause(), "Kokoro int8 se charge, pas la voix du système");
+        assert!(!matches!(engine.readiness(), Readiness::Fallback(_)));
+    }
+
+    #[test]
+    fn the_failed_package_is_not_retried() {
+        let root = two_kokoros("une-fois");
+        let path = |p: &crate::models::ModelPackage| Some(root.join(p.family).join(p.file_name()));
+        let machine = mac_machine(&|_| true, &|_| true, &path);
+        let settings = kokoro_settings(&root.join("kokoro/kokoro-v1_0.safetensors").to_string_lossy());
+        let mut tried = Vec::new();
+        let (engine, note) = build_kokoro(&settings, &machine, |settings, _| {
+            tried.push(settings.model_path.clone());
+            Err(format!("échec {}", tried.len()))
+        });
+        let names: Vec<_> = tried.iter().map(|p| p.rsplit('/').next().unwrap().to_string()).collect();
+        assert_eq!(names, vec!["kokoro-v1_0.safetensors", "model_quantized.onnx"], "un seul essai par paquet");
+        let note = note.unwrap();
+        assert!(note.contains("échec 1"), "la raison du choix : {note}");
+        assert_eq!(engine.readiness(), Readiness::Fallback(note), "puis la voix du système");
+    }
+
+    #[test]
+    fn nothing_installed_to_fall_back_on_keeps_the_reason() {
+        let root = two_kokoros("seul");
+        let path = |p: &crate::models::ModelPackage| Some(root.join(p.family).join(p.file_name()));
+        // Seul le MLX choisi est là : rien d'autre à essayer.
+        let machine = mac_machine(&|_| true, &|p| p.id == "kokoro_82m_mlx", &path);
+        let settings = kokoro_settings(&root.join("kokoro/kokoro-v1_0.safetensors").to_string_lossy());
+        let mut tried = 0;
+        let (engine, note) = build_kokoro(&settings, &machine, |_, _| {
+            tried += 1;
+            Err("MLX en panne".to_string())
+        });
+        assert_eq!(tried, 1);
+        assert_eq!(note.as_deref(), Some("MLX en panne"));
+        assert!(matches!(engine.readiness(), Readiness::Fallback(_)));
     }
 
     fn text_settings(model_path: &str, family: &str) -> EngineSettings {

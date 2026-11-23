@@ -4,6 +4,9 @@ pub mod gpu;
 #[cfg(all(feature = "mlx", target_os = "macos", target_arch = "aarch64"))]
 pub mod mlx;
 
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::OnceLock;
+
 /// Un moyen de calculer un modèle sur cette machine.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Accelerator {
@@ -22,12 +25,12 @@ impl Accelerator {
 }
 
 /// Du meilleur au moins bon. `app_mlx` : l'app fournit le calcul MLX (Swift),
-/// tant que les ports du lot 3 et suivants ne sont pas faits.
+/// tant que les ports du lot 3 et suivants ne sont pas faits. Sans elle, MLX
+/// vient du binaire (feature `mlx`, Mac Apple Silicon) : quels moteurs il
+/// calcule, `models::Runtime::loadable` le dit.
 pub fn available(app_mlx: bool) -> Vec<Accelerator> {
     let mut found = Vec::new();
-    // `cfg!(feature = "mlx")` s'ajoutera ici au lot 3 : jusque-là, la feature
-    // Rust n'a aucun moteur MLX, seul le calcul Swift de l'app en fournit un.
-    if app_mlx {
+    if app_mlx || cfg!(all(feature = "mlx", target_os = "macos", target_arch = "aarch64")) {
         found.push(Accelerator::Mlx);
     }
     if cfg!(feature = "kokoro-onnx") {
@@ -61,6 +64,22 @@ pub fn forced(found: Vec<Accelerator>, value: Option<&str>) -> (Vec<Accelerator>
     }
 }
 
+/// `available` + `DYSFLOW_ACCELERATOR`, lu une fois par processus.
+/// L'avertissement d'un accélérateur forcé indisponible n'est rendu qu'au
+/// premier appel qui le produit : un moteur reconstruit ne le répète pas.
+pub fn ordered(app_mlx: bool) -> (Vec<Accelerator>, Option<String>) {
+    static VALUE: OnceLock<Option<String>> = OnceLock::new();
+    static WARNED: AtomicBool = AtomicBool::new(false);
+    let value = VALUE.get_or_init(|| std::env::var("DYSFLOW_ACCELERATOR").ok());
+    ordered_with(available(app_mlx), value.as_deref(), &WARNED)
+}
+
+/// `forced`, dont l'avertissement ne sort qu'une fois par `warned`.
+fn ordered_with(found: Vec<Accelerator>, value: Option<&str>, warned: &AtomicBool) -> (Vec<Accelerator>, Option<String>) {
+    let (order, warning) = forced(found, value);
+    (order, warning.filter(|_| !warned.swap(true, Ordering::SeqCst)))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -71,9 +90,12 @@ mod tests {
     }
 
     #[test]
-    fn without_mlx_only_ort_cpu_remains_when_onnx_is_built() {
+    fn without_the_app_mlx_comes_only_from_the_rust_build() {
         let found = available(false);
-        assert!(!found.contains(&Accelerator::Mlx));
+        assert_eq!(
+            found.contains(&Accelerator::Mlx),
+            cfg!(all(feature = "mlx", target_os = "macos", target_arch = "aarch64"))
+        );
         assert_eq!(found.contains(&Accelerator::OrtCpu), cfg!(feature = "kokoro-onnx"));
     }
 
@@ -103,5 +125,25 @@ mod tests {
         let (order, warning) = forced(vec![Accelerator::Mlx], None);
         assert_eq!(order, vec![Accelerator::Mlx]);
         assert!(warning.is_none());
+    }
+
+    #[test]
+    fn an_unavailable_forced_accelerator_warns_once() {
+        let warned = AtomicBool::new(false);
+        let (order, first) = ordered_with(vec![Accelerator::OrtCpu], Some("mlx"), &warned);
+        assert_eq!(order, vec![Accelerator::OrtCpu]);
+        assert!(first.is_some_and(|w| w.contains("mlx")));
+        let (order, again) = ordered_with(vec![Accelerator::OrtCpu], Some("mlx"), &warned);
+        assert_eq!(order, vec![Accelerator::OrtCpu], "toujours ignoré");
+        assert_eq!(again, None, "dit une fois");
+    }
+
+    #[test]
+    fn an_available_forced_accelerator_says_nothing() {
+        let warned = AtomicBool::new(false);
+        let (order, warning) = ordered_with(vec![Accelerator::Mlx, Accelerator::OrtCpu], Some("ort-cpu"), &warned);
+        assert_eq!(order, vec![Accelerator::OrtCpu, Accelerator::Mlx]);
+        assert_eq!(warning, None);
+        assert!(!warned.load(Ordering::SeqCst), "rien n'a été dit : une erreur plus tard le serait encore");
     }
 }
