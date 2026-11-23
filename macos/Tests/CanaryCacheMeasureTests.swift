@@ -1,6 +1,7 @@
 import Foundation
 import XCTest
 import MLX
+import MLXNN
 @testable import Dysflow
 @testable import KokoroMLX
 
@@ -8,7 +9,10 @@ import MLX
 /// Ignoré sans `DYSFLOW_CANARY_MESURE` (`TEST_RUNNER_DYSFLOW_CANARY_MESURE`
 /// pour xcodebuild) : le dossier où écrire le relevé, un fichier texte par
 /// exécution. Lancer deux fois, avec et sans `TEST_RUNNER_MLX_ENABLE_TF32=0`
-/// (MLX lit `MLX_ENABLE_TF32` une seule fois par processus).
+/// (MLX lit `MLX_ENABLE_TF32` une seule fois par processus). Puis une fois
+/// avec `TEST_RUNNER_DYSFLOW_CANARY_DECODEUR=cpu` : le décodeur seul, sur le
+/// processeur, en bf16 tel que livré puis passé en Float32, sur la sortie de
+/// l'encodeur que la passe GPU a laissée dans le dossier.
 ///
 /// - le décodeur au hasard du test, sur le GPU puis sur le processeur :
 ///   écart du pas à pas et de la suite entière, chacun contre la suite
@@ -31,20 +35,32 @@ final class CanaryCacheMeasureTests: XCTestCase {
             throw XCTSkip("DYSFLOW_CANARY_MESURE absent")
         }
         let tf32 = env["MLX_ENABLE_TF32"] ?? "(défaut : 1)"
-        let info = GPU.deviceInfo()
-        log("MLX_ENABLE_TF32=\(tf32) GPU architecture=\(info.architecture)")
+        let decoderOnCPU = env["DYSFLOW_CANARY_DECODEUR"] == "cpu"
+        if decoderOnCPU {
+            // Le processeur par défaut aussi pour le C++ de MLX (ses
+            // opérateurs sans flux) : avec `withDefaultDevice` seul, un
+            // calcul partait encore sur le GPU et s'y arrêtait sur un délai
+            // dépassé. Avant toute ressource de MLX dans ce processus.
+            Device.setDefault(device: Device(.cpu))
+            log("MLX_ENABLE_TF32=\(tf32), appareil par défaut : processeur")
+        } else {
+            log("MLX_ENABLE_TF32=\(tf32) GPU architecture=\(GPU.deviceInfo().architecture)")
+        }
         log("macOS \(ProcessInfo.processInfo.operatingSystemVersionString)")
 
-        matmul()
-        synthetic(name: "testStepByStepMatchesTheFullPass", encoderLength: 20, count: 16, prompt: 5) { ($0 * 7 + 3) % 50 }
-        synthetic(name: "testPositionsPastTheTableRepeatTheLastOne", encoderLength: 8, count: 1030, prompt: 1020) { ($0 * 11 + 1) % 50 }
+        if !decoderOnCPU {
+            matmul()
+            synthetic(name: "testStepByStepMatchesTheFullPass", encoderLength: 20, count: 16, prompt: 5) { ($0 * 7 + 3) % 50 }
+            synthetic(name: "testPositionsPastTheTableRepeatTheLastOne", encoderLength: 8, count: 1030, prompt: 1020) { ($0 * 11 + 1) % 50 }
+        }
         if let models = env["DYSFLOW_STT_MODELS"] {
-            try realModel(URL(fileURLWithPath: models).appendingPathComponent("canary_1b_v2_q8"))
+            try realModel(URL(fileURLWithPath: models).appendingPathComponent("canary_1b_v2_q8"),
+                          out: URL(fileURLWithPath: out), decoderOnCPU: decoderOnCPU)
         } else {
             log("DYSFLOW_STT_MODELS absent : pas de mesure sur le vrai modèle")
         }
 
-        let name = "canary-mesure-tf32-\(env["MLX_ENABLE_TF32"] ?? "defaut").txt"
+        let name = "canary-mesure-tf32-\(env["MLX_ENABLE_TF32"] ?? "defaut")\(decoderOnCPU ? "-decodeur-cpu" : "").txt"
         try (lines.joined(separator: "\n") + "\n").write(
             to: URL(fileURLWithPath: out).appendingPathComponent(name), atomically: true, encoding: .utf8)
     }
@@ -143,30 +159,142 @@ final class CanaryCacheMeasureTests: XCTestCase {
 
     // MARK: - Le vrai modèle
 
-    private func realModel(_ directory: URL) throws {
+    private func realModel(_ directory: URL, out: URL, decoderOnCPU: Bool) throws {
         let repo = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let inputs = try ParakeetFixtureTests.inputs(repo).filter {
             ["francais", "anglais", "douze_secondes"].contains($0.name)
         }
+        func saved(_ name: String) throws -> (hidden: MLXArray, mask: MLXArray, tokens: [Int], prompt: Int) {
+            let arrays = try loadArrays(url: out.appendingPathComponent("encodeur-\(name).safetensors"))
+            return (try XCTUnwrap(arrays["hidden"]), try XCTUnwrap(arrays["mask"]),
+                    try XCTUnwrap(arrays["tokens"]).asArray(Int32.self).map(Int.init),
+                    try XCTUnwrap(arrays["prompt"]).item(Int.self))
+        }
+        if decoderOnCPU {
+            // Le décodeur seul, sur le processeur, dans un processus où rien
+            // ne passe par le GPU : la sortie de l'encodeur et la suite de
+            // jetons viennent de la passe sur le GPU. Le processeur est lent
+            // (plus de 30 min sans finir le premier audio en entier) : les
+            // `DYSFLOW_CANARY_PAS` (6 par défaut) premiers pas seulement, sur
+            // la suite du GPU imposée.
+            let steps = Int(ProcessInfo.processInfo.environment["DYSFLOW_CANARY_PAS"] ?? "") ?? 6
+            try Device.withDefaultDevice(.cpu) {
+                let model = try CanaryModel.fromModelDirectory(directory)
+                for widened in [false, true] {
+                    if widened { widenDecoder(model) }
+                    logDTypes(model)
+                    for input in inputs {
+                        let s = try saved(input.name)
+                        let forced = forcedSteps(model, encoded: (s.hidden, s.mask), tokens: s.tokens, prompt: s.prompt, steps: steps)
+                        log("audio \(input.name) — décodeur \(widened ? "passé en Float32" : "bf16 (tel que livré)") sur le processeur, \(steps) pas imposés : \(forced)")
+                    }
+                }
+            }
+            return
+        }
         let model = try CanaryModel.fromModelDirectory(directory)
         let speech = CanarySpeech(model)
+        logDTypes(model)
+        var encodedByInput: [String: (MLXArray, MLXArray)] = [:]
         for input in inputs {
             let language = input.name == "anglais" ? "en" : "fr"
             let cached = try speech.transcribe(input.samples, language: language)
-            let measured = try decodeBoth(model, input.samples, language: language)
-            log("audio \(input.name) (\(input.samples.count) échantillons, \(language)) — dtype logits \(measured.dtype)")
+            let mel = model.preprocessAudio(MLXArray(input.samples)).asType(.float32)
+            let encoded = model.encode(mel: mel)
+            eval(encoded.hidden, encoded.mask)
+            encodedByInput[input.name] = (encoded.hidden, encoded.mask)
+            log("audio \(input.name) (\(input.samples.count) échantillons, \(language)) — encodeur \(encoded.hidden.dtype) \(encoded.hidden.shape)")
             log("  cache (app)  : \(cached)")
-            log("  cache (ici)  : \(measured.cachedText)")
-            log("  entière      : \(measured.fullText)")
-            log("  jetons cache \(measured.cachedTokens.count), entière \(measured.fullTokens.count), premier jeton différent : \(measured.firstDiff.map(String.init) ?? "aucun")")
-            log("  sur la suite du cache : écart des logits max \(measured.maxGap) (pas \(measured.maxGapStep)), |logits|max \(measured.maxLogit), marge top1-top2 min \(measured.minMargin), argmax différent : \(measured.argmaxDiffers)")
-            log("  texte identique : \(measured.cachedText == measured.fullText && cached == measured.cachedText)")
+            let measured = try decodeBoth(model, encoded: (encoded.hidden, encoded.mask), language: language)
+            logDecode("décodeur bf16 (tel que livré) sur le GPU", measured, app: cached)
+            try save(arrays: ["hidden": encoded.hidden, "mask": encoded.mask,
+                              "tokens": MLXArray((measured.prompt + measured.cachedTokens).map(Int32.init)),
+                              "prompt": MLXArray(Int32(measured.prompt.count))],
+                     url: out.appendingPathComponent("encodeur-\(input.name).safetensors"))
+        }
+        widenDecoder(model)
+        logDTypes(model)
+        for input in inputs {
+            let language = input.name == "anglais" ? "en" : "fr"
+            let encoded = try XCTUnwrap(encodedByInput[input.name])
+            log("audio \(input.name)")
+            logDecode("décodeur passé en Float32 sur le GPU", try decodeBoth(model, encoded: encoded, language: language), app: nil)
         }
     }
 
+    /// Les paramètres bf16 du décodeur passés en Float32 (les poids 8 bits ne
+    /// changent pas) : les activations suivent le type des échelles et des
+    /// normes.
+    private func widenDecoder(_ model: CanaryModel) {
+        let widened = model.decoder.parameters().mapValues { $0.dtype == .bfloat16 ? $0.asType(.float32) : $0 }
+        model.decoder.update(parameters: widened)
+        eval(model.decoder.parameters())
+    }
+
+    /// Sur la suite `tokens` imposée (les `prompt` premiers : l'invite), à
+    /// chacun des `steps` premiers pas : les logits du cache contre ceux de
+    /// la suite entière, sur le même préfixe.
+    private func forcedSteps(_ model: CanaryModel, encoded: (hidden: MLXArray, mask: MLXArray), tokens: [Int], prompt: Int, steps: Int) -> String {
+        let decoder = model.decoder
+        let state = decoder.makeState(encoderOutput: encoded.hidden, encoderMask: encoded.mask)
+        var maxGap: Float = 0, maxLogit: Float = 0, argmaxDiffers = 0
+        var dtypes = ""
+        var pending = Array(tokens[..<prompt])
+        let last = min(prompt + steps, tokens.count)
+        for end in prompt...last {
+            let ids = MLXArray(pending.map(Int32.init)).reshaped(1, pending.count)
+            let cached = decoder(ids, state: state)
+            let c = cached[0, cached.dim(1) - 1]
+            let fullIds = MLXArray(tokens[..<end].map(Int32.init)).reshaped(1, end)
+            let full = decoder(fullIds, encoderOutput: encoded.hidden, encoderMask: encoded.mask)
+            let f = full[0, end - 1]
+            eval(c, f)
+            if dtypes.isEmpty {
+                let x = decoder.embeddingLayerNorm(decoder.embedding(ids))
+                eval(x)
+                dtypes = "plongement normé \(x.dtype), logits \(c.dtype)"
+            }
+            maxGap = max(maxGap, MLX.abs(c - f).max().item(Float.self))
+            maxLogit = max(maxLogit, MLX.abs(f).max().item(Float.self))
+            if c.argMax().item(Int.self) != f.argMax().item(Int.self) { argmaxDiffers += 1 }
+            if end < tokens.count { pending = [tokens[end]] }
+        }
+        return "\(dtypes) ; \(last - prompt + 1) pas ; écart des logits max \(maxGap), relatif \(maxGap / maxLogit), |logits|max \(maxLogit), argmax différent : \(argmaxDiffers)"
+    }
+
+    private func logDecode(_ title: String, _ measured: Both, app: String?) {
+        log("  \(title) — dtypes : \(measured.dtypes)")
+        log("    cache        : \(measured.cachedText)")
+        log("    entière      : \(measured.fullText)")
+        log("    jetons cache \(measured.cachedTokens.count), entière \(measured.fullTokens.count), premier jeton différent : \(measured.firstDiff.map(String.init) ?? "aucun")")
+        log("    sur la suite du cache : écart des logits max \(measured.maxGap) (pas \(measured.maxGapStep)), relatif \(measured.maxGap / measured.maxLogit), |logits|max \(measured.maxLogit), marge top1-top2 min \(measured.minMargin), argmax différent : \(measured.argmaxDiffers)")
+        log("    texte identique (cache, entière\(app == nil ? "" : ", app")) : \(measured.cachedText == measured.fullText && (app ?? measured.cachedText) == measured.cachedText)")
+    }
+
+    /// Les types des paramètres du décodeur, regroupés par suffixe
+    /// (`weight`, `scales`, `biases`), et la forme de ses couches linéaires.
+    private func logDTypes(_ model: CanaryModel) {
+        var groups: [String: [String: Int]] = [:]
+        for (key, value) in model.decoder.parameters().flattened() {
+            let suffix = key.split(separator: ".").last.map(String.init) ?? key
+            groups[suffix, default: [:]]["\(value.dtype)", default: 0] += 1
+        }
+        for suffix in groups.keys.sorted() {
+            log("paramètres du décodeur « \(suffix) » : \(groups[suffix]!.sorted { $0.key < $1.key }.map { "\($0.key)×\($0.value)" }.joined(separator: ", "))")
+        }
+        var kinds: [String: Int] = [:]
+        for (_, module) in model.decoder.leafModules().flattened() {
+            var kind = "\(type(of: module))"
+            if let q = module as? QuantizedLinear { kind += "(bits \(q.bits), groupe \(q.groupSize))" }
+            kinds[kind, default: 0] += 1
+        }
+        log("couches du décodeur : \(kinds.sorted { $0.key < $1.key }.map { "\($0.key)×\($0.value)" }.joined(separator: ", "))")
+    }
+
     private struct Both {
-        var dtype: DType = .float32
+        var prompt: [Int] = []
+        var dtypes = ""
         var cachedTokens: [Int] = []
         var fullTokens: [Int] = []
         var cachedText = ""
@@ -182,13 +310,12 @@ final class CanaryCacheMeasureTests: XCTestCase {
     /// Le décodage glouton de `CanaryModel.generate`, deux fois : avec le
     /// cache (et, à chaque pas, la suite entière sur le même préfixe), puis
     /// en repassant toute la suite à chaque jeton (l'avant-cache).
-    private func decodeBoth(_ model: CanaryModel, _ samples: [Float], language: String) throws -> Both {
+    private func decodeBoth(_ model: CanaryModel, encoded: (hidden: MLXArray, mask: MLXArray), language: String) throws -> Both {
         var result = Both()
-        let mel = model.preprocessAudio(MLXArray(samples)).asType(.float32)
-        let encoded = model.encode(mel: mel)
         let prompt = try XCTUnwrap(model.tokenizer).buildPromptTokens(
             config: model.config, sourceLanguage: language, targetLanguage: language)
         let eos = try XCTUnwrap(model.tokenizer).eosTokenId(config: model.config)
+        result.prompt = prompt
         let decoder = model.decoder
 
         func full(_ tokens: [Int]) -> MLXArray {
@@ -207,7 +334,12 @@ final class CanaryCacheMeasureTests: XCTestCase {
             let f = full(tokens)
             let sorted = MLX.sorted(f)
             eval(s, f, sorted)
-            result.dtype = s.dtype
+            if step == 0 {
+                let x = decoder.embeddingLayerNorm(decoder.embedding(ids))
+                let h = decoder.finalNorm(x)
+                eval(x, h)
+                result.dtypes = "encodeur \(encoded.hidden.dtype), masque \(encoded.mask.dtype), plongement normé \(x.dtype), norme finale \(h.dtype), logits \(s.dtype)"
+            }
             let g = MLX.abs(s.asType(.float32) - f.asType(.float32)).max().item(Float.self)
             if g > result.maxGap { result.maxGap = g; result.maxGapStep = step }
             result.maxLogit = max(result.maxLogit, MLX.abs(f).max().item(Float.self))

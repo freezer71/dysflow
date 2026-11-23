@@ -5,8 +5,23 @@ import MLX
 /// Le décodage pas à pas de Canary (cache d'auto-attention, attention
 /// croisée calculée une fois) rend les mêmes logits que le décodage de toute
 /// la suite à chaque jeton, celui de l'amont. Petit décodeur aux poids
-/// tirés au hasard, en Float32 : seul l'ordre des additions diffère.
+/// tirés au hasard, en Float32, calculé sur le processeur : seul l'ordre
+/// des additions y diffère (écart mesuré < 5e-7).
+///
+/// Pas sur le GPU : sur un M5 (GPU de génération ≥ 17, macOS ≥ 26.2), MLX
+/// fait les produits Float32 de plusieurs lignes en TF32 (accélérateurs
+/// neuronaux, `MLX_ENABLE_TF32=1` par défaut), mais celui d'une seule ligne
+/// (le pas de un jeton) en vrai Float32. Le test comparerait alors du TF32
+/// à du Float32 : écart de 1e-3 à 2e-3, et 21 échecs sur le M5, alors que la
+/// CI (M1, sans ces accélérateurs) passe. Le test vérifie la logique du
+/// cache, pas la précision des noyaux du GPU.
 final class CanaryDecoderCacheTests: XCTestCase {
+    override func invokeTest() {
+        Device.withDefaultDevice(.cpu) {
+            super.invokeTest()
+        }
+    }
+
     private func makeDecoder() -> CanaryDecoder {
         MLXRandom.seed(7)
         let config = CanaryDecoderConfig(numLayers: 2, hiddenSize: 32, numAttentionHeads: 4, innerSize: 64)

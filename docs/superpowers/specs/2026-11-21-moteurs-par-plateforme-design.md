@@ -339,12 +339,49 @@ Le cache n'est pas en cause : MLX calcule en TF32 sur ce GPU.
   assez récent, seule la génération du GPU coupe le NAX.
 - **Le texte ne change pas** : Canary 1b-v2 q8, cache contre suite
   entière, mêmes jetons et même texte sur les trois audios (français,
-  anglais, 12 s), en TF32 comme sans. Écart des logits au plus 0,048 pour
-  des logits de 60 ; marge minimale entre les deux premiers jetons 0,38.
-- **Pour le portage (lot 6)** : la copie Rust de MLX a le même défaut. Un
-  test de parité en Float32 qui compare deux formes de calcul (M = 1
-  contre M > 1) doit tourner sur le processeur, ou fixer le TF32, sinon il
-  échoue sur un M5 et passe en CI.
+  anglais, 12 s), en TF32 comme sans. Marge minimale entre les deux
+  premiers jetons : 0,38.
+- **Un écart résiduel, expliqué : le décodeur livré calcule en bf16, et le
+  GPU n'arrondit pas aux mêmes endroits selon M = 1 ou M > 1.**
+  Entre cache et suite entière, les logits (~60) s'écartent encore de
+  0,011 à 0,041 sans TF32 (0,024 à 0,048 avec), soit 1,7e-4 à 8e-4 relatif.
+  - Ce n'est pas le TF32 : l'écart reste quand il est coupé.
+  - C'est le bf16 : les poids sont en 8 bits (groupes de 64), mais leurs
+    échelles, les biais et les normes sont en bf16. Les activations du
+    décodeur sont donc en bf16 ; seuls les logits sortent en Float32.
+    Sur le GPU, le pas de un jeton et la suite entière passent par des
+    noyaux différents (produit quantifié d'une ligne ou de plusieurs,
+    attention d'un vecteur ou complète), qui n'arrondissent pas au bf16
+    aux mêmes endroits. L'arrondi du bf16 (2^-9 ≈ 2e-3 relatif) suffit à
+    cet écart.
+  - Preuve : le même décodeur, ses paramètres bf16 passés en Float32 (les
+    poids 8 bits inchangés), sur le GPU sans TF32 : écart de 4,2e-5 à
+    6,1e-5, soit 7e-7 à 1e-6 relatif, avec les mêmes jetons et le même texte.
+    Le cache suit donc la suite entière au Float32 près, dans la vraie
+    configuration.
+  - Sur le processeur, le décodeur bf16 tel que livré, sur les 3 premiers
+    pas de chaque audio (suite imposée, sortie de l'encodeur prise du GPU) :
+    écart de 7,6e-6 à 1,1e-5, soit 1,5e-7 à 2,3e-7 relatif ; passé en
+    Float32, de 6,7e-6 à 1,1e-5. Le processeur n'est mesuré que sur ces
+    3 pas : il lui a fallu 31 min, et plus de 30 min sans finir le premier
+    audio en entier.
+  - Ce n'est donc pas un défaut du cache : c'est l'ordre et la précision
+    des noyaux du GPU en bf16.
+- **Avant cette tâche**, `CanaryDecoderCacheTests` échouait sur le M5
+  (21 échecs) ; il tourne désormais sur le processeur, seuil inchangé
+  (1e-4), et passe sur le M5 (écart ≤ 4,8e-7).
+- **Pour le portage (lot 6)** : la copie Rust de MLX a le même défaut TF32.
+  - Un test qui compare en Float32 deux formes de calcul (M = 1 contre
+    M > 1) doit tourner sur le processeur, ou fixer le TF32, sinon il
+    échoue sur un M5 et passe en CI.
+  - Comparer cache et suite entière sur le vrai modèle en bf16, tel que
+    livré : tolérer 1e-3 relatif au maximum des logits (mesuré jusqu'à
+    8e-4), et exiger les mêmes jetons et le même texte.
+  - Pour un seuil serré (~1e-5 relatif), passer d'abord les paramètres bf16
+    du décodeur en Float32, sans TF32 ou sur le processeur : l'écart mesuré
+    y est de 1e-6 relatif.
+  - La parité Rust contre Swift relève du même bf16 : comparer des jetons et
+    du texte, pas des logits au Float32 près.
 
 ## Décisions
 
