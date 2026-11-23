@@ -1,0 +1,333 @@
+{
+  "cases" : [
+    {
+      "encoded_length" : 53,
+      "encoder" : {
+        "mean" : -0.009047544,
+        "mean_abs" : 0.31377205,
+        "shape" : [
+          1,
+          53,
+          1024
+        ]
+      },
+      "input" : "francais",
+      "language" : "fr",
+      "mel" : {
+        "mean" : 2.705459e-08,
+        "mean_abs" : 0.87152994,
+        "shape" : [
+          1,
+          423,
+          128
+        ]
+      },
+      "prompt" : [
+        7,
+        4,
+        16,
+        71,
+        71,
+        5,
+        9,
+        11,
+        13
+      ],
+      "text" : "N'oubliez pas d'envoyer le devis au client avant la fin de la semaine.",
+      "tokens" : [
+        1277,
+        16122,
+        1314,
+        1722,
+        5869,
+        1567,
+        1165,
+        16122,
+        1163,
+        1422,
+        7140,
+        1368,
+        1207,
+        2239,
+        1595,
+        4810,
+        1227,
+        11349,
+        1273,
+        1941,
+        1207,
+        1273,
+        1896,
+        16055,
+        1412,
+        16073
+      ]
+    },
+    {
+      "encoded_length" : 49,
+      "encoder" : {
+        "mean" : -0.009035747,
+        "mean_abs" : 0.33514535,
+        "shape" : [
+          1,
+          49,
+          1024
+        ]
+      },
+      "input" : "anglais",
+      "language" : "en",
+      "mel" : {
+        "mean" : -5.609849e-08,
+        "mean_abs" : 0.86631966,
+        "shape" : [
+          1,
+          391,
+          128
+        ]
+      },
+      "prompt" : [
+        7,
+        4,
+        16,
+        64,
+        64,
+        5,
+        9,
+        11,
+        13
+      ],
+      "text" : "Please send the weekly report to the whole team before Friday.",
+      "tokens" : [
+        1268,
+        1226,
+        2330,
+        1164,
+        1387,
+        1289,
+        10709,
+        1617,
+        15389,
+        1237,
+        1289,
+        14733,
+        9372,
+        7928,
+        8267,
+        1885,
+        16081,
+        16073
+      ]
+    },
+    {
+      "encoded_length" : 151,
+      "encoder" : {
+        "mean" : -0.0107024945,
+        "mean_abs" : 0.33759066,
+        "shape" : [
+          1,
+          151,
+          1024
+        ]
+      },
+      "input" : "douze_secondes",
+      "language" : "fr",
+      "mel" : {
+        "mean" : -4.9232145e-08,
+        "mean_abs" : 0.8654914,
+        "shape" : [
+          1,
+          1201,
+          128
+        ]
+      },
+      "prompt" : [
+        7,
+        4,
+        16,
+        71,
+        71,
+        5,
+        9,
+        11,
+        13
+      ],
+      "text" : "N'oubliez pas d'envoyer le devis au client avant la fin de la semaine. N'oubliez pas d'envoyer le devis au client avant la fin de la semaine.",
+      "tokens" : [
+        1277,
+        16122,
+        1314,
+        1722,
+        5869,
+        1567,
+        1165,
+        16122,
+        1163,
+        1422,
+        7140,
+        1368,
+        1207,
+        2239,
+        1595,
+        4810,
+        1227,
+        11349,
+        1273,
+        1941,
+        1207,
+        1273,
+        1896,
+        16055,
+        1412,
+        16073,
+        1277,
+        16122,
+        1314,
+        1722,
+        5869,
+        1567,
+        1165,
+        16122,
+        1163,
+        1422,
+        7140,
+        1368,
+        1207,
+        2239,
+        1595,
+        4810,
+        1227,
+        11349,
+        1273,
+        1941,
+        1207,
+        1273,
+        1896,
+        16055,
+        1412,
+        16073
+      ]
+    },
+    {
+      "encoded_length" : 13,
+      "encoder" : {
+        "mean" : -0.008255451,
+        "mean_abs" : 0.23932597,
+        "shape" : [
+          1,
+          13,
+          1024
+        ]
+      },
+      "input" : "silence",
+      "language" : "fr",
+      "mel" : {
+        "mean" : 0,
+        "mean_abs" : 0,
+        "shape" : [
+          1,
+          101,
+          128
+        ]
+      },
+      "prompt" : [
+        7,
+        4,
+        16,
+        71,
+        71,
+        5,
+        9,
+        11,
+        13
+      ],
+      "text" : "C'est un peu...",
+      "tokens" : [
+        1303,
+        16122,
+        1256,
+        1243,
+        6996,
+        16073,
+        16073,
+        16073
+      ]
+    },
+    {
+      "encoded_length" : 2,
+      "encoder" : {
+        "mean" : 0.0039919196,
+        "mean_abs" : 0.24076729,
+        "shape" : [
+          1,
+          2,
+          1024
+        ]
+      },
+      "input" : "dixieme",
+      "language" : "fr",
+      "mel" : {
+        "mean" : 1.5443023e-07,
+        "mean_abs" : 0.8037469,
+        "shape" : [
+          1,
+          11,
+          128
+        ]
+      },
+      "prompt" : [
+        7,
+        4,
+        16,
+        71,
+        71,
+        5,
+        9,
+        11,
+        13
+      ],
+      "text" : "",
+      "tokens" : [
+
+      ]
+    }
+  ],
+  "commit" : "f6678be0ec1001ff9859e38e4cf2eba724c07b8c",
+  "encoder_dtype" : "float32",
+  "generator" : "macos/Tests/CanaryFixtureTests.swift",
+  "inputs" : [
+    {
+      "name" : "francais",
+      "samples" : 67600,
+      "sha256" : "1cac739221e63f2025a2a22b464222adadf4dc6575393b5df73026fef7278777",
+      "source" : "macos/Tests/Fixtures/dictee-charge.wav"
+    },
+    {
+      "name" : "anglais",
+      "samples" : 62400,
+      "sha256" : "71f83a83dd2fd5a54c16b3d9676bf7d1a244f21d50966d8efbb88fb5f1ac52b9",
+      "source" : "tests/fixtures/mlx/dictee-en.wav"
+    },
+    {
+      "name" : "douze_secondes",
+      "samples" : 192000,
+      "sha256" : "370c37bb0f81f6c66795f61f567557cddb1dd0125a0eb03f7f3a95ae36f1f139",
+      "source" : "francais, anglais, francais… à la suite, coupé à 192 000 échantillons"
+    },
+    {
+      "name" : "silence",
+      "samples" : 16000,
+      "sha256" : "4f7988030a00d082fe445e00a2ac5dab502300ff1b80e8592dd569867b60ef74",
+      "source" : "16 000 zéros (1 s)"
+    },
+    {
+      "name" : "dixieme",
+      "samples" : 1600,
+      "sha256" : "89bf9923e53422dcc6c7d2e872bf71c41d61bf0b0128b255a2ce1c5485d4731d",
+      "source" : "francais[16 000 ..< 17 600] (0,1 s)"
+    }
+  ],
+  "max_tokens" : 1024,
+  "model" : "canary_1b_v2_q8",
+  "quantization" : "bits 8, group_size ?",
+  "revision" : "0b6b32ee10f30c89e3ead7249bb636445e3019ee"
+}

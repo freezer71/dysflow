@@ -481,6 +481,11 @@ public final class CanaryModel: Module, STTGenerationModel {
     @ModuleInfo public var encoder: CanaryEncoder
     @ModuleInfo public var decoder: CanaryDecoder
 
+    /// Dysflow, pour la référence du port Rust (`CanaryFixtureTests`) :
+    /// l'invite et les jetons gardés (sans `<|endoftext|>`), à la fin de
+    /// `generate`. `nil` dans l'app : rien n'est appelé.
+    var traceEmitter: ((_ prompt: [Int], _ tokens: [Int]) -> Void)?
+
     public var defaultGenerationParameters: STTGenerateParameters {
         STTGenerateParameters(
             maxTokens: 200,
@@ -546,6 +551,7 @@ public final class CanaryModel: Module, STTGenerationModel {
         }
 
         let text = decode(tokens: generated).trimmingCharacters(in: .whitespacesAndNewlines)
+        traceEmitter?(promptTokens, generated)
         let totalTime = CFAbsoluteTimeGetCurrent() - start
         return STTOutput(
             text: text,
