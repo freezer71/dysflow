@@ -19,7 +19,7 @@ anyhow = "1.0"
 
 [dev-dependencies]
 # Les essais de ffi ne résolvent jamais les répertoires de l'utilisateur
-# (paths::SCRATCH_PATHS ; garde : the_tests_never_resolve_the_user_directories).
+# (paths::scratch_paths() ; garde : the_tests_never_resolve_the_user_directories).
 # Une dev-dependency : le résolveur 2 ne la verse pas dans `cargo build`,
 # donc jamais dans la bibliothèque de l'app (build-ffi.sh) ni dans un paquet.
 dysflow = { path = "..", default-features = false, features = ["clipboard", "test-paths"] }

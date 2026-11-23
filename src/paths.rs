@@ -22,7 +22,9 @@ const FORMER: &[&str] = &["sillage", "sillon", "rs-reader"];
 /// Vrai quand les répertoires sont ceux des essais (`test_root`) : sous
 /// `cargo test` du moteur, ou avec la feature `test-paths`, que seuls les
 /// essais de `ffi/` activent (dev-dependency). Jamais dans un build livré.
-pub const SCRATCH_PATHS: bool = cfg!(any(test, feature = "test-paths"));
+pub fn scratch_paths() -> bool {
+    cfg!(any(test, feature = "test-paths"))
+}
 
 /// Configuration : `config.toml`.
 pub fn config_dir() -> Option<PathBuf> {
