@@ -45,6 +45,8 @@ const BONJOUR: &str = "bɔ̃ʒˈuʁ.";
 const VOICE: &str = "p-fenrir60";
 
 fn main() -> ExitCode {
+    // Avant le moindre fil : ONNX Runtime n'envoie rien à Microsoft.
+    onnx::disable_telemetry();
     let mut failures = Vec::new();
     match run(&mut failures) {
         Ok(()) if failures.is_empty() => {

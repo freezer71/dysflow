@@ -50,12 +50,16 @@ pub fn check_same_runtime(kokoro: &str, sherpa: &str) -> Result<()> {
 /// une fois par processus (`check_same_runtime`) : la réponse, bonne ou non,
 /// est gardée. Appelée avant le premier chargement de chaque modèle sherpa
 /// (`ParakeetSherpa`, `SileroDetector`) ; la porte (`ort_single_copy`) la
-/// réutilise pour son point 3.
+/// réutilise pour son point 3. Vérifiée, l'environnement ONNX Runtime du
+/// processus est créé télémétrie coupée (`onnx::environment`), avant celui de
+/// sherpa-onnx, qui le reprend.
 pub fn same_runtime() -> Result<String> {
     static CHECKED: OnceLock<Result<String, String>> = OnceLock::new();
     checked_once(&CHECKED, || {
-        let kokoro = onnx::version_of(&onnx::library_path())?;
+        let library = onnx::library_path();
+        let kokoro = onnx::version_of(&library)?;
         check_same_runtime(&kokoro, &onnxruntime_version()?)?;
+        onnx::environment(&library)?;
         Ok(kokoro)
     })
 }

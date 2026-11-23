@@ -698,5 +698,7 @@ mod bench {
 }
 
 fn main() -> anyhow::Result<()> {
+    // Avant le moindre fil : ONNX Runtime n'envoie rien à Microsoft.
+    dysflow::tts::kokoro::onnx::disable_telemetry();
     bench::main()
 }

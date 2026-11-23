@@ -16,7 +16,9 @@
 # que sous Windows, Élodie aussi en NFD).
 #
 # Les essais ignorés de stt::sherpa passent aussi, depuis chacun de ces
-# chemins : Silero VAD toujours (son modèle est celui de la porte), Parakeet
+# chemins : Silero VAD toujours (son modèle est celui de la porte), avec
+# l'essai qui vérifie qu'ONNX Runtime n'écrit rien de sa télémétrie, par
+# sherpa-onnx (Silero) puis par `ort` (Kokoro, celui de la porte), Parakeet
 # quand DYSFLOW_MODELS désigne un dossier de modèles qui contient
 # parakeet_tdt_v3_int8/ : les quatre fichiers du paquet et test_wavs/fr.wav,
 # tirés du dépôt csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8 à la
@@ -157,7 +159,8 @@ ignored_tests() {
     fi
 }
 
-# dictation_tests DOSSIER_DES_MODÈLES : Silero VAD depuis DOSSIER, puis
+# dictation_tests DOSSIER_DES_MODÈLES : Silero VAD depuis DOSSIER, la
+# télémétrie d'ONNX Runtime (Silero et DOSSIER/kokoro), puis
 # Parakeet (si DYSFLOW_MODELS est posé), ses fichiers liés ou copiés dans
 # DOSSIER/parakeet_tdt_v3_int8/ quand DOSSIER n'est pas DYSFLOW_MODELS.
 dictation_tests() {
@@ -166,7 +169,8 @@ dictation_tests() {
     if [ -n "$WINDOWS" ]; then
         native=$(cygpath -w "$models")
     fi
-    ignored_tests stt::sherpa::vad 1 DYSFLOW_SILERO_VAD="$native/silero_vad.onnx"
+    ignored_tests stt::sherpa::vad 2 DYSFLOW_SILERO_VAD="$native/silero_vad.onnx"
+    ignored_tests onnx::tests::kokoro_leaves_no_telemetry_trace 1 DYSFLOW_KOKORO_DIR="$native/kokoro"
     if [ -z "$PARAKEET" ]; then
         echo "Parakeet : DYSFLOW_MODELS non posé, l'échantillon n'est pas lu depuis $models"
         return 0

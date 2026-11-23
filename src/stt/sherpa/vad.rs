@@ -35,6 +35,9 @@ impl SileroDetector {
     /// `new`, la vérification d'ONNX Runtime passée en argument : les essais
     /// ne touchent pas à celle, gardée, du processus.
     fn with_runtime(model: &Path, runtime: fn() -> Result<String>) -> Result<Self> {
+        // Avant que sherpa-onnx ne crée son environnement ONNX Runtime, même
+        // quand `runtime` n'est pas `same_runtime` (les essais).
+        crate::tts::kokoro::onnx::disable_telemetry();
         runtime()?;
         let model = model_file(model)?;
         let config = sherpa_onnx::VadModelConfig {
@@ -134,5 +137,23 @@ mod tests {
             assert!(err.contains(&len.to_string()), "{len} : {err}");
         }
         assert!(!detector.is_speech(&[0.0; FRAME]).unwrap(), "du silence");
+    }
+
+    /// Silero chargé et lancé par sherpa-onnx, qui crée son propre
+    /// environnement ONNX Runtime, ne laisse aucune trace de la télémétrie
+    /// d'ORT (`onnx::assert_no_telemetry_trace`). Mêmes variables que
+    /// l'essai précédent.
+    #[test]
+    #[ignore = "demande silero_vad.onnx (DYSFLOW_SILERO_VAD) et la bibliothèque de sherpa-onnx (scripts/ort-gate.sh)"]
+    fn silero_leaves_no_telemetry_trace() {
+        let model =
+            std::env::var_os("DYSFLOW_SILERO_VAD").expect("DYSFLOW_SILERO_VAD : le modèle Silero");
+        crate::tts::kokoro::onnx::assert_no_telemetry_trace(
+            &format!("{}::silero_leaves_no_telemetry_trace", module_path!()),
+            || {
+                let mut detector = SileroDetector::new(Path::new(&model)).unwrap();
+                assert!(!detector.is_speech(&[0.0; FRAME]).unwrap(), "du silence");
+            },
+        );
     }
 }

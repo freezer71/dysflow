@@ -18,6 +18,8 @@ use dysflow::tts::kokoro::KokoroEngine;
 use dysflow::tts::{silent::SilentEngine, TtsEngine, TtsParams};
 
 fn main() -> anyhow::Result<()> {
+    // Avant le moindre fil : ONNX Runtime n'envoie rien à Microsoft.
+    dysflow::tts::kokoro::onnx::disable_telemetry();
     let dir = std::path::PathBuf::from(std::env::var("DYSFLOW_KOKORO_DIR")?);
     let threads: u32 = std::env::var("THREADS").ok().and_then(|t| t.parse().ok()).unwrap_or(4);
     let engine = KokoroEngine::load(

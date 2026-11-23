@@ -6,6 +6,10 @@ use dysflow::launch::{self, Launch, Prepared};
 use dysflow::tui;
 
 fn main() -> Result<()> {
+    // Avant le moindre fil : ONNX Runtime n'envoie rien à Microsoft (voir
+    // `NO_TELEMETRY`).
+    #[cfg(feature = "kokoro-onnx")]
+    dysflow::tts::kokoro::onnx::disable_telemetry();
     // La langue de l'interface se fixe avant tout texte, aide comprise.
     dysflow::i18n::set_ui_lang(dysflow::i18n::UiLang::from_env());
     let args = launch::parse_args();

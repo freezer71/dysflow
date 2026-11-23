@@ -116,6 +116,53 @@ pub fn check_version(found: &str) -> Result<()> {
     Ok(())
 }
 
+/// La variable qui coupe la télémétrie d'ONNX Runtime pour tout le
+/// processus, et sa valeur. Les ORT 1.31 de Microsoft (le paquet NuGet que
+/// l'on livre) envoient par défaut, sous macOS et Linux, des événements à
+/// Microsoft (1DS : modèle de l'appareil, processeur, système, nom du
+/// programme, réseau…), avec un identifiant d'appareil gardé sur le disque
+/// (macOS : `~/Library/Application Support/Microsoft/DeveloperTools/.onnxruntime/`).
+/// ORT lit cette variable (`getenv`) en créant son premier environnement
+/// (`OneDsTelemetry::Initialize`, depuis le constructeur de `PosixEnv`) :
+/// posée avant, ni envoi, ni identifiant, ni file d'attente, ni vidage à la
+/// sortie. `DisableTelemetryEvents` (`with_telemetry(false)`) ne suffit pas :
+/// il vient après ce premier environnement, qui a déjà créé l'identifiant et
+/// mis en file son premier événement (mesuré, tâche 10b). Sous Windows, le
+/// même paquet passe par ETW, sans 1DS : la variable n'y est pas lue, et
+/// c'est `DisableTelemetryEvents` qui compte.
+pub const NO_TELEMETRY: (&str, &str) = ("ORT_DISABLE_TELEMETRY", "1");
+
+/// Pose `NO_TELEMETRY`, une fois par processus, avant tout environnement
+/// ONNX Runtime : celui d'`ort` (Kokoro) comme ceux que sherpa-onnx crée
+/// lui-même en C++ (dictée). Les binaires l'appellent en tête de `main`,
+/// avant le moindre fil : modifier l'environnement pendant qu'un autre fil
+/// le lit en C (`getenv`) n'est pas sûr. Chaque chargement de modèle
+/// l'appelle aussi (`environment`, `stt::sherpa`), pour qui n'a pas de tel
+/// `main` (les essais) : la variable déjà posée, rien n'est modifié.
+pub fn disable_telemetry() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        let (name, value) = NO_TELEMETRY;
+        if std::env::var_os(name).is_none_or(|current| current != value) {
+            std::env::set_var(name, value);
+        }
+    });
+}
+
+/// L'environnement ONNX Runtime du processus, créé ici, télémétrie coupée :
+/// `disable_telemetry`, puis `ort` chargé depuis `library` (une fois par
+/// processus : un second appel garde la première) avec
+/// `DisableTelemetryEvents`. Créé maintenant et gardé par `ort` : sherpa-onnx,
+/// qui crée le sien en C++, reçoit le même (ORT n'en a qu'un par processus),
+/// où `DisableTelemetryEvents` vaut aussi (sous Windows, le seul
+/// interrupteur).
+pub fn environment(library: &Path) -> Result<()> {
+    disable_telemetry();
+    let _ = ort::init_from(library).map_err(|e| anyhow!("ONNX Runtime : {e}"))?.with_telemetry(false).commit();
+    ort::environment::Environment::current().map_err(|e| anyhow!("ONNX Runtime : {e}"))?;
+    Ok(())
+}
+
 /// Vérifie que Kokoro peut se charger : ONNX Runtime trouvé, assez récent et
 /// chargé par `ort`, puis `dysflow-espeak` lancé avec ses données sur un mot
 /// de chaque langue. Le modèle, téléchargé à part, n'est pas demandé. Rend
@@ -126,7 +173,7 @@ pub fn check_install() -> Result<String> {
     let library = library_path();
     let version = version_of(&library)?;
     check_version(&version)?;
-    let _ = ort::init_from(&library).map_err(|e| anyhow!("ONNX Runtime : {e}"))?.commit();
+    environment(&library)?;
     let mut report = crate::tr!(en = "ONNX Runtime {version}: {}\n", fr = "ONNX Runtime {version} : {}\n", library.display());
 
     let mut espeak = EspeakProcess::locate()?;
@@ -176,9 +223,8 @@ impl KokoroBackend for OrtBackend {
         let library = library_path();
         check_version(&version_of(&library)?)?;
         // `ort` charge la bibliothèque vérifiée, une fois par processus (un
-        // second appel garde la première) ; pas de variable d'environnement
-        // modifiée dans un processus à plusieurs fils.
-        let _ = ort::init_from(&library).map_err(|e| anyhow!("ONNX Runtime : {e}"))?.commit();
+        // second appel garde la première), télémétrie coupée.
+        environment(&library)?;
         let session = Session::builder()
             .map_err(|e| anyhow!("ONNX Runtime : {e}"))?
             .with_intra_threads(self.threads)
@@ -252,6 +298,94 @@ impl KokoroBackend for OrtBackend {
     fn release(&self) {
         *self.session.lock().unwrap_or_else(|e| e.into_inner()) = None;
     }
+}
+
+/// Les variables qui, posées, coupent d'elles-mêmes la télémétrie d'ONNX
+/// Runtime 1.31 (`OneDsTelemetry::Initialize` : la nôtre, celle de ses
+/// propres essais, et celles d'un serveur d'intégration continue, CI…). Le
+/// fils de `assert_no_telemetry_trace` les perd toutes : l'essai prouve que
+/// c'est Dysflow qui coupe la télémétrie, pas la CI qui le lance.
+#[cfg(test)]
+const TELEMETRY_SWITCHES: [&str; 15] = [
+    "ORT_DISABLE_TELEMETRY",
+    "ORT_RUNNING_UNIT_TESTS",
+    "CI",
+    "TF_BUILD",
+    "GITHUB_ACTIONS",
+    "GITLAB_CI",
+    "CIRCLECI",
+    "TRAVIS",
+    "JENKINS_URL",
+    "CODEBUILD_BUILD_ID",
+    "BUILDKITE",
+    "TEAMCITY_VERSION",
+    "APPVEYOR",
+    "BITBUCKET_BUILD_NUMBER",
+    "SYSTEM_TEAMFOUNDATIONCOLLECTIONURI",
+];
+
+/// Pour les essais : `work` (charger un modèle, le faire tourner) dans un
+/// processus fils, ce binaire de test relancé sur le seul essai `test` (son
+/// chemin complet, `module_path!()` compris). Le fils a un HOME, un dossier
+/// temporaire et un cache neufs, et aucune de `TELEMETRY_SWITCHES` : rien ne
+/// doit y être écrit. Avec la télémétrie, ONNX Runtime 1.31 y crée, dès le
+/// premier environnement, son identifiant d'appareil et sa file d'envoi
+/// (macOS : `Library/Application Support/Microsoft/DeveloperTools/.onnxruntime/`
+/// sous HOME et `.ses` dans le dossier temporaire ; Linux : sous
+/// `XDG_CACHE_HOME`). Sous Windows, ORT passe par ETW sans fichier :
+/// l'essai n'y voit rien.
+#[cfg(test)]
+pub(crate) fn assert_no_telemetry_trace(test: &str, work: impl FnOnce()) {
+    const CHILD: &str = "DYSFLOW_TELEMETRY_CHILD";
+    if std::env::var_os(CHILD).is_some() {
+        work();
+        return;
+    }
+    let name = test.strip_prefix("dysflow::").unwrap_or(test);
+    let root = crate::paths::test_scratch(&format!("telemetrie-{}", name.replace("::", "-")));
+    let [home, tmp, cache] = ["home", "tmp", "cache"].map(|dir| {
+        let dir = root.join(dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    });
+    let mut child = std::process::Command::new(std::env::current_exe().unwrap());
+    child
+        .args([name, "--exact", "--ignored", "--nocapture", "--test-threads=1"])
+        .env(CHILD, "1")
+        .env("HOME", &home)
+        .env("TMPDIR", &tmp)
+        .env("TEMP", &tmp)
+        .env("TMP", &tmp)
+        .env("XDG_CACHE_HOME", &cache)
+        .env("LOCALAPPDATA", &cache)
+        .env("APPDATA", &cache);
+    for switch in TELEMETRY_SWITCHES {
+        child.env_remove(switch);
+    }
+    if std::env::var_os("DYSFLOW_ORT_LIB").is_some() {
+        child.env("DYSFLOW_ORT_LIB", library_path());
+    }
+    let out = child.output().unwrap();
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success() && stdout.contains("test result: ok. 1 passed"),
+        "le fils ({name}) : {}\n{stdout}\n{}",
+        out.status,
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let mut left = Vec::new();
+    let mut dirs: Vec<PathBuf> = vec![home, tmp, cache];
+    while let Some(dir) = dirs.pop() {
+        for entry in std::fs::read_dir(&dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                dirs.push(path.clone());
+            }
+            left.push(path);
+        }
+    }
+    left.sort();
+    assert!(left.is_empty(), "ONNX Runtime a écrit, télémétrie active : {left:#?}");
 }
 
 #[cfg(test)]
@@ -329,6 +463,23 @@ mod tests {
         let raw = backend.infer(&[0, 44, 43, 54, 43, 4, 0], &[0.0; 256], &Cancel::never()).unwrap();
         crate::tts::kokoro::check(&raw, 7).unwrap();
         backend.release();
+    }
+
+    /// Kokoro int8 chargé et lancé par `ort` ne laisse aucune trace de la
+    /// télémétrie d'ONNX Runtime (`assert_no_telemetry_trace`). Lancé par
+    /// `scripts/ort-gate.sh`, avec le Kokoro de la porte :
+    ///
+    ///   DYSFLOW_KOKORO_DIR=… target/ort-gate/dysflow_lib_tests onnx::tests::kokoro_leaves_no_telemetry_trace --ignored
+    #[test]
+    #[ignore = "demande ONNX Runtime ≥ 1.31 et Kokoro int8 (DYSFLOW_KOKORO_DIR ; scripts/ort-gate.sh)"]
+    fn kokoro_leaves_no_telemetry_trace() {
+        let dir = std::path::PathBuf::from(std::env::var("DYSFLOW_KOKORO_DIR").expect("DYSFLOW_KOKORO_DIR"));
+        assert_no_telemetry_trace(&format!("{}::kokoro_leaves_no_telemetry_trace", module_path!()), || {
+            let backend = OrtBackend::new(1);
+            backend.load(&dir).unwrap();
+            backend.infer(&[0, 44, 43, 54, 43, 4, 0], &[0.0; 256], &Cancel::never()).unwrap();
+            backend.release();
+        });
     }
 
     /// Un passage long abandonné en route s'arrête sans attendre sa fin.

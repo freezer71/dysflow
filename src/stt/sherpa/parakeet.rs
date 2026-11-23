@@ -61,6 +61,9 @@ impl Recognizer for ParakeetSherpa {
     /// Vérifie d'abord ONNX Runtime (deux copies différentes : refusé avant
     /// de lire le modèle), puis chaque fichier, nommé s'il manque.
     fn load(&self, model_dir: &Path) -> Result<()> {
+        // Avant que sherpa-onnx ne crée son environnement ONNX Runtime, même
+        // quand `runtime` n'est pas `same_runtime` (les essais).
+        crate::tts::kokoro::onnx::disable_telemetry();
         (self.runtime)()?;
         let [encoder, decoder, joiner, tokens] =
             FILES.map(|file| model_file(&model_dir.join(file)));
