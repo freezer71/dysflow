@@ -31,6 +31,8 @@
 # $OUT.tar.gz en est l'archive, à lancer sur un autre PC :
 #   tar xzf ort-gate.tar.gz && ./ort-gate/ort_single_copy
 set -eu
+# Défense en profondeur : aucun ONNX Runtime lancé d'ici n'écrit ni n'envoie sa télémétrie (onnx::NO_TELEMETRY).
+export ORT_DISABLE_TELEMETRY=1
 cd "$(dirname "$0")/.."
 
 case "$(uname -s)" in

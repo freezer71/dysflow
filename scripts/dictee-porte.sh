@@ -52,6 +52,8 @@
 # (refusée) ; 4 mesure faite mais invalide (à refaire au calme). `--court`
 # rend 0 même indicatif.
 set -euo pipefail
+# Défense en profondeur : aucun ONNX Runtime lancé d'ici n'écrit ni n'envoie sa télémétrie (onnx::NO_TELEMETRY).
+export ORT_DISABLE_TELEMETRY=1
 cd "$(dirname "$0")/.."
 
 MODE=porte

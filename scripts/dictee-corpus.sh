@@ -53,6 +53,8 @@
 # téléchargé n'est lancé ; le Python de la construction (bibliothèque standard
 # seule) vient de ce script, lancé en -I.
 set -euo pipefail
+# Défense en profondeur : aucun ONNX Runtime lancé d'ici n'écrit ni n'envoie sa télémétrie (onnx::NO_TELEMETRY).
+export ORT_DISABLE_TELEMETRY=1
 cd "$(dirname "$0")/.."
 # shellcheck source=scripts/paquet-commun.sh
 . scripts/paquet-commun.sh

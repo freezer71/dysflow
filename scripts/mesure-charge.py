@@ -14,6 +14,9 @@ Lancer avec l'interpréteur du banc (numpy, soundfile) :
 """
 import argparse, json, os, re, statistics, subprocess, sys, tempfile, threading, time
 
+# Défense en profondeur : les processus lancés d'ici héritent de cette variable, aucun ONNX Runtime n'y écrit ni n'envoie sa télémétrie (onnx::NO_TELEMETRY).
+os.environ["ORT_DISABLE_TELEMETRY"] = "1"
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", ".superpowers", "research", "eval"))
 import light_run as LR  # noqa: E402
