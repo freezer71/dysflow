@@ -220,6 +220,7 @@ pub fn build_engine_with(
     let loadable = move |r: crate::models::Runtime| r.loadable(app_mlx);
     let machine = Machine {
         accelerators,
+        forced: crate::compute::forced_accelerator(app_mlx),
         loadable: &loadable,
         installed: &crate::models::is_installed,
         path: &crate::models::install_path,
@@ -236,6 +237,8 @@ pub fn build_engine_with(
 struct Machine<'a> {
     /// Du meilleur au moins bon, accélérateur forcé en tête (`compute::ordered`).
     accelerators: Vec<crate::compute::Accelerator>,
+    /// L'accélérateur que `DYSFLOW_ACCELERATOR` force, s'il est disponible.
+    forced: Option<crate::compute::Accelerator>,
     loadable: &'a dyn Fn(crate::models::Runtime) -> bool,
     installed: &'a dyn Fn(&crate::models::ModelPackage) -> bool,
     path: &'a dyn Fn(&crate::models::ModelPackage) -> Option<std::path::PathBuf>,
@@ -320,7 +323,9 @@ fn build_text_engine(
     (Arc::new(engine), None)
 }
 
-/// Kokoro : le paquet choisi s'il se charge ici (`models::resolve`), sinon
+/// Kokoro : le paquet d'un accélérateur forcé s'il est installé
+/// (`models::forced_choice`), sinon le choix enregistré s'il se charge ici
+/// (`models::resolve`), sinon
 /// les autres installés de sa famille dans l'ordre des accélérateurs, chacun
 /// essayé une fois, puis la voix du système. Rien ne se télécharge.
 ///
@@ -339,7 +344,12 @@ fn build_kokoro(
     let here = |p: &ModelPackage| configured == Some(p) && crate::models::kokoro_dir(&settings.model_path).is_some();
     let installed = |p: &ModelPackage| here(p) || (machine.installed)(p);
     let loadable = |r| (machine.loadable)(r);
-    let resolved = configured.and_then(|c| crate::models::resolve(c.id, &machine.accelerators, loadable, installed));
+    let resolved = configured.and_then(|c| {
+        machine
+            .forced
+            .and_then(|a| crate::models::forced_choice(c.id, a, loadable, installed))
+            .or_else(|| crate::models::resolve(c.id, &machine.accelerators, loadable, installed))
+    });
     let others = configured.map_or_else(Vec::new, |c| crate::models::fallbacks(c.family, &machine.accelerators, loadable, installed));
     // Rien qui se charge ici : le choix tel quel, pour dire pourquoi il échoue.
     let first = resolved.or(configured);
@@ -681,6 +691,7 @@ mod tests {
     ) -> Machine<'a> {
         Machine {
             accelerators: vec![crate::compute::Accelerator::Mlx, crate::compute::Accelerator::OrtCpu],
+            forced: None,
             loadable,
             installed,
             path,
@@ -726,6 +737,27 @@ mod tests {
         let note = note.unwrap();
         assert!(note.contains("échec 1"), "la raison du choix : {note}");
         assert_eq!(engine.readiness(), Readiness::Fallback(note), "puis la voix du système");
+    }
+
+    /// R34 : int8 enregistré et installé, MLX installé et chargeable : int8.
+    /// Forcé sur MLX : MLX.
+    #[test]
+    fn the_saved_package_is_tried_first_unless_an_accelerator_is_forced() {
+        let root = two_kokoros("r34");
+        let path = |p: &crate::models::ModelPackage| Some(root.join(p.family).join(p.file_name()));
+        let settings = kokoro_settings(&root.join("kokoro/model_quantized.onnx").to_string_lossy());
+        let mut machine = mac_machine(&|_| true, &|_| true, &path);
+        for (forced, expected) in [(None, "model_quantized.onnx"), (Some(crate::compute::Accelerator::Mlx), "kokoro-v1_0.safetensors")] {
+            machine.forced = forced;
+            let mut tried = Vec::new();
+            let (_, note) = build_kokoro(&settings, &machine, |settings, _| {
+                tried.push(settings.model_path.clone());
+                Ok(Arc::new(Idle("test")) as Arc<dyn kokoro::KokoroBackend>)
+            });
+            assert_eq!(note, None);
+            assert_eq!(tried.len(), 1, "{tried:?}");
+            assert!(tried[0].ends_with(expected), "forcé {forced:?} : {tried:?}");
+        }
     }
 
     #[test]

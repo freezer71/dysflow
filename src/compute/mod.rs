@@ -68,10 +68,22 @@ pub fn forced(found: Vec<Accelerator>, value: Option<&str>) -> (Vec<Accelerator>
 /// L'avertissement d'un accélérateur forcé indisponible n'est rendu qu'au
 /// premier appel qui le produit : un moteur reconstruit ne le répète pas.
 pub fn ordered(app_mlx: bool) -> (Vec<Accelerator>, Option<String>) {
-    static VALUE: OnceLock<Option<String>> = OnceLock::new();
     static WARNED: AtomicBool = AtomicBool::new(false);
-    let value = VALUE.get_or_init(|| std::env::var("DYSFLOW_ACCELERATOR").ok());
-    ordered_with(available(app_mlx), value.as_deref(), &WARNED)
+    ordered_with(available(app_mlx), forced_value(), &WARNED)
+}
+
+/// L'accélérateur que `DYSFLOW_ACCELERATOR` force, s'il est dans
+/// `available(app_mlx)` : il fait passer un paquet installé de cet
+/// accélérateur avant le choix enregistré (`models::forced_choice`).
+pub fn forced_accelerator(app_mlx: bool) -> Option<Accelerator> {
+    let value = forced_value()?.trim();
+    available(app_mlx).into_iter().find(|a| a.name() == value)
+}
+
+/// `DYSFLOW_ACCELERATOR`, lu une fois par processus.
+fn forced_value() -> Option<&'static str> {
+    static VALUE: OnceLock<Option<String>> = OnceLock::new();
+    VALUE.get_or_init(|| std::env::var("DYSFLOW_ACCELERATOR").ok()).as_deref()
 }
 
 /// `forced`, dont l'avertissement ne sort qu'une fois par `warned`.

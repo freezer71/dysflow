@@ -788,11 +788,12 @@ pub fn fallbacks(
 
 /// Le paquet à charger pour un choix enregistré : lui, sinon un installé de sa famille.
 ///
-/// `configured` est l'identifiant du paquet choisi. Il sert s'il est installé,
-/// chargeable ici et de l'accélérateur le mieux placé parmi les installés de
-/// sa famille ; sinon, le premier de ces installés (un identifiant MLX lu
-/// sous Linux, un accélérateur forcé). `None` : rien d'installé qui se charge
-/// — le repli ne télécharge jamais rien.
+/// `configured` est l'identifiant du paquet choisi. Il sert dès qu'il est
+/// installé et chargeable ici, même à côté d'un moteur mieux placé (« mêmes
+/// réglages », D7) ; sinon, le premier installé de sa famille dans l'ordre des
+/// accélérateurs (un identifiant MLX lu sous Linux). Un accélérateur forcé
+/// passe avant lui par `forced_choice`. `None` : rien d'installé qui se
+/// charge — le repli ne télécharge jamais rien.
 pub fn resolve(
     configured: &str,
     accelerators: &[Accelerator],
@@ -801,12 +802,20 @@ pub fn resolve(
 ) -> Option<&'static ModelPackage> {
     let chosen = CATALOG.iter().find(|p| p.id == configured)?;
     let candidates = fallbacks(chosen.family, accelerators, loadable, installed);
-    let best = candidates.first()?.runtime.accelerator();
-    candidates
-        .iter()
-        .copied()
-        .find(|p| p.id == chosen.id && p.runtime.accelerator() == best)
-        .or_else(|| candidates.first().copied())
+    candidates.iter().copied().find(|p| p.id == chosen.id).or_else(|| candidates.first().copied())
+}
+
+/// Le paquet qu'un accélérateur forcé (`DYSFLOW_ACCELERATOR`) fait charger
+/// pour la famille de `configured` : le premier installé et chargeable de cet
+/// accélérateur. `None` : rien d'installé pour lui, `resolve` décide.
+pub fn forced_choice(
+    configured: &str,
+    forced: Accelerator,
+    loadable: impl Fn(Runtime) -> bool,
+    installed: impl Fn(&ModelPackage) -> bool,
+) -> Option<&'static ModelPackage> {
+    let chosen = CATALOG.iter().find(|p| p.id == configured)?;
+    fallbacks(chosen.family, &[forced], loadable, installed).into_iter().next()
 }
 
 /// Catalogue restreint à ce que ce binaire sait charger : Kokoro MLX quand
@@ -1308,6 +1317,16 @@ fn fetch_with(
         Resume::FromScratch => 0,
     };
 
+    // Sous test, jamais de réseau : seuls les serveurs locaux des tests
+    // (`127.0.0.1`) sont joignables. Refusé avant toute connexion.
+    #[cfg(test)]
+    if !url.starts_with("http://127.0.0.1:") {
+        anyhow::bail!(crate::tr!(
+            en = "tests never reach the network: {url} refused",
+            fr = "les tests n'atteignent jamais le réseau : {url} refusé"
+        ));
+    }
+
     // Un serveur qui ne répond plus ne doit pas figer l'installation : sans
     // délai, `d` restait sans effet et toute autre installation refusée.
     let agent = ureq::AgentBuilder::new()
@@ -1806,11 +1825,35 @@ mod tests {
         assert_eq!(warning, None);
         assert_eq!(order.first(), Some(&Accelerator::OrtCpu));
         let all = |_: &ModelPackage| true;
-        assert_eq!(resolve("kokoro_82m_mlx", &order, mac_terminal, all).map(|p| p.id), Some("kokoro_82m_int8"));
+        assert_eq!(forced_choice("kokoro_82m_mlx", Accelerator::OrtCpu, mac_terminal, all).map(|p| p.id), Some("kokoro_82m_int8"));
+        assert_eq!(forced_choice("kokoro_82m_int8", Accelerator::Mlx, mac_terminal, all).map(|p| p.id), Some("kokoro_82m_mlx"));
         assert_eq!(ids(&fallbacks("kokoro", &order, mac_terminal, all)), vec!["kokoro_82m_int8", "kokoro_82m_mlx"]);
-        // Forcé, mais rien d'installé pour lui : le choix reste.
+        // Forcé, mais rien d'installé pour lui : le choix enregistré décide.
         let mlx_only = |p: &ModelPackage| p.id == "kokoro_82m_mlx";
+        assert_eq!(forced_choice("kokoro_82m_mlx", Accelerator::OrtCpu, mac_terminal, mlx_only), None);
         assert_eq!(resolve("kokoro_82m_mlx", &order, mac_terminal, mlx_only).map(|p| p.id), Some("kokoro_82m_mlx"));
+        // Forcé mais non chargeable ici : rien à forcer.
+        assert_eq!(forced_choice("kokoro_82m_int8", Accelerator::Mlx, |r| r == Runtime::KokoroOnnx, all), None);
+    }
+
+    /// R34 : le choix enregistré, installé et chargeable, reste la voix, même
+    /// à côté d'un moteur mieux placé (« mêmes réglages », D7).
+    #[test]
+    fn a_saved_installed_int8_stays_the_voice_beside_an_installed_mlx() {
+        let all = |_: &ModelPackage| true;
+        assert_eq!(resolve("kokoro_82m_int8", &MAC, mac_terminal, all).map(|p| p.id), Some("kokoro_82m_int8"));
+        assert_eq!(resolve("kokoro_82m_mlx", &MAC, mac_terminal, all).map(|p| p.id), Some("kokoro_82m_mlx"));
+    }
+
+    /// R35 : aucun test n'atteint le réseau. Le vrai départ d'un
+    /// téléchargement, appelé sous test, est refusé avant toute connexion.
+    #[test]
+    fn a_real_download_is_refused_under_tests() {
+        let download = Download::start(package("kokoro_82m_int8")).unwrap();
+        let ending = wait(&download);
+        let Progress::Failed(reason) = ending else { panic!("pas refusé : {ending:?}") };
+        assert!(reason.contains("huggingface.co"), "{reason}");
+        assert!(reason.contains("network") || reason.contains("réseau"), "{reason}");
     }
 
     #[test]
