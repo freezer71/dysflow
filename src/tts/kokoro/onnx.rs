@@ -30,32 +30,41 @@ const LIBRARY: &str = "libonnxruntime.so";
 
 /// La bibliothèque ORT : `DYSFLOW_ORT_LIB`, à côté du binaire (liens
 /// symboliques résolus), dans un `lib/` voisin, sinon le nom nu (chemins de
-/// recherche du système). Sous Windows, jamais un nom nu : la recherche de
-/// DLL prendrait `System32\onnxruntime.dll`, un autre ORT que le nôtre ; on
-/// rend alors le chemin à côté du binaire, même absent, et le message
-/// « introuvable » le nomme.
-pub fn library_path() -> PathBuf {
-    library_path_from(std::env::var_os("DYSFLOW_ORT_LIB"))
+/// recherche du système).
+///
+/// Sous Windows, jamais un nom nu trouvé par Dysflow : la recherche de DLL
+/// prendrait `System32\onnxruntime.dll`, un autre ORT que le nôtre. On rend
+/// alors le chemin à côté du binaire, même absent (le message « introuvable »
+/// le nomme), et une erreur quand le dossier du binaire lui-même est
+/// introuvable (`exe_dir`). Seule exception : un nom nu dans
+/// `DYSFLOW_ORT_LIB`, que l'utilisateur pose lui-même pour demander la
+/// recherche du système ; il reste nu, sur tous les systèmes.
+pub fn library_path() -> Result<PathBuf> {
+    library_path_from(std::env::var_os("DYSFLOW_ORT_LIB"), super::phonemes::exe_dir(), cfg!(windows))
 }
 
-/// `library_path` avec la valeur de `DYSFLOW_ORT_LIB` en argument : les essais
-/// n'ont pas à modifier l'environnement du processus (partagé entre fils).
-fn library_path_from(explicit: Option<std::ffi::OsString>) -> PathBuf {
+/// `library_path` avec `DYSFLOW_ORT_LIB`, le dossier du binaire et le système
+/// en arguments : les essais n'ont pas à modifier l'environnement du
+/// processus (partagé entre fils), et voient la règle de Windows partout.
+fn library_path_from(explicit: Option<std::ffi::OsString>, exe_dir: Option<PathBuf>, windows: bool) -> Result<PathBuf> {
     if let Some(path) = explicit {
-        return explicit_library(path);
+        return Ok(explicit_library(path));
     }
-    if let Some(dir) = super::phonemes::exe_dir() {
-        for candidate in [dir.join(LIBRARY), dir.join("lib").join(LIBRARY), dir.join("../lib").join(LIBRARY)] {
-            if candidate.is_file() {
-                return candidate;
-            }
+    let Some(dir) = exe_dir else {
+        if windows {
+            bail!(crate::tr!(
+                "ONNX Runtime not searched: the folder of dysflow.exe cannot be found (DYSFLOW_ORT_LIB=<path to onnxruntime.dll> names it)",
+                "ONNX Runtime non cherché : le dossier de dysflow.exe est introuvable (DYSFLOW_ORT_LIB=<chemin d'onnxruntime.dll> le désigne)"
+            ));
+        }
+        return Ok(PathBuf::from(LIBRARY));
+    };
+    for candidate in [dir.join(LIBRARY), dir.join("lib").join(LIBRARY), dir.join("../lib").join(LIBRARY)] {
+        if candidate.is_file() {
+            return Ok(candidate);
         }
     }
-    #[cfg(windows)]
-    if let Some(dir) = super::phonemes::exe_dir() {
-        return dir.join(LIBRARY);
-    }
-    PathBuf::from(LIBRARY)
+    Ok(if windows { dir.join(LIBRARY) } else { PathBuf::from(LIBRARY) })
 }
 
 /// `DYSFLOW_ORT_LIB` : un chemin relatif devient absolu (depuis le dossier
@@ -170,7 +179,7 @@ pub fn environment(library: &Path) -> Result<()> {
 pub fn check_install() -> Result<String> {
     use super::phonemes::{data_dir, EspeakProcess, Phonemizer};
 
-    let library = library_path();
+    let library = library_path()?;
     let version = version_of(&library)?;
     check_version(&version)?;
     environment(&library)?;
@@ -220,7 +229,7 @@ impl KokoroBackend for OrtBackend {
     }
 
     fn load(&self, model_dir: &Path) -> Result<()> {
-        let library = library_path();
+        let library = library_path()?;
         check_version(&version_of(&library)?)?;
         // `ort` charge la bibliothèque vérifiée, une fois par processus (un
         // second appel garde la première), télémétrie coupée.
@@ -363,7 +372,7 @@ pub(crate) fn assert_no_telemetry_trace(test: &str, work: impl FnOnce()) {
         child.env_remove(switch);
     }
     if std::env::var_os("DYSFLOW_ORT_LIB").is_some() {
-        child.env("DYSFLOW_ORT_LIB", library_path());
+        child.env("DYSFLOW_ORT_LIB", library_path().unwrap());
     }
     let out = child.output().unwrap();
     let stdout = String::from_utf8_lossy(&out.stdout);
@@ -406,9 +415,32 @@ mod tests {
     #[test]
     fn on_windows_the_library_is_never_a_bare_name() {
         // Un nom nu laisserait Windows prendre System32\onnxruntime.dll.
-        let path = library_path_from(None);
+        let path = library_path().unwrap();
         assert!(path.is_absolute(), "{}", path.display());
         assert!(path.ends_with(LIBRARY), "{}", path.display());
+    }
+
+    #[test]
+    fn without_the_folder_of_the_binary_windows_gets_an_error_never_a_bare_name() {
+        let err = library_path_from(None, None, true).unwrap_err().to_string();
+        assert!(err.contains("dysflow.exe") && err.contains("DYSFLOW_ORT_LIB"), "{err}");
+        // Ailleurs, le nom nu : les chemins de recherche du système.
+        assert_eq!(library_path_from(None, None, false).unwrap(), PathBuf::from(LIBRARY));
+    }
+
+    #[test]
+    fn beside_a_binary_without_the_library_windows_names_the_absent_file() {
+        let dir = std::env::temp_dir().join("dysflow-sans-ort");
+        assert_eq!(library_path_from(None, Some(dir.clone()), true).unwrap(), dir.join(LIBRARY));
+        assert_eq!(library_path_from(None, Some(dir), false).unwrap(), PathBuf::from(LIBRARY));
+    }
+
+    #[test]
+    fn a_bare_name_in_dysflow_ort_lib_stays_bare_even_on_windows() {
+        // L'exception : l'utilisateur demande lui-même la recherche du système.
+        for windows in [true, false] {
+            assert_eq!(library_path_from(Some(LIBRARY.into()), None, windows).unwrap(), PathBuf::from(LIBRARY));
+        }
     }
 
     #[test]

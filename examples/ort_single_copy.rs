@@ -113,7 +113,7 @@ fn run(failures: &mut Vec<String>) -> Result<()> {
     // 3. Les deux côtés ont le même ORT, celui qu'on livre : la vérification
     // que les modèles sherpa font avant de se charger, gardée pour le
     // processus (`sherpa::same_runtime`).
-    let library = onnx::library_path();
+    let library = onnx::library_path()?;
     let sherpa_version = sherpa::onnxruntime_version()?;
     println!("3. ONNX Runtime : Kokoro {} ({}), sherpa-onnx {sherpa_version}", onnx::version_of(&library)?, library.display());
     match sherpa::same_runtime() {

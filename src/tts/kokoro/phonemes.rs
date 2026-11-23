@@ -31,15 +31,23 @@ pub trait Phonemizer: Send {
 /// borner la taille d'un lot.
 const MAX_LINE: usize = 900;
 /// Un lot tient dans le tampon d'un tube vide (16 Kio sous macOS, 4 Kio
-/// pour les tubes de la bibliothèque standard sous Windows) : l'écrire ne
-/// bloque jamais, même si le programme ne lit plus. La moitié du tampon,
-/// pour la marge.
+/// pour les tubes de la bibliothèque standard sous Windows), à moitié pour la
+/// marge : son écriture rend la main tout de suite, avant même que le
+/// programme ne le lise. Un programme qui ne lit plus ne bloque de toute façon
+/// que le fil d'écriture, `WRITE_TIMEOUT` au plus (`Running::send`).
+/// Mesuré sous macOS (M5, machine chargée, 23 nov. 2026), 400 phrases
+/// (39 Ko) d'une requête, fil d'écriture compris : 32,0 à 32,6 ms en 20 lots
+/// de 2 Kio, 32,1 à 32,3 ms en 5 lots de 8 Kio (`the_cost_of_small_batches`).
+/// Les petits lots ne coûtent rien de mesurable : la phonétisation domine.
+/// Les tubes de Windows restent à mesurer par la CI.
 const MAX_BATCH: usize = if cfg!(windows) { 2 * 1024 } else { 8 * 1024 };
 /// La plus longue trame de réponse acceptée (les phonèmes d'une ligne de
 /// `MAX_LINE` octets en font bien moins).
 const MAX_FRAME: usize = 64 * 1024;
 /// Au-delà, le programme est tenu pour bloqué.
 const ANSWER_TIMEOUT: Duration = Duration::from_secs(2);
+/// Au-delà, une écriture est tenue pour bloquée : le programme ne lit plus.
+const WRITE_TIMEOUT: Duration = ANSWER_TIMEOUT;
 /// La ponctuation que misaki garde (phonemizer, `preserve_punctuation`).
 const MARKS: &[char] = &[';', ':', ',', '.', '!', '?', '¡', '¿', '—', '…', '"', '«', '»', '“', '”'];
 
@@ -253,10 +261,12 @@ pub(crate) fn finish(language: &str, raw: &str) -> String {
     ps.replace('«', "(").replace('»', ")").trim().to_string()
 }
 
-/// Un lien avec `dysflow-espeak` : ce qu'on lui écrit, les trames qu'il
-/// renvoie (lues par un fil), et le processus lui-même.
+/// Un lien avec `dysflow-espeak` : les requêtes qu'on lui écrit (par un fil,
+/// qui rend le résultat de chaque écriture), les trames qu'il renvoie (lues
+/// par un autre fil), et le processus lui-même.
 struct Running {
-    writer: Box<dyn Write + Send>,
+    requests: mpsc::Sender<Vec<u8>>,
+    written: Receiver<std::io::Result<()>>,
     frames: Receiver<Vec<u8>>,
     child: Option<Child>,
 }
@@ -295,21 +305,46 @@ impl Running {
                 }
             }
         });
-        let mut running = Self { writer, frames, child };
+        // Les écritures dans leur fil : une écriture bloquée n'y bloque que
+        // lui. Relâché, `Running` tue le processus, ce qui la débloque (tube
+        // fermé), et le fil s'arrête.
+        let (requests, to_write) = mpsc::channel::<Vec<u8>>();
+        let (done, written) = mpsc::channel();
+        let writing = std::thread::Builder::new().name("dysflow-espeak-write".into()).spawn(move || {
+            let mut writer = writer;
+            for request in to_write {
+                let outcome = writer.write_all(&request).and_then(|()| writer.flush());
+                let failed = outcome.is_err();
+                if done.send(outcome).is_err() || failed {
+                    break;
+                }
+            }
+        });
+        let mut running = Self { requests, written, frames, child };
         // Désormais, `Running` tue et attend le processus s'il est relâché.
         thread.context(crate::tr!("dysflow-espeak reading thread", "fil de lecture de dysflow-espeak"))?;
+        writing.context(crate::tr!("dysflow-espeak writing thread", "fil d'écriture de dysflow-espeak"))?;
         let mut request = Vec::new();
         push_frame(&mut request, voice.as_bytes());
-        running.send(&request)?;
+        running.send(request)?;
         if running.read_frame()? != b"ok" {
             bail!(crate::tr!("dysflow-espeak refuses the voice", "dysflow-espeak refuse la voix"));
         }
         Ok(running)
     }
 
-    fn send(&mut self, request: &[u8]) -> Result<()> {
-        self.writer.write_all(request).context(crate::tr!("writing to dysflow-espeak", "écriture vers dysflow-espeak"))?;
-        self.writer.flush().context(crate::tr!("writing to dysflow-espeak", "écriture vers dysflow-espeak"))
+    /// Écrit `request` par le fil d'écriture, et attend qu'elle soit écrite,
+    /// `WRITE_TIMEOUT` au plus.
+    fn send(&mut self, request: Vec<u8>) -> Result<()> {
+        let lost = || anyhow!(crate::tr!("writing to dysflow-espeak", "écriture vers dysflow-espeak"));
+        self.requests.send(request).map_err(|_| lost())?;
+        match self.written.recv_timeout(WRITE_TIMEOUT) {
+            Ok(outcome) => outcome.context(crate::tr!("writing to dysflow-espeak", "écriture vers dysflow-espeak")),
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                bail!(crate::tr!("dysflow-espeak no longer reads", "dysflow-espeak ne lit plus"))
+            }
+            Err(mpsc::RecvTimeoutError::Disconnected) => Err(lost()),
+        }
     }
 
     fn read_frame(&self) -> Result<Vec<u8>> {
@@ -326,27 +361,22 @@ impl Running {
         alive && matches!(self.frames.try_recv(), Err(mpsc::TryRecvError::Empty))
     }
 
-    /// Une requête, en lots d'au plus `MAX_BATCH` octets : une réponse par
-    /// ligne, puis « ok ». Le découpage ne tient qu'aux longueurs.
-    fn ask(&mut self, lines: &[String]) -> Result<Vec<String>> {
+    /// Une requête, en lots d'au plus `max_batch` octets (`MAX_BATCH`) : une
+    /// réponse par ligne, puis « ok ». Le découpage ne tient qu'aux longueurs.
+    fn ask(&mut self, lines: &[String], max_batch: usize) -> Result<Vec<String>> {
         if lines.iter().any(|l| l.len() > MAX_LINE) {
             bail!(crate::tr!("input too long for dysflow-espeak", "entrée trop longue pour dysflow-espeak"));
         }
         let mut answers = Vec::with_capacity(lines.len());
         let mut start = 0;
         while start < lines.len() {
-            let mut size = 4;
-            let mut end = start;
-            while end < lines.len() && (end == start || size + 4 + lines[end].len() <= MAX_BATCH) {
-                size += 4 + lines[end].len();
-                end += 1;
-            }
-            let mut request = Vec::with_capacity(size);
+            let end = batch_end(lines, start, max_batch);
+            let mut request = Vec::with_capacity(max_batch);
             request.extend_from_slice(&((end - start) as u32).to_le_bytes());
             for line in &lines[start..end] {
                 push_frame(&mut request, line.as_bytes());
             }
-            self.send(&request)?;
+            self.send(request)?;
             for _ in start..end {
                 answers.push(String::from_utf8_lossy(&self.read_frame()?).into_owned());
             }
@@ -357,6 +387,18 @@ impl Running {
         }
         Ok(answers)
     }
+}
+
+/// La fin (exclue) du lot qui commence à `start` : au moins une ligne, puis
+/// tant que le lot, compte et longueurs compris, tient dans `max_batch` octets.
+fn batch_end(lines: &[String], start: usize, max_batch: usize) -> usize {
+    let mut size = 4;
+    let mut end = start;
+    while end < lines.len() && (end == start || size + 4 + lines[end].len() <= max_batch) {
+        size += 4 + lines[end].len();
+        end += 1;
+    }
+    end
 }
 
 impl Drop for Running {
@@ -381,11 +423,17 @@ enum Launcher {
 pub struct EspeakProcess {
     launcher: Launcher,
     running: HashMap<&'static str, Running>,
+    /// `MAX_BATCH`, sauf dans la mesure du coût des lots.
+    max_batch: usize,
 }
 
 impl EspeakProcess {
     pub fn new(program: PathBuf, data: Option<PathBuf>) -> Self {
-        Self { launcher: Launcher::Program { program, data }, running: HashMap::new() }
+        Self::with_launcher(Launcher::Program { program, data })
+    }
+
+    fn with_launcher(launcher: Launcher) -> Self {
+        Self { launcher, running: HashMap::new(), max_batch: MAX_BATCH }
     }
 
     /// Le programme trouvé, ou la raison de son absence.
@@ -443,7 +491,7 @@ impl EspeakProcess {
             self.running.insert(voice, running);
         }
         let running = self.running.get_mut(voice).expect("lancé juste au-dessus");
-        let outcome = running.ask(lines);
+        let outcome = running.ask(lines, self.max_batch);
         if outcome.is_err() {
             self.running.remove(voice);
         }
@@ -594,7 +642,7 @@ mod tests {
                 }
             }
         };
-        EspeakProcess { launcher: Launcher::Fake(Arc::new(run)), running: HashMap::new() }
+        EspeakProcess::with_launcher(Launcher::Fake(Arc::new(run)))
     }
 
     fn echo_frames(items: &[String]) -> Vec<Vec<u8>> {
@@ -762,11 +810,30 @@ mod tests {
                 std::thread::sleep(std::time::Duration::from_secs(20));
             }
         };
-        let mut espeak = EspeakProcess { launcher: Launcher::Fake(Arc::new(run)), running: HashMap::new() };
+        let mut espeak = EspeakProcess::with_launcher(Launcher::Fake(Arc::new(run)));
         let items: Vec<String> = (0..2000).map(|i| format!("mot numéro {i} assez long pour remplir")).collect();
         let t = std::time::Instant::now();
         assert!(espeak.phonemize("fr", &items).is_err());
         assert!(t.elapsed() < std::time::Duration::from_secs(6), "{:?}", t.elapsed());
+    }
+
+    #[test]
+    fn a_write_larger_than_a_pipe_to_a_helper_that_stops_reading_fails_in_time() {
+        // Un seul lot bien plus grand que le tampon d'un tube : son écriture
+        // bloque, le programme ne lisant plus. Seul le fil d'écriture
+        // attend ; la requête échoue après `WRITE_TIMEOUT`.
+        let run = |mut r: PipeReader, mut w: PipeWriter| {
+            if read_frame(&mut r).is_some() && write_raw(&mut w, &framed(&[b"ok".to_vec()])).is_ok() {
+                std::thread::sleep(std::time::Duration::from_secs(20));
+            }
+        };
+        let mut espeak = EspeakProcess::with_launcher(Launcher::Fake(Arc::new(run)));
+        espeak.max_batch = 1 << 20;
+        let items: Vec<String> = (0..4000).map(|i| format!("mot numéro {i} assez long pour remplir")).collect();
+        let t = std::time::Instant::now();
+        let err = espeak.phonemize("fr", &items).unwrap_err().to_string();
+        assert!(err.contains("ne lit plus") || err.contains("no longer reads"), "{err}");
+        assert!(t.elapsed() < 3 * WRITE_TIMEOUT + std::time::Duration::from_secs(1), "{:?}", t.elapsed());
     }
 
     /// Les morceaux `<…>` renvoyés par le faux, dans l'ordre.
@@ -975,6 +1042,52 @@ mod tests {
             for _ in 0..1000 {
                 assert_eq!(espeak.phonemize(language, &items).unwrap(), alone);
             }
+        }
+    }
+
+    /// Le coût des lots : un long texte (400 phrases, ~32 Kio) phonétisé
+    /// d'une requête, en lots de 2 Kio (Windows) puis de 8 Kio (ailleurs).
+    /// Affiche le temps par requête et par lot (médianes de 15 passages, à
+    /// chaud). Mêmes variables que l'essai précédent, avec `--nocapture`.
+    #[test]
+    #[ignore]
+    fn the_cost_of_small_batches() {
+        let sentence = "Le rapport de la SNCF, long de trente-sept pages, est arrivé un mardi matin.";
+        let items: Vec<String> = (0..400).map(|i| format!("{sentence} Phrase {i}.")).collect();
+        for max_batch in [2 * 1024, 8 * 1024] {
+            let mut espeak = EspeakProcess::locate().expect("dysflow-espeak construit");
+            espeak.max_batch = max_batch;
+            espeak.phonemize("fr", &items).unwrap();
+            let lines: Vec<String> = items
+                .iter()
+                .flat_map(|t| split_punctuation(&prepare(t)))
+                .filter_map(|p| match p {
+                    Piece::Text(t) => Some(split_long(&t)),
+                    Piece::Marks(_) => None,
+                })
+                .flatten()
+                .collect();
+            let mut batches = 0;
+            let mut start = 0;
+            while start < lines.len() {
+                start = batch_end(&lines, start, max_batch);
+                batches += 1;
+            }
+            let mut times: Vec<_> = (0..15)
+                .map(|_| {
+                    let t = std::time::Instant::now();
+                    espeak.phonemize("fr", &items).unwrap();
+                    t.elapsed()
+                })
+                .collect();
+            times.sort();
+            let median = times[7];
+            eprintln!(
+                "lots de {max_batch} octets : {} lignes, {} octets, {batches} lots ; requête {median:?}, {:?} par lot",
+                lines.len(),
+                lines.iter().map(|l| l.len() + 4).sum::<usize>(),
+                median / batches as u32
+            );
         }
     }
 

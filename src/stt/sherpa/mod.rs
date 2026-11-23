@@ -56,7 +56,7 @@ pub fn check_same_runtime(kokoro: &str, sherpa: &str) -> Result<()> {
 pub fn same_runtime() -> Result<String> {
     static CHECKED: OnceLock<Result<String, String>> = OnceLock::new();
     checked_once(&CHECKED, || {
-        let library = onnx::library_path();
+        let library = onnx::library_path()?;
         let kokoro = onnx::version_of(&library)?;
         check_same_runtime(&kokoro, &onnxruntime_version()?)?;
         onnx::environment(&library)?;
