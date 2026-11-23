@@ -175,7 +175,9 @@ pub const MAX_BACKLOG: usize = 5 * SAMPLE_RATE as usize;
 
 /// Donne `chunks` à `dictation` sans jamais laisser plus de `limit`
 /// échantillons attendre le modèle ; `observe` reçoit l'attente après chaque
-/// morceau. La première erreur de lecture arrête tout.
+/// morceau. La première erreur de lecture arrête tout ; une dictée arrêtée
+/// (`push_bounded` rend `false`) arrête la lecture du fichier : `finish` dit
+/// pourquoi.
 fn feed(
     dictation: &Dictation,
     chunks: impl IntoIterator<Item = Result<Vec<f32>>>,
@@ -183,7 +185,9 @@ fn feed(
     mut observe: impl FnMut(usize),
 ) -> Result<()> {
     for chunk in chunks {
-        dictation.push_bounded(&chunk?, limit);
+        if !dictation.push_bounded(&chunk?, limit) {
+            break;
+        }
         observe(dictation.backlog());
     }
     Ok(())
@@ -597,6 +601,39 @@ mod tests {
         });
         let (text, _) = run(fake, &many_utterances(20));
         assert!(text.is_err());
+    }
+
+    /// Un modèle qui ne se charge pas : la lecture du fichier s'arrête tout de
+    /// suite (quelques morceaux lus, pas le fichier), et l'erreur du chargement
+    /// est rendue. Un fichier de 4 Go ne finit pas en mémoire. On compte les
+    /// morceaux lus, pas le temps.
+    #[test]
+    fn a_dead_worker_stops_the_reading_of_the_file() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let read = Arc::new(AtomicUsize::new(0));
+        let counter = read.clone();
+        let source = (0..100_000).map(move |_| {
+            counter.fetch_add(1, Ordering::SeqCst);
+            Ok(vec![0.1; CHUNK])
+        });
+        let fake = Arc::new(Fake {
+            fail_to_load: true,
+            ..Fake::default()
+        });
+        let err = dictate(
+            source,
+            Engine::Segmented(fake, Box::new(Loud)),
+            Path::new("modele"),
+            "fr",
+            |_| {},
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("fichier du modèle absent"), "{err}");
+        let read = read.load(Ordering::SeqCst);
+        // Au plus de quoi remplir l'attente (50 morceaux) avant que le fil
+        // mort soit vu, jamais les 100 000.
+        assert!(read <= MAX_BACKLOG / CHUNK + 10, "{read} morceaux lus");
     }
 
     #[test]

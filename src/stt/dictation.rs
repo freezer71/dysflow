@@ -187,16 +187,25 @@ impl Dictation {
     /// dépose `samples`. La mémoire reste bornée quelle que soit la longueur
     /// de la source : `limit` plus ce morceau, plus les énoncés que le fil
     /// vient de clore (chacun d'au plus 12 s). Jamais pour une capture en
-    /// direct, qui ne doit jamais attendre (R41) : `push`. Rend la main sans
-    /// attendre si la dictée est finie, annulée, ou si son fil s'est arrêté
-    /// (le modèle ne s'est pas chargé) : `finish` dit alors pourquoi.
-    pub fn push_bounded(&self, samples: &[f32], limit: usize) {
+    /// direct, qui ne doit jamais attendre (R41) : `push`, qui ne regarde ni
+    /// le fil ni l'attente.
+    ///
+    /// Rend `true` si `samples` est déposé, `false` si la dictée est arrêtée
+    /// et que rien ne sera plus lu : annulée, fin déjà demandée, `finish` déjà
+    /// pris, ou fil terminé (le modèle ne s'est pas chargé). Rien n'est alors
+    /// déposé : l'appelant cesse de lire sa source et appelle `finish`, qui
+    /// rend l'erreur du chargement ou l'annulation. Sans ce signal, l'audio
+    /// s'entasserait dans l'arrivée pour un fil qui ne le prendra jamais.
+    #[must_use = "false : la dictée est arrêtée, cesser de lire la source"]
+    pub fn push_bounded(&self, samples: &[f32], limit: usize) -> bool {
         loop {
-            let over = self.backlog() > limit;
             let stopped = self.shared.cancelled.load(Ordering::SeqCst)
                 || lock(&self.shared.inbox).finish_at.is_some()
                 || lock(&self.worker).as_ref().is_none_or(|w| w.is_finished());
-            if !over || stopped {
+            if stopped {
+                return false;
+            }
+            if self.backlog() <= limit {
                 break;
             }
             // Le fil réveille ; le délai couvre une notification manquée.
@@ -208,6 +217,7 @@ impl Dictation {
             );
         }
         self.push(samples);
+        true
     }
 
     /// Fin de la parole : lit tout ce qui a été dit (le chargement fini, s'il
