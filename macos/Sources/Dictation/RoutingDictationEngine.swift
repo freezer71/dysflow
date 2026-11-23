@@ -30,6 +30,8 @@ final class RoutingDictationEngine: DictationEngine {
     @ObservationIgnored private let make: (String, URL) -> DictationEngine?
     /// Le coureur partagé des modèles de dictée : `releaseModel` le libère.
     @ObservationIgnored let runner: SpeechModelRunner?
+    /// Le cœur Rust, qui garde aussi un modèle : `releaseModel` le libère.
+    @ObservationIgnored let core: CoreDictation?
     /// Au début de chaque dictée (relire le délai de libération du modèle).
     @ObservationIgnored var willStart: @MainActor () -> Void = {}
     /// Le moteur qui a démarré : `finish` et `cancel` vont à lui.
@@ -45,11 +47,13 @@ final class RoutingDictationEngine: DictationEngine {
          chosen: @escaping () -> String,
          directory: @escaping (String) -> URL?,
          runner: SpeechModelRunner? = nil,
+         core: CoreDictation? = nil,
          make: @escaping (String, URL) -> DictationEngine?) {
         self.system = system
         self.chosen = chosen
         self.directory = directory
         self.runner = runner
+        self.core = core
         self.make = make
     }
 
@@ -101,12 +105,17 @@ final class RoutingDictationEngine: DictationEngine {
     }
 
     /// Le modèle de dictée choisi est supprimé, ou un autre est choisi : le
-    /// coureur le libère (hors du fil principal : la libération attend une
+    /// coureur Swift et le cœur Rust libèrent le leur, chacun avec sa part
+    /// du budget de MLX (hors du fil principal : la libération attend une
     /// lecture en cours), et le repli affiché, périmé, s'efface.
     func releaseModel() {
         fallbackNotice = nil
-        guard let runner else { return }
-        Task.detached(priority: .utility) { runner.release() }
+        let runner = runner, core = core
+        guard runner != nil || core != nil else { return }
+        Task.detached(priority: .utility) {
+            runner?.release()
+            core?.release()
+        }
     }
 
     /// `instead` : le modèle qui manque (le repli est dit).

@@ -17,6 +17,8 @@ use dysflow::tts::{self, silent::SilentEngine, TtsEngine};
 
 uniffi::setup_scaffolding!();
 
+mod dictation;
+
 #[derive(Debug, thiserror::Error, uniffi::Error)]
 pub enum DysflowError {
     #[error("{message}")]
@@ -949,11 +951,7 @@ impl DysflowReader {
     /// Le dossier d'un paquet installé (dictée : l'app y charge le modèle).
     /// Ne passe pas par le fil du lecteur.
     pub fn model_directory(&self, id: String) -> Option<String> {
-        let package = dysflow::models::available_with(true).into_iter().find(|p| p.id == id)?;
-        dysflow::models::is_installed(package)
-            .then(|| dysflow::models::install_path(package))
-            .flatten()
-            .and_then(|p| p.parent().map(|d| d.to_string_lossy().into_owned()))
+        dictation::installed_directory(&id).map(|d| d.to_string_lossy().into_owned())
     }
 
     /// Les sorties audio branchées, et celle que le système choisit. Ne passe

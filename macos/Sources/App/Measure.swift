@@ -463,10 +463,16 @@ enum Measure {
         fflush(stdout)
     }
 
-    /// Ce que MLX tient : tableaux vivants et cache, en Mo.
+    /// Ce que MLX tient : tableaux vivants et cache, en Mo ; et la copie Rust
+    /// (le modèle de dictée du cœur), quand le moteur l'a. Jamais sous
+    /// `MLXGate` : la copie Rust se lit sur son fil, sous le même verrou.
     nonisolated static func compteursMLX() -> String {
         let c = DictationMLX.counters()
-        return "mlx_actif=\(c.active / 1_048_576) mlx_cache=\(c.cache / 1_048_576)"
+        var line = "mlx_actif=\(c.active / 1_048_576) mlx_cache=\(c.cache / 1_048_576)"
+        if let rust = coreMlxMemory() {
+            line += " mlx_rust_actif=\(rust.active / 1_048_576) mlx_rust_cache=\(rust.cache / 1_048_576)"
+        }
+        return line
     }
 
     /// Le chemin du moteur Rust, sans son : la voix de la configuration

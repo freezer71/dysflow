@@ -319,7 +319,8 @@ extension Dictation {
     /// `directory`), avec le coureur partagé de la dictée (`runner`) : un
     /// seul modèle en mémoire, sous `MLXGate`, plafonds par `MLXBudget`.
     @MainActor
-    static func makeTrialEngine(id: String, directory: URL?, runner: SpeechModelRunner?) -> TrialEngine? {
+    static func makeTrialEngine(id: String, directory: URL?, runner: SpeechModelRunner?,
+                                core: CoreDictation = .live) -> TrialEngine? {
         if id == DictationModel.system {
             #if compiler(>=6.2)
             if #available(macOS 26, *) { return TrialEngine(engine: SystemDictationEngine()) }
@@ -327,7 +328,10 @@ extension Dictation {
             return nil
         }
         guard let directory, let runner,
-              let engine = makeModelEngine(id: id, directory: directory, runner: runner) else { return nil }
+              let engine = makeModelEngine(id: id, directory: directory, runner: runner, core: core) else { return nil }
+        if CoreDictation.dictates(id) {
+            return coreTrialEngine(id: id, engine: engine, directory: directory, runner: runner, core: core)
+        }
         // Le modèle de la dictée reste chargé pour elle ; un autre part dès
         // la fin de l'essai (hors du fil principal : la libération attend
         // le verrou), sans toucher à celui qu'une dictée aurait chargé depuis.
@@ -341,6 +345,33 @@ extension Dictation {
                                let d = runner.computeTime
                                return Double(d.components.seconds) + Double(d.components.attoseconds) / 1e18
                            },
+                           release: release)
+    }
+}
+
+extension Dictation {
+    /// L'essai d'un modèle que le cœur dicte : le cœur le charge (une lecture
+    /// vide, `transcribe_once`) avant que le micro s'ouvre, le coureur Swift
+    /// ayant d'abord libéré le sien ; sa mémoire est estimée (le poids de ses
+    /// fichiers) : la copie Rust de MLX n'est pas celle que
+    /// `DictationMLX.counters` lit.
+    @MainActor
+    static func coreTrialEngine(id: String, engine: DictationEngine, directory: URL,
+                                runner: SpeechModelRunner, core: CoreDictation) -> TrialEngine {
+        let release: () -> Void = {
+            guard id != DictationModel.stored() else { return }
+            Task.detached(priority: .utility) { core.releaseIfLoaded(id) }
+        }
+        return TrialEngine(engine: engine,
+                           load: {
+                               try await Task.detached(priority: .userInitiated) {
+                                   runner.release()
+                                   _ = try core.readOnce(id, [], "")
+                                   return TrialMemory.reading(before: nil, after: nil,
+                                                              estimate: MLXBudget.weightBytes(directory))
+                               }.value
+                           },
+                           computeSeconds: { core.computeSeconds() },
                            release: release)
     }
 }

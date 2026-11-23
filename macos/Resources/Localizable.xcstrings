@@ -4003,6 +4003,16 @@
         }
       }
     },
+    "the model won’t load: no answer" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "le modèle ne se charge pas : aucune réponse"
+          }
+        }
+      }
+    },
     "the start of speech" : {
       "localizations" : {
         "fr" : {

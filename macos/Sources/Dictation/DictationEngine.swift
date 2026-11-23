@@ -159,16 +159,19 @@ enum Dictation {
         #if compiler(>=6.2)
         if #available(macOS 26, *) {
             let runner = SpeechModelRunner(load: SpeechModels.load, clearCache: SpeechModels.release)
+            let core = CoreDictation.live
             let router = RoutingDictationEngine(
                 system: SystemDictationEngine(),
                 chosen: { DictationModel.stored() },
                 directory: directory,
                 runner: runner,
-                make: { id, folder in makeModelEngine(id: id, directory: folder, runner: runner) })
+                core: core,
+                make: { id, folder in makeModelEngine(id: id, directory: folder, runner: runner, core: core) })
             let refresh: @MainActor () -> Void = {
                 Task.detached(priority: .utility) {
                     guard let minutes = await keepVoiceMinutes() else { return }
                     runner.releaseAfter = SpeechModelRunner.idleDelay(keepVoiceMinutes: minutes)
+                    core.setKeepVoiceMinutes(minutes)
                 }
             }
             router.willStart = refresh
@@ -179,11 +182,23 @@ enum Dictation {
         return nil
     }
 
-    /// Le moteur d'un modèle : Voxtral et Nemotron au fil de la parole, les
-    /// autres en relecture glissante.
+    /// Le moteur d'un modèle : ceux que le cœur Rust dicte
+    /// (`CoreDictation.dictates`) par lui ; sinon Voxtral et Nemotron au fil
+    /// de la parole, les autres en relecture glissante.
+    ///
+    /// Un seul modèle de dictée en mémoire, et une seule part de budget
+    /// (`"dictee"`, dans la copie de MLX qui le tient) : le cœur libère le
+    /// sien avant un modèle Swift, et le coureur Swift le sien avant le cœur.
+    /// Ces libérations attendent un verrou (une lecture, `MLXGate`) : hors du
+    /// fil principal, micro déjà ouvert.
     @MainActor
-    static func makeModelEngine(id: String, directory: URL, runner: SpeechModelRunner) -> DictationEngine? {
-        switch id {
+    static func makeModelEngine(id: String, directory: URL, runner: SpeechModelRunner,
+                                core: CoreDictation = .live,
+                                microphone: DictationMicrophone = .live) -> DictationEngine? {
+        if CoreDictation.dictates(id) {
+            return CoreDictationEngine(id: id, core: core, before: { runner.release() }, microphone: microphone)
+        }
+        let engine: DictationEngine? = switch id {
         case "voxtral_realtime_4bit", "nemotron_35_asr_streaming_8bit":
             StreamingDictationEngine(runner: runner, directory: directory)
         case "parakeet_tdt_v3", "parakeet_tdt_v2", "phonon_2", "canary_1b_v2_q8",
@@ -193,5 +208,9 @@ enum Dictation {
         default:
             nil
         }
+        // Avant le chargement Swift : le cœur ne tient plus de modèle (sans
+        // attendre MLXGate, que le cœur ne doit jamais attendre sous lui).
+        if engine != nil { Task.detached(priority: .userInitiated) { core.release() } }
+        return engine
     }
 }
