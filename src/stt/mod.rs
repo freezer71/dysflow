@@ -18,14 +18,14 @@ use dictation::Engine;
 use std::path::{Path, PathBuf};
 
 /// Le modèle de Silero VAD que le paquet du terminal livre à côté du binaire
-/// (`scripts/package.sh` ; empreinte épinglée dans `scripts/paquet-commun.sh`,
-/// celle de la porte).
+/// (`scripts/package.sh` ; empreinte épinglée dans
+/// `scripts/modeles-epingles.txt`, celle de la porte).
 pub const SILERO_FILE: &str = "silero_vad.onnx";
 /// Sa taille : un fichier tronqué est refusé avant d'atteindre sherpa-onnx,
 /// avec le nombre d'octets trouvés.
 pub const SILERO_BYTES: u64 = 643_854;
-/// Son empreinte SHA-256, celle de `SILERO_SHA256` dans
-/// `scripts/paquet-commun.sh` (un essai le vérifie) : un fichier de la bonne
+/// Son empreinte SHA-256, celle de `silero_vad.onnx` dans
+/// `scripts/modeles-epingles.txt` (un essai le vérifie) : un fichier de la bonne
 /// taille mais d'un autre contenu est refusé aussi, avant sherpa-onnx.
 pub const SILERO_SHA256: &str = "9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6";
 /// Vrai pour le binaire d'un paquet : `scripts/package.sh` le construit avec
@@ -185,8 +185,11 @@ mod tests {
 
     #[test]
     fn the_silero_hash_is_the_one_the_package_pins() {
-        let script = include_str!("../../scripts/paquet-commun.sh");
-        assert!(script.contains(&format!("SILERO_SHA256={SILERO_SHA256}")), "paquet-commun.sh");
+        let pins = include_str!("../../scripts/modeles-epingles.txt");
+        assert!(
+            pins.lines().any(|line| line.starts_with(&format!("{SILERO_FILE} {SILERO_SHA256} "))),
+            "scripts/modeles-epingles.txt"
+        );
     }
 
     #[test]

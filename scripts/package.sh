@@ -133,8 +133,11 @@ echo "Joint : NOTICE, THIRD-PARTY-RUST.txt et licences/"
 case ",$FEATURES," in
 *,stt-sherpa,*)
     cp "$SHERPA_LIB_DIR/$SHERPA_LIB" "$OUT/"
-    silero_fetch target/paquet/silero_vad.onnx
-    cp target/paquet/silero_vad.onnx "$OUT/"
+    # MODELS : le dossier des modèles des essais (la CI y garde Silero en
+    # cache, avec la porte) ; sinon target/paquet.
+    silero="${MODELS:-target/paquet}/silero_vad.onnx"
+    silero_fetch "$silero"
+    cp "$silero" "$OUT/"
     cp third_party/licences/sherpa-onnx-LICENSE third_party/licences/silero-vad-LICENSE "$OUT/licences/"
     echo "Joint : sherpa-onnx $SHERPA_VERSION ($SHERPA_LIB) et Silero VAD (silero_vad.onnx)"
     ;;

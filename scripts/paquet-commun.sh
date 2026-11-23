@@ -1,5 +1,5 @@
 # shellcheck shell=sh
-# shellcheck disable=SC2034 # ORT_* et SILERO_* servent à qui lit ce fichier.
+# shellcheck disable=SC2034 # ORT_* servent à qui lit ce fichier.
 # Fonctions partagées par package.sh et ort-gate.sh, à lire par `.` depuis la
 # racine du dépôt, avec PYTHON posé (Python 3) : les features du paquet,
 # téléchargement vérifié par SHA-256, ONNX Runtime 1.31.0 pris dans le paquet
@@ -116,16 +116,16 @@ ort_fetch() {
 }
 
 # Silero VAD, le détecteur de parole de la dictée, livré avec le paquet (MIT,
-# Silero Team), tel que k2-fsa le publie pour sherpa-onnx. Le même fichier que
-# la porte (ort-gate.sh) ; sa taille est aussi celle que vérifie le binaire
-# (stt::SILERO_BYTES).
-SILERO_URL=https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx
-SILERO_SHA256=9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6
-
+# Silero Team), tel que k2-fsa le publie pour sherpa-onnx. Épinglé dans
+# scripts/modeles-epingles.txt (silero_vad.onnx), avec les modèles des
+# essais : le même fichier pour le paquet, la porte (ort-gate.sh) et le bout
+# en bout, et le même cache en CI. Le binaire vérifie sa taille et son
+# empreinte (stt::SILERO_BYTES, stt::SILERO_SHA256).
+#
 # silero_fetch FICHIER : Silero VAD dans FICHIER, empreinte vérifiée (pas
 # retéléchargé s'il y est déjà, juste).
 silero_fetch() {
-    fetch_verified "$SILERO_URL" "$SILERO_SHA256" "$1"
+    fetch_pinned silero_vad.onnx "$1"
 }
 
 # Les modèles épinglés des essais (scripts/modeles-epingles.txt) : chemin

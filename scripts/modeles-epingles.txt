@@ -3,10 +3,15 @@
 #   <chemin dans le dossier des modèles> <SHA-256> <adresse, à une révision épinglée>
 # Le chemin est celui où Dysflow range le fichier (src/models.rs : la famille,
 # puis le nom), sauf test_wavs/fr.wav, l'échantillon français du dépôt de
-# Parakeet. La CI garde ces fichiers en cache sous la clé de ce fichier
+# Parakeet, et silero_vad.onnx, que le paquet livre à côté du binaire
+# (scripts/package.sh ; stt::SILERO_SHA256 en est la copie, vérifiée par un
+# essai). La CI garde ces fichiers en cache sous la clé de ce fichier
 # (hashFiles) ; un fichier absent ou d'une autre empreinte est retéléchargé de
 # son adresse, et refusé s'il n'a pas l'empreinte.
 #
+# Silero VAD, livré avec le paquet (k2-fsa, publication asr-models).
+silero_vad.onnx 9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6 https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx
+
 # Kokoro int8 (kokoro_82m_int8) : le modèle d'onnx-community, la configuration
 # et les 29 voix de mlx-community (révisions de src/models.rs).
 kokoro/model_quantized.onnx c0c02b3299fd97c34ea92a98e6d41eaa1a739c8f77bf685aac34bd7b34c1132c https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX-timestamped/resolve/dd4401a9add81ac692d20e240d22ec9dda82cc29/onnx/model_quantized.onnx

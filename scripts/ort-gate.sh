@@ -54,6 +54,8 @@ fi
 . scripts/sherpa-onnx.sh
 
 OUT="${OUT:-target/ort-gate}"
+# MODELS : le dossier de Silero et de Kokoro (en CI, le cache des modèles des
+# essais, partagé avec le bout en bout ; scripts/modeles-epingles.txt).
 MODELS="${MODELS:-target/ort-gate-models}"
 
 # Parakeet int8 : ses fichiers, et leurs empreintes (le paquet
@@ -112,7 +114,7 @@ case "$test_exes" in
 esac
 
 # Les modèles, empreintes épinglées. Silero VAD : publié par k2-fsa avec
-# sherpa-onnx, celui que le paquet livre (SILERO_*, scripts/paquet-commun.sh).
+# sherpa-onnx, celui que le paquet livre (silero_vad.onnx, scripts/modeles-epingles.txt).
 # Kokoro int8 et sa configuration : les fichiers et révisions du
 # catalogue (src/models.rs, kokoro_82m_int8), épinglés dans
 # scripts/modeles-epingles.txt.

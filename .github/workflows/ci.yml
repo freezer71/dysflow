@@ -7,6 +7,9 @@ name: CI
 on:
   push:
     branches: [main]
+    # Les publications : le bout en bout et la mise à jour tournent aussi
+    # sur l'étiquette (R49).
+    tags: ["v*"]
   pull_request:
   workflow_dispatch:
 
@@ -37,6 +40,39 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      - name: Bout en bout et mise à jour à lancer ? (chemins touchés)
+        # R49 : la mise à jour et le bout en bout (≈ 778 Mo de modèles par
+        # système) tournent sur main, les étiquettes v* et à la demande ;
+        # sur une PR, seulement si elle touche le paquet, la dictée, la voix
+        # Kokoro, Cargo.lock, les épingles ou ce fichier. Par git diff, sans
+        # action de plus : la PR contre sa base (un seul commit récupéré).
+        id: lourd
+        shell: bash
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" != pull_request ]; then
+            echo "oui=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git fetch --no-tags --depth=1 origin "$BASE"
+          oui=false
+          while IFS= read -r fichier; do
+            case "$fichier" in
+            install.sh | Cargo.lock | .github/workflows/ci.yml | \
+              scripts/package.sh | scripts/install.sh | scripts/paquet-commun.sh | \
+              scripts/sherpa-onnx.sh | scripts/build-espeak.sh | scripts/dysflow-espeak.c | \
+              scripts/elf-version-ref.py | scripts/windows-imports.py | \
+              scripts/paquet-bout-en-bout.sh | scripts/test-mise-a-jour.sh | \
+              scripts/modeles-epingles.sh | scripts/modeles-epingles.txt | \
+              src/stt/* | src/tts/kokoro/*)
+              echo "Touché : $fichier"
+              oui=true ;;
+            esac
+          done <<EOF
+          $(git diff --name-only "$BASE" HEAD)
+          EOF
+          echo "oui=$oui" >> "$GITHUB_OUTPUT"
       - name: Dépendances système (Linux)
         if: runner.os == 'Linux'
         # ALSA pour rodio/cpal ; cmake et clang pour Tesseract (feature ocr)
@@ -98,6 +134,51 @@ jobs:
           echo "CMAKE_TOOLCHAIN_FILE_aarch64_apple_darwin=$CMAKE_TOOLCHAIN_FILE_aarch64_apple_darwin" >> "$GITHUB_ENV"
           echo "MLX_RS_METAL_PATH=$MLX_RS_METAL_PATH" >> "$GITHUB_ENV"
           echo "DYSFLOW_MLX_METALLIB=$DYSFLOW_MLX_METALLIB" >> "$GITHUB_ENV"
+      - name: Clé des archives épinglées (ONNX Runtime, sherpa-onnx)
+        # Les seules lignes de version et d'empreinte des deux archives : un
+        # autre changement de ces scripts ne vide pas le cache.
+        id: archives
+        shell: bash
+        run: |
+          cle=$(grep -hE '^ *(ORT_VERSION|ORT_SHA256|SHERPA_VERSION|SHERPA_SHA256)=' \
+            scripts/paquet-commun.sh scripts/sherpa-onnx.sh | tr -d '\r ' | git hash-object --stdin)
+          echo "cle=$cle" >> "$GITHUB_OUTPUT"
+      - name: Archives d'ONNX Runtime et de sherpa-onnx (cache)
+        # Le paquet NuGet d'ONNX Runtime (≈ 160 Mo) et la bibliothèque C de
+        # sherpa-onnx (≈ 9 Mo), que ort_fetch et sherpa_fetch vérifient par
+        # leur SHA-256 et ne retéléchargent pas quand ils sont justes. Après
+        # rust-cache : son post, qui vide target/, passe après celui-ci.
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            target/ort/*.nupkg
+            target/sherpa-onnx/*.tar.bz2
+          key: archives-${{ runner.os }}-${{ runner.arch }}-${{ steps.archives.outputs.cle }}
+      - name: Modèles des essais (cache)
+        # Un seul cache de modèles par système, partagé par la porte et le
+        # bout en bout : Silero VAD, Kokoro int8 (une fois), et sous Linux
+        # x86_64 et Windows Parakeet v3 int8 avec son échantillon français,
+        # sous la clé de leurs empreintes épinglées
+        # (scripts/modeles-epingles.txt) et rien d'autre. runner.arch dans
+        # la clé : Linux x86_64, qui a le bout en bout, et Linux ARM64, qui
+        # ne l'a pas, n'ont pas le même contenu.
+        id: modeles
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/modeles
+          key: modeles-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/modeles-epingles.txt') }}
+      - name: Dossier des modèles des essais (MODELS)
+        # Lu par la porte (ort-gate.sh) et par package.sh, qui y prend
+        # silero_vad.onnx au lieu de le retélécharger.
+        shell: bash
+        run: echo "MODELS=$(cd "$RUNNER_TEMP" && pwd)/modeles" >> "$GITHUB_ENV"
+      - name: Modèles du bout en bout, cache absent (Linux x86_64, Windows)
+        # Un cache refait l'est en entier là où le bout en bout tourne, même
+        # sur une PR qui ne le lance pas : sinon le cache sauvé sans Parakeet
+        # serait repris tel quel, et Parakeet retéléchargé à chaque passage.
+        if: steps.modeles.outputs.cache-hit != 'true' && (runner.os == 'Windows' || matrix.os == 'ubuntu-24.04')
+        shell: bash
+        run: ./scripts/modeles-epingles.sh "$MODELS"
       - name: Tests
         # Sur Mac, avec MLX en Rust (compute::mlx) ; sans effet ailleurs.
         run: cargo test --workspace --locked ${{ runner.os == 'macOS' && '--features dysflow-ffi/mlx' || '' }}
@@ -135,8 +216,10 @@ jobs:
         # comme GitHub le sert) : --version et --check-kokoro passent, et le
         # dossier installé est bien le nouveau paquet (dictée comprise).
         # x86_64 seulement : la logique ne dépend pas de l'architecture, et
-        # chaque passage télécharge la publication (~ la taille du paquet).
-        if: matrix.os == 'ubuntu-24.04'
+        # chaque passage télécharge la publication (~ la taille du paquet) ;
+        # sur main, les étiquettes v*, à la demande, ou une PR qui touche le
+        # paquet (R49).
+        if: matrix.os == 'ubuntu-24.04' && steps.lourd.outputs.oui == 'true'
         run: ./scripts/test-mise-a-jour.sh dist
       - name: MinGW-w64 (dysflow-espeak, Windows)
         # espeak-ng 1.52.0 ne se compile pas avec MSVC : build-espeak.sh le
@@ -199,23 +282,15 @@ jobs:
         run: |
           DYSFLOW_ESPEAK="$PWD/dist/dysflow-espeak.exe" DYSFLOW_ESPEAK_DATA="$PWD/dist" \
             cargo test --workspace --locked --lib tts::kokoro::phonemes::tests::the_ -- --ignored --nocapture --test-threads=1
-      - name: Modèles du bout en bout (cache)
-        # Kokoro int8 (modèle, configuration, 29 voix) et Parakeet v3 int8
-        # avec son échantillon français : 778 Mo, sous la clé de leurs
-        # empreintes épinglées (scripts/modeles-epingles.txt). Un cache
-        # absent est refait depuis les révisions épinglées, chaque fichier
-        # vérifié par son SHA-256 (scripts/paquet-bout-en-bout.sh).
-        if: runner.os == 'Windows' || matrix.os == 'ubuntu-24.04'
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ${{ runner.temp }}/paquet-modeles
-          key: paquet-modeles-${{ hashFiles('scripts/modeles-epingles.txt') }}
       - name: Bout en bout depuis le paquet (Linux x86_64, Windows)
         # Depuis le paquet (sous Windows, l'archive décompressée sous
         # « Łukasz Gaweł ») : dysflow -o écrit le texte de référence avec
         # Kokoro, puis --transcribe dicte l'échantillon français de référence
         # et ce WAV (Parakeet v3 int8, Silero VAD du paquet), WER bornés.
-        if: runner.os == 'Windows' || matrix.os == 'ubuntu-24.04'
+        # Les modèles du cache des essais : liés sous Linux, copiés sous
+        # Windows (le profil du runner). Sur main, les étiquettes v*, à la
+        # demande, ou une PR qui touche le paquet (R49).
+        if: (runner.os == 'Windows' || matrix.os == 'ubuntu-24.04') && steps.lourd.outputs.oui == 'true'
         shell: bash
         run: |
           if [ "$RUNNER_OS" = Windows ]; then
@@ -223,16 +298,7 @@ jobs:
           else
             paquet=dist
           fi
-          ./scripts/paquet-bout-en-bout.sh "$paquet" "$RUNNER_TEMP/paquet-modeles"
-      - name: Modèles de la porte ONNX Runtime (cache)
-        # Silero VAD, Kokoro int8 et sa configuration : empreintes épinglées
-        # (scripts/paquet-commun.sh, scripts/modeles-epingles.txt), que
-        # scripts/ort-gate.sh vérifie et ne retélécharge pas quand elles sont
-        # justes.
-        uses: actions/cache@v4
-        with:
-          path: target/ort-gate-models
-          key: ort-gate-models-${{ hashFiles('scripts/ort-gate.sh', 'scripts/paquet-commun.sh', 'scripts/modeles-epingles.txt') }}
+          ./scripts/paquet-bout-en-bout.sh "$paquet" "$MODELS"
       - name: Une seule copie d'ONNX Runtime (Kokoro et sherpa-onnx, lot 1)
         # La porte du lot 1 : examples/ort_single_copy.rs (Clippy compris),
         # compilé avec la bibliothèque C de sherpa-onnx de
@@ -240,6 +306,7 @@ jobs:
         # paquet (target/ort-gate/), à côté de l'ONNX Runtime 1.31 du paquet
         # NuGet. Kokoro int8 parle, Silero VAD y trouve un segment, les deux
         # côtés ont ONNX Runtime 1.31.0, et une seule copie en est chargée.
+        # Ses modèles (Silero, Kokoro) : le cache des essais (MODELS).
         shell: bash
         run: ./scripts/ort-gate.sh
       - name: Porte ONNX Runtime jointe
@@ -276,6 +343,21 @@ jobs:
         # l'app (ffi/, cargo-platform 0.3.3 par uniffi).
         run: rustup toolchain install 1.88 1.91 --profile minimal --no-self-update
       - uses: Swatinem/rust-cache@v2
+      - name: Clé des archives épinglées (ONNX Runtime, sherpa-onnx)
+        id: archives
+        run: |
+          cle=$(grep -hE '^ *(ORT_VERSION|ORT_SHA256|SHERPA_VERSION|SHERPA_SHA256)=' \
+            scripts/paquet-commun.sh scripts/sherpa-onnx.sh | tr -d '\r ' | git hash-object --stdin)
+          echo "cle=$cle" >> "$GITHUB_OUTPUT"
+      - name: Archives d'ONNX Runtime et de sherpa-onnx (cache)
+        # Le même cache que le job Rust sous Linux x86_64 : sherpa_fetch
+        # ne retélécharge ni le paquet NuGet (≈ 160 Mo) ni sherpa-onnx.
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            target/ort/*.nupkg
+            target/sherpa-onnx/*.tar.bz2
+          key: archives-${{ runner.os }}-${{ runner.arch }}-${{ steps.archives.outputs.cle }}
       - name: dysflow en 1.88, toutes features
         # stt-sherpa avec les --config de scripts/sherpa-onnx.sh, comme le
         # paquet et la porte : sans eux, le script de build de
