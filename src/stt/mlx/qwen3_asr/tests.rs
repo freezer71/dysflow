@@ -284,11 +284,13 @@ fn parity_large() {
 /// La garde de fumée du build livré (AOT : le mlx.metallib précompilé de
 /// mlx-sys), par `scripts/mlx-parite.sh --livre`. Ce n'est pas la preuve de
 /// parité, qui reste celle du build JIT, à l'octet. Pour chaque entrée : le
-/// mel identique à l'octet (forme, moyenne, moyenne absolue), l'invite, le
 /// mel identique à l'octet (forme, moyenne, moyenne absolue) et l'invite ;
 /// sur la parole (R69, `stt::mlx::shipped`), le nombre de pas du décodeur
 /// (jetons gardés) à 10 % près de la fixture, arrondi vers le bas, et le
-/// texte ; sans parole, au plus `MAX_TOKENS` jetons. Qwen3-ASR est
+/// texte ; sans parole, la raison d'arrêt égale à celle du Swift (R70),
+/// déduite du nombre de jetons (plafond atteint si et seulement s'il vaut
+/// `MAX_TOKENS`, des deux côtés ; la fin de texte et le garde-fou des
+/// répétitions sont tous deux « fini seul »). Qwen3-ASR est
 /// multilingue (le catalogue le donne pour le français et l'anglais) et sa
 /// langue imposée : le texte est exigé sur toute la parole. L'encodeur n'est
 /// pas comparé (noyaux AOT, R54).
@@ -308,14 +310,14 @@ fn shipped_smoke(id: &'static str) {
             "{name} : mel à l'octet"
         );
         assert_eq!(got.prompt, case.prompt, "{name} : invite");
-        shipped::steps(
-            name,
-            got.tokens.len(),
-            case.tokens.len(),
-            Some(MAX_TOKENS),
-            "",
-        );
+        shipped::steps(name, got.tokens.len(), case.tokens.len(), "");
         shipped::text(name, "texte", &got.text, &case.text);
+        shipped::stop(
+            name,
+            "décodage",
+            shipped::Stop::from_count(got.tokens.len(), MAX_TOKENS),
+            shipped::Stop::from_count(case.tokens.len(), MAX_TOKENS),
+        );
     }
 }
 

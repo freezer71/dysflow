@@ -325,8 +325,9 @@ pub(in crate::stt::mlx) fn parity(subject: &Subject) {
 /// (R69, `stt::mlx::shipped`), un nombre de pas à 10 % près de la fixture
 /// (arrondi vers le bas : une entrée de moins de 10 pas doit en avoir
 /// exactement autant) et le texte de la fixture pour les entrées de
-/// `text_on`. Sans parole, le transducteur finit toujours (borné par ses
-/// trames) : rien d'autre à comparer. L'encodeur n'y est pas comparé :
+/// `text_on`. Sans parole, aucune raison d'arrêt à comparer (R70) : un
+/// transducteur n'a pas de plafond de jetons, il s'arrête toujours à la
+/// dernière trame. L'encodeur n'y est pas comparé :
 /// c'est l'affaire de la parité.
 pub(in crate::stt::mlx) fn shipped_smoke(subject: &Subject, text_on: &[&str]) {
     let (fixture, measured) = run_fixture(subject);
@@ -353,7 +354,6 @@ pub(in crate::stt::mlx) fn shipped_smoke(subject: &Subject, text_on: &[&str]) {
             name,
             got.steps.len(),
             case.steps.len(),
-            None,
             &format!(" (premier écart au pas {first:?})"),
         );
         if text_on.contains(&name.as_str()) {

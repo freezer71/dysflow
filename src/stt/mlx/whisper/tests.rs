@@ -127,7 +127,23 @@ fn expected_tokens(c: &Case) -> usize {
 /// vérifications communes (modèle, révision, quantification, entrées
 /// identiques à celles du Swift). Chaque mesure est imprimée avant toute
 /// assertion.
-fn run_fixture(id: &str) -> (Fixture, Vec<Measured>) {
+/// Le plafond de jetons d'une fenêtre, d'après la `Config` chargée, comme
+/// `Whisper::transcribe_window` : `max_tokens`, au plus les positions
+/// restantes après l'invite, au moins 1.
+struct Caps {
+    max_tokens: i32,
+    positions: i32,
+}
+
+impl Caps {
+    fn window(&self, prompt: usize) -> usize {
+        let prompt = i32::try_from(prompt).unwrap_or(i32::MAX);
+        let cap = self.max_tokens.min(self.positions - prompt - 1).max(1);
+        usize::try_from(cap).unwrap_or(0)
+    }
+}
+
+fn run_fixture(id: &str) -> (Fixture, Vec<Measured>, Caps) {
     let path = repo().join(format!("tests/fixtures/mlx/{id}.json"));
     let fixture: Fixture = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
     assert_eq!(fixture.model, id);
@@ -138,10 +154,12 @@ fn run_fixture(id: &str) -> (Fixture, Vec<Measured>) {
     assert_eq!(fixture.revision, package.revision, "révision du catalogue");
     assert_eq!(fixture.encoder_dtype, "float32");
     let dir = model_dir(id);
-    let q = config::Config::load(&dir)
-        .unwrap()
-        .quantization
-        .expect("4 bits");
+    let loaded = config::Config::load(&dir).unwrap();
+    let caps = Caps {
+        max_tokens: loaded.max_tokens(),
+        positions: loaded.max_target_positions,
+    };
+    let q = loaded.quantization.expect("4 bits");
     assert_eq!(
         fixture.quantization,
         format!("bits {}, group_size {}", q.bits, q.group_size)
@@ -201,12 +219,12 @@ fn run_fixture(id: &str) -> (Fixture, Vec<Measured>) {
             got.text,
         );
     }
-    (fixture, measured)
+    (fixture, measured, caps)
 }
 
 /// P2 : chaque entrée, chaque fenêtre, du mel au texte, à l'identique.
 fn parity(id: &str) {
-    let (fixture, measured) = run_fixture(id);
+    let (fixture, measured, _) = run_fixture(id);
     for (case, got) in fixture.cases.iter().zip(&measured) {
         let name = &case.input;
         assert_eq!(got.windows.len(), case.windows.len(), "{name} : fenêtres");
@@ -238,10 +256,14 @@ fn parity(id: &str) {
 /// l'octet (forme, moyenne, moyenne absolue) ; sur la parole (R69,
 /// `stt::mlx::shipped`), le nombre de pas du décodeur (jetons gardés) à
 /// 10 % près de la fixture, arrondi vers le bas, et le texte de la fixture ;
-/// sans parole, au plus `MAX_TOKENS_PER_WINDOW` jetons par fenêtre.
-/// L'encodeur n'y est pas comparé : c'est l'affaire de la parité.
+/// sans parole, la raison d'arrêt de chaque fenêtre égale à celle du Swift
+/// (R70) : Whisper n'en garde pas de trace, elle est déduite du nombre de
+/// jetons de la fenêtre, plafond atteint si et seulement s'il vaut le
+/// plafond de `Caps` (la `Config` chargée), des deux côtés. Whisper tiny
+/// atteint son plafond sur le silence dans le Swift (R64). L'encodeur n'y
+/// est pas comparé : c'est l'affaire de la parité.
 fn shipped_smoke(id: &str) {
-    let (fixture, measured) = run_fixture(id);
+    let (fixture, measured, caps) = run_fixture(id);
     for (case, got) in fixture.cases.iter().zip(&measured) {
         let name = &case.input;
         assert_eq!(got.stages.len(), case.windows.len(), "{name} : fenêtres");
@@ -252,16 +274,20 @@ fn shipped_smoke(id: &str) {
                 "{name} : mel à l'octet"
             );
         }
-        let cap = got.stages.len() * MAX_TOKENS_PER_WINDOW;
-        shipped::steps(name, tokens(got), expected_tokens(case), Some(cap), "");
+        shipped::steps(name, tokens(got), expected_tokens(case), "");
         shipped::text(name, "texte", &got.text, &case.text);
+        assert_eq!(got.windows.len(), case.windows.len(), "{name} : fenêtres");
+        for (i, (window, expected)) in got.windows.iter().zip(&case.windows).enumerate() {
+            let cap = caps.window(case.prompt.len());
+            shipped::stop(
+                name,
+                &format!("fenêtre {i}"),
+                shipped::Stop::from_count(window.tokens.len(), cap),
+                shipped::Stop::from_count(expected.tokens.len(), cap),
+            );
+        }
     }
 }
-
-/// Le plafond de jetons d'une fenêtre (`WhisperConfig::max_tokens` :
-/// `max_target_positions` − 16, 448 − 16 pour les trois Whisper du
-/// catalogue).
-const MAX_TOKENS_PER_WINDOW: usize = 448 - 16;
 
 /// P2 : la parité avec la fixture du Swift, dans le build de
 /// `scripts/mlx-parite.sh` (noyaux du Swift).

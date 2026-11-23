@@ -236,7 +236,9 @@ fn parity() {
 /// mel identique à l'octet et l'invite ; sur la parole (R69,
 /// `stt::mlx::shipped`), le nombre de pas du décodeur (jetons gardés) à
 /// 10 % près de la fixture, arrondi vers le bas, et le texte ; sans parole,
-/// au plus `MAX_TOKENS` jetons. Canary est multilingue (le catalogue le
+/// la raison d'arrêt égale à celle du Swift (R70), déduite du nombre de
+/// jetons (plafond atteint si et seulement s'il vaut `MAX_TOKENS`, des deux
+/// côtés : le décodeur n'en garde pas d'autre trace). Canary est multilingue (le catalogue le
 /// donne pour le français et l'anglais) et sa langue imposée : le texte est
 /// exigé sur toute la parole.
 #[test]
@@ -251,14 +253,14 @@ fn shipped_smoke() {
             "{name} : mel à l'octet"
         );
         assert_eq!(got.transcript.prompt, case.prompt, "{name} : invite");
-        shipped::steps(
-            name,
-            got.transcript.tokens.len(),
-            case.tokens.len(),
-            Some(model::MAX_TOKENS),
-            "",
-        );
+        shipped::steps(name, got.transcript.tokens.len(), case.tokens.len(), "");
         shipped::text(name, "texte", &got.text, &case.text);
+        shipped::stop(
+            name,
+            "décodage",
+            shipped::Stop::from_count(got.transcript.tokens.len(), model::MAX_TOKENS),
+            shipped::Stop::from_count(case.tokens.len(), model::MAX_TOKENS),
+        );
     }
 }
 

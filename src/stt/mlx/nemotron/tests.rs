@@ -394,8 +394,9 @@ fn parity() {
 /// mel identique à l'octet (forme, moyenne, moyenne absolue) et le même
 /// nombre de tranches (celles de l'audio) ; sur la parole (R69,
 /// `stt::mlx::shipped`), le nombre de jetons à 10 % près de la fixture
-/// (arrondi vers le bas) et le texte. Sans parole, le transducteur finit
-/// toujours (borné par ses trames) : rien d'autre. L'encodeur n'est pas
+/// (arrondi vers le bas) et le texte. Sans parole, aucune raison d'arrêt à
+/// comparer (R70) : un transducteur n'a pas de plafond de jetons, il
+/// s'arrête toujours à la dernière trame. L'encodeur n'est pas
 /// comparé (les noyaux livrés de `depthwise_conv_2d` et `layer_norm`
 /// arrondissent autrement). Nemotron est donné pour le français et
 /// l'anglais, et sa langue est imposée : le texte est exigé sur toute la
@@ -413,7 +414,7 @@ fn shipped_smoke() {
         );
         let run = &got.reference;
         assert_eq!(run.chunks.len(), case.chunks.len(), "{name} : tranches");
-        shipped::steps(name, run.tokens.len(), case.tokens.len(), None, "");
+        shipped::steps(name, run.tokens.len(), case.tokens.len(), "");
         shipped::text(name, "texte", &app_texts(run).1, &case.text);
         for (split, run) in fixture.splits.iter().zip(&got.splits) {
             let what = format!("{} : texte", split.name);
