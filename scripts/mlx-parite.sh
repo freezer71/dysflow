@@ -13,11 +13,12 @@
 # qu'à prouver la traduction : le produit garde le mlx.metallib de mlx-sys
 # (le choix des noyaux livrés est celui de la tâche 26).
 #
-# `--livre` : la garde du build livré, au lieu de la parité. Le build standard
-# du dépôt (target/, le mlx.metallib de mlx-sys, sans metal-jit), et par défaut
-# stt::mlx::parakeet::tests::aot_short_inputs, 2 essais : sur les entrées
-# courtes, pas, jetons et texte de la fixture ; la divergence connue
-# (douze_secondes) bornée en nombre de pas.
+# `--livre` : la garde de fumée du build livré, au lieu de la parité. Le build
+# standard du dépôt (target/, le mlx.metallib de mlx-sys, sans metal-jit), et
+# par défaut stt::mlx::parakeet::tests::shipped_smoke, 2 essais. Sur chaque
+# entrée : le mel à l'octet, le nombre de pas à 10 % près (arrondi vers le
+# bas), et le texte de la fixture (v3 partout, v2 sur l'anglais et le
+# silence). Ce n'est pas une preuve de parité : celle-ci reste le build JIT.
 #
 #   DYSFLOW_MODELS=/chemin/des/modeles ./scripts/mlx-parite.sh [--livre] [FILTRE NOMBRE]…
 #
@@ -40,7 +41,7 @@ if [ "${1:-}" = --livre ]; then
 fi
 if [ "$#" -eq 0 ]; then
     if [ -n "$LIVRE" ]; then
-        set -- stt::mlx::parakeet::tests::aot_short_inputs 2
+        set -- stt::mlx::parakeet::tests::shipped_smoke 2
     else
         set -- stt::mlx::parakeet::tests::parity 2
     fi
