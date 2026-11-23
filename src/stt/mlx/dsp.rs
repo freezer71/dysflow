@@ -54,6 +54,55 @@ pub fn hamming_values(size: usize, periodic: bool) -> Vec<f32> {
     }
 }
 
+/// La fenêtre nommée, de `win_length` points, centrée dans `n_fft` (zéros
+/// de part et d'autre), ou coupée à `n_fft` si plus longue. Hann pour un
+/// nom inconnu, comme le Swift.
+pub fn window(name: &str, win_length: usize, n_fft: usize) -> Array {
+    let base = window_values(name, win_length);
+    let values: Vec<f32> = if win_length >= n_fft {
+        base[..n_fft].to_vec()
+    } else {
+        let left = (n_fft - win_length) / 2;
+        let right = n_fft - win_length - left;
+        std::iter::repeat_n(0.0, left)
+            .chain(base)
+            .chain(std::iter::repeat_n(0.0, right))
+            .collect()
+    };
+    Array::from_slice(&values, &[values.len() as i32])
+}
+
+/// Les `size` points de la fenêtre `name` des préprocesseurs du Swift
+/// (`ParakeetAudio.makeWindow` et ses pareils) : `hamming`, `blackman`,
+/// `bartlett` symétriques ; `hann`, `hanning` ou un nom inconnu : Hann
+/// symétrique. Toutes avec `SWIFT_PI`.
+pub fn window_values(name: &str, size: usize) -> Vec<f32> {
+    let lower = name.to_lowercase();
+    if lower != "hann" && lower != "hanning" && size <= 1 {
+        return vec![1.0; size.max(1)];
+    }
+    let denom = size as f32 - 1.0;
+    let tau = 2.0 * SWIFT_PI;
+    match lower.as_str() {
+        "hamming" => (0..size)
+            .map(|n| 0.54 - 0.46 * (tau * n as f32 / denom).cos())
+            .collect(),
+        "blackman" => (0..size)
+            .map(|n| {
+                let k = tau * n as f32 / denom;
+                0.42 - 0.5 * k.cos() + 0.08 * (2.0 * k).cos()
+            })
+            .collect(),
+        "bartlett" => {
+            let mid = (size as f32 - 1.0) / 2.0;
+            (0..size)
+                .map(|n| 1.0 - ((n as f32 - mid) / mid).abs())
+                .collect()
+        }
+        _ => hanning_values(size, false),
+    }
+}
+
 /// L'échelle mel d'un banc de filtres.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MelScale {
@@ -249,6 +298,56 @@ fn len_i32(len: usize) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn fenetres_nommees_centrees() {
+        assert_eq!(window_values("hann", 400).len(), 400);
+        let w = window("hann", 400, 512);
+        assert_eq!(w.shape(), &[512]);
+        let values: &[f32] = w.as_slice();
+        assert!(
+            values[..56].iter().chain(&values[456..]).all(|&v| v == 0.0),
+            "zéros de part et d'autre"
+        );
+        assert_eq!(window("hann", 600, 512).shape(), &[512], "coupée à n_fft");
+        assert_eq!(window_values("bartlett", 1), vec![1.0]);
+        assert_eq!(
+            window_values("inconnue", 8),
+            window_values("hann", 8),
+            "Hann pour un nom inconnu"
+        );
+        assert!((window_values("hamming", 3)[1] - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn les_fenetres_prennent_le_pi_du_swift() {
+        // À l'octet, comme le Swift : 2·π·n / (N − 1) avec SWIFT_PI. Avec le
+        // PI de Rust, des points changent d'une ulp (le mel de la tâche 14).
+        let n = 400usize;
+        let denom = (n - 1) as f32;
+        let with = |pi: f32| -> Vec<u32> {
+            (0..n)
+                .map(|k| (0.54 - 0.46 * (2.0 * pi * k as f32 / denom).cos()).to_bits())
+                .collect()
+        };
+        let hamming: Vec<u32> = window_values("hamming", n)
+            .iter()
+            .map(|v| v.to_bits())
+            .collect();
+        assert_eq!(hamming, with(SWIFT_PI));
+        assert_ne!(hamming, with(std::f32::consts::PI));
+        let hann: Vec<u32> = window_values("hann", n)
+            .iter()
+            .map(|v| v.to_bits())
+            .collect();
+        assert_eq!(
+            hann,
+            hanning_values(n, false)
+                .iter()
+                .map(|v| v.to_bits())
+                .collect::<Vec<_>>()
+        );
+    }
 
     #[test]
     fn pi_du_swift() {

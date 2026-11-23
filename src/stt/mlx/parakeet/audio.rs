@@ -33,7 +33,7 @@ pub fn log_mel_spectrogram(audio: &Array, config: &PreprocessConfig) -> Result<A
         x = ops::concatenate(&[first, rest], 0)?;
     }
 
-    let window = window(&config.window, config.win_length(), config.n_fft);
+    let window = dsp::window(&config.window, config.win_length(), config.n_fft);
     let spectrum = dsp::stft(
         &x,
         &window,
@@ -72,64 +72,4 @@ pub fn log_mel_spectrogram(audio: &Array, config: &PreprocessConfig) -> Result<A
         mel.subtract(&mean)?.divide(std.add(&eps)?)?
     };
     Ok(normalized.expand_dims(0)?.as_dtype(original)?)
-}
-
-/// La fenêtre nommée, de `win_length` points, centrée dans `n_fft` (zéros
-/// de part et d'autre), ou coupée à `n_fft` si plus longue. Hann pour un
-/// nom inconnu, comme le Swift.
-fn window(name: &str, win_length: usize, n_fft: usize) -> Array {
-    let base = window_values(name, win_length);
-    let values: Vec<f32> = if win_length >= n_fft {
-        base[..n_fft].to_vec()
-    } else {
-        let left = (n_fft - win_length) / 2;
-        let right = n_fft - win_length - left;
-        std::iter::repeat_n(0.0, left)
-            .chain(base)
-            .chain(std::iter::repeat_n(0.0, right))
-            .collect()
-    };
-    Array::from_slice(&values, &[values.len() as i32])
-}
-
-fn window_values(name: &str, size: usize) -> Vec<f32> {
-    let lower = name.to_lowercase();
-    if lower != "hann" && lower != "hanning" && size <= 1 {
-        return vec![1.0; size.max(1)];
-    }
-    let denom = size as f32 - 1.0;
-    let tau = 2.0 * dsp::SWIFT_PI;
-    match lower.as_str() {
-        "hamming" => (0..size)
-            .map(|n| 0.54 - 0.46 * (tau * n as f32 / denom).cos())
-            .collect(),
-        "blackman" => (0..size)
-            .map(|n| {
-                let k = tau * n as f32 / denom;
-                0.42 - 0.5 * k.cos() + 0.08 * (2.0 * k).cos()
-            })
-            .collect(),
-        "bartlett" => {
-            let mid = (size as f32 - 1.0) / 2.0;
-            (0..size)
-                .map(|n| 1.0 - ((n as f32 - mid) / mid).abs())
-                .collect()
-        }
-        _ => dsp::hanning_values(size, false),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn hann_centree() {
-        let values = window_values("hann", 400);
-        assert_eq!(values.len(), 400);
-        let w = window("hann", 400, 512);
-        assert_eq!(w.shape(), &[512]);
-        assert_eq!(window_values("bartlett", 1), vec![1.0]);
-        assert!((window_values("hamming", 3)[1] - 1.0).abs() < 1e-6);
-    }
 }

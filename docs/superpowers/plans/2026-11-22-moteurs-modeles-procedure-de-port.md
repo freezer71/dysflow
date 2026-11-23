@@ -63,6 +63,10 @@ Chaque port fait deux commits au moins, et le code Swift ne part qu'au dernier.
   pas : rien à retélécharger.
 - Un fichier par étage (`config`, `audio`, `encoder`, `decoder`, `tokenizer`),
   environ 600 lignes au plus.
+- `Float.pi` → `dsp::SWIFT_PI`, jamais `consts::PI` ; à vérifier par une
+  comparaison à l'octet des fenêtres ou du mel, pas par des statistiques.
+  Les fenêtres nommées et centrées sont dans `dsp` (`window`,
+  `window_values`, tâche 14).
 
 ## Quand s'arrêter
 
