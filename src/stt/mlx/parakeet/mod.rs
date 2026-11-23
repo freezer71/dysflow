@@ -8,13 +8,13 @@
 //! calculer) et après le passage. Le Swift, lui, va toujours au bout.
 
 mod audio;
-mod config;
+pub(in crate::stt::mlx) mod config;
 mod conformer;
-mod model;
+pub(in crate::stt::mlx) mod model;
 mod tokenizer;
 
 #[cfg(test)]
-mod tests;
+pub(in crate::stt::mlx) mod tests;
 
 use anyhow::{anyhow, Result};
 use std::path::Path;
@@ -42,6 +42,10 @@ const WARM_UP_SAMPLES: usize = 8_000;
 pub struct ParakeetMlx {
     /// Partagé avec le passage en cours : une libération n'attend pas sa fin.
     model: Mutex<Option<Arc<Held<Parakeet>>>>,
+    /// Le nom du modèle dans les messages.
+    name: &'static str,
+    /// La lecture du dossier du paquet, sur le fil MLX.
+    open: fn(&Path) -> Result<Parakeet>,
 }
 
 impl Default for ParakeetMlx {
@@ -52,8 +56,19 @@ impl Default for ParakeetMlx {
 
 impl ParakeetMlx {
     pub fn new() -> Self {
+        Self::reading("Parakeet", Parakeet::load)
+    }
+
+    /// Le même graphe et le même passage, ses poids lus par `open` : ceux
+    /// d'un dérivé de Parakeet (Phonon-2).
+    pub(in crate::stt::mlx) fn reading(
+        name: &'static str,
+        open: fn(&Path) -> Result<Parakeet>,
+    ) -> Self {
         Self {
             model: Mutex::new(None),
+            name,
+            open,
         }
     }
 
@@ -62,10 +77,10 @@ impl ParakeetMlx {
     }
 }
 
-fn not_loaded() -> anyhow::Error {
+fn not_loaded(name: &str) -> anyhow::Error {
     anyhow!(crate::tr!(
-        "Parakeet model not loaded",
-        "modèle Parakeet non chargé"
+        en = "{name} model not loaded",
+        fr = "modèle {name} non chargé",
     ))
 }
 
@@ -79,8 +94,8 @@ impl Recognizer for ParakeetMlx {
             budget::remove(BUDGET_KEY);
         }
         budget::set(BUDGET_KEY, need(model_dir));
-        let dir = model_dir.to_path_buf();
-        match Held::load(move || Parakeet::load(&dir)) {
+        let (dir, open) = (model_dir.to_path_buf(), self.open);
+        match Held::load(move || open(&dir)) {
             Ok(held) => {
                 *model = Some(Arc::new(held));
                 Ok(())
@@ -102,7 +117,7 @@ impl Recognizer for ParakeetMlx {
     fn transcribe(&self, samples: &[f32], _language: &str, cancel: &Cancel) -> Result<String> {
         cancel.check()?;
         let Some(held) = self.held() else {
-            return Err(not_loaded());
+            return Err(not_loaded(self.name));
         };
         if samples.len() < MIN_SAMPLES {
             return Ok(String::new());

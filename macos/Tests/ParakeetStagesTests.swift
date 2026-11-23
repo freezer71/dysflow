@@ -19,8 +19,28 @@ import MLXNN
 /// Entrée : le français de la fixture. Étages : mel, sous-échantillonnage
 /// (chaque convolution), positions, chaque sous-étage du bloc 0, chaque
 /// opération du module de convolution, la sortie de l'encodeur.
+///
+/// Phonon-2 (tâche 16, `stt::mlx::parakeet::conformer::stages`, même
+/// comparaison) : `testWritesThePhononEncoderStages`, avec `phonon_2/` sous
+/// `DYSFLOW_STT_MODELS`. Le `tar` de macOS lance `zstd` : il doit être dans
+/// le `PATH` de l'essai (`TEST_RUNNER_PATH=/opt/homebrew/bin:…`).
 final class ParakeetStagesTests: XCTestCase {
     func testWritesTheEncoderStages() throws {
+        let (root, out, fr) = try Self.setUp()
+        for id in ["parakeet_tdt_v2", "parakeet_tdt_v3"] {
+            let model = try ParakeetModel.fromDirectory(URL(fileURLWithPath: root).appendingPathComponent(id))
+            try Self.write(model, fr, to: URL(fileURLWithPath: out).appendingPathComponent("\(id)-etages.safetensors"))
+        }
+    }
+
+    func testWritesThePhononEncoderStages() throws {
+        let (root, out, fr) = try Self.setUp()
+        let model = try ParakeetModel.fromPhonon(URL(fileURLWithPath: root).appendingPathComponent("phonon_2"))
+        try Self.write(model, fr, to: URL(fileURLWithPath: out).appendingPathComponent("phonon_2-etages.safetensors"))
+    }
+
+    /// Le dossier des modèles, celui des étages, et le français de la fixture.
+    static func setUp() throws -> (String, String, [Float]) {
         let env = ProcessInfo.processInfo.environment
         guard let root = env["DYSFLOW_STT_MODELS"], let out = env["DYSFLOW_STAGES_OUT"] else {
             throw XCTSkip("DYSFLOW_STT_MODELS ou DYSFLOW_STAGES_OUT absent : rien à écrire")
@@ -28,8 +48,11 @@ final class ParakeetStagesTests: XCTestCase {
         let repo = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let fr = try ParakeetFixtureTests.pcm16(repo.appendingPathComponent("macos/Tests/Fixtures/dictee-charge.wav"))
-        for id in ["parakeet_tdt_v2", "parakeet_tdt_v3"] {
-            let model = try ParakeetModel.fromDirectory(URL(fileURLWithPath: root).appendingPathComponent(id))
+        return (root, out, fr)
+    }
+
+    static func write(_ model: ParakeetModel, _ fr: [Float], to url: URL) throws {
+        do {
             var d: [String: MLXArray] = [:]
             let mel = ParakeetAudio.logMelSpectrogram(MLXArray(fr), config: model.preprocessConfig)
             d["mel"] = mel
@@ -74,7 +97,7 @@ final class ParakeetStagesTests: XCTestCase {
             let (full, _) = model.encodeBatchFeatures(x)
             d["encoder"] = full
             eval(Array(d.values))
-            try save(arrays: d, url: URL(fileURLWithPath: out).appendingPathComponent("\(id)-etages.safetensors"))
+            try save(arrays: d, url: url)
             Memory.clearCache()
         }
     }

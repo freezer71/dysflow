@@ -27,7 +27,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 /// plafonds globaux de MLX : un à la fois.
 static SERIAL: Mutex<()> = Mutex::new(());
 
-fn serial() -> std::sync::MutexGuard<'static, ()> {
+pub(in crate::stt::mlx) fn serial() -> std::sync::MutexGuard<'static, ()> {
     SERIAL.lock().unwrap_or_else(|e| e.into_inner())
 }
 
@@ -37,15 +37,46 @@ fn repo() -> PathBuf {
 
 /// Le dossier de `id` sous `DYSFLOW_MODELS` ; sans lui, l'essai échoue.
 fn model_dir(id: &str) -> PathBuf {
+    model_dir_with(id, "config.json")
+}
+
+/// Le dossier de `id` sous `DYSFLOW_MODELS`, qui doit contenir le fichier
+/// `marker` ; sans l'un ou l'autre, l'essai échoue.
+pub(in crate::stt::mlx) fn model_dir_with(id: &str, marker: &str) -> PathBuf {
     let models =
         std::env::var_os("DYSFLOW_MODELS").expect("DYSFLOW_MODELS : le dossier des modèles");
     let dir = PathBuf::from(models).join(id);
     assert!(
-        dir.join("config.json").is_file(),
-        "pas de {id} dans {}",
+        dir.join(marker).is_file(),
+        "pas de {id}/{marker} dans {}",
         dir.display()
     );
     dir
+}
+
+/// Un modèle comparé à sa fixture : son paquet, son dossier, sa lecture, et
+/// la quantification que la fixture doit nommer.
+pub(in crate::stt::mlx) struct Subject {
+    pub id: &'static str,
+    pub dir: PathBuf,
+    pub open: fn(&Path) -> anyhow::Result<Parakeet>,
+    pub quantization: String,
+}
+
+/// Parakeet : `config.json` et les safetensors du dossier.
+fn parakeet(id: &'static str) -> Subject {
+    let dir = model_dir(id);
+    let config = config::Config::load(&dir).unwrap();
+    let quantization = match config.quantization {
+        Some(q) => format!("bits {}, group_size {}", q.bits, q.group_size),
+        None => "aucune".to_string(),
+    };
+    Subject {
+        id,
+        dir,
+        open: Parakeet::load,
+        quantization,
+    }
 }
 
 // ---------- la fixture du Swift ----------
@@ -175,11 +206,12 @@ const MEL_TOLERANCE: f32 = 1e-5;
 const ENCODER_MEAN_TOLERANCE: f32 = 1e-5;
 const ENCODER_MEAN_ABS_TOLERANCE: f32 = 1e-4;
 
-/// Ce que le Rust rend pour chaque entrée de la fixture `id`, après les
-/// vérifications communes : modèle, révision, type de calcul,
+/// Ce que le Rust rend pour chaque entrée de la fixture du modèle, après
+/// les vérifications communes : modèle, révision, type de calcul,
 /// quantification, et entrées identiques à celles du Swift (SHA-256).
 /// Chaque mesure est imprimée avant toute assertion.
-fn run_fixture(id: &str) -> (Fixture, Vec<Measured>) {
+fn run_fixture(subject: &Subject) -> (Fixture, Vec<Measured>) {
+    let id = subject.id;
     let fixture = fixture(id);
     assert_eq!(fixture.model, id);
     let package = crate::models::CATALOG
@@ -191,13 +223,7 @@ fn run_fixture(id: &str) -> (Fixture, Vec<Measured>) {
         "la fixture n'est pas de la révision du catalogue"
     );
     assert_eq!(fixture.compute_dtype, "bfloat16");
-    let dir = model_dir(id);
-    let config = config::Config::load(&dir).unwrap();
-    let quantization = match config.quantization {
-        Some(q) => format!("bits {}, group_size {}", q.bits, q.group_size),
-        None => "aucune".to_string(),
-    };
-    assert_eq!(fixture.quantization, quantization);
+    assert_eq!(fixture.quantization, subject.quantization);
 
     let inputs = inputs();
     assert_eq!(inputs.len(), fixture.inputs.len());
@@ -211,7 +237,8 @@ fn run_fixture(id: &str) -> (Fixture, Vec<Measured>) {
     }
 
     let _serial = serial();
-    let held = Held::load(move || Parakeet::load(&dir)).unwrap();
+    let (dir, open) = (subject.dir.clone(), subject.open);
+    let held = Held::load(move || open(&dir)).unwrap();
     let all: Vec<Vec<f32>> = inputs.iter().map(|(_, s)| s.clone()).collect();
     let measured = held
         .with(move |parakeet| {
@@ -251,8 +278,8 @@ fn first_step_difference(got: &[[usize; 3]], expected: &[[usize; 3]]) -> Option<
 
 /// P2 : chaque entrée, étage par étage, du premier au dernier (l'échec nomme
 /// le premier qui diverge) ; pas, jetons et texte à l'identique.
-fn parity(id: &str) {
-    let (fixture, measured) = run_fixture(id);
+pub(in crate::stt::mlx) fn parity(subject: &Subject) {
+    let (fixture, measured) = run_fixture(subject);
     for (case, got) in fixture.cases.iter().zip(&measured) {
         let name = &case.input;
         assert_eq!(got.mel.0, case.mel.shape, "{name} : forme du mel");
@@ -298,8 +325,8 @@ fn parity(id: &str) {
 /// en avoir exactement autant), et le texte de la fixture pour les entrées
 /// de `text_on`. L'encodeur n'y est pas comparé : c'est l'affaire de la
 /// parité.
-fn shipped_smoke(id: &str, text_on: &[&str]) {
-    let (fixture, measured) = run_fixture(id);
+pub(in crate::stt::mlx) fn shipped_smoke(subject: &Subject, text_on: &[&str]) {
+    let (fixture, measured) = run_fixture(subject);
     for name in text_on {
         assert!(
             fixture.cases.iter().any(|c| c.input == *name),
@@ -334,13 +361,13 @@ mod parity {
     #[test]
     #[ignore = "demande les poids (DYSFLOW_MODELS) et le build de scripts/mlx-parite.sh"]
     fn parakeet_tdt_v3() {
-        super::parity("parakeet_tdt_v3");
+        super::parity(&super::parakeet("parakeet_tdt_v3"));
     }
 
     #[test]
     #[ignore = "demande les poids (DYSFLOW_MODELS) et le build de scripts/mlx-parite.sh"]
     fn parakeet_tdt_v2() {
-        super::parity("parakeet_tdt_v2");
+        super::parity(&super::parakeet("parakeet_tdt_v2"));
     }
 }
 
@@ -386,13 +413,13 @@ mod shipped_smoke {
     #[test]
     #[ignore = "demande les poids (DYSFLOW_MODELS), dans le build livré (scripts/mlx-parite.sh --livre)"]
     fn parakeet_tdt_v3() {
-        super::shipped_smoke("parakeet_tdt_v3", V3_TEXT);
+        super::shipped_smoke(&super::parakeet("parakeet_tdt_v3"), V3_TEXT);
     }
 
     #[test]
     #[ignore = "demande les poids (DYSFLOW_MODELS), dans le build livré (scripts/mlx-parite.sh --livre)"]
     fn parakeet_tdt_v2() {
-        super::shipped_smoke("parakeet_tdt_v2", V2_TEXT);
+        super::shipped_smoke(&super::parakeet("parakeet_tdt_v2"), V2_TEXT);
     }
 }
 
@@ -488,7 +515,7 @@ fn a_cancel_before_the_pass_is_not_a_failure() {
 }
 
 /// Le `config.json` de v3, réduit : un encodeur d'une couche, petit.
-fn tiny_config(quantization: bool) -> serde_json::Value {
+pub(in crate::stt::mlx) fn tiny_config(quantization: bool) -> serde_json::Value {
     let mut config = serde_json::json!({
         "target": "nemo.collections.asr.models.rnnt_bpe_models.EncDecRNNTBPEModel",
         "model_defaults": {"tdt_durations": [0, 1, 2, 3, 4]},
@@ -708,7 +735,7 @@ fn a_complete_synthetic_model_loads_and_an_extra_key_is_refused() {
 
 /// Les clés du fichier (avant `remap_key`) et leurs formes pour
 /// `tiny_config`.
-fn tiny_keys() -> Vec<(String, Vec<usize>)> {
+pub(in crate::stt::mlx) fn tiny_keys() -> Vec<(String, Vec<usize>)> {
     let (d, ff, c, k) = (64usize, 256usize, 8usize, 9usize);
     let mut keys: Vec<(String, Vec<usize>)> = vec![
         ("encoder.pre_encode.conv.0.weight".into(), vec![c, 3, 3, 1]),

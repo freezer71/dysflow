@@ -277,20 +277,44 @@ impl Conformer {
 /// Chaque étage du mel et de l'encodeur relancé sur l'entrée exacte du
 /// Swift (`macos/Tests/ParakeetStagesTests.swift` les écrit) et comparé
 /// élément par élément, à l'octet : l'essai qui situe un écart que la parité
-/// (`tests::parity`) ne fait que constater. Ignoré : il demande les poids
+/// (`tests::parity`) ne fait que constater. Chaque étage part de l'entrée du
+/// Swift : tous sont comparés, et l'échec les nomme tous (dans un autre
+/// build, ce sont les noyaux qui diffèrent). Ignoré : il demande les poids
 /// (`DYSFLOW_MODELS`), les étages du Swift (`DYSFLOW_PARAKEET_STAGES`) et le
 /// build de `scripts/mlx-parite.sh` (noyaux du Swift), par exemple :
 ///
 ///   DYSFLOW_MODELS=… DYSFLOW_PARAKEET_STAGES=… ./scripts/mlx-parite.sh \
-///       stt::mlx::parakeet::conformer::stages 1
+///       stt::mlx::parakeet::conformer::stages 2
 #[cfg(test)]
 mod stages {
+    use super::super::model::Parakeet;
     use super::*;
     use crate::compute::mlx::Held;
     use std::path::{Path, PathBuf};
 
-    /// Identique à l'octet, ou une erreur qui nomme l'étage et l'écart.
-    fn check(id: &str, name: &str, got: &Array, want: &Array) -> Result<()> {
+    /// Les étages d'un modèle qui diffèrent du Swift.
+    struct Checker {
+        id: String,
+        differing: Vec<String>,
+    }
+
+    impl Checker {
+        /// Identique à l'octet, ou l'étage noté avec son écart ; une forme ou
+        /// un type différent est une erreur.
+        fn check(&mut self, name: &str, got: &Array, want: &Array) -> Result<()> {
+            let id = &self.id;
+            let differ = difference(id, name, got, want)?;
+            if differ > 0.0 {
+                self.differing
+                    .push(format!("{name} ({differ} éléments sur {})", got.size()));
+            }
+            Ok(())
+        }
+    }
+
+    /// Le nombre d'éléments qui diffèrent, imprimé avec l'écart le plus
+    /// grand ; une forme ou un type différent est une erreur.
+    fn difference(id: &str, name: &str, got: &Array, want: &Array) -> Result<f32> {
         ensure!(
             got.shape() == want.shape(),
             "{id} {name} : formes {:?} et {:?}",
@@ -319,177 +343,145 @@ mod stages {
             "{id} {name:10} {:?} : {differ} éléments différents, max|Δ| {max:.3e}",
             got.shape()
         );
-        ensure!(
-            differ == 0.0,
-            "{id} {name} : {differ} éléments différents sur {}, max|Δ| {max:.3e}",
-            got.size()
-        );
-        Ok(())
+        Ok(differ)
     }
 
-    fn compare(id: &str) {
+    fn compare(id: &str, open: fn(&Path) -> Result<Parakeet>) {
         let base = PathBuf::from(
             std::env::var_os("DYSFLOW_PARAKEET_STAGES").expect("DYSFLOW_PARAKEET_STAGES"),
         );
         let models = PathBuf::from(std::env::var_os("DYSFLOW_MODELS").expect("DYSFLOW_MODELS"));
-        let (dir, file, id) = (
+        let (dir, file, shown) = (
             models.join(id),
             base.join(format!("{id}-etages.safetensors")),
             id.to_string(),
         );
         assert!(file.is_file(), "{} absent", file.display());
         let held = Held::load(move || {
-            let config = super::super::config::Config::load(&dir)?;
-            let mut w = Weights::load(
-                &dir,
-                "Parakeet",
-                Dtype::Bfloat16,
-                config.quantization,
-                super::super::model::remap_key,
-            )?;
-            Ok((Conformer::load(&mut w, &config.encoder)?, config))
+            let parakeet = open(&dir)?;
+            Ok((parakeet.encoder, parakeet.config))
         })
         .unwrap();
-        held.with(move |(enc, config)| {
-            let d = Array::load_safetensors(&file)?;
-            let get = |k: &str| d.get(k).ok_or_else(|| anyhow::anyhow!("étage {k} absent"));
-            let wav = Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("macos/Tests/Fixtures/dictee-charge.wav");
-            let samples = crate::stt::file::read_wav(&wav)?;
-            let audio = Array::from_slice(&samples, &[samples.len() as i32]);
-            let mel = super::super::audio::log_mel_spectrogram(&audio, &config.preprocessor)?;
-            check(&id, "mel", &mel, get("mel")?)?;
-            check(
-                &id,
-                "features",
-                &mel.as_dtype(Dtype::Bfloat16)?,
-                get("features")?,
-            )?;
-            let x = get("features")?;
-            let p = &enc.pre_encode;
-            check(
-                &id,
-                "s_conv0",
-                &nn::relu(p.conv0.forward(&x.expand_dims(3)?)?)?,
-                get("s_conv0")?,
-            )?;
-            check(
-                &id,
-                "s_dw0",
-                &p.depthwise[0].forward(get("s_conv0")?)?,
-                get("s_dw0")?,
-            )?;
-            check(
-                &id,
-                "s_pw0",
-                &nn::relu(p.pointwise[0].forward(get("s_dw0")?)?)?,
-                get("s_pw0")?,
-            )?;
-            check(
-                &id,
-                "s_dw1",
-                &p.depthwise[1].forward(get("s_pw0")?)?,
-                get("s_dw1")?,
-            )?;
-            check(
-                &id,
-                "s_pw1",
-                &nn::relu(p.pointwise[1].forward(get("s_dw1")?)?)?,
-                get("s_pw1")?,
-            )?;
-            let s = get("s_pw1")?.shape().to_vec();
-            let flat =
-                get("s_pw1")?
-                    .transpose_axes(&[0, 1, 3, 2])?
-                    .reshape(&[s[0], s[1], s[3] * s[2]])?;
-            check(&id, "pre", &p.out.forward(&flat)?, get("pre")?)?;
-            let (h, pos) = enc.pos_enc.forward(get("pre")?)?;
-            check(&id, "pos_x", &h, get("pos_x")?)?;
-            check(&id, "pos", &pos, get("pos")?)?;
+        let differing = held
+            .with(move |(enc, config)| {
+                let mut stage = Checker {
+                    id: shown,
+                    differing: Vec::new(),
+                };
+                let d = Array::load_safetensors(&file)?;
+                let get = |k: &str| d.get(k).ok_or_else(|| anyhow::anyhow!("étage {k} absent"));
+                let wav = Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("macos/Tests/Fixtures/dictee-charge.wav");
+                let samples = crate::stt::file::read_wav(&wav)?;
+                let audio = Array::from_slice(&samples, &[samples.len() as i32]);
+                let mel = super::super::audio::log_mel_spectrogram(&audio, &config.preprocessor)?;
+                stage.check("mel", &mel, get("mel")?)?;
+                stage.check(
+                    "features",
+                    &mel.as_dtype(Dtype::Bfloat16)?,
+                    get("features")?,
+                )?;
+                let x = get("features")?;
+                let p = &enc.pre_encode;
+                stage.check(
+                    "s_conv0",
+                    &nn::relu(p.conv0.forward(&x.expand_dims(3)?)?)?,
+                    get("s_conv0")?,
+                )?;
+                stage.check(
+                    "s_dw0",
+                    &p.depthwise[0].forward(get("s_conv0")?)?,
+                    get("s_dw0")?,
+                )?;
+                stage.check(
+                    "s_pw0",
+                    &nn::relu(p.pointwise[0].forward(get("s_dw0")?)?)?,
+                    get("s_pw0")?,
+                )?;
+                stage.check(
+                    "s_dw1",
+                    &p.depthwise[1].forward(get("s_pw0")?)?,
+                    get("s_dw1")?,
+                )?;
+                stage.check(
+                    "s_pw1",
+                    &nn::relu(p.pointwise[1].forward(get("s_dw1")?)?)?,
+                    get("s_pw1")?,
+                )?;
+                let s = get("s_pw1")?.shape().to_vec();
+                let flat = get("s_pw1")?.transpose_axes(&[0, 1, 3, 2])?.reshape(&[
+                    s[0],
+                    s[1],
+                    s[3] * s[2],
+                ])?;
+                stage.check("pre", &p.out.forward(&flat)?, get("pre")?)?;
+                let (h, pos) = enc.pos_enc.forward(get("pre")?)?;
+                stage.check("pos_x", &h, get("pos_x")?)?;
+                stage.check("pos", &pos, get("pos")?)?;
 
-            let (h, pos) = (get("pos_x")?, get("pos")?);
-            let l = &enc.layers[0];
-            check(&id, "n1", &l.norm_ff1.forward(h)?, get("n1")?)?;
-            check(&id, "f1", &l.ff1.forward(get("n1")?)?, get("f1")?)?;
-            check(
-                &id,
-                "y1",
-                &h.add(scalar_like(0.5, h)?.multiply(get("f1")?)?)?,
-                get("y1")?,
-            )?;
-            check(&id, "n2", &l.norm_att.forward(get("y1")?)?, get("n2")?)?;
-            let n2 = get("n2")?;
-            check(
-                &id,
-                "att",
-                &l.attn.forward(n2, n2, n2, pos, None)?,
-                get("att")?,
-            )?;
-            check(&id, "y2", &get("y1")?.add(get("att")?)?, get("y2")?)?;
-            check(&id, "n3", &l.norm_conv.forward(get("y2")?)?, get("n3")?)?;
-            let c = &l.conv;
-            check(
-                &id,
-                "c_pw1",
-                &c.pointwise1.forward(get("n3")?)?,
-                get("c_pw1")?,
-            )?;
-            let halves = get("c_pw1")?.split_equal(2, 2)?;
-            check(
-                &id,
-                "c_gated",
-                &halves[0].multiply(ops::sigmoid(&halves[1])?)?,
-                get("c_gated")?,
-            )?;
-            check(
-                &id,
-                "c_dw",
-                &c.depthwise.forward(get("c_gated")?)?,
-                get("c_dw")?,
-            )?;
-            check(
-                &id,
-                "c_bn",
-                &c.batch_norm.forward(get("c_dw")?)?,
-                get("c_bn")?,
-            )?;
-            check(&id, "c_silu", &nn::silu(get("c_bn")?)?, get("c_silu")?)?;
-            check(
-                &id,
-                "c_pw2",
-                &c.pointwise2.forward(get("c_silu")?)?,
-                get("c_pw2")?,
-            )?;
-            check(&id, "cv", &c.forward(get("n3")?)?, get("cv")?)?;
-            check(&id, "y3", &get("y2")?.add(get("cv")?)?, get("y3")?)?;
-            check(&id, "n4", &l.norm_ff2.forward(get("y3")?)?, get("n4")?)?;
-            check(&id, "f2", &l.ff2.forward(get("n4")?)?, get("f2")?)?;
-            let y3 = get("y3")?;
-            check(
-                &id,
-                "y4",
-                &y3.add(scalar_like(0.5, y3)?.multiply(get("f2")?)?)?,
-                get("y4")?,
-            )?;
-            check(
-                &id,
-                "layer0",
-                &l.norm_out.forward(get("y4")?)?,
-                get("layer0")?,
-            )?;
-            // L'encodeur entier, depuis les mêmes caractéristiques.
-            let lengths = Array::from_slice(&[x.shape()[1]], &[1]);
-            let (full, _) = enc.forward(x, &lengths)?;
-            check(&id, "encoder", &full, get("encoder")?)?;
-            Ok(())
-        })
-        .unwrap();
+                let (h, pos) = (get("pos_x")?, get("pos")?);
+                let l = &enc.layers[0];
+                stage.check("n1", &l.norm_ff1.forward(h)?, get("n1")?)?;
+                stage.check("f1", &l.ff1.forward(get("n1")?)?, get("f1")?)?;
+                stage.check(
+                    "y1",
+                    &h.add(scalar_like(0.5, h)?.multiply(get("f1")?)?)?,
+                    get("y1")?,
+                )?;
+                stage.check("n2", &l.norm_att.forward(get("y1")?)?, get("n2")?)?;
+                let n2 = get("n2")?;
+                stage.check("att", &l.attn.forward(n2, n2, n2, pos, None)?, get("att")?)?;
+                stage.check("y2", &get("y1")?.add(get("att")?)?, get("y2")?)?;
+                stage.check("n3", &l.norm_conv.forward(get("y2")?)?, get("n3")?)?;
+                let c = &l.conv;
+                stage.check("c_pw1", &c.pointwise1.forward(get("n3")?)?, get("c_pw1")?)?;
+                let halves = get("c_pw1")?.split_equal(2, 2)?;
+                stage.check(
+                    "c_gated",
+                    &halves[0].multiply(ops::sigmoid(&halves[1])?)?,
+                    get("c_gated")?,
+                )?;
+                stage.check("c_dw", &c.depthwise.forward(get("c_gated")?)?, get("c_dw")?)?;
+                stage.check("c_bn", &c.batch_norm.forward(get("c_dw")?)?, get("c_bn")?)?;
+                stage.check("c_silu", &nn::silu(get("c_bn")?)?, get("c_silu")?)?;
+                stage.check(
+                    "c_pw2",
+                    &c.pointwise2.forward(get("c_silu")?)?,
+                    get("c_pw2")?,
+                )?;
+                stage.check("cv", &c.forward(get("n3")?)?, get("cv")?)?;
+                stage.check("y3", &get("y2")?.add(get("cv")?)?, get("y3")?)?;
+                stage.check("n4", &l.norm_ff2.forward(get("y3")?)?, get("n4")?)?;
+                stage.check("f2", &l.ff2.forward(get("n4")?)?, get("f2")?)?;
+                let y3 = get("y3")?;
+                stage.check(
+                    "y4",
+                    &y3.add(scalar_like(0.5, y3)?.multiply(get("f2")?)?)?,
+                    get("y4")?,
+                )?;
+                stage.check("layer0", &l.norm_out.forward(get("y4")?)?, get("layer0")?)?;
+                // L'encodeur entier, depuis les mêmes caractéristiques.
+                let lengths = Array::from_slice(&[x.shape()[1]], &[1]);
+                let (full, _) = enc.forward(x, &lengths)?;
+                stage.check("encoder", &full, get("encoder")?)?;
+                Ok(stage.differing)
+            })
+            .unwrap();
+        assert!(differing.is_empty(), "{id} : {}", differing.join(" ; "));
     }
 
     #[test]
     #[ignore = "demande les poids et les étages du Swift, dans le build de scripts/mlx-parite.sh"]
     fn every_stage_matches_the_swift() {
-        compare("parakeet_tdt_v3");
-        compare("parakeet_tdt_v2");
+        compare("parakeet_tdt_v3", Parakeet::load);
+        compare("parakeet_tdt_v2", Parakeet::load);
+    }
+
+    /// Phonon-2 (tâche 16) : le graphe de Parakeet, ses couches à cinq
+    /// valeurs (FFN, attention, convolutions ponctuelles) lues dans l'archive.
+    #[test]
+    #[ignore = "demande les poids et les étages du Swift, dans le build de scripts/mlx-parite.sh"]
+    fn every_stage_of_phonon_matches_the_swift() {
+        compare("phonon_2", crate::stt::mlx::phonon::load);
     }
 }

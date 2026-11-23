@@ -51,19 +51,10 @@ impl Weights {
                 ))
             };
             let arrays = Array::load_safetensors(&file).map_err(|err| unreadable(&err))?;
-            let mut read = Vec::with_capacity(arrays.len());
-            for (key, array) in arrays {
-                let Some(key) = rename(&key) else { continue };
-                let array = if array.dtype().is_float() && array.dtype() != compute {
-                    array.as_dtype(compute).map_err(|err| unreadable(&err))?
-                } else {
-                    array
-                };
-                read.push((key, array));
-            }
-            mlx_rs::transforms::eval(read.iter().map(|(_, array)| array))
-                .map_err(|err| unreadable(&err))?;
-            for (key, array) in read {
+            let renamed = arrays
+                .into_iter()
+                .filter_map(|(key, array)| rename(&key).map(|key| (key, array)));
+            for (key, array) in computed(renamed, compute).map_err(|err| unreadable(&err))? {
                 tensors.insert(key, (array, file.clone()));
             }
         }
@@ -71,6 +62,34 @@ impl Weights {
             model,
             tensors,
             quantization,
+        })
+    }
+
+    /// Des tenseurs déjà lus (le conteneur de Phonon-2), sous les clés du
+    /// graphe, tous venus de `file` : comme `load`, les flottants passent à
+    /// `compute`, puis tout est évalué. Une clé donnée deux fois : la
+    /// dernière l'emporte.
+    pub fn from_arrays(
+        model: &'static str,
+        file: &Path,
+        arrays: Vec<(String, Array)>,
+        compute: Dtype,
+    ) -> Result<Self> {
+        let unreadable = |err: &dyn std::fmt::Display| {
+            anyhow!(crate::tr!(
+                en = "unreadable {model} weights ({}): {err}",
+                fr = "poids de {model} illisibles ({}) : {err}",
+                file.display(),
+            ))
+        };
+        let mut tensors = BTreeMap::new();
+        for (key, array) in computed(arrays, compute).map_err(|err| unreadable(&err))? {
+            tensors.insert(key, (array, file.to_path_buf()));
+        }
+        Ok(Self {
+            model,
+            tensors,
+            quantization: None,
         })
     }
 
@@ -114,6 +133,27 @@ impl Weights {
         }
         Ok(())
     }
+}
+
+/// Les flottants au type de calcul (les mots quantifiés `uint32` restent
+/// tels quels), comme la passe du Swift qui suit `update(parameters:)` ;
+/// tout évalué ici, pour que des données fausses soient une erreur du
+/// chargement.
+fn computed(
+    arrays: impl IntoIterator<Item = (String, Array)>,
+    compute: Dtype,
+) -> std::result::Result<Vec<(String, Array)>, mlx_rs::error::Exception> {
+    let mut read = Vec::new();
+    for (key, array) in arrays {
+        let array = if array.dtype().is_float() && array.dtype() != compute {
+            array.as_dtype(compute)?
+        } else {
+            array
+        };
+        read.push((key, array));
+    }
+    mlx_rs::transforms::eval(read.iter().map(|(_, array)| array))?;
+    Ok(read)
 }
 
 /// Les `*.safetensors` de `dir`, dans l'ordre des noms ; aucun : une erreur.

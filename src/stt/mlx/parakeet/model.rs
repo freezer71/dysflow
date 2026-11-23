@@ -49,7 +49,7 @@ impl Stop<'_> {
 
 pub struct Parakeet {
     pub config: Config,
-    encoder: Conformer,
+    pub(super) encoder: Conformer,
     decoder: PredictNetwork,
     joint: JointNetwork,
 }
@@ -59,7 +59,14 @@ impl Parakeet {
     /// chaque clé prise avec sa forme ; une clé en trop est une erreur.
     pub fn load(dir: &Path) -> Result<Self> {
         let config = Config::load(dir)?;
-        let mut w = Weights::load(dir, "Parakeet", COMPUTE, config.quantization, remap_key)?;
+        let w = Weights::load(dir, "Parakeet", COMPUTE, config.quantization, remap_key)?;
+        Self::from_weights(config, w)
+    }
+
+    /// Le graphe de `config`, chaque paramètre pris dans `w` avec sa forme ;
+    /// une clé en trop est une erreur (`verify: .all` du Swift). Phonon-2 y
+    /// passe aussi, ses poids lus dans son conteneur.
+    pub fn from_weights(config: Config, mut w: Weights) -> Result<Self> {
         let encoder = Conformer::load(&mut w, &config.encoder)?;
         let decoder = PredictNetwork::load(&mut w, "decoder", &config.decoder)?;
         let joint = JointNetwork::load(&mut w, "joint", &config.joint)?;

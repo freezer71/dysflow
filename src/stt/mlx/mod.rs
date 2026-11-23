@@ -1,7 +1,8 @@
 //! La dictée en MLX, en Rust (`mlx-rs`) : la traduction des modèles Swift
 //! de `macos/Vendor/KokoroMLX/STT`, à parité avec eux. Les briques communes
 //! (`dsp`, `nemo`, les couches de `nn`, la lecture des poids de `weights`)
-//! servent à chaque modèle ; Parakeet v2 et v3 sont les premiers.
+//! servent à chaque modèle ; Parakeet v2 et v3 sont les premiers, Phonon-2
+//! (le graphe de Parakeet, ses poids dans une archive) le suivant.
 //!
 //! Un modèle de dictée chargé inscrit son besoin dans les plafonds de MLX
 //! sous la clé `"dictee"` (`need`), comme `SpeechModels.load` de l'app.
@@ -10,6 +11,7 @@ pub mod dsp;
 pub mod nemo;
 pub mod nn;
 pub mod parakeet;
+pub mod phonon;
 pub mod weights;
 
 use crate::compute::mlx::budget::Need;

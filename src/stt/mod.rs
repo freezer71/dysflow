@@ -128,6 +128,11 @@ pub fn recognizer_for(
             let _ = threads;
             Ok(std::sync::Arc::new(mlx::parakeet::ParakeetMlx::new()))
         }
+        #[cfg(all(feature = "mlx", target_os = "macos", target_arch = "aarch64"))]
+        crate::models::Runtime::PhononMlx => {
+            let _ = threads;
+            Ok(std::sync::Arc::new(mlx::phonon::PhononMlx::new()))
+        }
         // Un moteur que ce binaire ne sait pas calculer : seul l'app, ou un
         // binaire construit avec la feature, le fait.
         runtime => {
@@ -262,8 +267,8 @@ mod tests {
         }
     }
 
-    /// Parakeet MLX (v3 et v2) : un reconnaisseur et un moteur là où le
-    /// binaire a MLX ; refusé par son nom ailleurs.
+    /// Parakeet MLX (v3 et v2) et Phonon-2 : un reconnaisseur et un moteur
+    /// là où le binaire a MLX ; refusés par leur nom ailleurs.
     #[test]
     fn parakeet_mlx_is_recognized_where_the_build_has_mlx_and_refused_by_name_elsewhere() {
         let mlx = cfg!(all(
@@ -271,7 +276,11 @@ mod tests {
             target_os = "macos",
             target_arch = "aarch64"
         ));
-        for id in ["parakeet_tdt_v3", "parakeet_tdt_v2"] {
+        for (id, engine_name) in [
+            ("parakeet_tdt_v3", "ParakeetMlx"),
+            ("parakeet_tdt_v2", "ParakeetMlx"),
+            ("phonon_2", "PhononMlx"),
+        ] {
             let recognizer = recognizer_for(package(id), 4);
             let engine = engine_for(package(id), 4);
             if mlx {
@@ -283,7 +292,7 @@ mod tests {
                     engine.err().map(|e| e.to_string()),
                 ] {
                     let err = err.expect("MLX : pas ici");
-                    assert!(err.contains("ParakeetMlx"), "{err}");
+                    assert!(err.contains(engine_name), "{err}");
                 }
             }
         }

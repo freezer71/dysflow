@@ -1,6 +1,7 @@
 //! Les couches de MLXNN qu'emploient les modèles de dictée : `Linear` (et
-//! `QuantizedLinear`), `Embedding` (et `QuantizedEmbedding`), `LayerNorm`,
-//! `BatchNorm`, `Conv1d`, `Conv2d`, `LSTM`. Mêmes opérations que mlx-swift
+//! `QuantizedLinear`, et le `FiveValueLinear` de Phonon-2), `Embedding` (et
+//! `QuantizedEmbedding`), `LayerNorm`, `BatchNorm`, `Conv1d`, `Conv2d`,
+//! `LSTM`. Mêmes opérations que mlx-swift
 //! 0.32 ; aucun opérateur surchargé de `mlx-rs` (ils paniquent) : chaque
 //! opération rend son `Result`.
 
@@ -68,6 +69,13 @@ fn quantized_shapes(
     ))
 }
 
+/// Les groupes d'une couche à cinq valeurs (`FiveValueLinear.groupSize`).
+pub const FIVE_VALUE_GROUP_SIZE: i32 = 128;
+/// Le plan des magnitudes hautes d'une couche à cinq valeurs est rangé sous
+/// `{préfixe}.hi.weight`, `.hi.scales` et `.hi.biases` ; celui des basses,
+/// sous les clés d'une couche quantifiée.
+pub const FIVE_VALUE_HI: &str = "hi";
+
 /// Une matrice quantifiée : mots, échelles et décalages par groupe.
 pub struct Packed {
     weight: Array,
@@ -92,13 +100,33 @@ impl Packed {
             q,
         })
     }
+
+    /// `quantizedMM(x, weight, scales:, biases:, transpose: true, …)`.
+    fn matmul(&self, x: &Array) -> Result<Array> {
+        let options = QuantizedMatmulOptions {
+            transpose: true,
+            group_size: Some(self.q.group_size),
+            bits: Some(self.q.bits),
+            ..Default::default()
+        };
+        Ok(ops::quantized_matmul(
+            x,
+            &self.weight,
+            &self.scales,
+            &self.biases,
+            options,
+        )?)
+    }
 }
 
 /// `Linear` : `addMM(bias, x, weightᵀ)`, ou `matmul` sans biais ;
-/// `QuantizedLinear` : `quantizedMM(…, transpose: true)`, puis `+ bias`.
+/// `QuantizedLinear` : `quantizedMM(…, transpose: true)`, puis `+ bias` ;
+/// `FiveValueLinear` (Phonon-2) : deux plans 2 bits par groupes de 128,
+/// chacun par `quantizedMM`, sommés, sans biais.
 pub enum Linear {
     Dense { weight: Array, bias: Option<Array> },
     Quantized { packed: Packed, bias: Option<Array> },
+    FiveValue { lo: Packed, hi: Packed },
 }
 
 impl Linear {
@@ -109,6 +137,20 @@ impl Linear {
         output: i32,
         bias: bool,
     ) -> Result<Self> {
+        // Comme `update(modules:)` du Swift : la couche à cinq valeurs prend
+        // la place de la `Linear`, sans biais ; un biais du fichier resterait
+        // en trop (`Weights::finish`).
+        let hi = format!("{prefix}.{FIVE_VALUE_HI}");
+        if w.has(&format!("{hi}.weight")) {
+            let q = Quantization {
+                group_size: FIVE_VALUE_GROUP_SIZE,
+                bits: 2,
+            };
+            return Ok(Self::FiveValue {
+                lo: Packed::load(w, prefix, output, input, q)?,
+                hi: Packed::load(w, &hi, output, input, q)?,
+            });
+        }
         let quantized = quantization_of(w, prefix)?;
         let bias = if bias {
             Some(w.take(&format!("{prefix}.bias"), &[output])?)
@@ -135,24 +177,13 @@ impl Linear {
             } => Ok(ops::addmm(bias, x, weight.transpose()?, None, None)?),
             Self::Dense { weight, bias: None } => Ok(x.matmul(weight.transpose()?)?),
             Self::Quantized { packed, bias } => {
-                let options = QuantizedMatmulOptions {
-                    transpose: true,
-                    group_size: Some(packed.q.group_size),
-                    bits: Some(packed.q.bits),
-                    ..Default::default()
-                };
-                let y = ops::quantized_matmul(
-                    x,
-                    &packed.weight,
-                    &packed.scales,
-                    &packed.biases,
-                    options,
-                )?;
+                let y = packed.matmul(x)?;
                 match bias {
                     Some(bias) => Ok(y.add(bias)?),
                     None => Ok(y),
                 }
             }
+            Self::FiveValue { lo, hi } => Ok(lo.matmul(x)?.add(hi.matmul(x)?)?),
         }
     }
 }
