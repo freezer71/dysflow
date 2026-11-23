@@ -143,6 +143,11 @@ pub fn recognizer_for(
             let _ = threads;
             Ok(std::sync::Arc::new(mlx::canary::CanaryMlx::new()))
         }
+        #[cfg(all(feature = "mlx", target_os = "macos", target_arch = "aarch64"))]
+        crate::models::Runtime::Qwen3AsrMlx => {
+            let _ = threads;
+            Ok(std::sync::Arc::new(mlx::qwen3_asr::Qwen3AsrMlx::new()))
+        }
         // Un moteur que ce binaire ne sait pas calculer : seul l'app, ou un
         // binaire construit avec la feature, le fait.
         runtime => {
@@ -299,7 +304,8 @@ mod tests {
         }
     }
 
-    /// Parakeet MLX (v3 et v2), Phonon-2 et les trois Whisper : un
+    /// Parakeet MLX (v3 et v2), Phonon-2, les trois Whisper, Canary et les
+    /// deux Qwen3-ASR : un
     /// reconnaisseur et un moteur là où le binaire a MLX ; refusés par leur
     /// nom ailleurs.
     #[test]
@@ -317,6 +323,8 @@ mod tests {
             ("whisper_small_4bit", "WhisperMlx"),
             ("whisper_large_v3_turbo_4bit", "WhisperMlx"),
             ("canary_1b_v2_q8", "CanaryMlx"),
+            ("qwen3_asr_06b_8bit", "Qwen3AsrMlx"),
+            ("qwen3_asr_17b_4bit", "Qwen3AsrMlx"),
         ] {
             let recognizer = recognizer_for(package(id), 4);
             let engine = engine_for(package(id), 4);
@@ -337,11 +345,11 @@ mod tests {
 
     #[test]
     fn an_engine_this_binary_cannot_compute_is_refused_by_name() {
-        let err = engine_for(package("qwen3_asr_06b_8bit"), 4)
+        let err = engine_for(package("cohere_transcribe_8bit"), 4)
             .err()
-            .expect("Qwen3-ASR MLX : pas porté")
+            .expect("Cohere MLX : pas porté")
             .to_string();
-        assert!(err.contains("Qwen3AsrMlx"), "{err}");
+        assert!(err.contains("CohereMlx"), "{err}");
     }
 
     /// Nemotron et Voxtral Realtime : des moteurs en flux là où le binaire a

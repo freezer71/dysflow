@@ -1,9 +1,11 @@
 //! MLX en Rust (`mlx-rs`), sur les Mac Apple Silicon : un seul fil (`Held`),
 //! sous le verrou commun avec mlx-swift (`compute::gpu`), avec ses plafonds
-//! (`budget`) et ses noyaux Metal (`metallib`).
+//! (`budget`), ses noyaux Metal (`metallib`) et les vocabulaires communs
+//! aux modèles (`tokenizer`).
 
 pub mod budget;
 pub mod metallib;
+pub mod tokenizer;
 mod worker;
 
 pub use worker::Held;

@@ -5,26 +5,24 @@
 //!
 //! Deux passages, ceux du Swift : la suite entière (`forward`, le décodeur
 //! de l'amont) et le pas à pas de l'app (`step` : un cache d'auto-attention
-//! par bloc, `KVCacheSimple`, et l'attention croisée calculée une fois par
+//! par bloc, `KVCacheSimple` de `nn`, et l'attention croisée calculée une fois par
 //! lecture). Mêmes opérations dans le même ordre ; les types suivent ceux
 //! des poids et de l'entrée, comme dans le Swift (aucune conversion
 //! ajoutée).
 
 use anyhow::{anyhow, ensure, Result};
 use mlx_rs::fast::{self, ScaledDotProductAttentionMask};
-use mlx_rs::ops::indexing::{Ellipsis, TryIndexMutOp, TryIndexOp};
+use mlx_rs::ops::indexing::TryIndexOp;
 use mlx_rs::{nn, ops, Array, Dtype};
 
 use super::config::DecoderConfig;
-use crate::stt::mlx::nn::{scalar_like, Embedding, LayerNorm, Linear};
+use crate::stt::mlx::nn::{scalar_like, Embedding, KvCache, LayerNorm, Linear};
 use crate::stt::mlx::weights::Weights;
 
 /// Le modèle dans les messages.
 pub const NAME: &str = "Canary";
 /// Les positions de la table (`CanaryFixedPositionalEncoding.maxLength`).
 pub const MAX_POSITIONS: i32 = 1024;
-/// Le pas d'agrandissement du cache (`KVCacheSimple.step`).
-const CACHE_STEP: i32 = 256;
 
 /// `[B, T, …]` : les deux premières dimensions.
 fn batch_and_time(x: &Array) -> Result<(i32, i32)> {
@@ -33,17 +31,6 @@ fn batch_and_time(x: &Array) -> Result<(i32, i32)> {
         shape => Err(anyhow!(crate::tr!(
             en = "{NAME}: shape {shape:?}, at least two axes expected",
             fr = "{NAME} : forme {shape:?}, au moins deux axes attendus",
-        ))),
-    }
-}
-
-/// `[B, H, T, D]`.
-fn four_axes(x: &Array) -> Result<[i32; 4]> {
-    match x.shape() {
-        [b, h, t, d] => Ok([*b, *h, *t, *d]),
-        shape => Err(anyhow!(crate::tr!(
-            en = "{NAME}: shape {shape:?}, four axes expected",
-            fr = "{NAME} : forme {shape:?}, quatre axes attendus",
         ))),
     }
 }
@@ -213,65 +200,6 @@ impl Attention {
             .transpose_axes(&[0, 2, 1, 3])?
             .reshape(&[b, t, -1])?;
         self.out.forward(&merged)
-    }
-}
-
-/// `KVCacheSimple` : des tampons agrandis par pas de 256 positions, remplis
-/// par tranches ; rend les `offset` premières.
-#[derive(Default)]
-pub struct KvCache {
-    keys: Option<Array>,
-    values: Option<Array>,
-    offset: i32,
-}
-
-impl KvCache {
-    pub fn offset(&self) -> i32 {
-        self.offset
-    }
-
-    /// `update(keys:values:)`.
-    pub fn update(&mut self, keys: &Array, values: &Array) -> Result<(Array, Array)> {
-        let previous = self.offset;
-        let [b, heads, time, k_dim] = four_axes(keys)?;
-        let v_dim = four_axes(values)?[3];
-        let reset = match &self.keys {
-            Some(current) => previous + time > current.shape()[2],
-            None => true,
-        };
-        if reset {
-            let steps = (CACHE_STEP + time - 1) / CACHE_STEP;
-            let new_k = ops::zeros_dtype(&[b, heads, steps * CACHE_STEP, k_dim], keys.dtype())?;
-            let new_v = ops::zeros_dtype(&[b, heads, steps * CACHE_STEP, v_dim], values.dtype())?;
-            match (self.keys.take(), self.values.take()) {
-                (Some(mut current_k), Some(mut current_v)) => {
-                    if previous % CACHE_STEP != 0 {
-                        current_k = current_k.try_index((Ellipsis, ..previous, ..))?;
-                        current_v = current_v.try_index((Ellipsis, ..previous, ..))?;
-                    }
-                    self.keys = Some(ops::concatenate(&[current_k, new_k], 2)?);
-                    self.values = Some(ops::concatenate(&[current_v, new_v], 2)?);
-                }
-                _ => {
-                    self.keys = Some(new_k);
-                    self.values = Some(new_v);
-                }
-            }
-        }
-        self.offset += time;
-        let offset = self.offset;
-        let (Some(all_k), Some(all_v)) = (self.keys.as_mut(), self.values.as_mut()) else {
-            return Err(anyhow!(crate::tr!(
-                en = "{NAME}: empty cache",
-                fr = "{NAME} : cache vide",
-            )));
-        };
-        all_k.try_index_mut((Ellipsis, previous..offset, ..), keys)?;
-        all_v.try_index_mut((Ellipsis, previous..offset, ..), values)?;
-        Ok((
-            all_k.try_index((Ellipsis, ..offset, ..))?,
-            all_v.try_index((Ellipsis, ..offset, ..))?,
-        ))
     }
 }
 

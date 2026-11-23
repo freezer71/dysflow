@@ -1,12 +1,12 @@
 //! Les couches de MLXNN qu'emploient les modèles de dictée : `Linear` (et
 //! `QuantizedLinear`, et le `FiveValueLinear` de Phonon-2), `Embedding` (et
 //! `QuantizedEmbedding`), `LayerNorm`, `RMSNorm`, `BatchNorm`, `Conv1d`, `Conv2d`,
-//! `LSTM`. Mêmes opérations que mlx-swift
+//! `LSTM`, et le cache d'attention `KVCacheSimple`. Mêmes opérations que mlx-swift
 //! 0.32 ; aucun opérateur surchargé de `mlx-rs` (ils paniquent) : chaque
 //! opération rend son `Result`.
 
 use anyhow::{anyhow, ensure, Result};
-use mlx_rs::ops::indexing::{Ellipsis, TryIndexOp};
+use mlx_rs::ops::indexing::{Ellipsis, TryIndexMutOp, TryIndexOp};
 use mlx_rs::ops::{DequantizeOptions, QuantizedMatmulOptions};
 use mlx_rs::{fast, ops, Array};
 
@@ -489,5 +489,79 @@ impl Lstm {
             hidden = Some(h);
         }
         Ok((ops::stack(&all_hidden, -2)?, ops::stack(&all_cell, -2)?))
+    }
+}
+
+/// Le pas d'agrandissement du cache (`KVCacheSimple.step`).
+const CACHE_STEP: i32 = 256;
+
+/// `[B, H, T, D]` d'un tableau de clés ou de valeurs.
+fn four_axes(x: &Array) -> Result<[i32; 4]> {
+    match x.shape() {
+        [b, h, t, d] => Ok([*b, *h, *t, *d]),
+        shape => Err(anyhow!(crate::tr!(
+            en = "attention cache: shape {shape:?}, four axes expected",
+            fr = "cache d'attention : forme {shape:?}, quatre axes attendus",
+        ))),
+    }
+}
+
+/// `KVCacheSimple` (`TTS/KVCache.swift`, celui de mlx-swift-lm) : des
+/// tampons agrandis par pas de 256 positions, remplis par tranches ; rend
+/// les `offset` premières. Canary et Qwen3-ASR s'en servent.
+#[derive(Default)]
+pub struct KvCache {
+    keys: Option<Array>,
+    values: Option<Array>,
+    offset: i32,
+}
+
+impl KvCache {
+    pub fn offset(&self) -> i32 {
+        self.offset
+    }
+
+    /// `update(keys:values:)`.
+    pub fn update(&mut self, keys: &Array, values: &Array) -> Result<(Array, Array)> {
+        let previous = self.offset;
+        let [b, heads, time, k_dim] = four_axes(keys)?;
+        let v_dim = four_axes(values)?[3];
+        let reset = match &self.keys {
+            Some(current) => previous + time > current.shape()[2],
+            None => true,
+        };
+        if reset {
+            let steps = (CACHE_STEP + time - 1) / CACHE_STEP;
+            let new_k = ops::zeros_dtype(&[b, heads, steps * CACHE_STEP, k_dim], keys.dtype())?;
+            let new_v = ops::zeros_dtype(&[b, heads, steps * CACHE_STEP, v_dim], values.dtype())?;
+            match (self.keys.take(), self.values.take()) {
+                (Some(mut current_k), Some(mut current_v)) => {
+                    if previous % CACHE_STEP != 0 {
+                        current_k = current_k.try_index((Ellipsis, ..previous, ..))?;
+                        current_v = current_v.try_index((Ellipsis, ..previous, ..))?;
+                    }
+                    self.keys = Some(ops::concatenate(&[current_k, new_k], 2)?);
+                    self.values = Some(ops::concatenate(&[current_v, new_v], 2)?);
+                }
+                _ => {
+                    self.keys = Some(new_k);
+                    self.values = Some(new_v);
+                }
+            }
+        }
+        self.offset += time;
+        let offset = self.offset;
+        let (Some(all_k), Some(all_v)) = (self.keys.as_mut(), self.values.as_mut()) else {
+            return Err(anyhow!(crate::tr!(
+                "attention cache: empty",
+                "cache d'attention : vide",
+            )));
+        };
+        all_k.try_index_mut((Ellipsis, previous..offset, ..), keys)?;
+        all_v.try_index_mut((Ellipsis, previous..offset, ..), values)?;
+        Ok((
+            all_k.try_index((Ellipsis, ..offset, ..))?,
+            all_v.try_index((Ellipsis, ..offset, ..))?,
+        ))
     }
 }
