@@ -34,17 +34,43 @@ const PRIOR_FLOOR: f32 = 3.162_277_7e-3;
 /// il change de niveau, la fenêtre l'oublie en 12 s et le nouveau niveau
 /// devient le plancher. Un fond qui monte lentement est suivi, avec ce retard.
 const WINDOW: usize = 375;
+/// Trames regardées pour juger qu'un niveau est stable : 12, soit 0,4 s.
+const STEADY_WINDOW: usize = 12;
+/// Un niveau est stable quand son plus fort RMS ne dépasse pas son plus faible
+/// de plus de 30 % (2,3 dB) sur `STEADY_WINDOW` trames. Un bruit blanc varie
+/// de 3 % ; un ventilateur à plus ou moins 3 dB et 0,2 Hz, de 20 % au plus ;
+/// la parole, de plus de 50 % d'une syllabe à l'autre.
+const STEADY_SPREAD: f32 = 1.3;
+/// Un niveau stable au-dessus du seuil est entendu 24 trames (0,77 s), puis
+/// jugé bruit : le plancher, lui, n'y arrive qu'en 12 s. Une voix tenue, sans
+/// aucune variation, plus longtemps, est coupée ; la parole ne l'est pas.
+const STEADY_FRAMES: usize = 24;
 
 /// Détecteur à énergie : une trame est de la parole quand son RMS dépasse
 /// le plancher de bruit, le minimum du RMS des `WINDOW` dernières trames
 /// (au plus `PRIOR_FLOOR` tant que la fenêtre se remplit). Une trame non
 /// finie (NaN, infini) n'est pas de la parole et n'entre pas dans la fenêtre.
 ///
+/// Un bruit de fond fort (au-dessus du seuil de -42 dBFS) reste plus de 12 s
+/// au-dessus du plancher, qui n'est sûr qu'alors : mais il est stable, et un
+/// niveau stable au-dessus du seuil n'est de la parole que 24 trames
+/// (`STEADY_FRAMES`). Cela coûte une voix parfaitement constante (un son tenu
+/// plus de 1,2 s) et un bruit fort qui démarre : 0,8 s d'« énoncé » au plus.
+///
 /// Limite : une parole continue de plus de 12 s, sans aucun creux, finit par
 /// devenir le plancher.
 #[derive(Default)]
 pub struct EnergyDetector {
     window: VecDeque<f32>,
+    /// Les `STEADY_WINDOW` derniers RMS.
+    recent: VecDeque<f32>,
+    /// Trames de suite à niveau stable, au-dessus du seuil ou non : un bruit
+    /// au bord du seuil ne remet pas le compte à zéro.
+    steady_run: usize,
+}
+
+fn lowest_of(values: &VecDeque<f32>) -> f32 {
+    values.iter().copied().fold(f32::MAX, f32::min)
 }
 
 impl EnergyDetector {
@@ -73,17 +99,29 @@ impl SpeechDetector for EnergyDetector {
             self.window.pop_front();
         }
         self.window.push_back(rms);
-        let lowest = self.window.iter().copied().fold(f32::MAX, f32::min);
+        let lowest = lowest_of(&self.window);
         let floor = if self.window.len() < WINDOW {
             lowest.min(PRIOR_FLOOR)
         } else {
             lowest
         };
-        Ok(rms > (floor.max(MIN_FLOOR) * RATIO).max(MIN_SPEECH_RMS))
+        if self.recent.len() == STEADY_WINDOW {
+            self.recent.pop_front();
+        }
+        self.recent.push_back(rms);
+        let highest = self.recent.iter().copied().fold(0.0, f32::max);
+        let steady = highest <= lowest_of(&self.recent) * STEADY_SPREAD;
+        self.steady_run = if steady { self.steady_run + 1 } else { 0 };
+        if rms <= (floor.max(MIN_FLOOR) * RATIO).max(MIN_SPEECH_RMS) {
+            return Ok(false);
+        }
+        Ok(self.steady_run <= STEADY_FRAMES)
     }
 
     fn reset(&mut self) {
         self.window.clear();
+        self.recent.clear();
+        self.steady_run = 0;
     }
 }
 
@@ -109,6 +147,19 @@ mod tests {
 
     fn dbfs(db: f32) -> f32 {
         10f32.powf(db / 20.0)
+    }
+
+    /// De la « parole » : le même bruit blanc, au même RMS, mais modulé d'une
+    /// syllabe à l'autre (plus ou moins 20 %, une période de 8 trames), comme
+    /// toute vraie voix. Un niveau parfaitement constant est un bruit : voir
+    /// `steady_noise_from_an_empty_window_is_heard_for_less_than_a_second_and_a_half`.
+    fn voice(db: f32, len: usize, seed: u64) -> Vec<f32> {
+        let mut out = noise(dbfs(db), len, seed);
+        for (i, x) in out.iter_mut().enumerate() {
+            let syllable = (i / FRAME) as f32 * std::f32::consts::TAU / 8.0;
+            *x *= 1.0 + 0.2 * syllable.sin();
+        }
+        out
     }
 
     #[test]
@@ -193,7 +244,7 @@ mod tests {
         for gain in [10.0f32, 15.0, 20.0] {
             let mut det = EnergyDetector::new();
             heard(&mut det, &noise(dbfs(-45.0), 2 * 16_000, 2));
-            let voice = noise(dbfs(-45.0 + gain), 10 * 16_000, 3);
+            let voice = voice(-45.0 + gain, 10 * 16_000, 3);
             assert_eq!(heard(&mut det, &voice), voice.len() / FRAME, "+{gain} dB");
         }
     }
@@ -203,22 +254,22 @@ mod tests {
         // Parole à -35 dBFS dès la première trame, sans aucun bruit avant :
         // 10 s d'affilée, puis 1 s de bruit, puis 2 s de parole.
         let mut det = EnergyDetector::new();
-        let first = noise(dbfs(-35.0), 10 * 16_000, 7);
+        let first = voice(-35.0, 10 * 16_000, 7);
         assert_eq!(heard(&mut det, &first), first.len() / FRAME);
         heard(&mut det, &noise(dbfs(-45.0), 16_000, 4));
-        let again = noise(dbfs(-35.0), 2 * 16_000, 5);
+        let again = voice(-35.0, 2 * 16_000, 5);
         assert_eq!(heard(&mut det, &again), again.len() / FRAME);
         // Et après un reset, comme à chaque dictée.
         det.reset();
-        let fresh = noise(dbfs(-35.0), 2 * 16_000, 8);
+        let fresh = voice(-35.0, 2 * 16_000, 8);
         assert_eq!(heard(&mut det, &fresh), fresh.len() / FRAME);
     }
 
     #[test]
-    fn a_noise_step_stops_being_speech_within_thirteen_seconds() {
-        // Le bruit passe de -45 à -35 dBFS et y reste : au plus 13 s plus
-        // tard (la fenêtre de 12 s, plus une marge), ce n'est plus de la parole.
-        let bound = 13 * 16_000 / FRAME;
+    fn a_noise_step_stops_being_speech_within_a_second_and_a_half() {
+        // Le bruit passe de -45 à -35 dBFS et y reste : au plus 1,5 s plus
+        // tard (47 trames), ce n'est plus de la parole.
+        let bound = 3 * 16_000 / 2 / FRAME;
         let mut det = EnergyDetector::new();
         heard(&mut det, &noise(dbfs(-45.0), 2 * 16_000, 2));
         let loud = noise(dbfs(-35.0), 40 * 16_000, 3);
@@ -229,8 +280,54 @@ mod tests {
         assert!(verdicts[0], "le saut est d'abord entendu");
         assert!(
             verdicts[bound..].iter().all(|h| !h),
-            "encore de la parole après 13 s"
+            "encore de la parole après 1,5 s"
         );
+    }
+
+    #[test]
+    fn steady_noise_from_an_empty_window_is_heard_for_less_than_a_second_and_a_half() {
+        for level in [-44.0f32, -42.0, -41.0, -40.0, -38.0, -35.0, -30.0, -25.0] {
+            let mut det = EnergyDetector::new();
+            let audio = noise(dbfs(level), 30 * 16_000, 5);
+            let verdicts: Vec<bool> = audio
+                .chunks_exact(FRAME)
+                .map(|f| det.is_speech(f).unwrap())
+                .collect();
+            let count = verdicts.iter().filter(|h| **h).count();
+            assert!(count <= 47, "{level} dBFS : {count} trames entendues");
+            assert!(
+                verdicts[47..].iter().all(|h| !h),
+                "{level} dBFS : parole après 1,5 s"
+            );
+        }
+    }
+
+    #[test]
+    fn a_fan_at_plus_or_minus_three_decibels_is_not_speech_after_a_second_and_a_half() {
+        for level in [-45.0f32, -42.0, -40.0, -38.0] {
+            let mut det = EnergyDetector::new();
+            let unit = noise(1.0, 30 * 16_000, 6);
+            let verdicts: Vec<bool> = (0..unit.len() / FRAME)
+                .map(|i| {
+                    let t = i as f32 * FRAME as f32 / 16_000.0;
+                    let db = level + 3.0 * (2.0 * std::f32::consts::PI * 0.2 * t).sin();
+                    let frame: Vec<f32> = unit[i * FRAME..(i + 1) * FRAME]
+                        .iter()
+                        .map(|x| x * dbfs(db))
+                        .collect();
+                    det.is_speech(&frame).unwrap()
+                })
+                .collect();
+            let count = verdicts.iter().filter(|h| **h).count();
+            assert!(
+                count <= 47,
+                "ventilateur à {level} dBFS : {count} trames entendues"
+            );
+            assert!(
+                verdicts[47..].iter().all(|h| !h),
+                "ventilateur à {level} dBFS : parole après 1,5 s"
+            );
+        }
     }
 
     #[test]
