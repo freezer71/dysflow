@@ -16,6 +16,10 @@
 # dossier une archive $OUT/dysflow-windows-x86_64.zip de son contenu, à
 # décompresser n'importe où.
 set -eu
+# Défense en profondeur : aucun ONNX Runtime lancé d'ici (le binaire du
+# paquet : --version, --show-config, --check-kokoro) n'écrit ni n'envoie sa
+# télémétrie (onnx::NO_TELEMETRY).
+export ORT_DISABLE_TELEMETRY=1
 cd "$(dirname "$0")/.."
 
 case "$(uname -s)" in

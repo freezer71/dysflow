@@ -31,6 +31,10 @@
 # Apostrophes typographiques voulues dans les messages ; $PATH affiché tel quel.
 # shellcheck disable=SC1112,SC2016
 set -eu
+# Défense en profondeur : aucun ONNX Runtime lancé d'ici (le binaire du
+# paquet : --version, --show-config, --check-kokoro) n'écrit ni n'envoie sa
+# télémétrie (onnx::NO_TELEMETRY).
+export ORT_DISABLE_TELEMETRY=1
 
 # DYSFLOW_DEPOT : un autre dépôt (ou un serveur local, pour les tests).
 DEPOT="${DYSFLOW_DEPOT:-https://github.com/freezer71/dysflow}"

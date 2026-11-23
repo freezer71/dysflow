@@ -39,6 +39,9 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  # Aucun ONNX Runtime lancé par un job (essais, paquet, binaires du
+  # paquet) n'écrit ni n'envoie sa télémétrie (onnx::NO_TELEMETRY).
+  ORT_DISABLE_TELEMETRY: "1"
   TAG: ${{ inputs.tag || github.ref_name }}
 
 jobs:

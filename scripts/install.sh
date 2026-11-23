@@ -13,6 +13,10 @@
 #
 # Pour désinstaller : rm -r "$PREFIX/lib/dysflow" "$PREFIX/bin/dysflow"
 set -eu
+# Défense en profondeur : aucun ONNX Runtime lancé d'ici (le binaire du
+# paquet : --version, --show-config, --check-kokoro) n'écrit ni n'envoie sa
+# télémétrie (onnx::NO_TELEMETRY).
+export ORT_DISABLE_TELEMETRY=1
 cd "$(dirname "$0")/.."
 
 # default_features : celles de package.sh (scripts/paquet-commun.sh).
