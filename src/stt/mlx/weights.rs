@@ -5,7 +5,7 @@
 //! calcul, et `update(parameters:verify: .all)` (clé absente, clé en trop
 //! ou forme inattendue : une erreur).
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use mlx_rs::{Array, Dtype};
 use serde::Deserialize;
 use std::collections::BTreeMap;
@@ -67,8 +67,8 @@ impl Weights {
 
     /// Des tenseurs déjà lus (le conteneur de Phonon-2), sous les clés du
     /// graphe, tous venus de `file` : comme `load`, les flottants passent à
-    /// `compute`, puis tout est évalué. Une clé donnée deux fois : la
-    /// dernière l'emporte.
+    /// `compute`, puis tout est évalué. Une clé donnée deux fois est une
+    /// erreur qui la nomme.
     pub fn from_arrays(
         model: &'static str,
         file: &Path,
@@ -82,10 +82,21 @@ impl Weights {
                 file.display(),
             ))
         };
-        let mut tensors = BTreeMap::new();
-        for (key, array) in computed(arrays, compute).map_err(|err| unreadable(&err))? {
-            tensors.insert(key, (array, file.to_path_buf()));
+        let mut seen = std::collections::BTreeSet::new();
+        for (key, _) in &arrays {
+            if !seen.insert(key.as_str()) {
+                bail!(crate::tr!(
+                    en = "{model} weights ({}): the key {key} appears twice",
+                    fr = "poids de {model} ({}) : la clé {key} y est deux fois",
+                    file.display(),
+                ));
+            }
         }
+        let tensors = computed(arrays, compute)
+            .map_err(|err| unreadable(&err))?
+            .into_iter()
+            .map(|(key, array)| (key, (array, file.to_path_buf())))
+            .collect();
         Ok(Self {
             model,
             tensors,

@@ -23,7 +23,7 @@
 //! celles de MLX, dans le même ordre. Un octet de trits au-delà de 242,
 //! qu'un `take` MLX lirait hors de sa table, est ici une erreur.
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, bail, Result};
 use half::f16;
 use mlx_rs::ops::DequantizeOptions;
 use mlx_rs::{ops, Array};
@@ -137,7 +137,8 @@ pub fn decode(data: &[u8], source: &Path) -> Result<Vec<(String, Array)>> {
                 )))
             }
         };
-        store(&record.n, value, &mut arrays, &mut lstm_biases)?;
+        store(&record.n, value, &mut arrays, &mut lstm_biases)
+            .map_err(|err| malformed(err.to_string()))?;
     }
 
     // LSTM : un seul biais dans le graphe, la somme des deux de PyTorch.
@@ -194,9 +195,16 @@ fn store(
     }
     if let Some((kind, layer)) = lstm_part(name, "decoder.lstm.bias_") {
         let slot = usize::from(kind == "hh");
-        lstm_biases
+        let held = &mut lstm_biases
             .entry(format!("decoder.prediction.dec_rnn.lstm.{layer}"))
-            .or_default()[slot] = Some(value);
+            .or_default()[slot];
+        if held.is_some() {
+            bail!(crate::tr!(
+                en = "{name} appears twice",
+                fr = "{name} y est deux fois",
+            ));
+        }
+        *held = Some(value);
         return Ok(());
     }
     let array = match value.ndim() {

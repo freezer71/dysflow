@@ -556,3 +556,40 @@ fn a_lone_lstm_bias_is_an_error() {
     let err = load_error(&synthetic("biais-seul", &container_bytes(&records)));
     assert!(err.contains("decoder.prediction.dec_rnn.lstm.0"), "{err}");
 }
+
+/// Une clé du graphe donnée deux fois : une erreur qui la nomme, pas la
+/// dernière qui l'emporte.
+#[test]
+fn a_key_given_twice_is_an_error_that_names_it() {
+    let mut records = tiny_records();
+    let twice = records
+        .iter()
+        .find(|(n, ..)| n == "joint.pred.weight")
+        .cloned()
+        .unwrap();
+    records.push(twice);
+    let err = load_error(&synthetic("cle-deux-fois", &container_bytes(&records)));
+    assert!(err.contains("joint.pred.weight"), "{err}");
+    assert!(err.contains("twice") || err.contains("deux fois"), "{err}");
+}
+
+/// Un biais du LSTM donné deux fois : une erreur qui le nomme, avec
+/// l'archive.
+#[test]
+fn an_lstm_bias_given_twice_is_an_error_that_names_it() {
+    let mut records = tiny_records();
+    let twice = records
+        .iter()
+        .find(|(n, ..)| n == "decoder.lstm.bias_ih_l0")
+        .cloned()
+        .unwrap();
+    records.push(twice);
+    let dir = synthetic("biais-deux-fois", &container_bytes(&records));
+    let err = load_error(&dir);
+    assert!(err.contains("decoder.lstm.bias_ih_l0"), "{err}");
+    assert!(err.contains("twice") || err.contains("deux fois"), "{err}");
+    assert!(
+        err.contains(&dir.join(ARCHIVE).display().to_string()),
+        "{err}"
+    );
+}

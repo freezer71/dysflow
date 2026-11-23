@@ -2,27 +2,50 @@
 //! écrire sur le disque : le `PhononContainer.extract` du Swift (`tar -xOf`
 //! de macOS), en Rust pur (ruzstd, tar).
 //!
-//! L'archive vient d'un téléchargement : chaque entrée est vérifiée avant
-//! d'être lue (un nom qui sortirait de l'archive, une taille annoncée
-//! démesurée : une erreur, avant toute allocation), un membre lu doit avoir
-//! tous ses octets, et chaque trame zstd sa somme de contrôle quand elle en
-//! porte une. Rien n'est extrait : un lien ou un dossier n'est jamais suivi.
+//! L'archive vient d'un téléchargement. Tout le flux décompressé a un budget
+//! (`MAX_ARCHIVE_BYTES`) : au-delà, une erreur, quelle que soit l'entrée qui
+//! le dépasse (un membre ignoré, un nom long GNU, une extension PAX, que
+//! `tar` lit en entier sans les rendre). Chaque entrée rendue est vérifiée
+//! avant d'être lue (un nom qui sortirait de l'archive, une taille annoncée
+//! démesurée : une erreur), un membre lu doit avoir tous ses octets, et
+//! chaque trame zstd sa somme de contrôle quand elle en porte une. Rien
+//! n'est extrait : un lien ou un dossier n'est jamais suivi.
 
 use anyhow::{anyhow, bail, Result};
 use ruzstd::decoding::{BlockDecodingStrategy, FrameDecoder};
+use std::cell::Cell;
 use std::fmt::Display;
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, Read};
 use std::path::{Component, Path};
+use std::rc::Rc;
 
 /// Au-delà, une taille annoncée est refusée avant d'être lue. Le plus gros
 /// membre de Phonon-2 (`model.fermion`) fait 177 438 361 octets.
 pub const MAX_MEMBER_BYTES: u64 = 1 << 30;
 
+/// Au-delà, l'archive décompressée (le tar entier, en-têtes compris) est
+/// refusée, au fil de la lecture. Phonon-2 en fait environ 178 Mo : deux
+/// membres au plafond, plus une marge pour les en-têtes.
+pub const MAX_ARCHIVE_BYTES: u64 = 2 * MAX_MEMBER_BYTES + (64 << 20);
+
+/// La capacité réservée d'avance pour un membre : le reste vient avec les
+/// octets lus, jamais sur la seule foi de la taille annoncée.
+const INITIAL_CAPACITY: u64 = 1 << 20;
+
 /// Les membres `names` de l'archive, dans cet ordre, chacun entier. Un
 /// membre absent, vide, présent deux fois ou qui n'est pas un fichier est
 /// une erreur qui le nomme ; toute erreur nomme l'archive.
 pub fn read_members<const N: usize>(archive: &Path, names: [&str; N]) -> Result<[Vec<u8>; N]> {
+    read_members_within(archive, names, MAX_ARCHIVE_BYTES)
+}
+
+/// `read_members`, avec un budget de `budget` octets décompressés.
+fn read_members_within<const N: usize>(
+    archive: &Path,
+    names: [&str; N],
+    budget: u64,
+) -> Result<[Vec<u8>; N]> {
     let shown = archive.display();
     let unreadable = |detail: &dyn Display| {
         anyhow!(crate::tr!(
@@ -31,11 +54,28 @@ pub fn read_members<const N: usize>(archive: &Path, names: [&str; N]) -> Result<
         ))
     };
     let file = File::open(archive).map_err(|err| unreadable(&err))?;
-    let mut tar = tar::Archive::new(Zstd::new(BufReader::new(file)));
+    let spent = Rc::new(Cell::new(false));
+    // Une erreur de lecture : le budget dépassé, s'il l'est (`tar` peut
+    // envelopper l'erreur du lecteur), sinon l'erreur elle-même.
+    let fail = |detail: &dyn Display| {
+        if spent.get() {
+            anyhow!(crate::tr!(
+                en = "Phonon archive ({shown}): more than {budget} bytes once decompressed",
+                fr = "archive Phonon ({shown}) : plus de {budget} octets une fois décompressée",
+            ))
+        } else {
+            unreadable(detail)
+        }
+    };
+    let mut tar = tar::Archive::new(Budget {
+        source: Zstd::new(BufReader::new(file)),
+        left: budget,
+        spent: Rc::clone(&spent),
+    });
     let mut found: [Option<Vec<u8>>; N] = std::array::from_fn(|_| None);
-    for entry in tar.entries().map_err(|err| unreadable(&err))? {
-        let mut entry = entry.map_err(|err| unreadable(&err))?;
-        let path = entry.path().map_err(|err| unreadable(&err))?.into_owned();
+    for entry in tar.entries().map_err(|err| fail(&err))? {
+        let mut entry = entry.map_err(|err| fail(&err))?;
+        let path = entry.path().map_err(|err| fail(&err))?.into_owned();
         let name = path.display().to_string();
         if !path
             .components()
@@ -68,12 +108,12 @@ pub fn read_members<const N: usize>(archive: &Path, names: [&str; N]) -> Result<
                 fr = "archive Phonon ({shown}) : {name} y est deux fois",
             ));
         }
-        // `size` ≤ MAX_MEMBER_BYTES : la capacité tient dans un usize.
-        let mut data = Vec::with_capacity(size as usize);
+        // Au plus INITIAL_CAPACITY : la capacité tient dans un usize.
+        let mut data = Vec::with_capacity(size.min(INITIAL_CAPACITY) as usize);
         (&mut entry)
             .take(size)
             .read_to_end(&mut data)
-            .map_err(|err| unreadable(&format!("{name} : {err}")))?;
+            .map_err(|err| fail(&format!("{name} : {err}")))?;
         if data.len() as u64 != size {
             bail!(crate::tr!(
                 en = "truncated Phonon archive ({shown}): {name} has {} bytes out of {size}",
@@ -91,7 +131,7 @@ pub fn read_members<const N: usize>(archive: &Path, names: [&str; N]) -> Result<
     }
     // Le reste du flux, jusqu'au bout : chaque trame se termine et sa somme
     // de contrôle est vérifiée, même après le dernier membre lu.
-    io::copy(&mut tar.into_inner(), &mut io::sink()).map_err(|err| unreadable(&err))?;
+    io::copy(&mut tar.into_inner(), &mut io::sink()).map_err(|err| fail(&err))?;
     if let Some(slot) = found.iter().position(Option::is_none) {
         let name = names[slot];
         bail!(crate::tr!(
@@ -100,6 +140,31 @@ pub fn read_members<const N: usize>(archive: &Path, names: [&str; N]) -> Result<
         ));
     }
     Ok(found.map(Option::unwrap_or_default))
+}
+
+/// `source`, jusqu'à `left` octets : au-delà, une erreur, et `spent` le dit.
+struct Budget<R> {
+    source: R,
+    left: u64,
+    spent: Rc<Cell<bool>>,
+}
+
+impl<R: Read> Read for Budget<R> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        // Un octet de plus que le reste permis : de quoi voir le dépassement.
+        let room =
+            usize::try_from(self.left.saturating_add(1)).map_or(buf.len(), |r| r.min(buf.len()));
+        let n = self.source.read(&mut buf[..room])?;
+        if n as u64 > self.left {
+            self.spent.set(true);
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "archive : budget de décompression dépassé",
+            ));
+        }
+        self.left -= n as u64;
+        Ok(n)
+    }
 }
 
 /// Les trames zstd de `source`, l'une après l'autre (`zstd -T` en écrit
@@ -348,5 +413,60 @@ pub(super) mod tests {
             read_members(&path, ["config.json", "model.fermion"]).unwrap_err()
         );
         assert!(err.contains("model.fermion"), "{err}");
+    }
+
+    /// Un nom long GNU (`L`) qui annonce 64 Gio : `tar` le lit en entier
+    /// sans le rendre. Le budget l'arrête au fil de la lecture, avec une
+    /// erreur qui nomme l'archive et le budget.
+    #[test]
+    fn a_gnu_long_name_beyond_the_budget_is_an_error() {
+        let mut header = tar::Header::new_gnu();
+        header.as_old_mut().name[..13].copy_from_slice(b"././@LongLink");
+        header.set_size(64 << 30);
+        header.set_mode(0o644);
+        header.set_entry_type(tar::EntryType::GNULongName);
+        header.set_cksum();
+        let mut builder = tar::Builder::new(Vec::new());
+        builder.append(&header, &vec![b'a'; 4 << 20][..]).unwrap();
+        let tar = builder.into_inner().unwrap();
+        let zst = ruzstd::encoding::compress_to_vec(
+            tar.as_slice(),
+            ruzstd::encoding::CompressionLevel::Fastest,
+        );
+        assert!(zst.len() < tar.len() / 10, "{} octets", zst.len());
+        let path = archive_file("nom-long", &zst);
+        let err = format!(
+            "{:#}",
+            read_members_within(&path, ["model.fermion"], 1 << 20).unwrap_err()
+        );
+        assert!(err.contains("1048576"), "{err}");
+        assert!(err.contains(&path.display().to_string()), "{err}");
+    }
+
+    /// Un membre que personne ne demande, plus gros que le budget une fois
+    /// décompressé : une erreur, pas une lecture sans fin.
+    #[test]
+    fn an_unasked_member_beyond_the_budget_is_an_error() {
+        let big = vec![0u8; 2 << 20];
+        let path = archive_file(
+            "membre-ignore-enorme",
+            &tar_zst(&[
+                (b"config.json", b"{}", 2),
+                (b"bombe.bin", &big, big.len() as u64),
+                (b"model.fermion", b"x", 1),
+            ]),
+        );
+        let err = format!(
+            "{:#}",
+            read_members_within(&path, ["config.json", "model.fermion"], 1 << 20).unwrap_err()
+        );
+        assert!(err.contains("1048576"), "{err}");
+        assert!(err.contains(&path.display().to_string()), "{err}");
+        // Sous le budget réel, la même archive se lit.
+        let [config, model] = read_members(&path, ["config.json", "model.fermion"]).unwrap();
+        assert_eq!(
+            (config.as_slice(), model.as_slice()),
+            (&b"{}"[..], &b"x"[..])
+        );
     }
 }
