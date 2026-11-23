@@ -108,6 +108,11 @@ public final class NemotronASRStreamSession {
     private var emittedText = ""
     private var done = false
 
+    /// Dysflow, pour la référence du port Rust (`NemotronFixtureTests`) :
+    /// chaque tranche de l'encodeur après l'invite, `(1, c, d)`, avant le
+    /// RNN-T. `nil` dans l'app : rien n'est appelé.
+    var chunkTraceEmitter: ((MLXArray) -> Void)?
+
     init(model: NemotronASRModel, language: String?, chunkFrames: Int?) {
         self.model = model
         self.language = language
@@ -188,6 +193,7 @@ public final class NemotronASRStreamSession {
             flushTail: final,
             state: encState
         ) { prompted in
+            chunkTraceEmitter?(prompted)
             model.streamRNNTDecode(prompted, state: rnntState, frameSeconds: frameSeconds)
         }
 

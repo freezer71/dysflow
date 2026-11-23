@@ -1,0 +1,1519 @@
+{
+  "cases" : [
+    {
+      "chunks" : [
+        {
+          "mean" : 0.0045014466,
+          "mean_abs" : 0.20234385,
+          "shape" : [
+            1,
+            7,
+            1024
+          ]
+        },
+        {
+          "mean" : -0.002112957,
+          "mean_abs" : 0.07233574,
+          "shape" : [
+            1,
+            7,
+            1024
+          ]
+        },
+        {
+          "mean" : -0.00027677524,
+          "mean_abs" : 0.056695882,
+          "shape" : [
+            1,
+            7,
+            1024
+          ]
+        },
+        {
+          "mean" : -0.00091883866,
+          "mean_abs" : 0.054014906,
+          "shape" : [
+            1,
+            7,
+            1024
+          ]
+        },
+        {
+          "mean" : 0.0034296215,
+          "mean_abs" : 0.051663812,
+          "shape" : [
+            1,
+            7,
+            1024
+          ]
+        },
+        {
+          "mean" : 0.002439711,
+          "mean_abs" : 0.069307104,
+          "shape" : [
+            1,
+            7,
+            1024
+          ]
+        },
+        {
+          "mean" : 0.0009882487,
+          "mean_abs" : 0.05090857,
+          "shape" : [
+            1,
+            7,
+            1024
+          ]
+        },
+        {
+          "mean" : 0.00083205866,
+          "mean_abs" : 0.036049593,
+          "shape" : [
+            1,
+            5,
+            1024
+          ]
+        }
+      ],
+      "deltas" : [
+        {
+          "step" : 14,
+          "text" : "N'oublie pas",
+          "tokens" : [
+            2780,
+            2775,
+            313,
+            140,
+            262,
+            26,
+            1006
+          ]
+        },
+        {
+          "step" : 21,
+          "text" : " d'envoyer",
+          "tokens" : [
+            2,
+            71,
+            2775,
+            124,
+            314,
+            129,
+            130
+          ]
+        },
+        {
+          "step" : 28,
+          "text" : " le devis",
+          "tokens" : [
+            2,
+            261,
+            406,
+            341,
+            40
+          ]
+        },
+        {
+          "step" : 35,
+          "text" : " aux clients",
+          "tokens" : [
+            2,
+            1094,
+            995,
+            262,
+            347,
+            40
+          ]
+        },
+        {
+          "step" : 42,
+          "text" : " avant la fin",
+          "tokens" : [
+            2334,
+            1020,
+            2,
+            284,
+            2,
+            121,
+            125
+          ]
+        },
+        {
+          "step" : 49,
+          "text" : " de la semaine",
+          "tokens" : [
+            406,
+            2,
+            284,
+            2223,
+            3095
+          ]
+        }
+      ],
+      "finish_tokens" : [
+        4,
+        2
+      ],
+      "input" : "francais",
+      "language" : "fr",
+      "mel" : {
+        "mean" : -11.383895,
+        "mean_abs" : 11.3839,
+        "shape" : [
+          1,
+          423,
+          128
+        ]
+      },
+      "session_text" : "N'oublie pas d'envoyer le devis aux clients avant la fin de la semaine.",
+      "splits" : [
+        {
+          "split" : "entier",
+          "text" : "N'oublie pas d'envoyer le devis aux clients avant la fin de la semaine.",
+          "tokens" : [
+            2780,
+            2775,
+            313,
+            140,
+            262,
+            26,
+            1006,
+            2,
+            71,
+            2775,
+            124,
+            314,
+            129,
+            130,
+            2,
+            261,
+            406,
+            341,
+            40,
+            2,
+            1094,
+            995,
+            262,
+            347,
+            40,
+            2334,
+            1020,
+            2,
+            284,
+            2,
+            121,
+            125,
+            406,
+            2,
+            284,
+            2223,
+            3095,
+            4,
+            2
+          ]
+        },
+        {
+          "split" : "tranches_560ms",
+          "text" : "N'oublie pas d'envoyer le devis aux clients avant la fin de la semaine.",
+          "tokens" : [
+            2780,
+            2775,
+            313,
+            140,
+            262,
+            26,
+            1006,
+            2,
+            71,
+            2775,
+            124,
+            314,
+            129,
+            130,
+            2,
+            261,
+            406,
+            341,
+            40,
+            2,
+            1094,
+            995,
+            262,
+            347,
+            40,
+            2334,
+            1020,
+            2,
+            284,
+            2,
+            121,
+            125,
+            406,
+            2,
+            284,
+            2223,
+            3095,
+            4,
+            2
+          ]
+        },
+        {
+          "split" : "irregulier",
+          "text" : "N'oublie pas d'envoyer le devis aux clients avant la fin de la semaine.",
+          "tokens" : [
+            2780,
+            2775,
+            313,
+            140,
+            262,
+            26,
+            1006,
+            2,
+            71,
+            2775,
+            124,
+            314,
+            129,
+            130,
+            2,
+            261,
+            406,
+            341,
+            40,
+            2,
+            1094,
+            995,
+            262,
+            347,
+            40,
+            2334,
+            1020,
+            2,
+            284,
+            2,
+            121,
+            125,
+            406,
+            2,
+            284,
+            2223,
+            3095,
+            4,
+            2
+          ]
+        }
+      ],
+      "steps" : 53,
+      "text" : "N'oublie pas d'envoyer le devis aux clients avant la fin de la semaine.",
+      "tokens" : [
+        2780,
+        2775,
+        313,
+        140,
+        262,
+        26,
+        1006,
+        2,
+        71,
+        2775,
+        124,
+        314,
+        129,
+        130,
+        2,
+        261,
+        406,
+        341,
+        40,
+        2,
+        1094,
+        995,
+        262,
+        347,
+        40,
+        2334,
+        1020,
+        2,
+        284,
+        2,
+        121,
+        125,
+        406,
+        2,
+        284,
+        2223,
+        3095,
+        4,
+        2
+      ]
+    },
+    {
+      "chunks" : [
+        {
+          "mean" : -0.00052009325,
+          "mean_abs" : 0.040569365,
+          "shape" : [
+            1,
+            7,
+            1024
+          ]
+        },
+        {
+          "mean" : 0.0020092395,
+          "mean_abs" : 0.059336558,
+          "shape" : [
+            1,
+            7,
+            1024
+          ]
+        },
+        {
+          "mean" : -0.0007073433,
+          "mean_abs" : 0.060035683,
+          "shape" : [
+            1,
+            7,
+            1024
+          ]
+        },
+        {
+          "mean" : -0.0013532576,
+          "mean_abs" : 0.05048484,
+          "shape" : [
+            1,
+            7,
+            1024
+          ]
+        },
+        {
+          "mean" : -0.00086984003,
+          "mean_abs" : 0.048604738,
+          "shape" : [
+            1,
+            7,
+            1024
+          ]
+        },
+        {
+          "mean" : 0.0016527271,
+          "mean_abs" : 0.05366496,
+          "shape" : [
+            1,
+            7,
+            1024
+          ]
+        },
+        {
+          "mean" : 7.82609e-05,
+          "mean_abs" : 0.050291993,
+          "shape" : [
+            1,
+            8,
+            1024
+          ]
+        }
+      ],
+      "deltas" : [
+        {
+          "step" : 14,
+          "text" : "Please send the",
+          "tokens" : [
+            2,
+            200,
+            261,
+            38,
+            817,
+            2917,
+            150
+          ]
+        },
+        {
+          "step" : 21,
+          "text" : " weekly report",
+          "tokens" : [
+            1607,
+            1133,
+            1405,
+            2,
+            311,
+            1107
+          ]
+        },
+        {
+          "step" : 28,
+          "text" : " to the",
+          "tokens" : [
+            12945,
+            46,
+            150
+          ]
+        },
+        {
+          "step" : 35,
+          "text" : " whole team",
+          "tokens" : [
+            2976,
+            261,
+            12945,
+            26,
+            454
+          ]
+        },
+        {
+          "step" : 42,
+          "text" : " before",
+          "tokens" : [
+            427,
+            456,
+            26
+          ]
+        }
+      ],
+      "finish_tokens" : [
+        540,
+        581,
+        2974,
+        4,
+        2
+      ],
+      "input" : "anglais",
+      "language" : "en",
+      "mel" : {
+        "mean" : -11.904701,
+        "mean_abs" : 11.904701,
+        "shape" : [
+          1,
+          391,
+          128
+        ]
+      },
+      "session_text" : "Please send the weekly report to the whole team before Friday.",
+      "splits" : [
+        {
+          "split" : "entier",
+          "text" : "Please send the weekly report to the whole team before Friday.",
+          "tokens" : [
+            2,
+            200,
+            261,
+            38,
+            817,
+            2917,
+            150,
+            1607,
+            1133,
+            1405,
+            2,
+            311,
+            1107,
+            12945,
+            46,
+            150,
+            2976,
+            261,
+            12945,
+            26,
+            454,
+            427,
+            456,
+            26,
+            540,
+            581,
+            2974,
+            4,
+            2
+          ]
+        },
+        {
+          "split" : "tranches_560ms",
+          "text" : "Please send the weekly report to the whole team before Friday.",
+          "tokens" : [
+            2,
+            200,
+            261,
+            38,
+            817,
+            2917,
+            150,
+            1607,
+            1133,
+            1405,
+            2,
+            311,
+            1107,
+            12945,
+            46,
+            150,
+            2976,
+            261,
+            12945,
+            26,
+            454,
+            427,
+            456,
+            26,
+            540,
+            581,
+            2974,
+            4,
+            2
+          ]
+        },
+        {
+          "split" : "irregulier",
+          "text" : "Please send the weekly report to the whole team before Friday.",
+          "tokens" : [
+            2,
+            200,
+            261,
+            38,
+            817,
+            2917,
+            150,
+            1607,
+            1133,
+            1405,
+            2,
+            311,
+            1107,
+            12945,
+            46,
+            150,
+            2976,
+            261,
+            12945,
+            26,
+            454,
+            427,
+            456,
+            26,
+            540,
+            581,
+            2974,
+            4,
+            2
+          ]
+        }
+      ],
+      "steps" : 49,
+      "text" : "Please send the weekly report to the whole team before Friday.",
+      "tokens" : [
+        2,
+        200,
+        261,
+        38,
+        817,
+        2917,
+        150,
+        1607,
+        1133,
+        1405,
+        2,
+        311,
+        1107,
+        12945,
+        46,
+        150,
+        2976,
+        261,
+        12945,
+        26,
+        454,
+        427,
+        456,
+        26,
+        540,
+        581,
+        2974,
+        4,
+        2
+      ]
+    },
+    {
+      "chunks" : [
+        {
+          "mean" : 0.0045014466,
+          "mean_abs" : 0.20234385,
+          "shape" : [
+            1,
+            7,
+            1024
+          ]
+        },
+        {
+          "mean" : -0.002112957,
+          "mean_abs" : 0.07233574,
+          "shape" : [
+            1,
+            7,
+            1024
+          ]
+        },
+        {
+          "mean" : -0.00027677524,
+          "mean_abs" : 0.056695882,
+          "shape" : [
+            1,
+            7,
+            1024
+          ]
+        },
+        {
+          "mean" : -0.00091883866,
+          "mean_abs" : 0.054014906,
+          "shape" : [
+            1,
+            7,
+            1024
+          ]
+        },
+        {
+          "mean" : 0.0034296215,
+          "mean_abs" : 0.051663812,
+          "shape" : [
+            1,
+            7,
+            1024
+          ]
+        },
+        {
+          "mean" : 0.002439711,
+          "mean_abs" : 0.069307104,
+          "shape" : [
+            1,
+            7,
+            1024
+          ]
+        },
+        {
+          "mean" : 0.0009882487,
+          "mean_abs" : 0.05090857,
+          "shape" : [
+            1,
+            7,
+            1024
+          ]
+        },
+        {
+          "mean" : 0.0007506317,
+          "mean_abs" : 0.049340416,
+          "shape" : [
+            1,
+            7,
+            1024
+          ]
+        },
+        {
+          "mean" : -0.00043311692,
+          "mean_abs" : 0.033861604,
+          "shape" : [
+            1,
+            7,
+            1024
+          ]
+        },
+        {
+          "mean" : 0.0008365266,
+          "mean_abs" : 0.04764329,
+          "shape" : [
+            1,
+            7,
+            1024
+          ]
+        },
+        {
+          "mean" : -0.00045531872,
+          "mean_abs" : 0.045755547,
+          "shape" : [
+            1,
+            7,
+            1024
+          ]
+        },
+        {
+          "mean" : 0.00058204494,
+          "mean_abs" : 0.04712253,
+          "shape" : [
+            1,
+            7,
+            1024
+          ]
+        },
+        {
+          "mean" : 0.0012911222,
+          "mean_abs" : 0.053308923,
+          "shape" : [
+            1,
+            7,
+            1024
+          ]
+        },
+        {
+          "mean" : -0.00025750697,
+          "mean_abs" : 0.046914008,
+          "shape" : [
+            1,
+            7,
+            1024
+          ]
+        },
+        {
+          "mean" : -0.00024496805,
+          "mean_abs" : 0.048627414,
+          "shape" : [
+            1,
+            7,
+            1024
+          ]
+        },
+        {
+          "mean" : -0.00037630557,
+          "mean_abs" : 0.047679283,
+          "shape" : [
+            1,
+            7,
+            1024
+          ]
+        },
+        {
+          "mean" : -0.0016014844,
+          "mean_abs" : 0.06651509,
+          "shape" : [
+            1,
+            7,
+            1024
+          ]
+        },
+        {
+          "mean" : -0.0009679164,
+          "mean_abs" : 0.0504429,
+          "shape" : [
+            1,
+            7,
+            1024
+          ]
+        },
+        {
+          "mean" : 0.0019889118,
+          "mean_abs" : 0.055206906,
+          "shape" : [
+            1,
+            7,
+            1024
+          ]
+        },
+        {
+          "mean" : 0.0031305389,
+          "mean_abs" : 0.062066678,
+          "shape" : [
+            1,
+            7,
+            1024
+          ]
+        },
+        {
+          "mean" : 0.0010150846,
+          "mean_abs" : 0.054529227,
+          "shape" : [
+            1,
+            7,
+            1024
+          ]
+        },
+        {
+          "mean" : 0.0005858457,
+          "mean_abs" : 0.050279833,
+          "shape" : [
+            1,
+            4,
+            1024
+          ]
+        }
+      ],
+      "deltas" : [
+        {
+          "step" : 14,
+          "text" : "N'oublie pas",
+          "tokens" : [
+            2780,
+            2775,
+            313,
+            140,
+            262,
+            26,
+            1006
+          ]
+        },
+        {
+          "step" : 21,
+          "text" : " d'envoyer",
+          "tokens" : [
+            2,
+            71,
+            2775,
+            124,
+            314,
+            129,
+            130
+          ]
+        },
+        {
+          "step" : 28,
+          "text" : " le devis",
+          "tokens" : [
+            2,
+            261,
+            406,
+            341,
+            40
+          ]
+        },
+        {
+          "step" : 35,
+          "text" : " aux clients",
+          "tokens" : [
+            2,
+            1094,
+            995,
+            262,
+            347,
+            40
+          ]
+        },
+        {
+          "step" : 42,
+          "text" : " avant la fin",
+          "tokens" : [
+            2334,
+            1020,
+            2,
+            284,
+            2,
+            121,
+            125
+          ]
+        },
+        {
+          "step" : 49,
+          "text" : " de la semaine",
+          "tokens" : [
+            406,
+            2,
+            284,
+            2223,
+            3095
+          ]
+        },
+        {
+          "step" : 119,
+          "text" : " n'oublie pas d'",
+          "tokens" : [
+            2,
+            113,
+            2775,
+            313,
+            140,
+            262,
+            26,
+            1006,
+            2,
+            71,
+            2775
+          ]
+        },
+        {
+          "step" : 126,
+          "text" : "envoyer le",
+          "tokens" : [
+            124,
+            314,
+            129,
+            130,
+            2,
+            261
+          ]
+        },
+        {
+          "step" : 133,
+          "text" : " devis",
+          "tokens" : [
+            406,
+            341,
+            40
+          ]
+        },
+        {
+          "step" : 140,
+          "text" : " aux clients avant",
+          "tokens" : [
+            2,
+            1094,
+            995,
+            262,
+            347,
+            40,
+            2334,
+            1020
+          ]
+        },
+        {
+          "step" : 147,
+          "text" : " la fin de la",
+          "tokens" : [
+            2,
+            284,
+            2,
+            121,
+            125,
+            406,
+            2,
+            284
+          ]
+        }
+      ],
+      "finish_tokens" : [
+        2223,
+        3095,
+        4,
+        2
+      ],
+      "input" : "douze_secondes",
+      "language" : "fr",
+      "mel" : {
+        "mean" : -11.39646,
+        "mean_abs" : 11.396464,
+        "shape" : [
+          1,
+          1201,
+          128
+        ]
+      },
+      "session_text" : "N'oublie pas d'envoyer le devis aux clients avant la fin de la semaine n'oublie pas d'envoyer le devis aux clients avant la fin de la semaine.",
+      "splits" : [
+        {
+          "split" : "entier",
+          "text" : "N'oublie pas d'envoyer le devis aux clients avant la fin de la semaine n'oublie pas d'envoyer le devis aux clients avant la fin de la semaine.",
+          "tokens" : [
+            2780,
+            2775,
+            313,
+            140,
+            262,
+            26,
+            1006,
+            2,
+            71,
+            2775,
+            124,
+            314,
+            129,
+            130,
+            2,
+            261,
+            406,
+            341,
+            40,
+            2,
+            1094,
+            995,
+            262,
+            347,
+            40,
+            2334,
+            1020,
+            2,
+            284,
+            2,
+            121,
+            125,
+            406,
+            2,
+            284,
+            2223,
+            3095,
+            2,
+            113,
+            2775,
+            313,
+            140,
+            262,
+            26,
+            1006,
+            2,
+            71,
+            2775,
+            124,
+            314,
+            129,
+            130,
+            2,
+            261,
+            406,
+            341,
+            40,
+            2,
+            1094,
+            995,
+            262,
+            347,
+            40,
+            2334,
+            1020,
+            2,
+            284,
+            2,
+            121,
+            125,
+            406,
+            2,
+            284,
+            2223,
+            3095,
+            4,
+            2
+          ]
+        },
+        {
+          "split" : "tranches_560ms",
+          "text" : "N'oublie pas d'envoyer le devis aux clients avant la fin de la semaine n'oublie pas d'envoyer le devis aux clients avant la fin de la semaine.",
+          "tokens" : [
+            2780,
+            2775,
+            313,
+            140,
+            262,
+            26,
+            1006,
+            2,
+            71,
+            2775,
+            124,
+            314,
+            129,
+            130,
+            2,
+            261,
+            406,
+            341,
+            40,
+            2,
+            1094,
+            995,
+            262,
+            347,
+            40,
+            2334,
+            1020,
+            2,
+            284,
+            2,
+            121,
+            125,
+            406,
+            2,
+            284,
+            2223,
+            3095,
+            2,
+            113,
+            2775,
+            313,
+            140,
+            262,
+            26,
+            1006,
+            2,
+            71,
+            2775,
+            124,
+            314,
+            129,
+            130,
+            2,
+            261,
+            406,
+            341,
+            40,
+            2,
+            1094,
+            995,
+            262,
+            347,
+            40,
+            2334,
+            1020,
+            2,
+            284,
+            2,
+            121,
+            125,
+            406,
+            2,
+            284,
+            2223,
+            3095,
+            4,
+            2
+          ]
+        },
+        {
+          "split" : "irregulier",
+          "text" : "N'oublie pas d'envoyer le devis aux clients avant la fin de la semaine n'oublie pas d'envoyer le devis aux clients avant la fin de la semaine.",
+          "tokens" : [
+            2780,
+            2775,
+            313,
+            140,
+            262,
+            26,
+            1006,
+            2,
+            71,
+            2775,
+            124,
+            314,
+            129,
+            130,
+            2,
+            261,
+            406,
+            341,
+            40,
+            2,
+            1094,
+            995,
+            262,
+            347,
+            40,
+            2334,
+            1020,
+            2,
+            284,
+            2,
+            121,
+            125,
+            406,
+            2,
+            284,
+            2223,
+            3095,
+            2,
+            113,
+            2775,
+            313,
+            140,
+            262,
+            26,
+            1006,
+            2,
+            71,
+            2775,
+            124,
+            314,
+            129,
+            130,
+            2,
+            261,
+            406,
+            341,
+            40,
+            2,
+            1094,
+            995,
+            262,
+            347,
+            40,
+            2334,
+            1020,
+            2,
+            284,
+            2,
+            121,
+            125,
+            406,
+            2,
+            284,
+            2223,
+            3095,
+            4,
+            2
+          ]
+        }
+      ],
+      "steps" : 150,
+      "text" : "N'oublie pas d'envoyer le devis aux clients avant la fin de la semaine n'oublie pas d'envoyer le devis aux clients avant la fin de la semaine.",
+      "tokens" : [
+        2780,
+        2775,
+        313,
+        140,
+        262,
+        26,
+        1006,
+        2,
+        71,
+        2775,
+        124,
+        314,
+        129,
+        130,
+        2,
+        261,
+        406,
+        341,
+        40,
+        2,
+        1094,
+        995,
+        262,
+        347,
+        40,
+        2334,
+        1020,
+        2,
+        284,
+        2,
+        121,
+        125,
+        406,
+        2,
+        284,
+        2223,
+        3095,
+        2,
+        113,
+        2775,
+        313,
+        140,
+        262,
+        26,
+        1006,
+        2,
+        71,
+        2775,
+        124,
+        314,
+        129,
+        130,
+        2,
+        261,
+        406,
+        341,
+        40,
+        2,
+        1094,
+        995,
+        262,
+        347,
+        40,
+        2334,
+        1020,
+        2,
+        284,
+        2,
+        121,
+        125,
+        406,
+        2,
+        284,
+        2223,
+        3095,
+        4,
+        2
+      ]
+    },
+    {
+      "chunks" : [
+        {
+          "mean" : 0.0059626717,
+          "mean_abs" : 0.23368803,
+          "shape" : [
+            1,
+            7,
+            1024
+          ]
+        },
+        {
+          "mean" : 0.0035822357,
+          "mean_abs" : 0.12877192,
+          "shape" : [
+            1,
+            7,
+            1024
+          ]
+        }
+      ],
+      "deltas" : [
+
+      ],
+      "finish_tokens" : [
+
+      ],
+      "input" : "silence",
+      "language" : "fr",
+      "mel" : {
+        "mean" : -16.635532,
+        "mean_abs" : 16.635532,
+        "shape" : [
+          1,
+          101,
+          128
+        ]
+      },
+      "session_text" : "",
+      "splits" : [
+        {
+          "split" : "entier",
+          "text" : "",
+          "tokens" : [
+
+          ]
+        },
+        {
+          "split" : "tranches_560ms",
+          "text" : "",
+          "tokens" : [
+
+          ]
+        },
+        {
+          "split" : "irregulier",
+          "text" : "",
+          "tokens" : [
+
+          ]
+        }
+      ],
+      "steps" : 13,
+      "text" : "",
+      "tokens" : [
+
+      ]
+    },
+    {
+      "chunks" : [
+        {
+          "mean" : -0.0010494392,
+          "mean_abs" : 0.036099967,
+          "shape" : [
+            1,
+            3,
+            1024
+          ]
+        }
+      ],
+      "deltas" : [
+
+      ],
+      "finish_tokens" : [
+
+      ],
+      "input" : "dixieme",
+      "language" : "fr",
+      "mel" : {
+        "mean" : -9.065003,
+        "mean_abs" : 9.065003,
+        "shape" : [
+          1,
+          11,
+          128
+        ]
+      },
+      "session_text" : "",
+      "splits" : [
+        {
+          "split" : "entier",
+          "text" : "",
+          "tokens" : [
+
+          ]
+        },
+        {
+          "split" : "tranches_560ms",
+          "text" : "",
+          "tokens" : [
+
+          ]
+        },
+        {
+          "split" : "irregulier",
+          "text" : "",
+          "tokens" : [
+
+          ]
+        }
+      ],
+      "steps" : 2,
+      "text" : "",
+      "tokens" : [
+
+      ]
+    }
+  ],
+  "chunk_ms" : 560,
+  "commit" : "843d8961eae4e07b2962e39a8cb9ab11d5b28881",
+  "compute_dtype" : "bfloat16",
+  "generator" : "macos/Tests/NemotronFixtureTests.swift",
+  "inputs" : [
+    {
+      "name" : "francais",
+      "samples" : 67600,
+      "sha256" : "1cac739221e63f2025a2a22b464222adadf4dc6575393b5df73026fef7278777",
+      "source" : "macos/Tests/Fixtures/dictee-charge.wav"
+    },
+    {
+      "name" : "anglais",
+      "samples" : 62400,
+      "sha256" : "71f83a83dd2fd5a54c16b3d9676bf7d1a244f21d50966d8efbb88fb5f1ac52b9",
+      "source" : "tests/fixtures/mlx/dictee-en.wav"
+    },
+    {
+      "name" : "douze_secondes",
+      "samples" : 192000,
+      "sha256" : "370c37bb0f81f6c66795f61f567557cddb1dd0125a0eb03f7f3a95ae36f1f139",
+      "source" : "francais, anglais, francais… à la suite, coupé à 192 000 échantillons"
+    },
+    {
+      "name" : "silence",
+      "samples" : 16000,
+      "sha256" : "4f7988030a00d082fe445e00a2ac5dab502300ff1b80e8592dd569867b60ef74",
+      "source" : "16 000 zéros (1 s)"
+    },
+    {
+      "name" : "dixieme",
+      "samples" : 1600,
+      "sha256" : "89bf9923e53422dcc6c7d2e872bf71c41d61bf0b0128b255a2ce1c5485d4731d",
+      "source" : "francais[16 000 ..< 17 600] (0,1 s)"
+    }
+  ],
+  "model" : "nemotron_35_asr_streaming_8bit",
+  "quantization" : "bits 8, group_size 64",
+  "revision" : "7279359e4481b5e9e185a318bd618e429c6d86cd",
+  "splits" : [
+    {
+      "name" : "entier",
+      "sizes" : [
+
+      ]
+    },
+    {
+      "name" : "tranches_560ms",
+      "sizes" : [
+        8960
+      ]
+    },
+    {
+      "name" : "irregulier",
+      "sizes" : [
+        1,
+        160,
+        1279,
+        4000,
+        37,
+        9000,
+        2
+      ]
+    }
+  ],
+  "step_samples" : 1280
+}
