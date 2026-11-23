@@ -107,6 +107,13 @@ public final class VoxtralRealtimeStreamSession {
     private var generated: [Int] = []
     private var transcript = VoxtralRealtimeTranscriptText()
 
+    /// Dysflow, pour la référence du port Rust (`VoxtralFixtureTests`) : les
+    /// colonnes de mel nouvelles de chaque pas, `[nMels, n]`, puis les lignes
+    /// nouvelles de l'adaptateur (sortie de l'encodeur), `[n, dim]`. `nil`
+    /// dans l'app : rien n'est appelé.
+    var melTraceEmitter: ((MLXArray) -> Void)?
+    var adapterTraceEmitter: ((MLXArray) -> Void)?
+
     public init(
         model: VoxtralRealtimeModel,
         temperature: Float = 0.0,
@@ -208,6 +215,7 @@ public final class VoxtralRealtimeStreamSession {
 
         let newMel = melStream!.append(newSamples)
         if newMel.shape[1] > 0 {
+            melTraceEmitter?(newMel)
             let rows = model.encoder.convStemStep(newMel, state: &convState)
             if rows.shape[0] > 0 {
                 convRows = convRows == nil ? rows : MLX.concatenated([convRows!, rows], axis: 0)
@@ -228,6 +236,7 @@ public final class VoxtralRealtimeStreamSession {
                 convRows, startIndex: convRowsDropped, upTo: convFreeze, state: &encState
             )
             let rows = model.encoder.downsampleAndProject(newEnc)   // multiple-of-ds ⇒ whole rows
+            adapterTraceEmitter?(rows)
             adapterBuf = adapterBuf == nil ? rows : MLX.concatenated([adapterBuf!, rows], axis: 0)
         }
         trimRetainedTails()
