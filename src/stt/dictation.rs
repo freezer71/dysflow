@@ -24,7 +24,7 @@ use crate::tts::Cancel;
 use anyhow::{anyhow, Result};
 use std::collections::VecDeque;
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::thread::JoinHandle;
 use std::time::Duration;
@@ -74,6 +74,12 @@ struct Shared {
     cancelled: Arc<AtomicBool>,
     sink: Sink,
     clock: Arc<dyn Clock>,
+    /// L'audio que le fil a pris mais pas encore lu (`Work::queued`), publié
+    /// après chaque pas : de quoi borner `push_bounded`.
+    queued: AtomicUsize,
+    /// Le fil a vidé l'arrivée ou lu un énoncé : `push_bounded` regarde de
+    /// nouveau.
+    drained: Condvar,
 }
 
 /// L'audio déposé par `push`, avec son heure d'arrivée, et la fin demandée.
@@ -122,6 +128,8 @@ impl Dictation {
             cancelled: Arc::new(AtomicBool::new(false)),
             sink: Sink::new(sink),
             clock,
+            queued: AtomicUsize::new(0),
+            drained: Condvar::new(),
         });
         let model_dir = model_dir.to_path_buf();
         let language = language.to_string();
@@ -159,6 +167,47 @@ impl Dictation {
         inbox.chunks.push((samples.to_vec(), at));
         drop(inbox);
         self.shared.wake.notify_one();
+    }
+
+    /// L'audio qui attend le modèle, en échantillons : déposé par `push` et
+    /// pas encore pris, ou pris et pas encore lu (énoncés clos en attente).
+    /// L'énoncé encore ouvert n'en fait pas partie : il se referme avec
+    /// l'audio qui vient.
+    pub fn backlog(&self) -> usize {
+        let inbox: usize = lock(&self.shared.inbox)
+            .chunks
+            .iter()
+            .map(|(c, _)| c.len())
+            .sum();
+        inbox + self.shared.queued.load(Ordering::SeqCst)
+    }
+
+    /// `push` pour une source qui peut attendre, un fichier : bloque tant que
+    /// plus de `limit` échantillons attendent le modèle (`backlog`), puis
+    /// dépose `samples`. La mémoire reste bornée quelle que soit la longueur
+    /// de la source : `limit` plus ce morceau, plus les énoncés que le fil
+    /// vient de clore (chacun d'au plus 12 s). Jamais pour une capture en
+    /// direct, qui ne doit jamais attendre (R41) : `push`. Rend la main sans
+    /// attendre si la dictée est finie, annulée, ou si son fil s'est arrêté
+    /// (le modèle ne s'est pas chargé) : `finish` dit alors pourquoi.
+    pub fn push_bounded(&self, samples: &[f32], limit: usize) {
+        loop {
+            let over = self.backlog() > limit;
+            let stopped = self.shared.cancelled.load(Ordering::SeqCst)
+                || lock(&self.shared.inbox).finish_at.is_some()
+                || lock(&self.worker).as_ref().is_none_or(|w| w.is_finished());
+            if !over || stopped {
+                break;
+            }
+            // Le fil réveille ; le délai couvre une notification manquée.
+            let inbox = lock(&self.shared.inbox);
+            drop(
+                self.shared
+                    .drained
+                    .wait_timeout(inbox, Duration::from_millis(20)),
+            );
+        }
+        self.push(samples);
     }
 
     /// Fin de la parole : lit tout ce qui a été dit (le chargement fini, s'il
@@ -291,6 +340,7 @@ fn run(engine: Engine, model_dir: &Path, language: &str, shared: &Shared) -> Res
         for (chunk, at) in &chunks {
             work.accept(chunk, *at, sink);
         }
+        publish(&*work, shared);
         if let Some(at) = finish_at {
             let text = work.end(at, &*shared.clock, &cancel, sink);
             if cancel.is_cancelled() {
@@ -299,11 +349,19 @@ fn run(engine: Engine, model_dir: &Path, language: &str, shared: &Shared) -> Res
             sink.emit(Event::Ended { text: text.clone() });
             return Ok(text);
         }
-        match work.step(&*shared.clock, &cancel, sink) {
+        let step = work.step(&*shared.clock, &cancel, sink);
+        publish(&*work, shared);
+        match step {
             Step::Worked => {}
             Step::Idle(due) => shared.wait(due),
         }
     }
+}
+
+/// Dit à `push_bounded` ce qui attend encore le modèle.
+fn publish(work: &dyn Work, shared: &Shared) {
+    shared.queued.store(work.queued(), Ordering::SeqCst);
+    shared.drained.notify_all();
 }
 
 fn loaded(prepared: Result<Option<Duration>>, sink: &Sink) -> Result<()> {
@@ -341,6 +399,8 @@ trait Work: Send {
     fn step(&mut self, clock: &dyn Clock, cancel: &Cancel, sink: &Sink) -> Step;
     /// La fin, demandée à l'heure `at` : lit tout ce qui reste, rend le texte.
     fn end(&mut self, at: Duration, clock: &dyn Clock, cancel: &Cancel, sink: &Sink) -> String;
+    /// L'audio pris et pas encore lu, en échantillons (`Dictation::backlog`).
+    fn queued(&self) -> usize;
     #[cfg(test)]
     fn finals_waiting(&self) -> usize {
         0
@@ -528,6 +588,10 @@ impl Work for Segmented {
         self.committed.clone()
     }
 
+    fn queued(&self) -> usize {
+        self.finals.iter().map(|(s, _)| s.samples.len()).sum()
+    }
+
     #[cfg(test)]
     fn finals_waiting(&self) -> usize {
         self.finals.len()
@@ -595,6 +659,10 @@ impl Streaming {
 }
 
 impl Work for Streaming {
+    fn queued(&self) -> usize {
+        self.waiting.len()
+    }
+
     fn accept(&mut self, chunk: &[f32], _at: Duration, _sink: &Sink) {
         self.waiting.extend_from_slice(chunk);
     }

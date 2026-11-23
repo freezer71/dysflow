@@ -153,10 +153,19 @@ fn a_missing_model_fails_naming_install_model_and_downloads_nothing() {
     assert!(!out.status.success());
     assert!(out.stdout.is_empty(), "stdout : {}", text(&out.stdout));
     let err = text(&out.stderr);
-    assert!(
-        err.contains("--install-model parakeet_tdt_v3_int8"),
-        "{err}"
-    );
+    // Sans `stt-sherpa`, le binaire ne sait pas lancer ce modèle : il le dit,
+    // sans renvoyer à `--install-model`, qui le refuserait aussi.
+    if cfg!(feature = "stt-sherpa") {
+        assert!(
+            err.contains("--install-model parakeet_tdt_v3_int8"),
+            "{err}"
+        );
+    } else {
+        assert!(
+            err.contains("cannot run") && !err.contains("--install-model"),
+            "{err}"
+        );
+    }
     // Aucun fichier (modèle, `.part`) n'est apparu nulle part sous HOME.
     assert_eq!(home.files_written(), Vec::<PathBuf>::new());
 }
@@ -200,8 +209,10 @@ fn an_accented_path_is_accepted_in_nfc_and_nfd() {
         );
         let err = text(&out.stderr);
         assert!(!out.status.success());
+        // L'erreur est celle du modèle (à installer, ou que le binaire ne sait
+        // pas lancer), pas celle du fichier.
         assert!(
-            err.contains("--install-model parakeet_tdt_v3_int8"),
+            err.contains("--install-model parakeet_tdt_v3_int8") || err.contains("cannot run"),
             "{kind} : {err}"
         );
         assert!(

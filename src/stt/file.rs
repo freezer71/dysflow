@@ -4,7 +4,7 @@
 //! sortie standard, seul ; la progression, sur la sortie d'erreur.
 
 use crate::stt::dictation::{Dictation, Engine, Event};
-use anyhow::{Context, Result};
+use anyhow::Result;
 use std::path::Path;
 
 /// Fréquence demandée : celle des reconnaisseurs (`Recognizer`).
@@ -49,60 +49,100 @@ fn unsupported(path: &Path, found: &str) -> anyhow::Error {
     ))
 }
 
-/// Lit un WAV 16 kHz mono, PCM 16 bits ou flottant 32 bits, en `f32` entre
-/// -1 et 1. Tout autre fichier est refusé avec la commande `ffmpeg` qui le
-/// convertit.
-pub fn read_wav(path: &Path) -> Result<Vec<f32>> {
-    anyhow::ensure!(
-        path.is_file(),
-        crate::tr!(
-            en = "file not found: {}",
-            fr = "fichier introuvable : {}",
-            path.display()
-        )
-    );
-    let mut reader = match hound::WavReader::open(path) {
-        Ok(reader) => reader,
-        Err(err) => {
-            let found = crate::tr!(en = "unreadable ({err})", fr = "illisible ({err})");
+/// Un WAV 16 kHz mono, PCM 16 bits ou flottant 32 bits, lu au fil de
+/// l'eau : jamais le fichier entier en mémoire. Tout autre fichier est refusé
+/// à l'ouverture, avec la commande `ffmpeg` qui le convertit.
+pub struct Wav {
+    path: std::path::PathBuf,
+    reader: hound::WavReader<std::io::BufReader<std::fs::File>>,
+    float: bool,
+}
+
+impl Wav {
+    pub fn open(path: &Path) -> Result<Self> {
+        anyhow::ensure!(
+            path.is_file(),
+            crate::tr!(
+                en = "file not found: {}",
+                fr = "fichier introuvable : {}",
+                path.display()
+            )
+        );
+        let reader = match hound::WavReader::open(path) {
+            Ok(reader) => reader,
+            Err(err) => {
+                let found = crate::tr!(en = "unreadable ({err})", fr = "illisible ({err})");
+                return Err(unsupported(path, &found));
+            }
+        };
+        let spec = reader.spec();
+        let supported = spec.channels == 1
+            && spec.sample_rate == SAMPLE_RATE
+            && matches!(
+                (spec.sample_format, spec.bits_per_sample),
+                (hound::SampleFormat::Int, 16) | (hound::SampleFormat::Float, 32)
+            );
+        if !supported {
+            let kind = match spec.sample_format {
+                hound::SampleFormat::Int => "PCM",
+                hound::SampleFormat::Float => "float",
+            };
+            let found = crate::tr!(
+                en = "it is {} Hz, {} channel(s), {}-bit {kind}",
+                fr = "il est à {} Hz, {} canal(aux), {} bits {kind}",
+                spec.sample_rate,
+                spec.channels,
+                spec.bits_per_sample
+            );
             return Err(unsupported(path, &found));
         }
-    };
-    let spec = reader.spec();
-    let supported = spec.channels == 1
-        && spec.sample_rate == SAMPLE_RATE
-        && matches!(
-            (spec.sample_format, spec.bits_per_sample),
-            (hound::SampleFormat::Int, 16) | (hound::SampleFormat::Float, 32)
-        );
-    if !supported {
-        let kind = match spec.sample_format {
-            hound::SampleFormat::Int => "PCM",
-            hound::SampleFormat::Float => "float",
-        };
-        let found = crate::tr!(
-            en = "it is {} Hz, {} channel(s), {}-bit {kind}",
-            fr = "il est à {} Hz, {} canal(aux), {} bits {kind}",
-            spec.sample_rate,
-            spec.channels,
-            spec.bits_per_sample
-        );
-        return Err(unsupported(path, &found));
+        Ok(Self {
+            path: path.to_path_buf(),
+            float: spec.sample_format == hound::SampleFormat::Float,
+            reader,
+        })
     }
-    let samples = match spec.sample_format {
-        hound::SampleFormat::Float => reader.samples::<f32>().collect::<Result<Vec<_>, _>>(),
-        hound::SampleFormat::Int => reader
-            .samples::<i16>()
-            .map(|s| s.map(|s| f32::from(s) / 32_768.0))
-            .collect::<Result<Vec<_>, _>>(),
-    };
-    samples.with_context(|| {
-        crate::tr!(
-            en = "{} is cut short or damaged",
-            fr = "{} est tronqué ou abîmé",
-            path.display()
-        )
-    })
+
+    /// Les morceaux de 100 ms (`CHUNK`), le dernier plus court. Un fichier
+    /// tronqué ou abîmé donne une erreur à l'endroit où il l'est.
+    pub fn chunks(mut self) -> impl Iterator<Item = Result<Vec<f32>>> {
+        std::iter::from_fn(move || {
+            let mut chunk = Vec::with_capacity(CHUNK);
+            while chunk.len() < CHUNK {
+                let sample = if self.float {
+                    self.reader.samples::<f32>().next()
+                } else {
+                    self.reader
+                        .samples::<i16>()
+                        .next()
+                        .map(|s| s.map(|s| f32::from(s) / 32_768.0))
+                };
+                match sample {
+                    Some(Ok(sample)) => chunk.push(sample),
+                    Some(Err(err)) => {
+                        return Some(Err(anyhow::Error::new(err).context(crate::tr!(
+                            en = "{} is cut short or damaged",
+                            fr = "{} est tronqué ou abîmé",
+                            self.path.display()
+                        ))));
+                    }
+                    None => break,
+                }
+            }
+            (!chunk.is_empty()).then_some(Ok(chunk))
+        })
+    }
+}
+
+/// Tout le fichier d'un coup, pour les essais : `Wav::chunks` est la lecture
+/// du lecteur.
+#[cfg(test)]
+pub fn read_wav(path: &Path) -> Result<Vec<f32>> {
+    let mut samples = Vec::new();
+    for chunk in Wav::open(path)?.chunks() {
+        samples.extend(chunk?);
+    }
+    Ok(samples)
 }
 
 /// Ce qu'un événement de la dictée dit sur la sortie d'erreur, s'il en dit.
@@ -127,11 +167,34 @@ fn progress_line(event: &Event) -> Option<String> {
     }
 }
 
-/// Dicte `samples` (16 kHz, mono) par `engine` : l'audio est donné par
-/// morceaux de 100 ms, puis la fin est demandée. `progress` reçoit chaque
-/// ligne de progression, sur le fil de la dictée. Rend le texte entier.
+/// Le plus d'audio qui attend le modèle quand un fichier le nourrit : 5 s
+/// (`Dictation::push_bounded`). Un fichier peut attendre ; la mémoire d'une
+/// dictée reste donc de cet ordre, plus deux énoncés de 12 s au plus, que le
+/// fichier ait une minute ou dix heures (R47).
+pub const MAX_BACKLOG: usize = 5 * SAMPLE_RATE as usize;
+
+/// Donne `chunks` à `dictation` sans jamais laisser plus de `limit`
+/// échantillons attendre le modèle ; `observe` reçoit l'attente après chaque
+/// morceau. La première erreur de lecture arrête tout.
+fn feed(
+    dictation: &Dictation,
+    chunks: impl IntoIterator<Item = Result<Vec<f32>>>,
+    limit: usize,
+    mut observe: impl FnMut(usize),
+) -> Result<()> {
+    for chunk in chunks {
+        dictation.push_bounded(&chunk?, limit);
+        observe(dictation.backlog());
+    }
+    Ok(())
+}
+
+/// Dicte `chunks` (16 kHz, mono) par `engine` : l'audio est donné par
+/// morceaux, au rythme du modèle (`MAX_BACKLOG`), puis la fin est demandée.
+/// `progress` reçoit chaque ligne de progression, sur le fil de la dictée.
+/// Rend le texte entier. Une erreur de lecture annule la dictée.
 pub fn dictate(
-    samples: &[f32],
+    chunks: impl IntoIterator<Item = Result<Vec<f32>>>,
     engine: Engine,
     model_dir: &Path,
     language: &str,
@@ -142,9 +205,7 @@ pub fn dictate(
             progress(line);
         }
     });
-    for chunk in samples.chunks(CHUNK) {
-        dictation.push(chunk);
-    }
+    feed(&dictation, chunks, MAX_BACKLOG, |_| {})?;
     dictation.finish()
 }
 
@@ -255,11 +316,15 @@ mod tests {
         fn release(&self) {}
     }
 
+    fn chunks_of(audio: &[f32]) -> Vec<Result<Vec<f32>>> {
+        audio.chunks(CHUNK).map(|c| Ok(c.to_vec())).collect()
+    }
+
     fn run(fake: Arc<Fake>, audio: &[f32]) -> (Result<String>, Vec<String>) {
         let lines = Arc::new(Mutex::new(Vec::new()));
         let sink = lines.clone();
         let text = dictate(
-            audio,
+            chunks_of(audio),
             Engine::Segmented(fake, Box::new(Loud)),
             Path::new("modele"),
             "fr",
@@ -458,6 +523,108 @@ mod tests {
         );
     }
 
+    /// Beaucoup d'énoncés, pour un reconnaisseur lent : `n` énoncés de 0,5 s
+    /// séparés de 0,8 s de silence.
+    fn many_utterances(n: usize) -> Vec<f32> {
+        let mut audio = Vec::new();
+        for _ in 0..n {
+            audio.resize(audio.len() + 12_800, 0.0);
+            audio.resize(audio.len() + 8_000, 0.3);
+        }
+        audio.resize(audio.len() + 12_800, 0.0);
+        audio
+    }
+
+    /// Le plus d'audio en attente vu pendant que `audio` est donné par `feed`
+    /// avec `limit`, à un reconnaisseur qui met `read_ms` par lecture.
+    fn worst_backlog(audio: &[f32], limit: usize, read_ms: u64) -> usize {
+        struct Slow(Fake, u64);
+        impl Recognizer for Slow {
+            fn load(&self, dir: &Path) -> Result<()> {
+                self.0.load(dir)
+            }
+            fn warm_up(&self) -> Result<()> {
+                Ok(())
+            }
+            fn transcribe(
+                &self,
+                samples: &[f32],
+                language: &str,
+                cancel: &Cancel,
+            ) -> Result<String> {
+                std::thread::sleep(std::time::Duration::from_millis(self.1));
+                self.0.transcribe(samples, language, cancel)
+            }
+            fn release(&self) {}
+        }
+        let engine = Engine::Segmented(Arc::new(Slow(Fake::default(), read_ms)), Box::new(Loud));
+        let dictation = Dictation::start(engine, Path::new("modele"), "fr", |_| {});
+        let mut worst = 0;
+        feed(&dictation, chunks_of(audio), limit, |b| {
+            worst = worst.max(b)
+        })
+        .unwrap();
+        let text = dictation.finish().unwrap();
+        assert!(text.starts_with("bonjour bonjour"), "{text}");
+        worst
+    }
+
+    /// R47 : la mémoire d'une dictée de fichier ne dépend pas de sa longueur.
+    /// Cent vingt énoncés (près de 3 minutes), un reconnaisseur lent : l'attente
+    /// reste sous la limite, plus un morceau et les énoncés que le fil vient de
+    /// clore. Sans la limite (`usize::MAX`, comme `push`), elle monte avec le
+    /// fichier : l'essai le voit.
+    #[test]
+    fn the_backlog_of_a_file_stays_bounded_whatever_its_length() {
+        let audio = many_utterances(120);
+        let bound = MAX_BACKLOG + CHUNK + 2 * crate::stt::segmenter::MAX_SEGMENT;
+        let bounded = worst_backlog(&audio, MAX_BACKLOG, 2);
+        assert!(bounded <= bound, "{bounded} > {bound}");
+        let unbounded = worst_backlog(&audio, usize::MAX, 2);
+        assert!(
+            unbounded > 2 * bound,
+            "sans limite : {unbounded}, avec : {bounded}"
+        );
+    }
+
+    /// Un modèle qui ne se charge pas arrête le fil : l'audio qui attend ne
+    /// serait jamais pris, la source ne doit pas attendre pour toujours.
+    #[test]
+    fn a_dead_worker_does_not_hold_the_file_back() {
+        let fake = Arc::new(Fake {
+            fail_to_load: true,
+            ..Fake::default()
+        });
+        let (text, _) = run(fake, &many_utterances(20));
+        assert!(text.is_err());
+    }
+
+    #[test]
+    fn a_truncated_file_is_an_error_not_a_short_dictation() {
+        let path = scratch("tronque").join("a.wav");
+        write_wav(&path, 16_000, 1, 16, false, &[0.1; 8_000]);
+        let bytes = std::fs::read(&path).unwrap();
+        std::fs::write(&path, &bytes[..bytes.len() - 4_000]).unwrap();
+        let failed = match Wav::open(&path) {
+            Err(_) => true,
+            Ok(wav) => wav.chunks().any(|c| c.is_err()),
+        };
+        assert!(failed);
+    }
+
+    /// Le lecteur rend des morceaux de 100 ms, le dernier plus court.
+    #[test]
+    fn the_reader_streams_chunks_of_100_ms() {
+        let path = scratch("morceaux").join("a.wav");
+        write_wav(&path, 16_000, 1, 16, false, &vec![0.1; CHUNK * 2 + 10]);
+        let sizes: Vec<usize> = Wav::open(&path)
+            .unwrap()
+            .chunks()
+            .map(|c| c.unwrap().len())
+            .collect();
+        assert_eq!(sizes, [CHUNK, CHUNK, 10]);
+    }
+
     /// Le vrai Parakeet, par `engine_for`, sur `test_wavs/fr.wav` du paquet,
     /// ramené à 16 kHz par le rééchantillonneur de sherpa-onnx, écrit en
     /// WAV puis relu par `read_wav`. Lancé par `scripts/ort-gate.sh` quand
@@ -484,9 +651,13 @@ mod tests {
         let engine = crate::stt::engine_for(package, 4).unwrap();
         let lines = Arc::new(Mutex::new(Vec::new()));
         let sink = lines.clone();
-        let text = dictate(&read_wav(&wav).unwrap(), engine, &dir, "fr", move |l| {
-            sink.lock().unwrap().push(l)
-        })
+        let text = dictate(
+            chunks_of(&read_wav(&wav).unwrap()),
+            engine,
+            &dir,
+            "fr",
+            move |l| sink.lock().unwrap().push(l),
+        )
         .unwrap();
         let lines = lines.lock().unwrap();
         eprintln!("texte : {text}\nprogression : {lines:#?}");

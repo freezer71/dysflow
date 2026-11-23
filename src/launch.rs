@@ -495,6 +495,16 @@ fn dictation_package(
             )
         })?,
     };
+    // Ce que ce binaire ne sait pas lancer d'abord : `--install-model` le
+    // refuserait, l'indication serait une impasse.
+    anyhow::ensure!(
+        loadable.iter().any(|p| p.id == package.id),
+        crate::tr!(
+            en = "this build cannot run {}",
+            fr = "ce binaire ne sait pas lancer {}",
+            package.display_name.get()
+        )
+    );
     anyhow::ensure!(
         installed(package),
         crate::tr!(
@@ -502,14 +512,6 @@ fn dictation_package(
             fr = "{} n'est pas installé : lancez `dysflow --install-model {}` (--transcribe ne télécharge jamais)",
             package.display_name.get(),
             package.id
-        )
-    );
-    anyhow::ensure!(
-        loadable.iter().any(|p| p.id == package.id),
-        crate::tr!(
-            en = "this build cannot run {}",
-            fr = "ce binaire ne sait pas lancer {}",
-            package.display_name.get()
         )
     );
     Ok(package)
@@ -532,7 +534,7 @@ fn transcribe_file(args: &Args, wav: &std::path::Path, threads: u32) -> Result<(
     };
     // Le fichier d'abord : un modèle qu'on installerait pour rien ne serait
     // pas un bon message.
-    let samples = crate::stt::file::read_wav(wav)?;
+    let wav = crate::stt::file::Wav::open(wav)?;
     let package = dictation_package(
         args.dictation_model.as_deref(),
         &crate::models::loadable_with(false),
@@ -542,7 +544,7 @@ fn transcribe_file(args: &Args, wav: &std::path::Path, threads: u32) -> Result<(
         .and_then(|main| main.parent().map(std::path::Path::to_path_buf))
         .context(crate::tr!("data directory not found", "répertoire de données introuvable"))?;
     let engine = crate::stt::engine_for(package, threads)?;
-    let text = crate::stt::file::dictate(&samples, engine, &model_dir, language, |line| eprintln!("{line}"))?;
+    let text = crate::stt::file::dictate(wav.chunks(), engine, &model_dir, language, |line| eprintln!("{line}"))?;
     crate::stt::file::print_text(&text, &mut std::io::stdout().lock(), |line| eprintln!("{line}"))
 }
 
@@ -1090,7 +1092,7 @@ mod tests {
     fn a_missing_dictation_model_names_the_install_option() {
         let err = dictation_package(None, &with_parakeet(), |_| false).unwrap_err().to_string();
         assert!(err.contains("--install-model parakeet_tdt_v3_int8"), "{err}");
-        let err = dictation_package(Some("parakeet_tdt_v3_int8"), &[], |_| false).unwrap_err().to_string();
+        let err = dictation_package(Some("parakeet_tdt_v3_int8"), &with_parakeet(), |_| false).unwrap_err().to_string();
         assert!(err.contains("--install-model parakeet_tdt_v3_int8"), "{err}");
     }
 
@@ -1102,10 +1104,18 @@ mod tests {
         assert!(err.contains("stt-sherpa"), "{err}");
     }
 
+    /// Jamais d'indication sans issue : `--install-model` refuse ce que le
+    /// binaire ne sait pas lancer, installé ou non.
     #[test]
-    fn a_dictation_model_this_build_cannot_run_is_refused_once_installed() {
-        let err = dictation_package(Some("parakeet_tdt_v3"), &with_parakeet(), |_| true).unwrap_err().to_string();
-        assert!(err.contains("cannot run") || err.contains("ne sait pas lancer"), "{err}");
+    fn a_dictation_model_this_build_cannot_run_is_never_sent_to_install_model() {
+        for is_installed in [true, false] {
+            for (id, loadable) in [("parakeet_tdt_v3", with_parakeet()), ("parakeet_tdt_v3_int8", vec![])] {
+                let err = dictation_package(Some(id), &loadable, |_| is_installed).unwrap_err().to_string();
+                assert!(err.contains("cannot run") || err.contains("ne sait pas lancer"), "{id} {is_installed} : {err}");
+                assert!(!err.contains("--install-model"), "{id} {is_installed} : {err}");
+                assert!(installable(id, &loadable).is_err(), "{id} : la seconde porte refuse aussi");
+            }
+        }
     }
 
     #[test]
@@ -1156,12 +1166,17 @@ mod tests {
         let mut args = Args { transcribe: Some(wav.clone()), ..Args::default() };
         args.dictation_model = Some("parakeet_tdt_v3_int8".into());
         let err = transcribe_file(&args, &wav, 1).unwrap_err().to_string();
-        assert!(err.contains("--install-model parakeet_tdt_v3_int8"), "{err}");
-        let files = crate::models::models_dir()
-            .and_then(|root| std::fs::read_dir(root).ok())
-            .map(|entries| entries.count())
-            .unwrap_or(0);
-        assert_eq!(files, 0, "aucun fichier de modèle ne doit apparaître");
+        if cfg!(feature = "stt-sherpa") {
+            assert!(err.contains("--install-model parakeet_tdt_v3_int8"), "{err}");
+        } else {
+            assert!(err.contains("cannot run") || err.contains("ne sait pas lancer"), "{err}");
+        }
+        // Seul ce paquet : le dossier des modèles est partagé par tous les
+        // essais de la bibliothèque, qui y posent et retirent d'autres paquets.
+        assert!(
+            !crate::models::has_files(package("parakeet_tdt_v3_int8")),
+            "aucun fichier de Parakeet ne doit apparaître"
+        );
     }
 
     #[test]
