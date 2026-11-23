@@ -40,6 +40,8 @@ pub struct Segmenter {
     /// Position de `buf[0]` depuis le début de la dictée.
     buf_start: u64,
     state: Option<Open>,
+    /// Erreur du détecteur qui attend l'appel suivant (voir `push`).
+    deferred: Option<anyhow::Error>,
 }
 
 /// L'énoncé en cours. Les indices sont ceux de `buf`.
@@ -63,27 +65,46 @@ impl Segmenter {
             buf: Vec::new(),
             buf_start: 0,
             state: None,
+            deferred: None,
         }
     }
 
-    /// Donne de l'audio ; rend les énoncés refermés. Une erreur du détecteur
-    /// arrête la découpe : les énoncés déjà refermés dans cet appel sont perdus.
+    /// Donne de l'audio ; rend les énoncés refermés.
+    ///
+    /// Une erreur du détecteur ne perd jamais un énoncé déjà refermé, et ne
+    /// le rend jamais deux fois. Si des énoncés se sont refermés dans cet
+    /// appel avant l'erreur, l'appel les rend (`Ok`) et l'erreur attend : le
+    /// prochain `push` (ou `finish`) la rend d'abord, sans rien traiter. S'il
+    /// n'y en a pas, l'erreur est rendue tout de suite. Dans les deux cas la
+    /// trame en échec et ce qui la suit restent en attente : l'appel suivant
+    /// les reprend, comme si l'audio venait d'arriver.
     pub fn push(&mut self, samples: &[f32]) -> Result<Vec<Segment>> {
+        if let Some(err) = self.deferred.take() {
+            self.pending.extend_from_slice(samples);
+            return Err(err);
+        }
         self.pending.extend_from_slice(samples);
         let whole = self.pending.len() / FRAME * FRAME;
         let mut out = Vec::new();
         let mut used = 0;
-        let mut result = Ok(());
+        let mut failure = None;
         while used < whole {
             let frame: Vec<f32> = self.pending[used..used + FRAME].to_vec();
-            used += FRAME;
             if let Err(err) = self.frame(&frame, &mut out) {
-                result = Err(err);
+                failure = Some(err);
                 break;
             }
+            used += FRAME;
         }
         self.pending.drain(..used);
-        result.map(|()| out)
+        match failure {
+            Some(err) if out.is_empty() => Err(err),
+            Some(err) => {
+                self.deferred = Some(err);
+                Ok(out)
+            }
+            None => Ok(out),
+        }
     }
 
     /// L'énoncé en cours : sa marge d'attaque et tout ce qui a été entendu.
@@ -92,7 +113,11 @@ impl Segmenter {
     }
 
     /// Fin de l'audio : rend l'énoncé resté ouvert, s'il y avait de la parole.
+    /// Une erreur en attente (voir `push`) est rendue d'abord, sans rien clore.
     pub fn finish(&mut self) -> Result<Option<Segment>> {
+        if let Some(err) = self.deferred.take() {
+            return Err(err);
+        }
         let tail = std::mem::take(&mut self.pending);
         let mut segment = None;
         if let Some(open) = self.state.as_mut() {
@@ -449,6 +474,70 @@ mod tests {
         assert!(seg.finish().unwrap().is_none());
         let mut seg = Segmenter::new(Box::new(Failing));
         assert!(seg.push(&[0.0; FRAME]).is_err());
+    }
+
+    #[test]
+    fn a_detector_error_keeps_the_closed_segments_and_returns_none_twice() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+        /// Échoue une seule fois, à son 36e appel.
+        struct FailsOnce(Arc<AtomicUsize>);
+        impl SpeechDetector for FailsOnce {
+            fn is_speech(&mut self, frame: &[f32]) -> Result<bool> {
+                if self.0.fetch_add(1, Ordering::SeqCst) == 35 {
+                    anyhow::bail!("détecteur en panne");
+                }
+                Ok(frame.iter().any(|x| *x != 0.0))
+            }
+            fn reset(&mut self) {}
+        }
+        // A : trames 0-19, refermée à la trame 32 ; la panne vient à la trame 35.
+        let mut audio = speech(FRAME * 20, 0);
+        audio.extend(silence(FRAME * 20));
+        audio.extend(speech(FRAME * 20, 3));
+        audio.extend(silence(FRAME * 20));
+        let expected = all_at_once(&audio);
+        assert_eq!(expected.len(), 2);
+
+        let mut seg = Segmenter::new(Box::new(FailsOnce(Arc::default())));
+        let first = seg.push(&audio).unwrap();
+        assert_eq!(
+            first,
+            expected[..1],
+            "l'énoncé refermé avant la panne est rendu"
+        );
+        assert!(seg.push(&[]).is_err(), "l'erreur arrive à l'appel suivant");
+        let mut rest = seg.push(&[]).unwrap();
+        rest.extend(seg.finish().unwrap());
+        assert_eq!(
+            rest,
+            expected[1..],
+            "la suite reprend, sans perte ni doublon"
+        );
+    }
+
+    #[test]
+    fn an_error_with_nothing_closed_is_returned_at_once_and_audio_is_kept() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::Arc;
+        struct FailsFirst(Arc<AtomicBool>);
+        impl SpeechDetector for FailsFirst {
+            fn is_speech(&mut self, frame: &[f32]) -> Result<bool> {
+                if !self.0.swap(true, Ordering::SeqCst) {
+                    anyhow::bail!("détecteur en panne");
+                }
+                Ok(frame.iter().any(|x| *x != 0.0))
+            }
+            fn reset(&mut self) {}
+        }
+        let mut audio = speech(FRAME * 20, 0);
+        audio.extend(silence(FRAME * 20));
+        let expected = all_at_once(&audio);
+        let mut seg = Segmenter::new(Box::new(FailsFirst(Arc::default())));
+        assert!(seg.push(&audio).is_err());
+        let mut all = seg.push(&[]).unwrap();
+        all.extend(seg.finish().unwrap());
+        assert_eq!(all, expected);
     }
 
     #[test]
