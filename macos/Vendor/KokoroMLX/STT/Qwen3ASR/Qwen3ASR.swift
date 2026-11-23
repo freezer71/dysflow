@@ -955,6 +955,11 @@ public class Qwen3ASRModel: Module {
     /// au lieu de swift-transformers.
     public var tokenizer: Qwen2BPETokenizer?
 
+    /// Dysflow, pour la référence du port Rust (`Qwen3ASRFixtureTests`) :
+    /// l'invite et les jetons gardés (sans fin de texte) de chaque tranche, à
+    /// la fin de `generateSingleChunk`. `nil` dans l'app : rien n'est appelé.
+    var traceEmitter: ((_ prompt: [Int], _ tokens: [Int]) -> Void)?
+
     /// Sample rate expected by the model (16kHz).
     public let sampleRate: Int = 16000
 
@@ -1370,6 +1375,9 @@ public class Qwen3ASRModel: Module {
             }
         }
 
+        if let traceEmitter {
+            traceEmitter(inputIds.asArray(Int32.self).map { Int($0) }, generatedTokens)
+        }
         let decodedText = tokenizer.decode(tokens: generatedTokens)
         let parsed = parseGeneratedChunk(decodedText, forcedLanguage: language)
 
