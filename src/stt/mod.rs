@@ -6,6 +6,7 @@ pub mod holder;
 pub mod recognizer;
 pub mod rolling;
 pub mod segmenter;
+pub mod wer;
 
 #[cfg(feature = "stt-sherpa")]
 pub mod sherpa;

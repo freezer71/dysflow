@@ -135,3 +135,7 @@ required-features = ["mlx"]
 [[example]]
 name = "ort_single_copy"
 required-features = ["stt-sherpa"]
+
+[[example]]
+name = "dictation_bench"
+required-features = ["stt-sherpa"]
