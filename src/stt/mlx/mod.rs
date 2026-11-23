@@ -5,7 +5,8 @@
 //! (le graphe de Parakeet, ses poids dans une archive) le suivant, puis
 //! Whisper (tiny, small, large-v3-turbo), puis Canary 1b-v2 (l'encodeur de
 //! Parakeet, un décodeur Transformer), puis Nemotron 3.5 Streaming (le
-//! premier en flux : encodeur causal à caches, RNN-T).
+//! premier en flux : encodeur causal à caches, RNN-T), puis Voxtral Realtime
+//! (le second en flux : encodeur et décodeur Transformer à caches).
 //!
 //! Un modèle de dictée chargé inscrit son besoin dans les plafonds de MLX
 //! sous la clé `"dictee"` (`need`), comme `SpeechModels.load` de l'app.
@@ -17,6 +18,7 @@ pub mod nemotron;
 pub mod nn;
 pub mod parakeet;
 pub mod phonon;
+pub mod voxtral;
 pub mod weights;
 pub mod whisper;
 

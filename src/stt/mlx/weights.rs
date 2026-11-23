@@ -132,6 +132,12 @@ impl Weights {
             .insert(key.to_string(), (array, file.to_path_buf()));
     }
 
+    /// Le tenseur de `key`, quelle que soit sa forme, et son fichier ; rien
+    /// s'il manque (pour le remettre transformé par `insert`).
+    pub fn take_any(&mut self, key: &str) -> Option<(Array, PathBuf)> {
+        self.tensors.remove(key)
+    }
+
     /// La clé est là (une couche quantifiée a ses `scales`).
     pub fn has(&self, key: &str) -> bool {
         self.tensors.contains_key(key)

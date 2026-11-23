@@ -166,6 +166,10 @@ pub fn streaming_recognizer_for(
     match package.runtime {
         #[cfg(all(feature = "mlx", target_os = "macos", target_arch = "aarch64"))]
         crate::models::Runtime::NemotronMlx => Some(std::sync::Arc::new(mlx::nemotron::NemotronMlx::new())),
+        #[cfg(all(feature = "mlx", target_os = "macos", target_arch = "aarch64"))]
+        crate::models::Runtime::VoxtralRealtimeMlx => {
+            Some(std::sync::Arc::new(mlx::voxtral::VoxtralMlx::new()))
+        }
         _ => None,
     }
 }
@@ -333,35 +337,40 @@ mod tests {
 
     #[test]
     fn an_engine_this_binary_cannot_compute_is_refused_by_name() {
-        let err = engine_for(package("voxtral_realtime_4bit"), 4)
+        let err = engine_for(package("qwen3_asr_06b_8bit"), 4)
             .err()
-            .expect("Voxtral Realtime MLX : pas porté")
+            .expect("Qwen3-ASR MLX : pas porté")
             .to_string();
-        assert!(err.contains("VoxtralRealtimeMlx"), "{err}");
+        assert!(err.contains("Qwen3AsrMlx"), "{err}");
     }
 
-    /// Nemotron : un moteur en flux là où le binaire a MLX ; refusé par son
-    /// nom ailleurs. Il n'a pas de reconnaisseur d'énoncé entier : l'app,
-    /// qui ne passe que par `recognizer_for`, ne le dicte pas encore par le
-    /// cœur (`core_dictation_supports`).
+    /// Nemotron et Voxtral Realtime : des moteurs en flux là où le binaire a
+    /// MLX ; refusés par leur nom ailleurs. Ils n'ont pas de reconnaisseur
+    /// d'énoncé entier : l'app, qui ne passe que par `recognizer_for`, ne les
+    /// dicte pas encore par le cœur (`core_dictation_supports`).
     #[test]
     fn nemotron_is_a_streaming_engine_where_the_build_has_mlx() {
-        let nemotron = package("nemotron_35_asr_streaming_8bit");
         let mlx = cfg!(all(
             feature = "mlx",
             target_os = "macos",
             target_arch = "aarch64"
         ));
-        assert_eq!(streaming_recognizer_for(nemotron).is_some(), mlx);
-        let engine = engine_for(nemotron, 4);
-        if mlx {
-            assert!(matches!(engine, Ok(Engine::Streaming(_))));
-        } else {
-            let err = engine.err().expect("MLX : pas ici").to_string();
-            assert!(err.contains("NemotronMlx"), "{err}");
+        for (id, engine_name) in [
+            ("nemotron_35_asr_streaming_8bit", "NemotronMlx"),
+            ("voxtral_realtime_4bit", "VoxtralRealtimeMlx"),
+        ] {
+            let streaming = package(id);
+            assert_eq!(streaming_recognizer_for(streaming).is_some(), mlx, "{id}");
+            let engine = engine_for(streaming, 4);
+            if mlx {
+                assert!(matches!(engine, Ok(Engine::Streaming(_))), "{id}");
+            } else {
+                let err = engine.err().expect("MLX : pas ici").to_string();
+                assert!(err.contains(engine_name), "{err}");
+            }
+            let err = recognizer_for(streaming, 4).err().expect("pas d'énoncé entier").to_string();
+            assert!(err.contains(engine_name), "{err}");
         }
-        let err = recognizer_for(nemotron, 4).err().expect("pas d'énoncé entier").to_string();
-        assert!(err.contains("NemotronMlx"), "{err}");
         assert!(streaming_recognizer_for(package("canary_1b_v2_q8")).is_none());
     }
 }

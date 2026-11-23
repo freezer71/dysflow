@@ -163,6 +163,17 @@ fn ready() -> Result<()> {
     Ok(())
 }
 
+/// `clear_cache`, depuis un travail : refusé hors du fil MLX.
+pub(super) fn clear_cache_in_job() -> Result<()> {
+    if !ON_WORKER.get() {
+        return Err(anyhow!(crate::tr!(
+            "the MLX cache is emptied only from an MLX job",
+            "le cache de MLX ne se vide que depuis un travail MLX",
+        )));
+    }
+    clear_cache()
+}
+
 /// Attend que Metal ait lâché les tampons de tous les flux, puis vide le
 /// cache : `eval` revient quand le GPU a fini, un peu avant que le tampon de
 /// commandes lâche les siens, qui iraient sinon dans le cache juste après

@@ -7,6 +7,14 @@ pub mod metallib;
 mod worker;
 
 pub use worker::Held;
+
+/// Dans un travail (`Held::with`) : attend que Metal ait lâché les tampons
+/// de tous les flux, puis vide le cache de MLX. Un simple
+/// `mlx_rs::memory::clear_cache` laisse revenir au cache, juste après, les
+/// tampons du dernier passage. Refusé hors du fil MLX.
+pub fn clear_cache() -> anyhow::Result<()> {
+    worker::clear_cache_in_job()
+}
 #[cfg(test)]
 pub(crate) use worker::queued;
 

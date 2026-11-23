@@ -1,6 +1,6 @@
 //! Les couches de MLXNN qu'emploient les modèles de dictée : `Linear` (et
 //! `QuantizedLinear`, et le `FiveValueLinear` de Phonon-2), `Embedding` (et
-//! `QuantizedEmbedding`), `LayerNorm`, `BatchNorm`, `Conv1d`, `Conv2d`,
+//! `QuantizedEmbedding`), `LayerNorm`, `RMSNorm`, `BatchNorm`, `Conv1d`, `Conv2d`,
 //! `LSTM`. Mêmes opérations que mlx-swift
 //! 0.32 ; aucun opérateur surchargé de `mlx-rs` (ils paniquent) : chaque
 //! opération rend son `Result`.
@@ -263,6 +263,25 @@ impl LayerNorm {
     }
 }
 
+/// `RMSNorm` de MLXNN : `MLXFast.rmsNorm(x, weight:, eps:)`.
+pub struct RmsNorm {
+    weight: Array,
+    eps: f32,
+}
+
+impl RmsNorm {
+    pub fn load(w: &mut Weights, prefix: &str, dim: i32, eps: f32) -> Result<Self> {
+        Ok(Self {
+            weight: w.take(&format!("{prefix}.weight"), &[dim])?,
+            eps,
+        })
+    }
+
+    pub fn forward(&self, x: &Array) -> Result<Array> {
+        Ok(fast::rms_norm(x, Some(&self.weight), self.eps)?)
+    }
+}
+
 /// `BatchNorm` hors entraînement : les statistiques gardées,
 /// `(x − moyenne) · rsqrt(variance + eps) · poids + biais`.
 pub struct BatchNorm {
@@ -337,6 +356,11 @@ impl Conv1d {
             padding: s.padding,
             groups: s.groups,
         })
+    }
+
+    /// Le type des poids (`conv.weight.dtype` du Swift).
+    pub fn dtype(&self) -> mlx_rs::Dtype {
+        self.weight.dtype()
     }
 
     pub fn forward(&self, x: &Array) -> Result<Array> {

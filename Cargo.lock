@@ -1055,6 +1055,8 @@ dependencies = [
  "tar",
  "tesseract-rs",
  "toml",
+ "unicode-normalization",
+ "unicode-segmentation",
  "unicode-width",
  "ureq",
  "whatlang",

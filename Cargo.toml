@@ -85,6 +85,12 @@ mlx-rs = { version = "=0.34.0", optional = true }
 ruzstd = { version = "=0.9.1", optional = true }
 tar = { version = "=0.4.46", optional = true, default-features = false }
 half = { version = "=2.7.1", optional = true }
+# Voxtral Realtime (stt::mlx::voxtral) : le texte du flux se compare par
+# graphèmes, à équivalence canonique, comme une `String` du Swift (`hasPrefix`,
+# `dropFirst`). Déjà verrouillées par dysflow (crossterm, pdf-extract), MIT OR
+# Apache-2.0 : aucune crate de plus. Épinglées exactement, comme les autres.
+unicode-segmentation = { version = "=1.13.3", optional = true }
+unicode-normalization = { version = "=0.1.25", optional = true }
 
 [build-dependencies]
 # Sonic (accélération de la parole) se compile toujours : deux fichiers C.
@@ -104,7 +110,14 @@ kokoro-onnx = ["dep:ort", "dep:libloading"]
 # Calcul MLX en Rust (Mac Apple Silicon ; sans effet ailleurs). MLX est
 # compilé par CMake au premier build (~4 min, avec accès réseau), puis gardé
 # dans target/.
-mlx = ["dep:mlx-rs", "dep:ruzstd", "dep:tar", "dep:half"]
+mlx = [
+    "dep:mlx-rs",
+    "dep:ruzstd",
+    "dep:tar",
+    "dep:half",
+    "dep:unicode-segmentation",
+    "dep:unicode-normalization",
+]
 # Dictée par sherpa-onnx, sur le même ONNX Runtime que Kokoro. Jamais dans
 # l'app macOS, qui dicte en MLX.
 stt-sherpa = ["dep:sherpa-onnx", "kokoro-onnx"]
