@@ -19,6 +19,12 @@
 //!       --detector silero --silero …/silero_vad.onnx \
 //!       --wav fr-pauses.wav --ref fr-pauses.txt --realtime
 //!
+//! `--runtime mlx` lit avec Parakeet en MLX (`stt::mlx::parakeet`, tâche 14 ;
+//! construit avec `--features stt-sherpa,mlx`, sur Apple Silicon) :
+//! `--model-dir` est alors le dossier MLX (parakeet_tdt_v3/), et
+//! `--timestamps-dir` le Parakeet int8 de sherpa-onnx dont on lit les
+//! horodatages, le même repère acoustique que pour `ort-cpu`.
+//!
 //! Le binaire cherche sherpa-onnx et ONNX Runtime à côté de lui : voir
 //! `scripts/dictee-porte.sh`, qui le construit et le lance comme
 //! `scripts/ort-gate.sh`.
@@ -43,8 +49,9 @@
 //!   (provisoire ou définitif) a du retard sur la parole : pour chaque
 //!   lecture, sa fin moins le plus tard de deux instants, l'audio couvert par
 //!   le texte précédent et le début de l'énoncé lu.
-//! - `pic_mlx_mo` : toujours `null` ici, Parakeet sherpa-onnx calcule sur le
-//!   processeur, sans MLX.
+//! - `pic_mlx_mo` : avec `mlx`, le pic de la mémoire de MLX
+//!   (`peak_memory`) sur tout le banc, chargement compris ; `null` avec
+//!   `ort-cpu`, qui calcule sur le processeur, sans MLX.
 
 mod bench {
     use anyhow::{bail, ensure, Context, Result};
@@ -70,13 +77,20 @@ mod bench {
     #[derive(Parser)]
     #[command(about = "Banc de la dictée : un audio, une référence, un régime ; une ligne JSON")]
     struct Args {
-        /// Le dossier de Parakeet int8 (parakeet_tdt_v3_int8/).
+        /// Le dossier du modèle : Parakeet int8 de sherpa-onnx
+        /// (parakeet_tdt_v3_int8/) avec `ort-cpu`, Parakeet MLX
+        /// (parakeet_tdt_v3/) avec `mlx`.
         #[arg(long)]
         model_dir: PathBuf,
-        /// Le calcul : `ort-cpu` (sherpa-onnx sur le processeur). `mlx` vient
-        /// avec le port de Parakeet (tâche 14).
+        /// Le calcul : `ort-cpu` (sherpa-onnx sur le processeur) ou `mlx`
+        /// (Parakeet en MLX, `--features mlx`).
         #[arg(long, default_value = "ort-cpu")]
         runtime: String,
+        /// Le Parakeet int8 de sherpa-onnx dont on lit les horodatages (fin
+        /// du dernier mot) ; par défaut `--model-dir`, qui l'est avec
+        /// `ort-cpu`. Demandé avec `mlx` en découpe.
+        #[arg(long)]
+        timestamps_dir: Option<PathBuf>,
         /// Le détecteur de la découpe : `silero` ou `energy`. Sans objet avec
         /// `--full`.
         #[arg(long)]
@@ -115,7 +129,7 @@ mod bench {
 
     /// Parakeet, chaque lecture chronométrée.
     struct Timed {
-        inner: ParakeetSherpa,
+        inner: Box<dyn Recognizer>,
         reads: Arc<Mutex<Vec<Read>>>,
     }
 
@@ -139,6 +153,67 @@ mod bench {
         }
         fn release(&self) {
             self.inner.release()
+        }
+        fn memory(&self) -> Option<u64> {
+            self.inner.memory()
+        }
+    }
+
+    /// Le Parakeet de `--runtime`, après vérification de ses fichiers.
+    fn engine(args: &Args) -> Result<Box<dyn Recognizer>> {
+        match args.runtime.as_str() {
+            "ort-cpu" => {
+                sherpa_files(&args.model_dir)?;
+                Ok(Box::new(ParakeetSherpa::new(args.threads)))
+            }
+            "mlx" => mlx_engine(args),
+            other => bail!("--runtime {other} : ort-cpu ou mlx"),
+        }
+    }
+
+    #[cfg(all(feature = "mlx", target_os = "macos", target_arch = "aarch64"))]
+    fn mlx_engine(args: &Args) -> Result<Box<dyn Recognizer>> {
+        let config = args.model_dir.join("config.json");
+        ensure!(config.is_file(), "{} absent", config.display());
+        Ok(Box::new(dysflow::stt::mlx::parakeet::ParakeetMlx::new()))
+    }
+
+    #[cfg(not(all(feature = "mlx", target_os = "macos", target_arch = "aarch64")))]
+    fn mlx_engine(_: &Args) -> Result<Box<dyn Recognizer>> {
+        bail!("--runtime mlx : construire avec --features stt-sherpa,mlx, sur Apple Silicon")
+    }
+
+    /// Le pic de la mémoire de MLX depuis le lancement, en Mo.
+    #[cfg(all(feature = "mlx", target_os = "macos", target_arch = "aarch64"))]
+    fn mlx_peak_mb() -> Result<f64> {
+        Ok(dysflow::compute::mlx::memory()?.peak as f64 / (1024.0 * 1024.0))
+    }
+
+    #[cfg(not(all(feature = "mlx", target_os = "macos", target_arch = "aarch64")))]
+    fn mlx_peak_mb() -> Result<f64> {
+        bail!("MLX absent de ce build")
+    }
+
+    fn sherpa_files(dir: &Path) -> Result<()> {
+        for file in FILES {
+            ensure!(
+                dir.join(file).is_file(),
+                "{} absent",
+                dir.join(file).display()
+            );
+        }
+        Ok(())
+    }
+
+    /// Le dossier des horodatages : `--timestamps-dir`, ou `--model-dir`
+    /// avec `ort-cpu`.
+    fn timestamps_dir(args: &Args) -> Result<&Path> {
+        match (&args.timestamps_dir, args.runtime.as_str()) {
+            (Some(dir), _) => Ok(dir),
+            (None, "ort-cpu") => Ok(&args.model_dir),
+            (None, _) => {
+                bail!("--timestamps-dir : le Parakeet int8 de sherpa-onnx, pour la fin des mots")
+            }
         }
     }
 
@@ -325,21 +400,12 @@ mod bench {
 
     pub fn main() -> Result<()> {
         let args = Args::parse();
-        if args.runtime != "ort-cpu" {
-            bail!(
-                "--runtime {} : seul ort-cpu existe (Parakeet en MLX : tâche 14)",
-                args.runtime
-            );
-        }
         if args.full == args.detector.is_some() {
             bail!("soit --full, soit --detector silero|energy");
         }
-        for file in FILES {
-            ensure!(
-                args.model_dir.join(file).is_file(),
-                "{} absent",
-                args.model_dir.join(file).display()
-            );
+        let inner = engine(&args)?;
+        if !args.full {
+            sherpa_files(timestamps_dir(&args)?)?;
         }
         let reference = std::fs::read_to_string(&args.reference)
             .with_context(|| format!("{} illisible", args.reference.display()))?;
@@ -353,7 +419,7 @@ mod bench {
         let reads = Arc::new(Mutex::new(Vec::new()));
         let recognizer = Arc::new(Holder::new(
             Timed {
-                inner: ParakeetSherpa::new(args.threads),
+                inner,
                 reads: reads.clone(),
             },
             None,
@@ -373,6 +439,20 @@ mod bench {
             run_segmented(&args, &audio, audio_s, &recognizer, &reads)?
         };
         let rss = max_rss_mb();
+        let (mlx_peak, mlx_why) = match args.runtime.as_str() {
+            "mlx" => (
+                json!(round(mlx_peak_mb()?)),
+                "pic de MLX (peak_memory) sur tout le banc, chargement compris",
+            ),
+            _ => (
+                Value::Null,
+                "Parakeet sherpa-onnx calcule sur le processeur, sans MLX",
+            ),
+        };
+        let model = args
+            .model_dir
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned());
         let end_machine = machine();
         let wall_s = secs(wall.elapsed());
 
@@ -392,7 +472,7 @@ mod bench {
             "secondes_audio": round(audio_s),
             "silence_ajoute_s": args.tail_s,
             "mots_reference": expected.len(),
-            "moteur": { "modele": "parakeet_tdt_v3_int8", "runtime": args.runtime, "fils": args.threads.clamp(1, 4) },
+            "moteur": { "modele": model, "runtime": args.runtime, "fils": args.threads.clamp(1, 4) },
             "regime": if args.full { "relecture complète" } else { "découpe" },
             "detecteur": args.detector,
             "temps_reel": args.realtime,
@@ -406,8 +486,8 @@ mod bench {
                 "provisoire": round(compute - outcome.final_compute),
             },
             "lectures": { "definitives": outcome.finals, "provisoires": outcome.reads.len() - outcome.finals },
-            "pic_mlx_mo": null,
-            "pic_mlx_raison": "Parakeet sherpa-onnx calcule sur le processeur, sans MLX",
+            "pic_mlx_mo": mlx_peak,
+            "pic_mlx_raison": mlx_why,
             "wer": round(wer(&reference, &outcome.text)),
             "reference_entendue": !expected.is_empty() && expected.iter().all(|w| heard.contains(w)),
             "texte": outcome.text,
@@ -588,10 +668,12 @@ mod bench {
         Ok((out, counts))
     }
 
-    /// Un second Parakeet, celui de `ParakeetSherpa` (mêmes fichiers, même
-    /// calcul), dont on lit les horodatages ; créé après la mesure.
+    /// Un second Parakeet, celui de `ParakeetSherpa` (les fichiers de
+    /// `timestamps_dir`, même calcul), dont on lit les horodatages ; créé
+    /// après la mesure.
     fn timestamps_recognizer(args: &Args) -> Result<sherpa_onnx::OfflineRecognizer> {
-        let path = |file: &str| Some(args.model_dir.join(file).display().to_string());
+        let dir = timestamps_dir(args)?;
+        let path = |file: &str| Some(dir.join(file).display().to_string());
         let mut config = sherpa_onnx::OfflineRecognizerConfig::default();
         config.model_config.transducer = sherpa_onnx::OfflineTransducerModelConfig {
             encoder: path(FILES[0]),

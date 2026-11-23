@@ -9,6 +9,8 @@ pub mod rolling;
 pub mod segmenter;
 pub mod wer;
 
+#[cfg(all(feature = "mlx", target_os = "macos", target_arch = "aarch64"))]
+pub mod mlx;
 #[cfg(feature = "stt-sherpa")]
 pub mod sherpa;
 
