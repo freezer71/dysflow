@@ -102,6 +102,25 @@ pub struct Args {
     /// Liste les voix utilisables avec `--voice` puis quitte.
     #[arg(long)]
     pub list_voices: bool,
+
+    /// Dicte ce WAV (16 kHz, mono) : le texte sur la sortie standard, la
+    /// progression sur la sortie d'erreur ; puis quitte.
+    #[arg(long, value_name = "WAV")]
+    pub transcribe: Option<PathBuf>,
+
+    /// Modèle de dictée de `--transcribe` ; par défaut, celui que ce binaire
+    /// sait lancer.
+    #[arg(long, value_name = "ID", requires = "transcribe")]
+    pub dictation_model: Option<String>,
+
+    /// Langue de `--transcribe` : fr ou en ; par défaut, celle de l'interface.
+    #[arg(long, value_name = "LANGUE", requires = "transcribe")]
+    pub dictation_language: Option<String>,
+
+    /// Télécharge ce modèle (son identifiant), puis quitte. Seule option qui
+    /// télécharge.
+    #[arg(long, value_name = "ID")]
+    pub install_model: Option<String>,
 }
 
 /// La commande avec son aide dans la langue de l'interface. Les commentaires
@@ -187,6 +206,34 @@ pub fn command() -> Command {
             a.help(tr!(
                 "List the voices --voice accepts (* marks the default one), then quit.",
                 "Liste les voix que --voice accepte (* marque celle par défaut) puis quitte."
+            ))
+            .help_heading(options)
+        })
+        .mut_arg("transcribe", |a| {
+            a.help(tr!(
+                "Dictate this WAV file (16 kHz, mono): the text goes to standard output, progress to standard error. Never downloads.",
+                "Dicte ce fichier WAV (16 kHz, mono) : le texte sur la sortie standard, la progression sur la sortie d'erreur. Ne télécharge jamais."
+            ))
+            .help_heading(options)
+        })
+        .mut_arg("dictation_model", |a| {
+            a.help(tr!(
+                "Dictation model for --transcribe (its id); by default, the one this build can run.",
+                "Modèle de dictée de --transcribe (son identifiant) ; par défaut, celui que ce binaire sait lancer."
+            ))
+            .help_heading(options)
+        })
+        .mut_arg("dictation_language", |a| {
+            a.help(tr!(
+                "Language for --transcribe: fr or en (default: the interface language).",
+                "Langue de --transcribe : fr ou en (par défaut : celle de l'interface)."
+            ))
+            .help_heading(options)
+        })
+        .mut_arg("install_model", |a| {
+            a.help(tr!(
+                "Download this model (its id), then quit. The only option that downloads.",
+                "Télécharge ce modèle (son identifiant), puis quitte. La seule option qui télécharge."
             ))
             .help_heading(options)
         })
@@ -286,6 +333,17 @@ pub fn prepare(args: &Args) -> Result<Launch> {
     }
     if args.check_kokoro {
         print!("{}", check_kokoro()?);
+        return Ok(Launch::Done);
+    }
+
+    // La dictée d'un fichier et l'installation d'un modèle n'ont pas d'écran
+    // non plus, et n'écrivent pas la configuration.
+    if let Some(id) = &args.install_model {
+        install_model(id)?;
+        return Ok(Launch::Done);
+    }
+    if let Some(wav) = &args.transcribe {
+        transcribe_file(args, wav, config.engine.threads)?;
         return Ok(Launch::Done);
     }
 
@@ -407,6 +465,147 @@ fn check_kokoro() -> Result<String> {
         "Kokoro missing from this binary (built without the kokoro-onnx feature)",
         "Kokoro absent de ce binaire (construit sans la feature kokoro-onnx)"
     ))
+}
+
+/// Le paquet de dictée de `--transcribe` : `requested`, ou le premier que ce
+/// binaire sait lancer. Absent du disque, l'erreur dit comment l'installer
+/// (`--install-model`) : `--transcribe` ne télécharge jamais. `loadable`
+/// désigne ce que ce binaire sait lancer, `installed` ce qui est sur le
+/// disque.
+fn dictation_package(
+    requested: Option<&str>,
+    loadable: &[&'static crate::models::ModelPackage],
+    installed: impl Fn(&crate::models::ModelPackage) -> bool,
+) -> Result<&'static crate::models::ModelPackage> {
+    use crate::models::{Kind, CATALOG};
+    let dictation = || CATALOG.iter().filter(|p| p.kind == Kind::Dictation);
+    let package = match requested {
+        Some(id) => dictation().find(|p| p.id == id).with_context(|| {
+            let ids: Vec<_> = dictation().map(|p| p.id).collect();
+            crate::tr!(
+                en = "unknown dictation model: {id} (known: {})",
+                fr = "modèle de dictée inconnu : {id} (connus : {})",
+                ids.join(", ")
+            )
+        })?,
+        None => loadable.iter().copied().find(|p| p.kind == Kind::Dictation).with_context(|| {
+            crate::tr!(
+                "this build has no dictation engine (built without the stt-sherpa feature)",
+                "ce binaire n'a pas de moteur de dictée (construit sans la feature stt-sherpa)"
+            )
+        })?,
+    };
+    anyhow::ensure!(
+        installed(package),
+        crate::tr!(
+            en = "{} is not installed: run `dysflow --install-model {}` (--transcribe never downloads)",
+            fr = "{} n'est pas installé : lancez `dysflow --install-model {}` (--transcribe ne télécharge jamais)",
+            package.display_name.get(),
+            package.id
+        )
+    );
+    anyhow::ensure!(
+        loadable.iter().any(|p| p.id == package.id),
+        crate::tr!(
+            en = "this build cannot run {}",
+            fr = "ce binaire ne sait pas lancer {}",
+            package.display_name.get()
+        )
+    );
+    Ok(package)
+}
+
+/// `--transcribe` : le fichier passe par `Dictation` (`stt::file`), le texte
+/// seul sur la sortie standard, la progression sur la sortie d'erreur. Rien
+/// ne se télécharge : un modèle absent est une erreur.
+fn transcribe_file(args: &Args, wav: &std::path::Path, threads: u32) -> Result<()> {
+    let language = match args.dictation_language.as_deref() {
+        Some(l @ ("fr" | "en")) => l,
+        Some(other) => anyhow::bail!(crate::tr!(
+            en = "unknown dictation language: {other} (expected: fr or en)",
+            fr = "langue de dictée inconnue : {other} (attendu : fr ou en)"
+        )),
+        None => match crate::i18n::ui_lang() {
+            crate::i18n::UiLang::Fr => "fr",
+            crate::i18n::UiLang::En => "en",
+        },
+    };
+    // Le fichier d'abord : un modèle qu'on installerait pour rien ne serait
+    // pas un bon message.
+    let samples = crate::stt::file::read_wav(wav)?;
+    let package = dictation_package(
+        args.dictation_model.as_deref(),
+        &crate::models::loadable_with(false),
+        crate::models::is_installed,
+    )?;
+    let model_dir = crate::models::install_path(package)
+        .and_then(|main| main.parent().map(std::path::Path::to_path_buf))
+        .context(crate::tr!("data directory not found", "répertoire de données introuvable"))?;
+    let engine = crate::stt::engine_for(package, threads)?;
+    let text = crate::stt::file::dictate(&samples, engine, &model_dir, language, |line| eprintln!("{line}"))?;
+    crate::stt::file::print_text(&text, &mut std::io::stdout().lock(), |line| eprintln!("{line}"))
+}
+
+/// `--install-model` : le seul chemin du terminal qui télécharge. Un modèle
+/// déjà là n'est pas retéléchargé.
+fn install_model(id: &str) -> Result<()> {
+    let package = installable(id, &crate::models::loadable_with(false))?;
+    let name = package.display_name.get();
+    if crate::models::is_installed(package) {
+        eprintln!("{}", crate::tr!(en = "{name} is already installed.", fr = "{name} est déjà installé."));
+        return Ok(());
+    }
+    let download = crate::models::Download::start(package)?;
+    let mut shown = u64::MAX;
+    loop {
+        match download.progress() {
+            crate::models::Progress::Running { received, total } => {
+                // Une ligne tous les 5 % : lisible dans un journal comme au terminal.
+                let percent = received * 100 / total.max(1) / 5 * 5;
+                if percent != shown {
+                    shown = percent;
+                    eprintln!(
+                        "{}",
+                        crate::tr!(en = "Downloading {name}: {percent} %", fr = "Téléchargement de {name} : {percent} %")
+                    );
+                }
+                std::thread::sleep(std::time::Duration::from_millis(200));
+            }
+            crate::models::Progress::Done => break,
+            crate::models::Progress::Failed(err) => {
+                anyhow::bail!(crate::tr!(en = "download failed: {err}", fr = "téléchargement échoué : {err}"))
+            }
+            crate::models::Progress::Cancelled => {
+                anyhow::bail!(crate::tr!("download cancelled", "téléchargement annulé"))
+            }
+        }
+    }
+    eprintln!("{}", crate::tr!(en = "{name} installed.", fr = "{name} installé."));
+    Ok(())
+}
+
+/// Le paquet que `--install-model` désigne : un identifiant du catalogue que
+/// ce binaire sait lancer.
+fn installable(
+    id: &str,
+    loadable: &[&'static crate::models::ModelPackage],
+) -> Result<&'static crate::models::ModelPackage> {
+    let package = crate::models::CATALOG.iter().find(|p| p.id == id).with_context(|| {
+        let ids: Vec<_> = loadable.iter().map(|p| p.id).collect();
+        crate::tr!(
+            en = "unknown model: {id} (this build runs: {})",
+            fr = "modèle inconnu : {id} (ce binaire lance : {})",
+            ids.join(", ")
+        )
+    })?;
+    anyhow::ensure!(
+        loadable.iter().any(|p| p.id == package.id),
+        crate::tr!(
+            en = "this build cannot run {id}: it would be downloaded for nothing",
+            fr = "ce binaire ne sait pas lancer {id} : il serait téléchargé pour rien"
+        )
+    );
+    Ok(package)
 }
 
 /// La configuration d'un appel sans écran : le modèle installé et les voix
@@ -876,6 +1075,94 @@ mod tests {
         std::fs::remove_dir_all(&dir).ok();
     }
 
+
+    fn package(id: &str) -> &'static crate::models::ModelPackage {
+        crate::models::CATALOG.iter().find(|p| p.id == id).unwrap()
+    }
+
+    /// Ce que ce binaire sait lancer, comme `loadable_with(false)` le rendrait
+    /// avec `stt-sherpa`, quel que soit le build de l'essai.
+    fn with_parakeet() -> Vec<&'static crate::models::ModelPackage> {
+        vec![package("kokoro_82m_int8"), package("parakeet_tdt_v3_int8")]
+    }
+
+    #[test]
+    fn a_missing_dictation_model_names_the_install_option() {
+        let err = dictation_package(None, &with_parakeet(), |_| false).unwrap_err().to_string();
+        assert!(err.contains("--install-model parakeet_tdt_v3_int8"), "{err}");
+        let err = dictation_package(Some("parakeet_tdt_v3_int8"), &[], |_| false).unwrap_err().to_string();
+        assert!(err.contains("--install-model parakeet_tdt_v3_int8"), "{err}");
+    }
+
+    #[test]
+    fn the_dictation_model_defaults_to_the_first_one_this_build_runs() {
+        let chosen = dictation_package(None, &with_parakeet(), |_| true).unwrap();
+        assert_eq!(chosen.id, "parakeet_tdt_v3_int8");
+        let err = dictation_package(None, &[package("kokoro_82m_int8")], |_| true).unwrap_err().to_string();
+        assert!(err.contains("stt-sherpa"), "{err}");
+    }
+
+    #[test]
+    fn a_dictation_model_this_build_cannot_run_is_refused_once_installed() {
+        let err = dictation_package(Some("parakeet_tdt_v3"), &with_parakeet(), |_| true).unwrap_err().to_string();
+        assert!(err.contains("cannot run") || err.contains("ne sait pas lancer"), "{err}");
+    }
+
+    #[test]
+    fn an_unknown_or_speech_model_is_no_dictation_model() {
+        for id in ["inconnu", "kokoro_82m_int8"] {
+            let err = dictation_package(Some(id), &with_parakeet(), |_| true).unwrap_err().to_string();
+            assert!(err.contains(id) && err.contains("parakeet_tdt_v3_int8"), "{err}");
+        }
+    }
+
+    #[test]
+    fn install_model_takes_only_what_this_build_runs() {
+        assert_eq!(installable("parakeet_tdt_v3_int8", &with_parakeet()).unwrap().id, "parakeet_tdt_v3_int8");
+        let err = installable("parakeet_tdt_v3", &with_parakeet()).unwrap_err().to_string();
+        assert!(err.contains("parakeet_tdt_v3"), "{err}");
+        let err = installable("nope", &with_parakeet()).unwrap_err().to_string();
+        assert!(err.contains("nope") && err.contains("kokoro_82m_int8"), "{err}");
+    }
+
+    #[test]
+    fn transcribe_options_parse_and_need_a_file() {
+        let args = Args::try_parse_from([
+            "dysflow", "--transcribe", "a.wav", "--dictation-model", "m", "--dictation-language", "en",
+        ])
+        .unwrap();
+        assert_eq!(args.transcribe.as_deref(), Some(std::path::Path::new("a.wav")));
+        assert_eq!(args.dictation_model.as_deref(), Some("m"));
+        assert!(Args::try_parse_from(["dysflow", "--dictation-model", "m"]).is_err());
+        let args = Args::try_parse_from(["dysflow", "--install-model", "x"]).unwrap();
+        assert_eq!(args.install_model.as_deref(), Some("x"));
+    }
+
+    /// `--transcribe` sans le modèle : une erreur, et rien n'est téléchargé
+    /// (le dossier des modèles reste sans fichier ; en test, `fetch_with`
+    /// refuse en plus tout réseau).
+    #[test]
+    fn transcribing_without_the_model_downloads_nothing() {
+        let wav = scratch("sans-modele").join("a.wav");
+        let spec = hound::WavSpec {
+            channels: 1,
+            sample_rate: 16_000,
+            bits_per_sample: 16,
+            sample_format: hound::SampleFormat::Int,
+        };
+        let mut writer = hound::WavWriter::create(&wav, spec).unwrap();
+        (0..1_600).for_each(|_| writer.write_sample(0i16).unwrap());
+        writer.finalize().unwrap();
+        let mut args = Args { transcribe: Some(wav.clone()), ..Args::default() };
+        args.dictation_model = Some("parakeet_tdt_v3_int8".into());
+        let err = transcribe_file(&args, &wav, 1).unwrap_err().to_string();
+        assert!(err.contains("--install-model parakeet_tdt_v3_int8"), "{err}");
+        let files = crate::models::models_dir()
+            .and_then(|root| std::fs::read_dir(root).ok())
+            .map(|entries| entries.count())
+            .unwrap_or(0);
+        assert_eq!(files, 0, "aucun fichier de modèle ne doit apparaître");
+    }
 
     #[test]
     fn sessions_zero_on_the_command_line_means_auto() {

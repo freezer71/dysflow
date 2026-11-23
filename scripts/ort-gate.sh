@@ -186,6 +186,9 @@ dictation_tests() {
         done
     fi
     ignored_tests stt::sherpa::parakeet 2 DYSFLOW_MODELS="$native"
+    # La dictée d'un fichier (--transcribe) : engine_for, Dictation, le vrai
+    # modèle sur test_wavs/fr.wav ramené à 16 kHz.
+    ignored_tests stt::file 1 DYSFLOW_MODELS="$native"
     if [ -n "$copy" ]; then
         rm -rf "$copy"
     fi

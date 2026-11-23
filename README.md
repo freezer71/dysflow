@@ -245,6 +245,32 @@ voix inconnue, un format autre que `.wav` ou un texte vide sortent en erreur
 (code 1). Sur Mac, les voix MLX (Kokoro, Qwen3, Magpie) ne tournent que dans
 l'app : le terminal parle alors avec la voix du système, et le dit.
 
+#### Dicter un fichier
+
+`--transcribe` fait l'inverse : il dicte un fichier WAV, sans écran, avec le
+modèle de dictée installé (Parakeet v3 · int8, pour un binaire construit avec
+la feature `stt-sherpa`). Le texte est écrit seul sur la sortie standard ; la
+progression (chargement du modèle, un énoncé après l'autre, les échecs) passe
+par la sortie d'erreur.
+
+```bash
+dysflow --install-model parakeet_tdt_v3_int8     # une fois : télécharge le modèle
+dysflow --transcribe reunion.wav > reunion.txt   # le texte, rien d'autre
+dysflow --transcribe note.wav --dictation-language en
+```
+
+- `--transcribe <WAV>` : le fichier doit être en **16 kHz, mono**, PCM 16 bits
+  ou flottant 32 bits. Pour tout autre fichier, la commande sort en erreur
+  (code 1) et donne la conversion à lancer, avec votre chemin :
+  `ffmpeg -i 'mon fichier.m4a' -ar 16000 -ac 1 'mon fichier-16k.wav'`.
+- `--dictation-model <ID>` : le modèle de dictée ; par défaut, celui que le
+  binaire sait lancer. `--dictation-language <fr|en>` : la langue, celle de
+  l'interface par défaut.
+- `--install-model <ID>` : télécharge un modèle (son identifiant, celui du
+  catalogue), puis quitte. C'est la **seule** option qui télécharge :
+  `--transcribe` ne télécharge jamais, et un modèle absent sort en erreur en
+  nommant la commande `--install-model` à lancer.
+
 ### Installation
 
 **Sous Linux (x86_64, ARM64)**, le paquet tout prêt est joint à chaque
