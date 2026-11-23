@@ -18,7 +18,7 @@ mod audio;
 mod config;
 mod layers;
 mod model;
-mod tokenizer;
+pub(in crate::stt::mlx) mod tokenizer;
 
 #[cfg(test)]
 mod stages;

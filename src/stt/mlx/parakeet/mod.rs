@@ -7,9 +7,9 @@
 //! l'encodeur, après chaque pas du décodeur (déjà évalué : rien de plus à
 //! calculer) et après le passage. Le Swift, lui, va toujours au bout.
 
-mod audio;
+pub(in crate::stt::mlx) mod audio;
 pub(in crate::stt::mlx) mod config;
-mod conformer;
+pub(in crate::stt::mlx) mod conformer;
 pub(in crate::stt::mlx) mod model;
 mod tokenizer;
 

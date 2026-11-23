@@ -3,11 +3,13 @@
 //! (`dsp`, `nemo`, les couches de `nn`, la lecture des poids de `weights`)
 //! servent à chaque modèle ; Parakeet v2 et v3 sont les premiers, Phonon-2
 //! (le graphe de Parakeet, ses poids dans une archive) le suivant, puis
-//! Whisper (tiny, small, large-v3-turbo).
+//! Whisper (tiny, small, large-v3-turbo), puis Canary 1b-v2 (l'encodeur de
+//! Parakeet, un décodeur Transformer).
 //!
 //! Un modèle de dictée chargé inscrit son besoin dans les plafonds de MLX
 //! sous la clé `"dictee"` (`need`), comme `SpeechModels.load` de l'app.
 
+pub mod canary;
 pub mod dsp;
 pub mod nemo;
 pub mod nn;

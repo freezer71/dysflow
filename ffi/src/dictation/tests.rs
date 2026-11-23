@@ -432,19 +432,20 @@ fn parakeet_dictates_through_the_core_only_with_mlx() {
             assert!(err.contains("Parakeet"), "{err}");
         }
     }
-    // Phonon-2 (tâche 16) et Whisper (tâche 17), P1 à P4 : le cœur sait
-    // les dicter ; l'app ne bascule pas encore (`CoreDictation.ported` vide
-    // jusqu'à P6).
+    // Phonon-2 (tâche 16), Whisper (tâche 17) et Canary (tâche 19), P1 à
+    // P4 : le cœur sait les dicter ; l'app ne bascule pas encore
+    // (`CoreDictation.ported` vide jusqu'à P6).
     for id in [
         "phonon_2",
         "whisper_tiny_4bit",
         "whisper_small_4bit",
         "whisper_large_v3_turbo_4bit",
+        "canary_1b_v2_q8",
     ] {
         assert_eq!(core_dictation_supports(id.into()), mlx, "{id}");
     }
     assert!(
-        !core_dictation_supports("canary_1b_v2_q8".into()),
+        !core_dictation_supports("nemotron_35_asr_streaming_8bit".into()),
         "pas porté"
     );
     assert!(!core_dictation_supports("inconnu".into()));

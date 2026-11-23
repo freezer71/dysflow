@@ -127,7 +127,7 @@ fn split_line(line: &str) -> Option<(&str, &str)> {
 
 /// `Data(base64Encoded:)` : l'alphabet standard, longueur multiple de 4, au
 /// plus deux `=` à la fin ; autre chose : `None`.
-fn base64(text: &str) -> Option<Vec<u8>> {
+pub(in crate::stt::mlx) fn base64(text: &str) -> Option<Vec<u8>> {
     let bytes = text.as_bytes();
     if !bytes.len().is_multiple_of(4) {
         return None;

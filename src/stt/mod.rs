@@ -138,6 +138,11 @@ pub fn recognizer_for(
             let _ = threads;
             Ok(std::sync::Arc::new(mlx::whisper::WhisperMlx::new()))
         }
+        #[cfg(all(feature = "mlx", target_os = "macos", target_arch = "aarch64"))]
+        crate::models::Runtime::CanaryMlx => {
+            let _ = threads;
+            Ok(std::sync::Arc::new(mlx::canary::CanaryMlx::new()))
+        }
         // Un moteur que ce binaire ne sait pas calculer : seul l'app, ou un
         // binaire construit avec la feature, le fait.
         runtime => {
@@ -289,6 +294,7 @@ mod tests {
             ("whisper_tiny_4bit", "WhisperMlx"),
             ("whisper_small_4bit", "WhisperMlx"),
             ("whisper_large_v3_turbo_4bit", "WhisperMlx"),
+            ("canary_1b_v2_q8", "CanaryMlx"),
         ] {
             let recognizer = recognizer_for(package(id), 4);
             let engine = engine_for(package(id), 4);
@@ -309,10 +315,10 @@ mod tests {
 
     #[test]
     fn an_engine_this_binary_cannot_compute_is_refused_by_name() {
-        let err = engine_for(package("canary_1b_v2_q8"), 4)
+        let err = engine_for(package("nemotron_35_asr_streaming_8bit"), 4)
             .err()
-            .expect("Canary MLX : pas porté")
+            .expect("Nemotron MLX : pas porté")
             .to_string();
-        assert!(err.contains("CanaryMlx"), "{err}");
+        assert!(err.contains("NemotronMlx"), "{err}");
     }
 }
