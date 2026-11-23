@@ -141,6 +141,10 @@ name = "voice_bench"
 required-features = ["mlx"]
 
 [[example]]
+name = "kokoro_dictees"
+required-features = ["mlx"]
+
+[[example]]
 name = "ort_single_copy"
 required-features = ["stt-sherpa"]
 

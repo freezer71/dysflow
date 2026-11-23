@@ -13,6 +13,10 @@ a71e4d38b236d968966a2002c4c895dbd12b1c3c) ou
 onnx-community/Kokoro-82M-v1.0-ONNX-timestamped (révision
 dd4401a9add81ac692d20e240d22ec9dda82cc29). La voix p-fenrir60, livrée avec
 Dysflow (assets/voices), en est dérivée (Apache 2.0).
+Les deux dictées des essais (macos/Tests/Fixtures/dictee-charge.wav et
+tests/fixtures/mlx/dictee-en.wav) sont parlées par cette même voix, aux
+voix ff_siwis et af_heart du paquet mlx-community/Kokoro-82M-bf16 (Apache
+2.0). Le script tests/fixtures/mlx/make_dictees.sh les produit.
 
 Les poids de MagpieTTS Multilingual 357M (NVIDIA) sont téléchargés à la
 demande depuis aufklarer/Magpie-TTS-Multilingual-357M-MLX-8bit (révision
