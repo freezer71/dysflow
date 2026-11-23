@@ -176,7 +176,18 @@ const ENCODER_MEAN_TOLERANCE: f32 = 1e-5;
 const ENCODER_MEAN_ABS_TOLERANCE: f32 = 1e-4;
 
 fn parity(id: &str) {
+    compare(id, &[]);
+}
+
+/// Les entrées de la fixture, étage par étage. Pour celles de `divergent`
+/// (la garde du build livré), mel et encodeur seuls, et un nombre de pas à
+/// 10 % près de la fixture ; pour les autres, pas, jetons et texte à
+/// l'identique.
+fn compare(id: &str, divergent: &[&str]) {
     let fixture = fixture(id);
+    for name in divergent {
+        assert!(fixture.cases.iter().any(|c| c.input == *name), "{name} : pas une entrée de la fixture");
+    }
     assert_eq!(fixture.model, id);
     let package = crate::models::CATALOG
         .iter()
@@ -259,6 +270,16 @@ fn parity(id: &str) {
             "{name} : moyenne absolue de l'encodeur"
         );
         let first = got.steps.iter().zip(&case.steps).position(|(a, b)| a != b);
+        if divergent.contains(&name.as_str()) {
+            let bound = case.steps.len() / 10;
+            assert!(
+                got.steps.len().abs_diff(case.steps.len()) <= bound,
+                "{name} : {} pas contre {}, au-delà de la borne de {bound} (premier écart au pas {first:?})",
+                got.steps.len(),
+                case.steps.len()
+            );
+            continue;
+        }
         assert!(
             first.is_none() && got.steps.len() == case.steps.len(),
             "{name} : pas du décodeur, premier écart au pas {first:?} ({} contre {})",
@@ -283,6 +304,33 @@ mod parity {
     #[ignore = "demande les poids (DYSFLOW_MODELS) et le build de scripts/mlx-parite.sh"]
     fn parakeet_tdt_v2() {
         super::parity("parakeet_tdt_v2");
+    }
+}
+
+/// La garde du build livré (AOT : le mlx.metallib précompilé de mlx-sys),
+/// par `scripts/mlx-parite.sh --livre`. Ses deux noyaux `depthwise_conv_2d`
+/// et `layer_norm` arrondissent autrement que ceux du Swift (en-tête) : sur
+/// les entrées courtes, pas, jetons et texte restent ceux de la fixture, et
+/// une régression (un noyau, une montée de mlx-sys, `nn.rs`) les changerait.
+/// Mel et encodeur : les seuils de la parité, inchangés.
+mod aot_short_inputs {
+    /// `douze_secondes`, la divergence connue du build livré : le décodage
+    /// glouton y change de jeton (mesuré le 23 nov. 2026 : 83 pas contre 89
+    /// en v3, premier écart au pas 81 ; 131 contre 131 en v2, premier écart
+    /// au pas 10). Seul le nombre de pas est borné : à 10 % près de la
+    /// fixture.
+    const DIVERGENT: &[&str] = &["douze_secondes"];
+
+    #[test]
+    #[ignore = "demande les poids (DYSFLOW_MODELS), dans le build livré (scripts/mlx-parite.sh --livre)"]
+    fn parakeet_tdt_v3() {
+        super::compare("parakeet_tdt_v3", DIVERGENT);
+    }
+
+    #[test]
+    #[ignore = "demande les poids (DYSFLOW_MODELS), dans le build livré (scripts/mlx-parite.sh --livre)"]
+    fn parakeet_tdt_v2() {
+        super::compare("parakeet_tdt_v2", DIVERGENT);
     }
 }
 
