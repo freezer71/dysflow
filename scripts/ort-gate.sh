@@ -15,6 +15,17 @@
 # sous un chemin non ASCII (« Élodie Martin », « Łukasz Gaweł » ; ailleurs
 # que sous Windows, Élodie aussi en NFD).
 #
+# Les essais ignorés de stt::sherpa passent aussi, depuis chacun de ces
+# chemins : Silero VAD toujours (son modèle est celui de la porte), Parakeet
+# quand DYSFLOW_MODELS désigne un dossier de modèles qui contient
+# parakeet_tdt_v3_int8/ : les quatre fichiers du paquet et test_wavs/fr.wav,
+# tirés du dépôt csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8 à la
+# révision ed5d745623472f97cfc2e6c2916ee248798fc5a8
+# (https://huggingface.co/<dépôt>/resolve/<révision>/<fichier>), empreintes
+# vérifiées plus bas. Un essai sauté (« ignored ») fait échouer la porte.
+#
+#   DYSFLOW_MODELS=/chemin/des/modeles ./scripts/ort-gate.sh
+#
 # $OUT.tar.gz en est l'archive, à lancer sur un autre PC :
 #   tar xzf ort-gate.tar.gz && ./ort-gate/ort_single_copy
 set -eu
@@ -40,6 +51,32 @@ fi
 
 OUT="${OUT:-target/ort-gate}"
 MODELS="${MODELS:-target/ort-gate-models}"
+
+# Parakeet int8 : ses fichiers, et leurs empreintes (le paquet
+# parakeet_tdt_v3_int8 de src/models.rs, plus l'échantillon du dépôt).
+PARAKEET_FILES="encoder.int8.onnx decoder.int8.onnx joiner.int8.onnx tokens.txt test_wavs/fr.wav"
+parakeet_sha256() {
+    case "$1" in
+    encoder.int8.onnx) echo 1afbe69c1ffdabee94755f42e4daf1d93549131a3da11356bda84fcef0f2c479 ;;
+    decoder.int8.onnx) echo 0222a86147299d4dee90edf95b6d13827edb42ad8b7c9cf0b2582f030937c0b5 ;;
+    joiner.int8.onnx) echo cbd02f3696e9944970111fb439d9c3fd365a80374565f13f2b9c7007d253fc98 ;;
+    tokens.txt) echo d58544679ea4bc6ac563d1f545eb7d474bd6cfa467f0a6e2c1dc1c7d37e3c35d ;;
+    test_wavs/fr.wav) echo b59be4349b92d344fb903677165eaf4694025d1ab119c608726ecbcb3164b528 ;;
+    esac
+}
+PARAKEET=""
+if [ -n "${DYSFLOW_MODELS:-}" ]; then
+    PARAKEET="$DYSFLOW_MODELS/parakeet_tdt_v3_int8"
+    if [ -n "$WINDOWS" ]; then
+        PARAKEET="$(cygpath -u "$DYSFLOW_MODELS")/parakeet_tdt_v3_int8"
+    fi
+    for file in $PARAKEET_FILES; do
+        if ! [ -f "$PARAKEET/$file" ] || ! sha256_ok "$(parakeet_sha256 "$file")" "$PARAKEET/$file"; then
+            echo "Erreur : $PARAKEET/$file absent, ou d'une autre empreinte que celle du paquet" >&2
+            exit 1
+        fi
+    done
+fi
 
 sherpa_fetch
 echo "sherpa-onnx $SHERPA_VERSION ($SHERPA_LIB_DIR), ONNX Runtime $ORT_VERSION ($ORT_DIR)"
@@ -97,11 +134,62 @@ esac
 # stt::sherpa (check_same_runtime), puis la porte.
 gate="$PWD/$OUT/ort_single_copy$EXE"
 unit="$PWD/$OUT/dysflow_lib_tests$EXE"
+
+# ignored_tests FILTRE NOMBRE VARIABLE=VALEUR… : les essais ignorés de FILTRE
+# (sans `--` : le binaire est celui des tests), depuis /, comme la porte. Il
+# en faut exactement NOMBRE, tous passés : un essai sauté échoue.
+ignored_tests() {
+    filter=$1 count=$2
+    shift 2
+    log="$PWD/$OUT/ignored.log"
+    if [ -n "$WINDOWS" ]; then
+        set -- PATH="/c/Windows/System32:/c/Windows" "$@"
+    fi
+    if ! ( cd / && env -u DYSFLOW_ORT_LIB "$@" "$unit" "$filter" --ignored ) >"$log" 2>&1; then
+        cat "$log"
+        echo "Erreur : essais ignorés de $filter en échec" >&2
+        exit 1
+    fi
+    cat "$log"
+    if grep -q '\.\.\. ignored' "$log" || ! grep -q "test result: ok\. $count passed; 0 failed; 0 ignored" "$log"; then
+        echo "Erreur : $filter : $count essai(s) attendu(s), tous passés" >&2
+        exit 1
+    fi
+}
+
+# dictation_tests DOSSIER_DES_MODÈLES : Silero VAD depuis DOSSIER, puis
+# Parakeet (si DYSFLOW_MODELS est posé), ses fichiers liés ou copiés dans
+# DOSSIER/parakeet_tdt_v3_int8/ quand DOSSIER n'est pas DYSFLOW_MODELS.
+dictation_tests() {
+    models=$1
+    native=$models
+    if [ -n "$WINDOWS" ]; then
+        native=$(cygpath -w "$models")
+    fi
+    ignored_tests stt::sherpa::vad 1 DYSFLOW_SILERO_VAD="$native/silero_vad.onnx"
+    if [ -z "$PARAKEET" ]; then
+        echo "Parakeet : DYSFLOW_MODELS non posé, l'échantillon n'est pas lu depuis $models"
+        return 0
+    fi
+    copy=""
+    if [ "$models/parakeet_tdt_v3_int8" != "$PARAKEET" ]; then
+        copy="$models/parakeet_tdt_v3_int8"
+        mkdir -p "$copy/test_wavs"
+        for file in $PARAKEET_FILES; do
+            ln "$PARAKEET/$file" "$copy/$file" 2>/dev/null || cp "$PARAKEET/$file" "$copy/$file"
+        done
+    fi
+    ignored_tests stt::sherpa::parakeet 2 DYSFLOW_MODELS="$native"
+    if [ -n "$copy" ]; then
+        rm -rf "$copy"
+    fi
+}
 if [ -n "$WINDOWS" ]; then
     ( cd / && env -u DYSFLOW_ORT_LIB -u DYSFLOW_KOKORO_DIR -u DYSFLOW_SILERO_VAD \
         PATH="/c/Windows/System32:/c/Windows" "$unit" stt::sherpa )
     ( cd / && env -u DYSFLOW_ORT_LIB -u DYSFLOW_KOKORO_DIR -u DYSFLOW_SILERO_VAD \
         PATH="/c/Windows/System32:/c/Windows" "$gate" )
+    dictation_tests "$PWD/$OUT/models"
     # Les modèles d'un vrai PC sont sous le profil de l'utilisateur
     # (C:\Users\Élodie Martin\AppData\Local\dysflow\models\…) : la porte une
     # seconde fois, ses modèles copiés sous un chemin qui porte une espace et
@@ -122,10 +210,12 @@ if [ -n "$WINDOWS" ]; then
             DYSFLOW_KOKORO_DIR="$(cygpath -w "$models/kokoro")" \
             DYSFLOW_SILERO_VAD="$(cygpath -w "$models/silero_vad.onnx")" \
             PATH="/c/Windows/System32:/c/Windows" "$gate" )
+        dictation_tests "$models"
     done
 else
     ( cd / && env -u DYSFLOW_ORT_LIB -u DYSFLOW_KOKORO_DIR -u DYSFLOW_SILERO_VAD "$unit" stt::sherpa )
     ( cd / && env -u DYSFLOW_ORT_LIB -u DYSFLOW_KOKORO_DIR -u DYSFLOW_SILERO_VAD "$gate" )
+    dictation_tests "$PWD/$OUT/models"
     # Les mêmes noms d'utilisateur que sous Windows, dans un dossier de
     # modèles : « Élodie Martin » composé (NFC) puis décomposé (NFD, ce que
     # rendent d'anciens volumes HFS+ et des outils qui normalisent), et
@@ -145,6 +235,7 @@ else
         echo "Modèles depuis $models :"
         ( cd / && env -u DYSFLOW_ORT_LIB \
             DYSFLOW_KOKORO_DIR="$models/kokoro" DYSFLOW_SILERO_VAD="$models/silero_vad.onnx" "$gate" )
+        dictation_tests "$models"
     done
     rm -rf target/ort-gate-paths
 fi

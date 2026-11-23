@@ -117,4 +117,22 @@ mod tests {
             "{err}"
         );
     }
+
+    /// Une trame d'une autre longueur que `FRAME`, vide comprise, est une
+    /// erreur rendue avant d'atteindre sherpa-onnx ; une trame juste passe.
+    /// Lancé par `scripts/ort-gate.sh`, avec le Silero de la porte :
+    ///
+    ///   DYSFLOW_SILERO_VAD=… target/ort-gate/dysflow_lib_tests stt::sherpa::vad --ignored
+    #[test]
+    #[ignore = "demande silero_vad.onnx (DYSFLOW_SILERO_VAD) et la bibliothèque de sherpa-onnx (scripts/ort-gate.sh)"]
+    fn a_wrong_frame_is_an_error_before_silero() {
+        let model =
+            std::env::var_os("DYSFLOW_SILERO_VAD").expect("DYSFLOW_SILERO_VAD : le modèle Silero");
+        let mut detector = SileroDetector::new(Path::new(&model)).unwrap();
+        for len in [0, 1, FRAME - 1, FRAME + 1, 2 * FRAME] {
+            let err = detector.is_speech(&vec![0.0; len]).unwrap_err().to_string();
+            assert!(err.contains(&len.to_string()), "{len} : {err}");
+        }
+        assert!(!detector.is_speech(&[0.0; FRAME]).unwrap(), "du silence");
+    }
 }

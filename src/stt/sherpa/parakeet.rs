@@ -17,6 +17,15 @@ pub const FILES: [&str; 4] = [
     "tokens.txt",
 ];
 
+/// Moins d'audio que cela (0,1 s, le minimum de `Dictation`) : aucun texte,
+/// sans appeler sherpa-onnx. Plus court que 80 échantillons, l'encodeur reçoit
+/// zéro trame et ONNX Runtime lève une exception C++ que Rust ne rattrape
+/// pas : le processus s'arrête (mesuré le 23 nov. 2026 sur le modèle int8,
+/// macOS arm64, début de `test_wavs/fr.wav` : 0, 1, 72 et 74 à 79
+/// échantillons, arrêt ; 80 à 85, puis jusqu'à 640 de deux en deux, un texte
+/// vide). 1 600, c'est vingt fois cette limite.
+pub const MIN_SAMPLES: usize = 1_600;
+
 /// Parakeet v3 int8. Un énoncé entier en entrée (la découpe aux silences le
 /// borne à 12 s), son texte en sortie. Parakeet v3 entend la langue seul :
 /// celle de la dictée n'est pas passée au modèle.
@@ -84,7 +93,8 @@ impl Recognizer for ParakeetSherpa {
     }
 
     /// L'abandon est vérifié avant et après le calcul : sherpa-onnx ne
-    /// l'interrompt pas en route.
+    /// l'interrompt pas en route. Moins de `MIN_SAMPLES` : aucun texte, sans
+    /// appeler sherpa-onnx.
     fn transcribe(&self, samples: &[f32], _language: &str, cancel: &Cancel) -> Result<String> {
         cancel.check()?;
         let guard = self.recognizer.lock().unwrap_or_else(|e| e.into_inner());
@@ -93,6 +103,9 @@ impl Recognizer for ParakeetSherpa {
             "Parakeet model not loaded",
             "modèle Parakeet non chargé"
         ))?;
+        if samples.len() < MIN_SAMPLES {
+            return Ok(String::new());
+        }
         let stream = recognizer.create_stream();
         stream.accept_waveform(VAD_SAMPLE_RATE as i32, samples);
         recognizer.decode(&stream);
@@ -184,14 +197,10 @@ mod tests {
     const FRENCH_SAMPLE: &str =
         "Ne vous demandez pas ce que votre pays peut faire pour vous. Demandez-vous plutôt ce que vous pouvez faire pour lui.";
 
-    /// Le vrai modèle : `DYSFLOW_MODELS/parakeet_tdt_v3_int8/`, avec le
-    /// `test_wavs/fr.wav` du dépôt. Sans la variable ou sans le modèle,
-    /// l'essai échoue (jamais à vide).
-    ///
-    ///   DYSFLOW_MODELS=… target/ort-gate/dysflow_lib_tests stt::sherpa -- --ignored
-    #[test]
-    #[ignore = "demande le modèle (DYSFLOW_MODELS) et la bibliothèque de sherpa-onnx (scripts/ort-gate.sh)"]
-    fn parakeet_reads_the_french_sample() {
+    /// Le vrai modèle, `DYSFLOW_MODELS/parakeet_tdt_v3_int8/`, et le
+    /// `test_wavs/fr.wav` du dépôt ramené à 16 kHz. Sans la variable ou sans
+    /// le modèle, l'essai échoue (jamais à vide).
+    fn french_sample() -> (PathBuf, Vec<f32>) {
         let models =
             std::env::var_os("DYSFLOW_MODELS").expect("DYSFLOW_MODELS : le dossier des modèles");
         let dir = PathBuf::from(models).join("parakeet_tdt_v3_int8");
@@ -208,7 +217,17 @@ mod tests {
         let resampler =
             sherpa_onnx::LinearResampler::create(wave.sample_rate(), VAD_SAMPLE_RATE as i32)
                 .unwrap();
-        let samples = resampler.resample(wave.samples(), true);
+        (dir, resampler.resample(wave.samples(), true))
+    }
+
+    /// Lancés par `scripts/ort-gate.sh` quand `DYSFLOW_MODELS` est posé, ou
+    /// à la main (sans `--` : le binaire est celui des tests) :
+    ///
+    ///   DYSFLOW_MODELS=… target/ort-gate/dysflow_lib_tests stt::sherpa::parakeet --ignored
+    #[test]
+    #[ignore = "demande le modèle (DYSFLOW_MODELS) et la bibliothèque de sherpa-onnx (scripts/ort-gate.sh)"]
+    fn parakeet_reads_the_french_sample() {
+        let (dir, samples) = french_sample();
         let parakeet = ParakeetSherpa::new(4);
         parakeet.load(&dir).unwrap();
         parakeet.warm_up().unwrap();
@@ -218,5 +237,57 @@ mod tests {
         println!("Parakeet int8 ({}) : {heard}", dir.display());
         assert_eq!(heard, FRENCH_SAMPLE);
         parakeet.release();
+    }
+
+    /// Dans l'enfant : le nombre d'échantillons du début de l'audio à lire.
+    const CHILD: &str = "DYSFLOW_PARAKEET_CHILD_SAMPLES";
+    /// Ce que l'enfant écrit devant le texte entendu (en `{:?}`).
+    const CHILD_HEARD: &str = "ENFANT ENTEND ";
+
+    /// Un énoncé trop court pour l'encodeur ne rend aucun texte, et
+    /// n'arrête pas le processus : ONNX Runtime y lève une exception C++ que
+    /// Rust ne rattrape pas (abandon, code 134). Chaque longueur est lue dans
+    /// un processus enfant (ce même essai, `CHILD` posé) : un abandon y est
+    /// un échec, pas la fin de la suite.
+    #[test]
+    #[ignore = "demande le modèle (DYSFLOW_MODELS) et la bibliothèque de sherpa-onnx (scripts/ort-gate.sh)"]
+    fn a_short_utterance_gives_no_text_and_never_aborts() {
+        let (dir, samples) = french_sample();
+        if let Some(n) = std::env::var_os(CHILD) {
+            let n: usize = n.to_str().unwrap().parse().unwrap();
+            let parakeet = ParakeetSherpa::new(1);
+            parakeet.load(&dir).unwrap();
+            let heard = parakeet
+                .transcribe(&samples[..n], "fr", &Cancel::never())
+                .unwrap();
+            println!("{CHILD_HEARD}{heard:?}");
+            return;
+        }
+        for n in [0, 1, MIN_SAMPLES / 2, MIN_SAMPLES - 1, MIN_SAMPLES] {
+            let out = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "stt::sherpa::parakeet::tests::a_short_utterance_gives_no_text_and_never_aborts",
+                    "--exact",
+                    "--ignored",
+                    "--nocapture",
+                ])
+                .env(CHILD, n.to_string())
+                .output()
+                .unwrap();
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            assert!(
+                out.status.success(),
+                "{n} échantillons : {:?}\n{stdout}\n{}",
+                out.status,
+                String::from_utf8_lossy(&out.stderr)
+            );
+            let heard = stdout
+                .lines()
+                .find_map(|l| l.strip_prefix(CHILD_HEARD))
+                .unwrap_or_else(|| panic!("{n} échantillons : l'enfant n'a rien dit\n{stdout}"));
+            if n < MIN_SAMPLES {
+                assert_eq!(heard, "\"\"", "{n} échantillons");
+            }
+        }
     }
 }
