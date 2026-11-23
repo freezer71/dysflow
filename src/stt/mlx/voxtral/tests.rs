@@ -16,6 +16,7 @@ use crate::stt::mlx::parakeet::model::stats;
 use crate::stt::mlx::parakeet::tests::{
     cycled, inputs as parakeet_inputs, model_dir_with, serial, sha256,
 };
+use crate::stt::mlx::shipped;
 use std::cell::Cell;
 use std::path::PathBuf;
 
@@ -414,10 +415,11 @@ fn parity() {
 /// La garde de fumée du build livré (AOT : le mlx.metallib précompilé de
 /// mlx-sys), par `scripts/mlx-parite.sh --livre`. Ce n'est pas la preuve de
 /// parité, qui reste celle du build JIT, à l'octet. Pour chaque entrée : le
-/// mel identique à l'octet (forme, moyenne, moyenne absolue), le nombre de
-/// pas, le nombre de jetons à 10 % près de la fixture (arrondi vers le bas)
-/// et le texte, pour chaque découpage aussi. L'encodeur n'est pas comparé
-/// (les noyaux livrés arrondissent autrement, R54).
+/// mel identique à l'octet (forme, moyenne, moyenne absolue) ; sur la
+/// parole (R69, `stt::mlx::shipped`), le nombre de pas, le nombre de jetons
+/// à 10 % près de la fixture (arrondi vers le bas) et le texte, pour chaque
+/// découpage aussi ; sans parole, au plus `MAX_TOKENS` jetons. L'encodeur
+/// n'est pas comparé (les noyaux livrés arrondissent autrement, R54).
 #[test]
 #[ignore = "demande les poids (DYSFLOW_MODELS), dans le build livré (scripts/mlx-parite.sh --livre)"]
 fn shipped_smoke() {
@@ -430,16 +432,20 @@ fn shipped_smoke() {
             Some(expected_bits(&case.mel)),
             "{name} : mel à l'octet"
         );
-        assert_eq!(run.steps.len(), case.steps, "{name} : pas");
-        let (tokens, expected) = (run.tokens.len(), case.tokens.len());
-        let bound = expected / 10;
-        assert!(
-            tokens.abs_diff(expected) <= bound,
-            "{name} : {tokens} jetons contre {expected}, au-delà de la borne de {bound}"
+        if shipped::is_speech(name) {
+            assert_eq!(run.steps.len(), case.steps, "{name} : pas");
+        }
+        shipped::steps(
+            name,
+            run.tokens.len(),
+            case.tokens.len(),
+            Some(MAX_TOKENS),
+            "",
         );
-        assert_eq!(run.text(), case.text, "{name} : texte");
+        shipped::text(name, "texte", &run.text(), &case.text);
         for (split, run) in fixture.splits.iter().zip(&got.splits) {
-            assert_eq!(run.text(), case.text, "{name}, {} : texte", split.name);
+            let what = format!("{} : texte", split.name);
+            shipped::text(name, &what, &run.text(), &case.text);
         }
     }
 }

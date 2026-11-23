@@ -50,13 +50,13 @@ mod parity {
 
 /// La garde de fumée du build livré (AOT, le mlx.metallib de mlx-sys), par
 /// `scripts/mlx-parite.sh --livre`, comme celle de Parakeet (R62) : le mel à
-/// l'octet (forme, moyenne, moyenne absolue), le nombre de pas à 10 % près
-/// de la fixture (arrondi vers le bas), et le texte de la fixture sur les
-/// entrées de la langue du modèle : Phonon-2 est réentraîné pour l'anglais
-/// (le français y est « moins sûr », catalogue), donc l'anglais et le
-/// silence. Ce n'est pas la preuve de parité, qui reste le build JIT.
+/// l'octet (forme, moyenne, moyenne absolue) ; sur la parole (R69), le
+/// nombre de pas à 10 % près de la fixture (arrondi vers le bas) et le texte
+/// de la fixture sur les entrées de la langue du modèle : Phonon-2 est
+/// réentraîné pour l'anglais (le français y est « moins sûr », catalogue),
+/// donc l'anglais. Ce n'est pas la preuve de parité, qui reste le build JIT.
 mod shipped_smoke {
-    const TEXT: &[&str] = &["anglais", "silence"];
+    const TEXT: &[&str] = &["anglais"];
 
     #[test]
     #[ignore = "demande les poids (DYSFLOW_MODELS), dans le build livré (scripts/mlx-parite.sh --livre)"]

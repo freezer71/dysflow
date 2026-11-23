@@ -22,10 +22,11 @@
 # stt::mlx::nemotron::tests::shipped_smoke (1),
 # stt::mlx::voxtral::tests::shipped_smoke (1) puis
 # stt::mlx::qwen3_asr::tests::shipped_smoke (2). Sur chaque entrée : le mel à
-# l'octet, le nombre de pas à 10 % près (arrondi vers le bas), et le texte de
-# la fixture (Parakeet v3, Whisper, Canary, Nemotron, Voxtral et Qwen3-ASR
-# partout ; v2 et
-# Phonon-2 sur l'anglais et le silence). Ce n'est pas une preuve de parité :
+# l'octet ; sur la parole seulement (R69, src/stt/mlx/shipped.rs), le nombre
+# de pas à 10 % près (arrondi vers le bas) et le texte de la fixture
+# (Parakeet v3, Whisper, Canary, Nemotron, Voxtral et Qwen3-ASR sur toute la
+# parole ; v2 et Phonon-2 sur l'anglais) ; sans parole (silence, dixieme),
+# seulement le plafond de jetons. Ce n'est pas une preuve de parité :
 # celle-ci reste le build JIT.
 #
 #   DYSFLOW_MODELS=/chemin/des/modeles ./scripts/mlx-parite.sh [--livre] [FILTRE NOMBRE]…

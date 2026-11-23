@@ -16,6 +16,7 @@ use crate::stt::mlx::parakeet::model::stats;
 use crate::stt::mlx::parakeet::tests::{
     cycled, inputs as parakeet_inputs, model_dir_with, serial, sha256,
 };
+use crate::stt::mlx::shipped;
 use std::path::PathBuf;
 
 fn repo() -> PathBuf {
@@ -234,10 +235,11 @@ fn parity(id: &str) {
 }
 
 /// La garde de fumée du build livré : pour chaque entrée, le mel identique à
-/// l'octet (forme, moyenne, moyenne absolue), le nombre de pas du décodeur
-/// (jetons gardés) à 10 % près de la fixture, arrondi vers le bas, et le
-/// texte de la fixture. L'encodeur n'y est pas comparé : c'est l'affaire de
-/// la parité.
+/// l'octet (forme, moyenne, moyenne absolue) ; sur la parole (R69,
+/// `stt::mlx::shipped`), le nombre de pas du décodeur (jetons gardés) à
+/// 10 % près de la fixture, arrondi vers le bas, et le texte de la fixture ;
+/// sans parole, au plus `MAX_TOKENS_PER_WINDOW` jetons par fenêtre.
+/// L'encodeur n'y est pas comparé : c'est l'affaire de la parité.
 fn shipped_smoke(id: &str) {
     let (fixture, measured) = run_fixture(id);
     for (case, got) in fixture.cases.iter().zip(&measured) {
@@ -250,15 +252,16 @@ fn shipped_smoke(id: &str) {
                 "{name} : mel à l'octet"
             );
         }
-        let (steps, expected) = (tokens(got), expected_tokens(case));
-        let bound = expected / 10;
-        assert!(
-            steps.abs_diff(expected) <= bound,
-            "{name} : {steps} pas contre {expected}, au-delà de la borne de {bound}"
-        );
-        assert_eq!(got.text, case.text, "{name} : texte");
+        let cap = got.stages.len() * MAX_TOKENS_PER_WINDOW;
+        shipped::steps(name, tokens(got), expected_tokens(case), Some(cap), "");
+        shipped::text(name, "texte", &got.text, &case.text);
     }
 }
+
+/// Le plafond de jetons d'une fenêtre (`WhisperConfig::max_tokens` :
+/// `max_target_positions` − 16, 448 − 16 pour les trois Whisper du
+/// catalogue).
+const MAX_TOKENS_PER_WINDOW: usize = 448 - 16;
 
 /// P2 : la parité avec la fixture du Swift, dans le build de
 /// `scripts/mlx-parite.sh` (noyaux du Swift).

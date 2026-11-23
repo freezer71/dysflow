@@ -21,6 +21,8 @@ pub mod nn;
 pub mod parakeet;
 pub mod phonon;
 pub mod qwen3_asr;
+#[cfg(test)]
+pub(in crate::stt::mlx) mod shipped;
 pub mod voxtral;
 pub mod weights;
 pub mod whisper;

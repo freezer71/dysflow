@@ -15,6 +15,7 @@ use super::stream::{Delta, Session};
 use super::*;
 use crate::stt::mlx::parakeet::model::stats;
 use crate::stt::mlx::parakeet::tests::{inputs, model_dir_with, serial, sha256};
+use crate::stt::mlx::shipped;
 use std::path::PathBuf;
 
 const ID: &str = "nemotron_35_asr_streaming_8bit";
@@ -390,13 +391,15 @@ fn parity() {
 /// La garde de fumée du build livré (AOT : le mlx.metallib précompilé de
 /// mlx-sys), par `scripts/mlx-parite.sh --livre`. Ce n'est pas la preuve de
 /// parité, qui reste celle du build JIT, à l'octet. Pour chaque entrée : le
-/// mel identique à l'octet (forme, moyenne, moyenne absolue), le même
-/// nombre de tranches, le nombre de jetons à 10 % près de la fixture
-/// (arrondi vers le bas) et le texte. L'encodeur n'est pas comparé (les
-/// noyaux livrés de `depthwise_conv_2d` et `layer_norm` arrondissent
-/// autrement). Nemotron est donné pour le français et l'anglais, et sa
-/// langue est imposée : le texte est exigé sur toutes les entrées, et pour
-/// chaque découpage.
+/// mel identique à l'octet (forme, moyenne, moyenne absolue) et le même
+/// nombre de tranches (celles de l'audio) ; sur la parole (R69,
+/// `stt::mlx::shipped`), le nombre de jetons à 10 % près de la fixture
+/// (arrondi vers le bas) et le texte. Sans parole, le transducteur finit
+/// toujours (borné par ses trames) : rien d'autre. L'encodeur n'est pas
+/// comparé (les noyaux livrés de `depthwise_conv_2d` et `layer_norm`
+/// arrondissent autrement). Nemotron est donné pour le français et
+/// l'anglais, et sa langue est imposée : le texte est exigé sur toute la
+/// parole, et pour chaque découpage.
 #[test]
 #[ignore = "demande les poids (DYSFLOW_MODELS), dans le build livré (scripts/mlx-parite.sh --livre)"]
 fn shipped_smoke() {
@@ -410,20 +413,11 @@ fn shipped_smoke() {
         );
         let run = &got.reference;
         assert_eq!(run.chunks.len(), case.chunks.len(), "{name} : tranches");
-        let (steps, expected) = (run.tokens.len(), case.tokens.len());
-        let bound = expected / 10;
-        assert!(
-            steps.abs_diff(expected) <= bound,
-            "{name} : {steps} jetons contre {expected}, au-delà de la borne de {bound}"
-        );
-        assert_eq!(app_texts(run).1, case.text, "{name} : texte");
+        shipped::steps(name, run.tokens.len(), case.tokens.len(), None, "");
+        shipped::text(name, "texte", &app_texts(run).1, &case.text);
         for (split, run) in fixture.splits.iter().zip(&got.splits) {
-            assert_eq!(
-                app_texts(run).1,
-                case.text,
-                "{name}, {} : texte",
-                split.name
-            );
+            let what = format!("{} : texte", split.name);
+            shipped::text(name, &what, &app_texts(run).1, &case.text);
         }
     }
 }

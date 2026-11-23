@@ -18,6 +18,7 @@ use super::model::{Canary, Encoded, Transcript};
 use super::*;
 use crate::stt::mlx::parakeet::model::stats;
 use crate::stt::mlx::parakeet::tests::{inputs, model_dir_with, serial, sha256};
+use crate::stt::mlx::shipped;
 use mlx_rs::ops::indexing::{argmax_axis, TryIndexOp};
 use mlx_rs::Array;
 use std::path::PathBuf;
@@ -232,11 +233,12 @@ fn parity() {
 /// La garde de fumée du build livré (AOT : le mlx.metallib précompilé de
 /// mlx-sys), par `scripts/mlx-parite.sh --livre`. Ce n'est pas la preuve de
 /// parité, qui reste celle du build JIT, à l'octet. Pour chaque entrée : le
-/// mel identique à l'octet, l'invite, le nombre de pas du décodeur (jetons
-/// gardés) à 10 % près de la fixture, arrondi vers le bas, et le texte.
-/// Canary est multilingue (le catalogue le donne pour le français et
-/// l'anglais) et sa langue imposée : le texte est exigé sur toutes les
-/// entrées.
+/// mel identique à l'octet et l'invite ; sur la parole (R69,
+/// `stt::mlx::shipped`), le nombre de pas du décodeur (jetons gardés) à
+/// 10 % près de la fixture, arrondi vers le bas, et le texte ; sans parole,
+/// au plus `MAX_TOKENS` jetons. Canary est multilingue (le catalogue le
+/// donne pour le français et l'anglais) et sa langue imposée : le texte est
+/// exigé sur toute la parole.
 #[test]
 #[ignore = "demande les poids (DYSFLOW_MODELS), dans le build livré (scripts/mlx-parite.sh --livre)"]
 fn shipped_smoke() {
@@ -249,13 +251,14 @@ fn shipped_smoke() {
             "{name} : mel à l'octet"
         );
         assert_eq!(got.transcript.prompt, case.prompt, "{name} : invite");
-        let (steps, expected) = (got.transcript.tokens.len(), case.tokens.len());
-        let bound = expected / 10;
-        assert!(
-            steps.abs_diff(expected) <= bound,
-            "{name} : {steps} pas contre {expected}, au-delà de la borne de {bound}"
+        shipped::steps(
+            name,
+            got.transcript.tokens.len(),
+            case.tokens.len(),
+            Some(model::MAX_TOKENS),
+            "",
         );
-        assert_eq!(got.text, case.text, "{name} : texte");
+        shipped::text(name, "texte", &got.text, &case.text);
     }
 }
 

@@ -18,6 +18,7 @@
 
 use super::model::{stats, Parakeet, Stop, TdtTrace};
 use super::*;
+use crate::stt::mlx::shipped;
 use crate::tts::{self, Cancelled};
 use sha2::{Digest, Sha256};
 use std::path::PathBuf;
@@ -320,17 +321,23 @@ pub(in crate::stt::mlx) fn parity(subject: &Subject) {
 }
 
 /// La garde de fumée du build livré : pour chaque entrée, le mel identique
-/// à l'octet (forme, moyenne, moyenne absolue), un nombre de pas à 10 % près
-/// de la fixture (arrondi vers le bas : une entrée de moins de 10 pas doit
-/// en avoir exactement autant), et le texte de la fixture pour les entrées
-/// de `text_on`. L'encodeur n'y est pas comparé : c'est l'affaire de la
-/// parité.
+/// à l'octet (forme, moyenne, moyenne absolue) ; sur la parole seulement
+/// (R69, `stt::mlx::shipped`), un nombre de pas à 10 % près de la fixture
+/// (arrondi vers le bas : une entrée de moins de 10 pas doit en avoir
+/// exactement autant) et le texte de la fixture pour les entrées de
+/// `text_on`. Sans parole, le transducteur finit toujours (borné par ses
+/// trames) : rien d'autre à comparer. L'encodeur n'y est pas comparé :
+/// c'est l'affaire de la parité.
 pub(in crate::stt::mlx) fn shipped_smoke(subject: &Subject, text_on: &[&str]) {
     let (fixture, measured) = run_fixture(subject);
     for name in text_on {
         assert!(
             fixture.cases.iter().any(|c| c.input == *name),
             "{name} : pas une entrée de la fixture"
+        );
+        assert!(
+            shipped::is_speech(name),
+            "{name} : sans parole, texte jamais comparé (R69)"
         );
     }
     for (case, got) in fixture.cases.iter().zip(&measured) {
@@ -341,16 +348,16 @@ pub(in crate::stt::mlx) fn shipped_smoke(subject: &Subject, text_on: &[&str]) {
             (case.mel.mean.to_bits(), case.mel.mean_abs.to_bits()),
             "{name} : mel (moyenne, moyenne absolue) différent à l'octet"
         );
-        let bound = case.steps.len() / 10;
-        assert!(
-            got.steps.len().abs_diff(case.steps.len()) <= bound,
-            "{name} : {} pas contre {}, au-delà de la borne de {bound} (premier écart au pas {:?})",
+        let first = first_step_difference(&got.steps, &case.steps);
+        shipped::steps(
+            name,
             got.steps.len(),
             case.steps.len(),
-            first_step_difference(&got.steps, &case.steps)
+            None,
+            &format!(" (premier écart au pas {first:?})"),
         );
         if text_on.contains(&name.as_str()) {
-            assert_eq!(got.text, case.text, "{name} : texte");
+            shipped::text(name, "texte", &got.text, &case.text);
         }
     }
 }
@@ -384,8 +391,10 @@ mod parity {
 /// - le mel identique à l'octet (forme, moyenne, moyenne absolue) ;
 /// - le nombre de pas à 10 % près de la fixture, arrondi vers le bas : une
 ///   entrée de moins de 10 pas doit en avoir exactement autant ;
-/// - le texte de la fixture, pour v3 sur toutes les entrées, pour v2 (anglais
-///   seulement) sur les entrées sans français.
+/// - le texte de la fixture, pour v3 sur toutes les entrées de parole, pour
+///   v2 (anglais seulement) sur l'anglais ;
+/// - sur silence et dixieme (sans parole), ni pas ni texte (R69,
+///   `stt::mlx::shipped`).
 ///
 /// L'encodeur n'y est pas comparé : il appartient à la parité.
 ///
@@ -398,17 +407,11 @@ mod parity {
 ///   identiques ; texte de la fixture sur anglais et silence, et aussi,
 ///   sans être vérifié, sur douze_secondes et dixieme.
 mod shipped_smoke {
-    /// v3 : le texte de la fixture partout.
-    const V3_TEXT: &[&str] = &[
-        "francais",
-        "anglais",
-        "douze_secondes",
-        "silence",
-        "dixieme",
-    ];
-    /// v2 ne connaît que l'anglais : sur le français (francais, douze_secondes,
-    /// dixieme), seul le nombre de pas est borné.
-    const V2_TEXT: &[&str] = &["anglais", "silence"];
+    /// v3 : le texte de la fixture sur toute la parole.
+    const V3_TEXT: &[&str] = &["francais", "anglais", "douze_secondes"];
+    /// v2 ne connaît que l'anglais : sur le français (francais,
+    /// douze_secondes), seul le nombre de pas est borné.
+    const V2_TEXT: &[&str] = &["anglais"];
 
     #[test]
     #[ignore = "demande les poids (DYSFLOW_MODELS), dans le build livré (scripts/mlx-parite.sh --livre)"]

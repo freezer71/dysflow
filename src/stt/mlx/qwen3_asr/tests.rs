@@ -18,6 +18,7 @@ use crate::stt::mlx::parakeet::model::stats;
 use crate::stt::mlx::parakeet::tests::{
     cycled, inputs as parakeet_inputs, model_dir_with, serial, sha256,
 };
+use crate::stt::mlx::shipped;
 use std::path::PathBuf;
 
 const SMALL: &str = "qwen3_asr_06b_8bit";
@@ -284,11 +285,18 @@ fn parity_large() {
 /// mlx-sys), par `scripts/mlx-parite.sh --livre`. Ce n'est pas la preuve de
 /// parité, qui reste celle du build JIT, à l'octet. Pour chaque entrée : le
 /// mel identique à l'octet (forme, moyenne, moyenne absolue), l'invite, le
-/// nombre de pas du décodeur (jetons gardés) à 10 % près de la fixture,
-/// arrondi vers le bas, et le texte. Qwen3-ASR est multilingue (le catalogue
-/// le donne pour le français et l'anglais) et sa langue imposée : le texte
-/// est exigé sur toutes les entrées. L'encodeur n'est pas comparé (noyaux
-/// AOT, R54).
+/// mel identique à l'octet (forme, moyenne, moyenne absolue) et l'invite ;
+/// sur la parole (R69, `stt::mlx::shipped`), le nombre de pas du décodeur
+/// (jetons gardés) à 10 % près de la fixture, arrondi vers le bas, et le
+/// texte ; sans parole, au plus `MAX_TOKENS` jetons. Qwen3-ASR est
+/// multilingue (le catalogue le donne pour le français et l'anglais) et sa
+/// langue imposée : le texte est exigé sur toute la parole. L'encodeur n'est
+/// pas comparé (noyaux AOT, R54).
+///
+/// Mesuré le 23 nov. 2026 (build livré) : le 1.7B, sur silence, 2 pas
+/// contre 3 (« Je. » contre « C'est. ») et sur dixieme 3 contre 2 (« En
+/// fait. » contre « Je. »), l'encodeur AOT à environ 1e-7 ; les quatre
+/// entrées de parole identiques ; le 0.6B identique partout.
 fn shipped_smoke(id: &'static str) {
     let (fixture, measured, prompts) = run_fixture(id);
     assert_eq!(prompts, fixture.prompts, "invites de 13 jetons audio");
@@ -300,13 +308,14 @@ fn shipped_smoke(id: &'static str) {
             "{name} : mel à l'octet"
         );
         assert_eq!(got.prompt, case.prompt, "{name} : invite");
-        let (steps, expected) = (got.tokens.len(), case.tokens.len());
-        let bound = expected / 10;
-        assert!(
-            steps.abs_diff(expected) <= bound,
-            "{name} : {steps} pas contre {expected}, au-delà de la borne de {bound}"
+        shipped::steps(
+            name,
+            got.tokens.len(),
+            case.tokens.len(),
+            Some(MAX_TOKENS),
+            "",
         );
-        assert_eq!(got.text, case.text, "{name} : texte");
+        shipped::text(name, "texte", &got.text, &case.text);
     }
 }
 
