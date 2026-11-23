@@ -24,7 +24,7 @@ use dysflow::models::ModelPackage;
 use dysflow::stt::detector::EnergyDetector;
 use dysflow::stt::dictation::{Dictation, Engine, Event};
 use dysflow::stt::holder::{idle_delay, Holder, DEFAULT_DELAY};
-use dysflow::stt::recognizer::{Hold, Recognizer};
+use dysflow::stt::recognizer::Recognizer;
 use dysflow::tts::Cancel;
 
 use crate::{failed, DysflowError};
@@ -55,25 +55,22 @@ pub enum DictationUpdate {
 }
 
 impl DictationUpdate {
-    /// La nouvelle d'un événement du cœur. `Loaded` est suivi de `Ready`
-    /// (voir `Announced`).
-    fn of(event: Event) -> Vec<Self> {
+    /// La nouvelle d'un événement du cœur, une pour une.
+    fn of(event: Event) -> Self {
         match event {
-            Event::Loading => vec![Self::Loading],
-            Event::Loaded(took) => vec![
-                Self::Loaded {
-                    seconds: took.as_secs_f64(),
-                },
-                Self::Ready,
-            ],
-            Event::Partial { committed, pending } => vec![Self::Partial { committed, pending }],
-            Event::Committed { text, delay } => vec![Self::Committed {
+            Event::Loading => Self::Loading,
+            Event::Loaded(took) => Self::Loaded {
+                seconds: took.as_secs_f64(),
+            },
+            Event::Ready => Self::Ready,
+            Event::Partial { committed, pending } => Self::Partial { committed, pending },
+            Event::Committed { text, delay } => Self::Committed {
                 text,
                 delay_seconds: delay.as_secs_f64(),
-            }],
-            Event::Memory(bytes) => vec![Self::Memory { bytes }],
-            Event::Ended { text } => vec![Self::Ended { text }],
-            Event::Failed(message) => vec![Self::Failed { message }],
+            },
+            Event::Memory(bytes) => Self::Memory { bytes },
+            Event::Ended { text } => Self::Ended { text },
+            Event::Failed(message) => Self::Failed { message },
         }
     }
 }
@@ -83,7 +80,9 @@ impl DictationUpdate {
 /// Contrat pour l'implémentation étrangère :
 /// - `on_update` est appelé sur un fil du cœur réservé à cette dictée,
 ///   jamais le fil principal, jamais sous le verrou du GPU ni sous un verrou
-///   du cœur : y rappeler la session ou le cœur est permis ;
+///   du cœur : y rappeler le cœur, `push` ou `cancel` est permis. `finish`
+///   ne l'est pas (il attendrait ce fil même) : de là, il rend une erreur
+///   sans rien arrêter, et la dictée reste à finir d'ailleurs ;
 /// - les appels se suivent, un à la fois, dans l'ordre de la dictée ;
 /// - après `cancel`, au plus l'appel déjà en cours se termine : aucun autre ;
 /// - il rend la main vite (l'app passe à son propre fil pour l'interface) :
@@ -106,6 +105,8 @@ pub struct DictationSession {
     dictation: Dictation,
     mail: mpsc::Sender<Mail>,
     closed: Arc<AtomicBool>,
+    /// Le fil d'envoi : `finish` ne peut pas l'attendre depuis lui-même.
+    delivery: std::thread::ThreadId,
 }
 
 #[uniffi::export]
@@ -135,7 +136,14 @@ impl DictationSession {
     /// Fin de la parole : lit tout, puis rend le texte entier. Au retour,
     /// toutes les nouvelles (`Ended` compris) ont été remises à `on_update`.
     /// **Bloque** jusqu'à la dernière lecture : jamais sur le fil principal.
+    /// Appelé depuis `on_update` : une erreur, et rien n'est arrêté.
     pub fn finish(&self) -> Result<String, DysflowError> {
+        if std::thread::current().id() == self.delivery {
+            return Err(failed(dysflow::tr!(
+                "a dictation cannot be finished from on_update: it would wait for itself",
+                "une dictée ne se finit pas depuis on_update : elle s'attendrait elle-même"
+            )));
+        }
         let text = self.dictation.finish().map_err(failed);
         let (ack, done) = mpsc::sync_channel(1);
         if self.mail.send(Mail::Flush(ack)).is_ok() {
@@ -163,7 +171,7 @@ impl DictationSession {
         let closed = Arc::new(AtomicBool::new(false));
         let delivery_closed = closed.clone();
         // Sans fil d'envoi, rien n'arriverait à l'app : pas de dictée.
-        std::thread::Builder::new()
+        let delivery = std::thread::Builder::new()
             .name("dysflow-dictee-envoi".into())
             .spawn(move || deliver(&inbox, &*listener, &delivery_closed))
             .map_err(|err| {
@@ -171,26 +179,24 @@ impl DictationSession {
                     en = "the dictation won't start: {err}",
                     fr = "la dictée ne démarre pas : {err}"
                 ))
-            })?;
-        let recognizer: Arc<dyn Recognizer> = Arc::new(Announced {
-            inner: model,
-            mail: mail.clone(),
-        });
+            })?
+            .thread()
+            .id();
+        let recognizer: Arc<dyn Recognizer> = model;
         let sink_mail = mail.clone();
         let dictation = Dictation::start(
             Engine::Segmented(recognizer, Box::new(EnergyDetector::new())),
             dir,
             language,
             move |event| {
-                for update in DictationUpdate::of(event) {
-                    let _ = sink_mail.send(Mail::Update(update));
-                }
+                let _ = sink_mail.send(Mail::Update(DictationUpdate::of(event)));
             },
         );
         Ok(Self {
             dictation,
             mail,
             closed,
+            delivery,
         })
     }
 }
@@ -208,47 +214,6 @@ fn deliver(inbox: &mpsc::Receiver<Mail>, listener: &dyn DictationListener, close
                 let _ = ack.send(());
             }
         }
-    }
-}
-
-/// Le modèle gardé, vu par une dictée : il dit `Ready` quand la préparation
-/// a réussi sans charger (le modèle était là). Un vrai chargement le dit par
-/// `Event::Loaded`, que la dictée émet juste après (`DictationUpdate::of`).
-struct Announced {
-    inner: Arc<dyn KeptModel>,
-    mail: mpsc::Sender<Mail>,
-}
-
-impl Recognizer for Announced {
-    fn load(&self, model_dir: &Path) -> anyhow::Result<()> {
-        self.inner.load(model_dir)
-    }
-    fn warm_up(&self) -> anyhow::Result<()> {
-        self.inner.warm_up()
-    }
-    fn transcribe(
-        &self,
-        samples: &[f32],
-        language: &str,
-        cancel: &Cancel,
-    ) -> anyhow::Result<String> {
-        self.inner.transcribe(samples, language, cancel)
-    }
-    fn release(&self) {
-        self.inner.release();
-    }
-    fn prepare(&self, model_dir: &Path, will_load: &dyn Fn()) -> anyhow::Result<Option<Duration>> {
-        let prepared = self.inner.prepare(model_dir, will_load);
-        if let Ok(None) = prepared {
-            let _ = self.mail.send(Mail::Update(DictationUpdate::Ready));
-        }
-        prepared
-    }
-    fn hold(&self) -> Hold {
-        self.inner.hold()
-    }
-    fn memory(&self) -> Option<u64> {
-        self.inner.memory()
     }
 }
 
@@ -439,26 +404,27 @@ fn kept(
     Ok(model)
 }
 
-/// Le reconnaisseur du cœur pour ce paquet, gardé par un `Holder`. La
-/// liste des moteurs que l'app fait dicter par le cœur : celle de ce
-/// binaire (Parakeet MLX avec la feature `mlx`).
+/// Le reconnaisseur du cœur pour ce paquet (`stt::recognizer_for`, la seule
+/// liste des moteurs), gardé par un `Holder` d'une dictée à l'autre.
 fn model_for(package: &ModelPackage) -> Result<Arc<dyn KeptModel>, DysflowError> {
-    let release_after = *lock(&RELEASE_AFTER);
-    match package.runtime {
-        #[cfg(all(feature = "mlx", target_os = "macos", target_arch = "aarch64"))]
-        dysflow::models::Runtime::ParakeetMlx => Ok(Arc::new(Holder::new(
-            dysflow::stt::mlx::parakeet::ParakeetMlx::new(),
-            release_after,
-        ))),
-        runtime => {
-            let _ = release_after;
-            Err(failed(dysflow::tr!(
-                en = "this build cannot dictate with {} (engine {runtime:?})",
-                fr = "ce binaire ne sait pas dicter avec {} (moteur {runtime:?})",
-                package.display_name.get()
-            )))
-        }
-    }
+    let recognizer = dysflow::stt::recognizer_for(package, threads()).map_err(failed)?;
+    Ok(Arc::new(Holder::new(recognizer, *lock(&RELEASE_AFTER))))
+}
+
+/// Les fils de calcul d'un moteur qui en prend (sherpa) ; MLX les ignore.
+fn threads() -> u32 {
+    std::thread::available_parallelism().map_or(4, |n| n.get().min(8) as u32)
+}
+
+/// Vrai si le cœur sait dicter ce paquet du catalogue dans ce binaire. La
+/// bascule de l'app (`CoreDictation.ported`) n'y met que de tels paquets :
+/// un essai le vérifie.
+#[uniffi::export]
+pub fn core_dictation_supports(id: String) -> bool {
+    dysflow::models::CATALOG
+        .iter()
+        .find(|p| p.id == id)
+        .is_some_and(|package| dysflow::stt::recognizer_for(package, 1).is_ok())
 }
 
 /// Le dossier d'un paquet installé, comme `DysflowReader::model_directory`.

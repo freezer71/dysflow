@@ -91,12 +91,17 @@ struct Notes {
     /// À la première nouvelle qui vérifie ce test, la session est annulée
     /// depuis `on_update` même.
     cancel_on: Option<fn(&DictationUpdate) -> bool>,
+    /// À la première nouvelle qui vérifie ce test, `finish` est appelé
+    /// depuis `on_update` même ; son résultat part ici.
+    finish_on: Option<fn(&DictationUpdate) -> bool>,
+    finished: Mutex<Option<mpsc::Sender<Result<String, String>>>>,
 }
 
 impl DictationListener for Notes {
     fn on_update(&self, update: DictationUpdate) {
         let thread = std::thread::current().name().unwrap_or("").to_string();
         let cancel = self.cancel_on.is_some_and(|f| f(&update));
+        let finish = self.finish_on.is_some_and(|f| f(&update));
         lock(&self.seen).push(Received {
             update,
             thread,
@@ -109,7 +114,25 @@ impl DictationListener for Notes {
                 core_dictation_set_keep_voice_minutes(10);
             }
         }
+        if finish {
+            if let (Some(session), Some(answer)) = (self.session.get(), lock(&self.finished).take())
+            {
+                let _ = answer.send(session.finish().map_err(|e| e.to_string()));
+            }
+        }
     }
+}
+
+/// `body` sur un autre fil, 5 s au plus : un blocage fait échouer l'essai
+/// au lieu de le faire pendre.
+fn within<T: Send + 'static>(body: impl FnOnce() -> T + Send + 'static) -> T {
+    let (done, answer) = mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = done.send(body());
+    });
+    answer
+        .recv_timeout(Duration::from_secs(5))
+        .expect("bloqué plus de 5 s")
 }
 
 impl Notes {
@@ -120,27 +143,10 @@ impl Notes {
 
 /// Un modèle gardé neuf, sous l'id `id`, autour de `fake`.
 fn keep(id: &str, fake: Arc<Fake>) -> Arc<dyn KeptModel> {
-    struct Shared(Arc<Fake>);
-    impl Recognizer for Shared {
-        fn load(&self, dir: &Path) -> anyhow::Result<()> {
-            self.0.load(dir)
-        }
-        fn warm_up(&self) -> anyhow::Result<()> {
-            self.0.warm_up()
-        }
-        fn transcribe(&self, s: &[f32], l: &str, c: &Cancel) -> anyhow::Result<String> {
-            self.0.transcribe(s, l, c)
-        }
-        fn release(&self) {
-            self.0.release()
-        }
-        fn memory(&self) -> Option<u64> {
-            self.0.memory()
-        }
-    }
     core_dictation_release();
     *lock(&KEPT) = None;
-    kept(id, || Ok(Arc::new(Holder::new(Shared(fake), None)))).unwrap()
+    let shared: Arc<dyn Recognizer> = fake;
+    kept(id, || Ok(Arc::new(Holder::new(shared, None)))).unwrap()
 }
 
 fn dir() -> PathBuf {
@@ -291,12 +297,44 @@ fn the_listener_may_cancel_from_inside_an_update() {
         std::thread::sleep(Duration::from_millis(5));
     }
     session.push(two_sentences());
-    assert!(session.finish().is_err(), "annulée");
+    let ending = session.clone();
+    assert!(within(move || ending.finish()).is_err(), "annulée");
     let updates = notes.updates();
     assert_eq!(
         updates.last(),
         Some(&DictationUpdate::Ready),
         "rien après l'annulation : {updates:?}"
+    );
+    core_dictation_release();
+}
+
+/// `finish` depuis `on_update` ne peut pas attendre le fil qui l'appelle :
+/// il rend une erreur claire, sans bloquer, et la dictée reste à finir
+/// d'ailleurs.
+#[test]
+fn finish_from_inside_an_update_is_an_error_not_a_deadlock() {
+    let _serie = serie();
+    let fake = Arc::new(Fake::default());
+    let (answer, finished) = mpsc::channel();
+    let notes = Arc::new(Notes {
+        finish_on: Some(|u| matches!(u, DictationUpdate::Ready)),
+        finished: Mutex::new(Some(answer)),
+        ..Default::default()
+    });
+    let session = start(keep("faux-fin-dedans", fake), notes.clone());
+    let err = finished
+        .recv_timeout(Duration::from_secs(5))
+        .expect("finish a bloqué le fil d'envoi")
+        .expect_err("finish depuis on_update");
+    assert!(err.contains("on_update"), "{err}");
+    session.push(two_sentences());
+    let ending = session.clone();
+    assert_eq!(within(move || ending.finish()).unwrap(), "bonjour bonjour");
+    assert_eq!(
+        notes.updates().last(),
+        Some(&DictationUpdate::Ended {
+            text: "bonjour bonjour".into()
+        })
     );
     core_dictation_release();
 }
@@ -370,24 +408,35 @@ fn an_unknown_or_missing_model_is_refused() {
     }
 }
 
-/// Parakeet MLX ne se dicte par le cœur que dans un binaire qui a MLX.
+/// Parakeet MLX ne se dicte par le cœur que dans un binaire qui a MLX ; le
+/// cœur le dit à l'app (`core_dictation_supports`), qui ne bascule que
+/// ces paquets.
 #[test]
 fn parakeet_dictates_through_the_core_only_with_mlx() {
-    let parakeet = dysflow::models::CATALOG
-        .iter()
-        .find(|p| p.id == "parakeet_tdt_v3")
-        .unwrap();
-    let made = model_for(parakeet);
-    if cfg!(all(
+    let mlx = cfg!(all(
         feature = "mlx",
         target_os = "macos",
         target_arch = "aarch64"
-    )) {
-        assert!(made.is_ok());
-    } else {
-        let err = made.err().expect("sans MLX").to_string();
-        assert!(err.contains("Parakeet"), "{err}");
+    ));
+    for id in ["parakeet_tdt_v3", "parakeet_tdt_v2"] {
+        let parakeet = dysflow::models::CATALOG
+            .iter()
+            .find(|p| p.id == id)
+            .unwrap();
+        let made = model_for(parakeet);
+        assert_eq!(core_dictation_supports(id.into()), mlx, "{id}");
+        if mlx {
+            assert!(made.is_ok(), "{id}");
+        } else {
+            let err = made.err().expect("sans MLX").to_string();
+            assert!(err.contains("Parakeet"), "{err}");
+        }
     }
+    assert!(
+        !core_dictation_supports("whisper_tiny_4bit".into()),
+        "pas porté"
+    );
+    assert!(!core_dictation_supports("inconnu".into()));
 }
 
 /// Measure lit la copie Rust de MLX par ici : avec la feature `mlx`, et

@@ -35,6 +35,33 @@ pub trait Recognizer: Send + Sync {
     }
 }
 
+/// Un reconnaisseur partagé est un reconnaisseur : `Holder` garde ainsi
+/// celui que `stt::recognizer_for` rend. Tout passe au reconnaisseur, ses
+/// méthodes par défaut comprises.
+impl Recognizer for std::sync::Arc<dyn Recognizer> {
+    fn load(&self, model_dir: &Path) -> Result<()> {
+        (**self).load(model_dir)
+    }
+    fn warm_up(&self) -> Result<()> {
+        (**self).warm_up()
+    }
+    fn transcribe(&self, samples: &[f32], language: &str, cancel: &Cancel) -> Result<String> {
+        (**self).transcribe(samples, language, cancel)
+    }
+    fn release(&self) {
+        (**self).release()
+    }
+    fn prepare(&self, model_dir: &Path, will_load: &dyn Fn()) -> Result<Option<Duration>> {
+        (**self).prepare(model_dir, will_load)
+    }
+    fn hold(&self) -> Hold {
+        (**self).hold()
+    }
+    fn memory(&self) -> Option<u64> {
+        (**self).memory()
+    }
+}
+
 /// Un reconnaisseur en flux : il ouvre un flux par dictée.
 pub trait StreamingRecognizer: Send + Sync {
     fn load(&self, model_dir: &Path) -> Result<()>;
@@ -91,5 +118,61 @@ impl Drop for Hold {
         if let Some(let_go) = self.0.take() {
             let_go();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    #[derive(Default)]
+    struct Counted {
+        loads: AtomicUsize,
+        releases: AtomicUsize,
+    }
+    impl Recognizer for Counted {
+        fn load(&self, _: &Path) -> Result<()> {
+            self.loads.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
+        fn warm_up(&self) -> Result<()> {
+            Ok(())
+        }
+        fn transcribe(&self, samples: &[f32], language: &str, _: &Cancel) -> Result<String> {
+            Ok(format!("{} {language}", samples.len()))
+        }
+        fn release(&self) {
+            self.releases.fetch_add(1, Ordering::SeqCst);
+        }
+        fn memory(&self) -> Option<u64> {
+            Some(42)
+        }
+    }
+
+    /// Le partagé passe tout au reconnaisseur, ses méthodes propres comprises
+    /// (`memory`, et non le `None` par défaut).
+    #[test]
+    fn a_shared_recognizer_forwards_everything() {
+        let inner = Arc::new(Counted::default());
+        let shared: Arc<dyn Recognizer> = inner.clone();
+        assert!(shared.prepare(Path::new("/m"), &|| {}).unwrap().is_some());
+        assert_eq!(inner.loads.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            Recognizer::transcribe(&shared, &[0.0; 3], "fr", &Cancel::never()).unwrap(),
+            "3 fr"
+        );
+        assert_eq!(Recognizer::memory(&shared), Some(42));
+        Recognizer::release(&shared);
+        assert_eq!(inner.releases.load(Ordering::SeqCst), 1);
+        let holder = crate::stt::holder::Holder::new(shared, None);
+        holder.prepare(Path::new("/m"), &|| {}).unwrap();
+        assert_eq!(
+            inner.loads.load(Ordering::SeqCst),
+            2,
+            "le Holder charge par lui"
+        );
+        assert_eq!(holder.memory(), Some(42));
     }
 }

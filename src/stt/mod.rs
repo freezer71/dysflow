@@ -109,24 +109,24 @@ fn sha256_of(path: &Path) -> Result<String> {
     Ok(sha2::Sha256::digest(&bytes).iter().map(|b| format!("{b:02x}")).collect())
 }
 
-/// Le moteur de dictée d'un paquet installé, prêt à passer à
-/// `Dictation::start`. Le reconnaisseur n'est pas chargé ici (`Dictation`
-/// le charge) ; Silero VAD, petit, l'est (`sherpa_detector`), et son erreur
-/// vient avant toute lecture.
-pub fn engine_for(package: &ModelPackage, threads: u32) -> Result<Engine> {
+/// Le reconnaisseur d'un paquet, pas encore chargé : **la seule liste** des
+/// moteurs de dictée que le cœur sait calculer. Le terminal l'enveloppe de
+/// son détecteur (`engine_for`), l'app d'un `Holder` gardé d'une dictée à
+/// l'autre (`ffi/src/dictation.rs`). Un port de modèle de dictée y ajoute
+/// son moteur.
+pub fn recognizer_for(
+    package: &ModelPackage,
+    threads: u32,
+) -> Result<std::sync::Arc<dyn recognizer::Recognizer>> {
     match package.runtime {
         #[cfg(feature = "stt-sherpa")]
-        crate::models::Runtime::ParakeetSherpa => {
-            let silero = crate::tts::kokoro::phonemes::exe_dir().map(|dir| dir.join(SILERO_FILE));
-            let detector: Box<dyn detector::SpeechDetector> =
-                match sherpa_detector(silero.as_deref(), PACKAGED)? {
-                    Detector::Silero(model) => Box::new(sherpa::vad::SileroDetector::new(&model)?),
-                    Detector::Energy => Box::new(detector::EnergyDetector::new()),
-                };
-            Ok(Engine::Segmented(
-                std::sync::Arc::new(sherpa::parakeet::ParakeetSherpa::new(threads)),
-                detector,
-            ))
+        crate::models::Runtime::ParakeetSherpa => Ok(std::sync::Arc::new(
+            sherpa::parakeet::ParakeetSherpa::new(threads),
+        )),
+        #[cfg(all(feature = "mlx", target_os = "macos", target_arch = "aarch64"))]
+        crate::models::Runtime::ParakeetMlx => {
+            let _ = threads;
+            Ok(std::sync::Arc::new(mlx::parakeet::ParakeetMlx::new()))
         }
         // Un moteur que ce binaire ne sait pas calculer : seul l'app, ou un
         // binaire construit avec la feature, le fait.
@@ -139,6 +139,32 @@ pub fn engine_for(package: &ModelPackage, threads: u32) -> Result<Engine> {
             ))
         }
     }
+}
+
+/// Le détecteur de parole d'un paquet : Silero ou l'énergie pour sherpa
+/// (`sherpa_detector`, R46), l'énergie pour MLX (D5).
+fn detector_for(package: &ModelPackage) -> Result<Box<dyn detector::SpeechDetector>> {
+    match package.runtime {
+        #[cfg(feature = "stt-sherpa")]
+        crate::models::Runtime::ParakeetSherpa => {
+            let silero = crate::tts::kokoro::phonemes::exe_dir().map(|dir| dir.join(SILERO_FILE));
+            Ok(match sherpa_detector(silero.as_deref(), PACKAGED)? {
+                Detector::Silero(model) => Box::new(sherpa::vad::SileroDetector::new(&model)?),
+                Detector::Energy => Box::new(detector::EnergyDetector::new()),
+            })
+        }
+        _ => Ok(Box::new(detector::EnergyDetector::new())),
+    }
+}
+
+/// Le moteur de dictée d'un paquet installé, prêt à passer à
+/// `Dictation::start` : son reconnaisseur (`recognizer_for`) et son
+/// détecteur. Le reconnaisseur n'est pas chargé ici (`Dictation` le
+/// charge) ; Silero VAD, petit, l'est (`sherpa_detector`), et son erreur
+/// vient avant toute lecture.
+pub fn engine_for(package: &ModelPackage, threads: u32) -> Result<Engine> {
+    let recognizer = recognizer_for(package, threads)?;
+    Ok(Engine::Segmented(recognizer, detector_for(package)?))
 }
 
 #[cfg(test)]
@@ -236,12 +262,39 @@ mod tests {
         }
     }
 
+    /// Parakeet MLX (v3 et v2) : un reconnaisseur et un moteur là où le
+    /// binaire a MLX ; refusé par son nom ailleurs.
+    #[test]
+    fn parakeet_mlx_is_recognized_where_the_build_has_mlx_and_refused_by_name_elsewhere() {
+        let mlx = cfg!(all(
+            feature = "mlx",
+            target_os = "macos",
+            target_arch = "aarch64"
+        ));
+        for id in ["parakeet_tdt_v3", "parakeet_tdt_v2"] {
+            let recognizer = recognizer_for(package(id), 4);
+            let engine = engine_for(package(id), 4);
+            if mlx {
+                assert!(recognizer.is_ok(), "{id}");
+                assert!(matches!(engine, Ok(Engine::Segmented(..))), "{id}");
+            } else {
+                for err in [
+                    recognizer.err().map(|e| e.to_string()),
+                    engine.err().map(|e| e.to_string()),
+                ] {
+                    let err = err.expect("MLX : pas ici");
+                    assert!(err.contains("ParakeetMlx"), "{err}");
+                }
+            }
+        }
+    }
+
     #[test]
     fn an_engine_this_binary_cannot_compute_is_refused_by_name() {
-        let err = engine_for(package("parakeet_tdt_v3"), 4)
+        let err = engine_for(package("whisper_tiny_4bit"), 4)
             .err()
-            .expect("MLX : pas ici")
+            .expect("Whisper MLX : pas porté")
             .to_string();
-        assert!(err.contains("ParakeetMlx"), "{err}");
+        assert!(err.contains("WhisperMlx"), "{err}");
     }
 }

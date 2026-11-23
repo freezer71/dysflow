@@ -40,6 +40,11 @@ pub enum Event {
     Loading,
     /// Le chargement fini, et sa durée.
     Loaded(Duration),
+    /// Le modèle est prêt (chargé à l'instant, ou déjà là) et, en flux, le
+    /// flux ouvert : une seule fois, avant tout texte ou toute mémoire ;
+    /// jamais si le chargement échoue. Un `Failed` qui le suit n'arrête pas
+    /// la dictée.
+    Ready,
     /// Le texte à montrer : `committed`, définitif, puis `pending`, la
     /// relecture de l'énoncé en cours (ou, en flux, le texte reçu jusqu'ici).
     Partial { committed: String, pending: String },
@@ -342,6 +347,8 @@ fn run(engine: Engine, model_dir: &Path, language: &str, shared: &Shared) -> Res
             (Box::new(Streaming::new(recognizer, stream)), hold)
         }
     };
+    // Prêt : avant toute lecture, jamais après un chargement manqué.
+    sink.emit(Event::Ready);
     loop {
         if cancel.is_cancelled() {
             return Err(cancelled());
@@ -1421,6 +1428,119 @@ mod tests {
         );
     }
 
+    /// L'ordre de `Ready` : après `Loading` et `Loaded`, une seule fois,
+    /// avant tout texte, mémoire ou fin.
+    fn assert_ready_once_before_any_reading(events: &[Event]) {
+        let ready: Vec<usize> = events
+            .iter()
+            .enumerate()
+            .filter(|(_, e)| **e == Event::Ready)
+            .map(|(i, _)| i)
+            .collect();
+        assert_eq!(ready.len(), 1, "{events:?}");
+        let first_reading = events
+            .iter()
+            .position(|e| {
+                matches!(
+                    e,
+                    Event::Partial { .. }
+                        | Event::Committed { .. }
+                        | Event::Memory(_)
+                        | Event::Ended { .. }
+                        | Event::Failed(_)
+                )
+            })
+            .expect("une lecture");
+        assert!(ready[0] < first_reading, "{events:?}");
+        assert!(
+            events[..ready[0]]
+                .iter()
+                .all(|e| matches!(e, Event::Loading | Event::Loaded(_))),
+            "{events:?}"
+        );
+    }
+
+    #[test]
+    fn ready_comes_once_after_a_load_and_before_any_reading() {
+        let (clock, log) = (ManualClock::new(), Log::default());
+        let marks = Marks {
+            memory: Some(7),
+            log: log.clone(),
+            ..Default::default()
+        };
+        let dictation = start(engine(Arc::new(marks)), &clock, &log);
+        dictation.push(&[sentence(1, 1.0), silence(1.0), sentence(2, 1.0)].concat());
+        dictation.finish().unwrap();
+        let events = said(&log);
+        assert!(
+            matches!(
+                &events[..3],
+                [Event::Loading, Event::Loaded(_), Event::Ready]
+            ),
+            "{events:?}"
+        );
+        assert_ready_once_before_any_reading(&events);
+    }
+
+    /// Le modèle déjà là : rien ne se charge, `Ready` vient le premier.
+    #[test]
+    fn ready_comes_first_when_the_model_is_already_loaded() {
+        let (clock, log) = (ManualClock::new(), Log::default());
+        let holder = Arc::new(Holder::new(
+            Marks {
+                log: log.clone(),
+                ..Default::default()
+            },
+            None,
+        ));
+        holder.prepare(Path::new("/modeles/essai"), &|| {}).unwrap();
+        let dictation = start(engine(holder), &clock, &log);
+        dictation.push(&[sentence(1, 1.0), silence(1.0)].concat());
+        dictation.finish().unwrap();
+        let events = said(&log);
+        assert_eq!(events.first(), Some(&Event::Ready), "{events:?}");
+        assert_ready_once_before_any_reading(&events);
+    }
+
+    /// Le flux : `Ready` une fois le flux ouvert, avant son texte ; un flux
+    /// qui ne s'ouvre pas n'est jamais prêt.
+    #[test]
+    fn ready_waits_for_the_stream_and_never_follows_a_failure() {
+        let (clock, log) = (ManualClock::new(), Log::default());
+        let streamer = Streamer {
+            fed: Fed::default(),
+            clock: clock.clone(),
+        };
+        let dictation = start(Engine::Streaming(Arc::new(streamer)), &clock, &log);
+        dictation.push(&ramp(4_000));
+        dictation.finish().unwrap();
+        assert_ready_once_before_any_reading(&said(&log));
+
+        struct Closed;
+        impl StreamingRecognizer for Closed {
+            fn load(&self, _: &Path) -> Result<()> {
+                Ok(())
+            }
+            fn warm_up(&self) -> Result<()> {
+                Ok(())
+            }
+            fn open_stream(&self, _: &str) -> Result<Box<dyn RecognizerStream>> {
+                anyhow::bail!("flux fermé")
+            }
+            fn release(&self) {}
+        }
+        let log = Log::default();
+        let dictation = start(Engine::Streaming(Arc::new(Closed)), &clock, &log);
+        dictation.push(&ramp(4_000));
+        assert!(dictation.finish().is_err());
+        let events = said(&log);
+        assert!(!events.contains(&Event::Ready), "{events:?}");
+        assert!(
+            matches!(events.last(), Some(Event::Failed(_))),
+            "{events:?}"
+        );
+    }
+
     #[test]
     fn a_model_that_will_not_load_fails_the_dictation() {
         let (clock, log) = (ManualClock::new(), Log::default());
@@ -1439,6 +1559,7 @@ mod tests {
             matches!(events.last(), Some(Event::Failed(m)) if m.contains("poids tronqués")),
             "{events:?}"
         );
+        assert!(!events.contains(&Event::Ready), "jamais prêt : {events:?}");
         assert!(reads(&log).is_empty());
     }
 
