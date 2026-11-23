@@ -31,12 +31,13 @@ import XCTest
 /// viennent d'un test à part (`testR15RacesMeasuredApart`). Chaque étape
 /// MLX, chargement et tour 0 compris, a son échéance de 30 s.
 final class MLXLoadTests: XCTestCase {
-    /// La dictée fixée : `say -v Thomas -o … --data-format=LEI16@16000`, 4,2 s.
-    static let dictationSHA256 = "42fc2329b7221f4e53c77f0ad196844030d30d7b1f4aba5e5892ec9f606d4837"
-    /// Ce que Parakeet v3 en lit (« haute aide » entendu « ou t'aide ») :
-    /// relevé au premier passage du test, avant tout calcul de la copie Rust
-    /// (Release, 23 nov. 2026).
-    static let dictationText = "La lecture à voix ou t'aide à suivre le texte, une ligne après l'autre."
+    /// La dictée fixée : Kokoro, voix ff_siwis, graine 7, ramenée à 16 kHz par
+    /// afconvert, 4,2 s (`tests/fixtures/mlx/make_dictees.sh`).
+    static let dictationSHA256 = "23781dd70d485faf21d078a9849c2f3ae94754a5a42788afe28d129767fd675b"
+    /// Ce que Parakeet v3 en lit : le texte de l'entrée « francais » de
+    /// `tests/fixtures/mlx/parakeet_tdt_v3.json`, que le Swift a écrit
+    /// (23 nov. 2026).
+    static let dictationText = "N'oublie pas d'envoyer le devis au client avant la fin de la semaine."
     static let roundTimeout: TimeInterval = 30
     static let maximumGrowth = 0.05
     static let referenceRound = 20
