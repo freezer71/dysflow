@@ -10,6 +10,11 @@ public final class WhisperModel: Module, STTGenerationModel {
 
     private var tokenizer: WhisperTokenizer?
 
+    /// Dysflow, pour la référence du port Rust (`WhisperFixtureTests`) :
+    /// l'invite et les jetons gardés de chaque fenêtre de 30 s, à la fin de
+    /// sa lecture. `nil` dans l'app : rien n'est appelé.
+    var windowTraceEmitter: ((_ prompt: [Int], _ tokens: [Int]) -> Void)?
+
     /// Interne dans Dysflow (public en amont) : un modèle sans vocabulaire ne
     /// peut pas transcrire ; seul `fromDirectory(_:)` en fabrique un.
     init(config: WhisperConfig, generationConfig: WhisperGenerationConfig? = nil) {
@@ -280,6 +285,7 @@ public final class WhisperModel: Module, STTGenerationModel {
         }
 
         let text = tokenizer.decode(tokens: generated)
+        windowTraceEmitter?(promptIds, generated)
         // The language token sits at prompt index 1 for multilingual models.
         var language: String? = nil
         if tokenizer.isMultilingual, promptIds.count > 1 {

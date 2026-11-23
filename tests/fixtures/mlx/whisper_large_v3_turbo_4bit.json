@@ -1,0 +1,439 @@
+{
+  "cases" : [
+    {
+      "input" : "francais",
+      "language" : "fr",
+      "prompt" : [
+        50258,
+        50265,
+        50360,
+        50364
+      ],
+      "text" : "N'oublie pas d'envoyer le devis au client avant la fin de la semaine.",
+      "windows" : [
+        {
+          "encoder" : {
+            "mean" : -0.0021872662,
+            "mean_abs" : 0.292543,
+            "shape" : [
+              1,
+              1500,
+              1280
+            ]
+          },
+          "mel" : {
+            "mean" : -0.6108882,
+            "mean_abs" : 0.64995766,
+            "shape" : [
+              1,
+              3000,
+              128
+            ]
+          },
+          "tokens" : [
+            426,
+            6,
+            46680,
+            414,
+            1736,
+            274,
+            6,
+            268,
+            35176,
+            260,
+            476,
+            1905,
+            271,
+            1609,
+            6423,
+            13439,
+            635,
+            962,
+            368,
+            635,
+            28681,
+            13
+          ]
+        }
+      ]
+    },
+    {
+      "input" : "anglais",
+      "language" : "en",
+      "prompt" : [
+        50258,
+        50259,
+        50360,
+        50364
+      ],
+      "text" : "Please send the weekly report to the whole team before Friday.",
+      "windows" : [
+        {
+          "encoder" : {
+            "mean" : -0.0022745884,
+            "mean_abs" : 0.2897731,
+            "shape" : [
+              1,
+              1500,
+              1280
+            ]
+          },
+          "mel" : {
+            "mean" : -0.7124028,
+            "mean_abs" : 0.7418681,
+            "shape" : [
+              1,
+              3000,
+              128
+            ]
+          },
+          "tokens" : [
+            2555,
+            2845,
+            264,
+            12460,
+            2275,
+            281,
+            264,
+            1379,
+            1469,
+            949,
+            6984,
+            13
+          ]
+        }
+      ]
+    },
+    {
+      "input" : "douze_secondes",
+      "language" : "fr",
+      "prompt" : [
+        50258,
+        50265,
+        50360,
+        50364
+      ],
+      "text" : "N'oublie pas d'envoyer le devis au client avant la fin de la semaine. N'oublie pas d'envoyer le devis au client avant la fin de la semaine.",
+      "windows" : [
+        {
+          "encoder" : {
+            "mean" : -0.001770917,
+            "mean_abs" : 0.30453995,
+            "shape" : [
+              1,
+              1500,
+              1280
+            ]
+          },
+          "mel" : {
+            "mean" : -0.46120772,
+            "mean_abs" : 0.568842,
+            "shape" : [
+              1,
+              3000,
+              128
+            ]
+          },
+          "tokens" : [
+            426,
+            6,
+            46680,
+            414,
+            1736,
+            274,
+            6,
+            268,
+            35176,
+            260,
+            476,
+            1905,
+            271,
+            1609,
+            6423,
+            13439,
+            635,
+            962,
+            368,
+            635,
+            28681,
+            13,
+            426,
+            6,
+            46680,
+            414,
+            1736,
+            274,
+            6,
+            268,
+            35176,
+            260,
+            476,
+            1905,
+            271,
+            1609,
+            6423,
+            13439,
+            635,
+            962,
+            368,
+            635,
+            28681,
+            13
+          ]
+        }
+      ]
+    },
+    {
+      "input" : "silence",
+      "language" : "fr",
+      "prompt" : [
+        50258,
+        50265,
+        50360,
+        50364
+      ],
+      "text" : "Sous-titrage Société Radio-Canada",
+      "windows" : [
+        {
+          "encoder" : {
+            "mean" : -0.0039003945,
+            "mean_abs" : 0.25727803,
+            "shape" : [
+              1,
+              1500,
+              1280
+            ]
+          },
+          "mel" : {
+            "mean" : -1.5,
+            "mean_abs" : 1.5,
+            "shape" : [
+              1,
+              3000,
+              128
+            ]
+          },
+          "tokens" : [
+            318,
+            563,
+            12,
+            27689,
+            16223,
+            12276,
+            21210,
+            17296,
+            12,
+            11531,
+            1538
+          ]
+        }
+      ]
+    },
+    {
+      "input" : "dixieme",
+      "language" : "fr",
+      "prompt" : [
+        50258,
+        50265,
+        50360,
+        50364
+      ],
+      "text" : "Sous-titrage Société Radio-Canada",
+      "windows" : [
+        {
+          "encoder" : {
+            "mean" : -0.0031521816,
+            "mean_abs" : 0.2779767,
+            "shape" : [
+              1,
+              1500,
+              1280
+            ]
+          },
+          "mel" : {
+            "mean" : -0.8729075,
+            "mean_abs" : 0.8744491,
+            "shape" : [
+              1,
+              3000,
+              128
+            ]
+          },
+          "tokens" : [
+            318,
+            563,
+            12,
+            27689,
+            16223,
+            12276,
+            21210,
+            17296,
+            12,
+            11531,
+            1538
+          ]
+        }
+      ]
+    },
+    {
+      "input" : "trente_cinq_secondes",
+      "language" : "fr",
+      "prompt" : [
+        50258,
+        50265,
+        50360,
+        50364
+      ],
+      "text" : "N'oublie pas d'envoyer le devis au client avant la fin de la semaine. N'oublie pas d'envoyer le devis au client avant la fin de la semaine. N'oublie pas d'envoyer le devis au client",
+      "windows" : [
+        {
+          "encoder" : {
+            "mean" : -0.0012089374,
+            "mean_abs" : 0.3117737,
+            "shape" : [
+              1,
+              1500,
+              1280
+            ]
+          },
+          "mel" : {
+            "mean" : -0.15249889,
+            "mean_abs" : 0.40815526,
+            "shape" : [
+              1,
+              3000,
+              128
+            ]
+          },
+          "tokens" : [
+            426,
+            6,
+            46680,
+            414,
+            1736,
+            274,
+            6,
+            268,
+            35176,
+            260,
+            476,
+            1905,
+            271,
+            1609,
+            6423,
+            13439,
+            635,
+            962,
+            368,
+            635,
+            28681,
+            13,
+            426,
+            6,
+            46680,
+            414,
+            1736,
+            274,
+            6,
+            268,
+            35176,
+            260,
+            476,
+            1905,
+            271,
+            1609,
+            6423,
+            13439,
+            635,
+            962,
+            368,
+            635,
+            28681,
+            13
+          ]
+        },
+        {
+          "encoder" : {
+            "mean" : -0.0022085144,
+            "mean_abs" : 0.296559,
+            "shape" : [
+              1,
+              1500,
+              1280
+            ]
+          },
+          "mel" : {
+            "mean" : -0.6020395,
+            "mean_abs" : 0.6424784,
+            "shape" : [
+              1,
+              3000,
+              128
+            ]
+          },
+          "tokens" : [
+            426,
+            6,
+            46680,
+            414,
+            1736,
+            274,
+            6,
+            268,
+            35176,
+            260,
+            476,
+            1905,
+            271,
+            1609,
+            6423
+          ]
+        }
+      ]
+    }
+  ],
+  "commit" : "4e3ad4ebdaf22d92ac36fd04e572a1b92ff89c19",
+  "encoder_dtype" : "float32",
+  "generator" : "macos/Tests/WhisperFixtureTests.swift",
+  "inputs" : [
+    {
+      "name" : "francais",
+      "samples" : 67600,
+      "sha256" : "1cac739221e63f2025a2a22b464222adadf4dc6575393b5df73026fef7278777",
+      "source" : "macos/Tests/Fixtures/dictee-charge.wav"
+    },
+    {
+      "name" : "anglais",
+      "samples" : 62400,
+      "sha256" : "71f83a83dd2fd5a54c16b3d9676bf7d1a244f21d50966d8efbb88fb5f1ac52b9",
+      "source" : "tests/fixtures/mlx/dictee-en.wav"
+    },
+    {
+      "name" : "douze_secondes",
+      "samples" : 192000,
+      "sha256" : "370c37bb0f81f6c66795f61f567557cddb1dd0125a0eb03f7f3a95ae36f1f139",
+      "source" : "francais, anglais, francais… à la suite, coupé à 192 000 échantillons"
+    },
+    {
+      "name" : "silence",
+      "samples" : 16000,
+      "sha256" : "4f7988030a00d082fe445e00a2ac5dab502300ff1b80e8592dd569867b60ef74",
+      "source" : "16 000 zéros (1 s)"
+    },
+    {
+      "name" : "dixieme",
+      "samples" : 1600,
+      "sha256" : "89bf9923e53422dcc6c7d2e872bf71c41d61bf0b0128b255a2ce1c5485d4731d",
+      "source" : "francais[16 000 ..< 17 600] (0,1 s)"
+    },
+    {
+      "name" : "trente_cinq_secondes",
+      "samples" : 560000,
+      "sha256" : "127ea0d773ce55088da0c61bbf76dfd6bf05871e078e0470b9fbac3c556824ad",
+      "source" : "francais, anglais, francais… à la suite, coupé à 560 000 échantillons (35 s : deux fenêtres de 30 s)"
+    }
+  ],
+  "model" : "whisper_large_v3_turbo_4bit",
+  "quantization" : "bits 4, group_size 64",
+  "revision" : "0f058d38170d183f9fdee07908f5b515d91793a8"
+}

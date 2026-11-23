@@ -1,0 +1,469 @@
+{
+  "cases" : [
+    {
+      "input" : "francais",
+      "language" : "fr",
+      "prompt" : [
+        50258,
+        50265,
+        50359,
+        50363
+      ],
+      "text" : "N'oublie pas d'envoyer le devis aux clients avant la fin de la semaine.",
+      "windows" : [
+        {
+          "encoder" : {
+            "mean" : -0.007556004,
+            "mean_abs" : 0.73589295,
+            "shape" : [
+              1,
+              1500,
+              768
+            ]
+          },
+          "mel" : {
+            "mean" : -0.65346605,
+            "mean_abs" : 0.6956913,
+            "shape" : [
+              1,
+              3000,
+              80
+            ]
+          },
+          "tokens" : [
+            426,
+            6,
+            46680,
+            414,
+            1736,
+            274,
+            6,
+            268,
+            35176,
+            260,
+            476,
+            1905,
+            271,
+            7865,
+            6982,
+            13439,
+            635,
+            962,
+            368,
+            635,
+            28681,
+            13
+          ]
+        }
+      ]
+    },
+    {
+      "input" : "anglais",
+      "language" : "en",
+      "prompt" : [
+        50258,
+        50259,
+        50359,
+        50363
+      ],
+      "text" : "Please send the weekly report to the whole team before Friday.",
+      "windows" : [
+        {
+          "encoder" : {
+            "mean" : -0.008318536,
+            "mean_abs" : 0.7428251,
+            "shape" : [
+              1,
+              1500,
+              768
+            ]
+          },
+          "mel" : {
+            "mean" : -0.7681186,
+            "mean_abs" : 0.799786,
+            "shape" : [
+              1,
+              3000,
+              80
+            ]
+          },
+          "tokens" : [
+            2555,
+            2845,
+            264,
+            12460,
+            2275,
+            281,
+            264,
+            1379,
+            1469,
+            949,
+            6984,
+            13
+          ]
+        }
+      ]
+    },
+    {
+      "input" : "douze_secondes",
+      "language" : "fr",
+      "prompt" : [
+        50258,
+        50265,
+        50359,
+        50363
+      ],
+      "text" : "N'oublie pas d'envoyer le devis aux clients avant la fin de la semaine. N'oublie pas d'envoyer le devis aux clients avant la fin de la semaine.",
+      "windows" : [
+        {
+          "encoder" : {
+            "mean" : -0.0069025275,
+            "mean_abs" : 0.8205891,
+            "shape" : [
+              1,
+              1500,
+              768
+            ]
+          },
+          "mel" : {
+            "mean" : -0.49031523,
+            "mean_abs" : 0.60643333,
+            "shape" : [
+              1,
+              3000,
+              80
+            ]
+          },
+          "tokens" : [
+            426,
+            6,
+            46680,
+            414,
+            1736,
+            274,
+            6,
+            268,
+            35176,
+            260,
+            476,
+            1905,
+            271,
+            7865,
+            6982,
+            13439,
+            635,
+            962,
+            368,
+            635,
+            28681,
+            13,
+            426,
+            6,
+            46680,
+            414,
+            1736,
+            274,
+            6,
+            268,
+            35176,
+            260,
+            476,
+            1905,
+            271,
+            7865,
+            6982,
+            13439,
+            635,
+            962,
+            368,
+            635,
+            28681,
+            13
+          ]
+        }
+      ]
+    },
+    {
+      "input" : "silence",
+      "language" : "fr",
+      "prompt" : [
+        50258,
+        50265,
+        50359,
+        50363
+      ],
+      "text" : "C'est un peu trop.",
+      "windows" : [
+        {
+          "encoder" : {
+            "mean" : 0.00066232175,
+            "mean_abs" : 0.62757045,
+            "shape" : [
+              1,
+              1500,
+              768
+            ]
+          },
+          "mel" : {
+            "mean" : -1.5,
+            "mean_abs" : 1.5,
+            "shape" : [
+              1,
+              3000,
+              80
+            ]
+          },
+          "tokens" : [
+            383,
+            6,
+            377,
+            517,
+            5604,
+            9006,
+            13
+          ]
+        }
+      ]
+    },
+    {
+      "input" : "dixieme",
+      "language" : "fr",
+      "prompt" : [
+        50258,
+        50265,
+        50359,
+        50363
+      ],
+      "text" : "...",
+      "windows" : [
+        {
+          "encoder" : {
+            "mean" : -0.0058454606,
+            "mean_abs" : 0.6671147,
+            "shape" : [
+              1,
+              1500,
+              768
+            ]
+          },
+          "mel" : {
+            "mean" : -0.9035004,
+            "mean_abs" : 0.90515995,
+            "shape" : [
+              1,
+              3000,
+              80
+            ]
+          },
+          "tokens" : [
+            1097
+          ]
+        }
+      ]
+    },
+    {
+      "input" : "trente_cinq_secondes",
+      "language" : "fr",
+      "prompt" : [
+        50258,
+        50265,
+        50359,
+        50363
+      ],
+      "text" : "N'oublie pas d'envoyer le devis au client avant la fin de la semaine. N'oublie pas d'envoyer le devis au client avant la fin de la semaine. N'oublie pas d'envoyer le devis au client avant la fin de la semaine. N'oublie pas d'envoyer le devis au client avant la fin de la semaine. N'oublie pas d'envoyer le devis aux clients",
+      "windows" : [
+        {
+          "encoder" : {
+            "mean" : -0.015457613,
+            "mean_abs" : 0.9607053,
+            "shape" : [
+              1,
+              1500,
+              768
+            ]
+          },
+          "mel" : {
+            "mean" : -0.14805011,
+            "mean_abs" : 0.42378387,
+            "shape" : [
+              1,
+              3000,
+              80
+            ]
+          },
+          "tokens" : [
+            426,
+            6,
+            46680,
+            414,
+            1736,
+            274,
+            6,
+            268,
+            35176,
+            260,
+            476,
+            1905,
+            271,
+            1609,
+            6423,
+            13439,
+            635,
+            962,
+            368,
+            635,
+            28681,
+            13,
+            426,
+            6,
+            46680,
+            414,
+            1736,
+            274,
+            6,
+            268,
+            35176,
+            260,
+            476,
+            1905,
+            271,
+            1609,
+            6423,
+            13439,
+            635,
+            962,
+            368,
+            635,
+            28681,
+            13,
+            426,
+            6,
+            46680,
+            414,
+            1736,
+            274,
+            6,
+            268,
+            35176,
+            260,
+            476,
+            1905,
+            271,
+            1609,
+            6423,
+            13439,
+            635,
+            962,
+            368,
+            635,
+            28681,
+            13,
+            426,
+            6,
+            46680,
+            414,
+            1736,
+            274,
+            6,
+            268,
+            35176,
+            260,
+            476,
+            1905,
+            271,
+            1609,
+            6423,
+            13439,
+            635,
+            962,
+            368,
+            635,
+            28681,
+            13
+          ]
+        },
+        {
+          "encoder" : {
+            "mean" : -0.008719985,
+            "mean_abs" : 0.744321,
+            "shape" : [
+              1,
+              1500,
+              768
+            ]
+          },
+          "mel" : {
+            "mean" : -0.64342386,
+            "mean_abs" : 0.68701184,
+            "shape" : [
+              1,
+              3000,
+              80
+            ]
+          },
+          "tokens" : [
+            426,
+            6,
+            46680,
+            414,
+            1736,
+            274,
+            6,
+            268,
+            35176,
+            260,
+            476,
+            1905,
+            271,
+            7865,
+            6982
+          ]
+        }
+      ]
+    }
+  ],
+  "commit" : "4e3ad4ebdaf22d92ac36fd04e572a1b92ff89c19",
+  "encoder_dtype" : "float32",
+  "generator" : "macos/Tests/WhisperFixtureTests.swift",
+  "inputs" : [
+    {
+      "name" : "francais",
+      "samples" : 67600,
+      "sha256" : "1cac739221e63f2025a2a22b464222adadf4dc6575393b5df73026fef7278777",
+      "source" : "macos/Tests/Fixtures/dictee-charge.wav"
+    },
+    {
+      "name" : "anglais",
+      "samples" : 62400,
+      "sha256" : "71f83a83dd2fd5a54c16b3d9676bf7d1a244f21d50966d8efbb88fb5f1ac52b9",
+      "source" : "tests/fixtures/mlx/dictee-en.wav"
+    },
+    {
+      "name" : "douze_secondes",
+      "samples" : 192000,
+      "sha256" : "370c37bb0f81f6c66795f61f567557cddb1dd0125a0eb03f7f3a95ae36f1f139",
+      "source" : "francais, anglais, francais… à la suite, coupé à 192 000 échantillons"
+    },
+    {
+      "name" : "silence",
+      "samples" : 16000,
+      "sha256" : "4f7988030a00d082fe445e00a2ac5dab502300ff1b80e8592dd569867b60ef74",
+      "source" : "16 000 zéros (1 s)"
+    },
+    {
+      "name" : "dixieme",
+      "samples" : 1600,
+      "sha256" : "89bf9923e53422dcc6c7d2e872bf71c41d61bf0b0128b255a2ce1c5485d4731d",
+      "source" : "francais[16 000 ..< 17 600] (0,1 s)"
+    },
+    {
+      "name" : "trente_cinq_secondes",
+      "samples" : 560000,
+      "sha256" : "127ea0d773ce55088da0c61bbf76dfd6bf05871e078e0470b9fbac3c556824ad",
+      "source" : "francais, anglais, francais… à la suite, coupé à 560 000 échantillons (35 s : deux fenêtres de 30 s)"
+    }
+  ],
+  "model" : "whisper_small_4bit",
+  "quantization" : "bits 4, group_size 64",
+  "revision" : "1ac90abbb1b2f53863bfd2a483a3c31d792c3e5b"
+}
