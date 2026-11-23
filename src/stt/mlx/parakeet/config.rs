@@ -217,6 +217,24 @@ impl Config {
                 "configuration de Parakeet incohérente"
             )
         );
+        // Une durée 0 laisse le décodeur sur la même trame : sans plafond de
+        // symboles, tdt_step pourrait y boucler sans fin, sous le verrou du GPU.
+        ensure!(
+            !self.durations.contains(&0) || self.max_symbols.is_some_and(|m| m > 0),
+            crate::tr!(
+                "Parakeet configuration: a duration of 0 needs decoding.greedy.max_symbols",
+                "configuration de Parakeet : une durée 0 demande decoding.greedy.max_symbols"
+            )
+        );
+        // Le blanc (vocab_size) est la ligne de remplissage de l'embedding de
+        // la prédiction : sans blank_as_pad, il serait lu hors de la table.
+        ensure!(
+            self.decoder.blank_as_pad,
+            crate::tr!(
+                "Parakeet decoder without blank_as_pad: not ported to Rust",
+                "décodeur de Parakeet sans blank_as_pad : non porté en Rust"
+            )
+        );
         Ok(())
     }
 

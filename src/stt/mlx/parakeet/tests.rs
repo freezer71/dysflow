@@ -186,7 +186,10 @@ fn parity(id: &str) {
 fn compare(id: &str, divergent: &[&str]) {
     let fixture = fixture(id);
     for name in divergent {
-        assert!(fixture.cases.iter().any(|c| c.input == *name), "{name} : pas une entrée de la fixture");
+        assert!(
+            fixture.cases.iter().any(|c| c.input == *name),
+            "{name} : pas une entrée de la fixture"
+        );
     }
     assert_eq!(fixture.model, id);
     let package = crate::models::CATALOG
@@ -551,6 +554,42 @@ fn a_variant_that_is_not_tdt_is_refused() {
         config::Config::parse(&config.to_string()).unwrap_err()
     );
     assert!(err.contains("TDT"), "{err}");
+}
+
+/// Une durée 0 sans `max_symbols` : `tdt_step` pourrait boucler sans fin
+/// sur une même trame, sous le verrou du GPU.
+#[test]
+fn a_zero_duration_without_max_symbols_is_refused() {
+    let mut config = tiny_config(false);
+    config["decoding"]["greedy"] = serde_json::json!({});
+    let err = format!(
+        "{:#}",
+        config::Config::parse(&config.to_string()).unwrap_err()
+    );
+    assert!(err.contains("max_symbols"), "{err}");
+    config["decoding"].as_object_mut().unwrap().remove("greedy");
+    let err = format!(
+        "{:#}",
+        config::Config::parse(&config.to_string()).unwrap_err()
+    );
+    assert!(err.contains("max_symbols"), "{err}");
+    // Sans durée 0, chaque pas avance : max_symbols n'est pas demandé.
+    config["decoding"]["durations"] = serde_json::json!([1, 2, 3, 4, 5]);
+    config["model_defaults"]["tdt_durations"] = serde_json::json!([1, 2, 3, 4, 5]);
+    config::Config::parse(&config.to_string()).unwrap();
+}
+
+/// Sans `blank_as_pad`, l'identifiant du blanc (`vocab_size`) serait lu
+/// hors de la table d'embedding de la prédiction.
+#[test]
+fn a_decoder_without_blank_as_pad_is_refused() {
+    let mut config = tiny_config(false);
+    config["decoder"]["blank_as_pad"] = serde_json::json!(false);
+    let err = format!(
+        "{:#}",
+        config::Config::parse(&config.to_string()).unwrap_err()
+    );
+    assert!(err.contains("blank_as_pad"), "{err}");
 }
 
 #[test]
