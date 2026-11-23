@@ -27,7 +27,9 @@ import XCTest
 /// `DYSFLOW_KOKORO_DIR` (le dossier de Kokoro), `DYSFLOW_STT_MODELS` (celui
 /// qui contient `parakeet_tdt_v3/`), `DYSFLOW_CHARGE_TOURS` (200) et
 /// `DYSFLOW_CHARGE_ALTERNANCE_S` (600). Sans eux : ignoré. Les relevés sont
-/// les lignes `MESURE charge` de la sortie.
+/// les lignes `MESURE charge` de la sortie ; celles de R15, `MESURE r15`,
+/// viennent d'un test à part (`testR15RacesMeasuredApart`). Chaque étape
+/// MLX, chargement et tour 0 compris, a son échéance de 30 s.
 final class MLXLoadTests: XCTestCase {
     /// La dictée fixée : `say -v Thomas -o … --data-format=LEI16@16000`, 4,2 s.
     static let dictationSHA256 = "42fc2329b7221f4e53c77f0ad196844030d30d7b1f4aba5e5892ec9f606d4837"
@@ -50,14 +52,23 @@ final class MLXLoadTests: XCTestCase {
         continueAfterFailure = false
     }
 
-    func testBothMLXCopiesUnderLoad() throws {
-        #if DYSFLOW_MLX_RUST
+    #if DYSFLOW_MLX_RUST
+    /// Ce que les deux tests partagent : modèles chargés (chaque étape avec
+    /// son échéance), sonde, nombre de tours et durée de l'alternance.
+    struct Setting {
+        let counter: LoadComputeCounter
+        let kokoro: LoadKokoro
+        let dictation: LoadDictation
+        let rounds: Int
+        let alternation: TimeInterval
+    }
+
+    /// `nil` : pas lancé par `scripts/mlx-charge.sh` (test ignoré).
+    private func prepare() throws -> Setting? {
         let env = ProcessInfo.processInfo.environment
         guard let kokoroDir = env["DYSFLOW_KOKORO_DIR"], let sttRoot = env["DYSFLOW_STT_MODELS"] else {
-            throw XCTSkip("DYSFLOW_KOKORO_DIR ou DYSFLOW_STT_MODELS absent : scripts/mlx-charge.sh")
+            return nil
         }
-        let rounds = Int(env["DYSFLOW_CHARGE_TOURS"] ?? "") ?? 200
-        let alternation = TimeInterval(env["DYSFLOW_CHARGE_ALTERNANCE_S"] ?? "") ?? 600
         try checkTheSetting(kokoroDir: kokoroDir, sttRoot: sttRoot)
         let fixtures = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("Fixtures")
         let reference = try JSONDecoder().decode(
@@ -68,27 +79,46 @@ final class MLXLoadTests: XCTestCase {
         let wav = try Data(contentsOf: fixtures.appendingPathComponent("dictee-charge.wav"))
         XCTAssertEqual(SHA256.hash(data: wav).map { String(format: "%02x", $0) }.joined(), Self.dictationSHA256)
         let samples = try Self.pcm16Samples(wav)
-        print("MESURE charge configuration=\(Self.configuration) tours=\(rounds) alternance_s=\(Int(alternation))")
-        print("MESURE charge debut \(LoadReadings.machine())")
-
         let counter = LoadComputeCounter()
         let kokoro = LoadKokoro(dir: kokoroDir, reference: reference, expected: expected, counter: counter)
         let parakeetDir = URL(fileURLWithPath: sttRoot).appendingPathComponent("parakeet_tdt_v3")
-        let dictation = try LoadDictation(dir: parakeetDir, samples: samples, counter: counter)
+        let dictation = try Self.within("chargement de Parakeet") {
+            try LoadDictation(dir: parakeetDir, samples: samples, counter: counter)
+        }
+        return Setting(counter: counter, kokoro: kokoro, dictation: dictation,
+                       rounds: Int(env["DYSFLOW_CHARGE_TOURS"] ?? "") ?? 200,
+                       alternation: TimeInterval(env["DYSFLOW_CHARGE_ALTERNANCE_S"] ?? "") ?? 600)
+    }
+    #endif
+
+    /// `body` sur un fil à lui, fini avant `roundTimeout` : un blocage est un
+    /// échec du test, pas une porte qui attend sans fin.
+    @discardableResult
+    static func within<T>(_ what: String, _ body: @escaping @Sendable () throws -> T) throws -> T {
+        let run = LoadThread("charge-\(what)", body)
+        guard let result = run.result(before: .now() + roundTimeout) else {
+            throw GateFailure("\(what) : bloqué plus de \(Int(roundTimeout)) s")
+        }
+        return try result.get()
+    }
+
+    func testBothMLXCopiesUnderLoad() throws {
+        #if DYSFLOW_MLX_RUST
+        print("MESURE charge debut \(LoadReadings.machine())")
+        guard let setting = try prepare() else {
+            throw XCTSkip("DYSFLOW_KOKORO_DIR ou DYSFLOW_STT_MODELS absent : scripts/mlx-charge.sh")
+        }
+        let (counter, kokoro, dictation, rounds) = (setting.counter, setting.kokoro, setting.dictation, setting.rounds)
+        print("MESURE charge configuration=\(Self.configuration) tours=\(rounds) alternance_s=\(Int(setting.alternation))")
 
         // Une première fois chacun, seuls (Parakeet avant tout calcul de la
         // copie Rust) : les noyaux, et les plafonds posés.
-        try dictation.pass(round: 0)
-        let first = try kokoro.pass(round: 0)
+        try Self.within("tour 0 : Parakeet") { try dictation.pass(round: 0) }
+        let first = try Self.within("tour 0 : Kokoro") { try kokoro.pass(round: 0) }
         XCTAssertEqual(first.mlxMemoryLimit, 1 << 30, "plafond de Kokoro (copie Rust)")
-        let swiftLimit = MLXGate.shared.run { Memory.memoryLimit }
+        let swiftLimit = try Self.within("plafond de la copie Swift") { MLXGate.shared.run { Memory.memoryLimit } }
         XCTAssertEqual(swiftLimit, MLXBudget.shared.total.memory, "plafonds de l'app (copie Swift)")
         XCTAssertGreaterThan(swiftLimit, 0)
-
-        // Les relevés hors du verrou (R15, `Measure.swift`) : un fil qui lit
-        // les compteurs de la copie Swift pendant les tours, sans `MLXGate`.
-        let outside = LoadOutsideReader()
-        outside.start()
 
         // Le tour de référence de la croissance : le 20e, ou le milieu d'un
         // passage court.
@@ -97,11 +127,7 @@ final class MLXLoadTests: XCTestCase {
         var longest: TimeInterval = 0
         for round in 1...rounds {
             let started = Date()
-            let deadline = DispatchTime.now() + Self.roundTimeout
-            let rust = LoadThread("charge-kokoro") { try kokoro.pass(round: round) }
-            let swift = LoadThread("charge-parakeet") { try dictation.pass(round: round) }
-            let rustPass = try XCTUnwrap(rust.result(before: deadline), "tour \(round) : Kokoro bloqué plus de 30 s").get()
-            _ = try XCTUnwrap(swift.result(before: deadline), "tour \(round) : Parakeet bloqué plus de 30 s").get()
+            let rustPass = try Self.concurrentRound(round, kokoro: kokoro, dictation: dictation)
             longest = max(longest, Date().timeIntervalSince(started))
             XCTAssertEqual(counter.most, 1, "tour \(round) : deux calculs MLX à la fois")
             if round == referenceRound {
@@ -109,10 +135,10 @@ final class MLXLoadTests: XCTestCase {
                 referenceFootprint = LoadReadings.footprint()
             }
             if round == 1 || round == rounds || round % 50 == 0 || round == referenceRound {
-                print("MESURE charge tour=\(round) \(LoadReadings.copies(rust: rustPass)) \(LoadReadings.process()) \(LoadReadings.machine())")
+                let copies = try Self.within("relevé des copies") { LoadReadings.copies(rust: rustPass) }
+                print("MESURE charge tour=\(round) \(copies) \(LoadReadings.process()) \(LoadReadings.machine())")
             }
         }
-        let outsideReadings = outside.stop()
         let finalResident = LoadReadings.resident(), finalFootprint = LoadReadings.footprint()
         let growth = Double(finalResident - referenceResident) / Double(referenceResident)
         // La mémoire de Metal (les tableaux des deux copies) n'est pas dans
@@ -123,41 +149,80 @@ final class MLXLoadTests: XCTestCase {
                      rounds, finalResident >> 20, longest))
         print(String(format: "MESURE charge croissance_empreinte=%.2f %% (tour %d : %d Mo, tour %d : %d Mo)",
                      footprintGrowth * 100, referenceRound, referenceFootprint >> 20, rounds, finalFootprint >> 20))
-        print("MESURE charge r15_lectures_hors_verrou=\(outsideReadings.count) actif_max_mo=\(outsideReadings.maxActive >> 20)")
         XCTAssertLessThanOrEqual(growth, Self.maximumGrowth, "mémoire résidente : croissance de plus de 5 %")
         XCTAssertLessThanOrEqual(footprintGrowth, Self.maximumGrowth, "empreinte physique : croissance de plus de 5 %")
 
         // Lecture et dictée alternées.
-        let end = Date(timeIntervalSinceNow: alternation)
+        let end = Date(timeIntervalSinceNow: setting.alternation)
         var turns = (kokoro: 0, parakeet: 0)
         var lastRust = first
         while Date() < end {
-            let deadline = DispatchTime.now() + Self.roundTimeout
-            let rust = LoadThread("charge-kokoro") { try kokoro.pass(round: -1) }
-            lastRust = try XCTUnwrap(rust.result(before: deadline), "alternance : Kokoro bloqué plus de 30 s").get()
+            lastRust = try Self.within("alternance : Kokoro") { try kokoro.pass(round: -1) }
             turns.kokoro += 1
-            let swift = LoadThread("charge-parakeet") { try dictation.pass(round: -1) }
-            _ = try XCTUnwrap(swift.result(before: DispatchTime.now() + Self.roundTimeout),
-                              "alternance : Parakeet bloqué plus de 30 s").get()
+            try Self.within("alternance : Parakeet") { try dictation.pass(round: -1) }
             turns.parakeet += 1
         }
         XCTAssertEqual(counter.most, 1, "deux calculs MLX à la fois")
-        print("MESURE charge alternance kokoro=\(turns.kokoro) parakeet=\(turns.parakeet) \(LoadReadings.copies(rust: lastRust)) \(LoadReadings.process()) \(LoadReadings.machine())")
+        let lastPass = lastRust
+        let copies = try Self.within("relevé des copies") { LoadReadings.copies(rust: lastPass) }
+        print("MESURE charge alternance kokoro=\(turns.kokoro) parakeet=\(turns.parakeet) \(copies) \(LoadReadings.process()) \(LoadReadings.machine())")
         print("MESURE charge calculs=\(counter.entered) simultanes_max=\(counter.most) attendus=\(2 * (rounds + 1) + turns.kokoro + turns.parakeet)")
         XCTAssertEqual(counter.entered, 2 * (rounds + 1) + turns.kokoro + turns.parakeet, "un calcul n'est pas passé par la sonde")
-
-        // R15 : `clearCache` de mlx-swift juste après un calcul, sous le
-        // verrou, comme `SpeechModels.release` : le cache relu aussitôt, puis
-        // après que le verrou a attendu les flux. Relevé, rien d'affirmé.
-        let afterClear = try dictation.clearCacheRightAfterAPass(times: 20)
-        print("MESURE charge r15_clear_cache fois=20 cache_aussitot_non_nul=\(afterClear.rightAway.filter { $0 > 0 }.count) "
-            + "max_aussitot_ko=\((afterClear.rightAway.max() ?? 0) >> 10) cache_ensuite_non_nul=\(afterClear.later.filter { $0 > 0 }.count) "
-            + "max_ensuite_ko=\((afterClear.later.max() ?? 0) >> 10)")
         print("MESURE charge fin \(LoadReadings.machine())")
         #else
         throw XCTSkip("moteur sans la feature mlx (FEATURES=ocr,mlx ./scripts/build-ffi.sh)")
         #endif
     }
+
+    /// R15, à part de la porte (après elle, dans l'ordre de XCTest) : ses
+    /// relevés ne font ni passer ni échouer la porte (`scripts/mlx-charge.sh`
+    /// ne juge que `testBothMLXCopiesUnderLoad`). Rien d'affirmé, sauf les
+    /// échéances.
+    /// - Les compteurs de la copie Swift lus hors du verrou, toutes les 5 ms,
+    ///   comme `Measure.compteursMLX`, pendant 20 tours simultanés.
+    /// - `clearCache` de mlx-swift juste après un calcul, sous le verrou,
+    ///   comme `SpeechModels.release` : le cache relu aussitôt, puis après que
+    ///   le verrou a attendu les flux.
+    func testR15RacesMeasuredApart() throws {
+        #if DYSFLOW_MLX_RUST
+        guard let setting = try prepare() else {
+            throw XCTSkip("DYSFLOW_KOKORO_DIR ou DYSFLOW_STT_MODELS absent : scripts/mlx-charge.sh")
+        }
+        let (kokoro, dictation) = (setting.kokoro, setting.dictation)
+        let outside = LoadOutsideReader()
+        outside.start()
+        for round in 1...20 {
+            _ = try Self.concurrentRound(round, kokoro: kokoro, dictation: dictation)
+        }
+        let readings = outside.stop()
+        print("MESURE r15 lectures_hors_verrou=\(readings.count) actif_max_mo=\(readings.maxActive >> 20) (20 tours)")
+
+        var rightAway: [Int] = [], later: [Int] = []
+        for _ in 0..<20 {
+            let cache = try Self.within("R15 clearCache") { try dictation.clearCacheRightAfterAPass() }
+            rightAway.append(cache.rightAway)
+            later.append(cache.later)
+        }
+        print("MESURE r15 clear_cache fois=20 cache_aussitot_non_nul=\(rightAway.filter { $0 > 0 }.count) "
+            + "max_aussitot_ko=\((rightAway.max() ?? 0) >> 10) cache_ensuite_non_nul=\(later.filter { $0 > 0 }.count) "
+            + "max_ensuite_ko=\((later.max() ?? 0) >> 10)")
+        #else
+        throw XCTSkip("moteur sans la feature mlx (FEATURES=ocr,mlx ./scripts/build-ffi.sh)")
+        #endif
+    }
+
+    #if DYSFLOW_MLX_RUST
+    /// Kokoro (copie Rust) et Parakeet (copie Swift), chacun sur son fil, en
+    /// même temps ; les deux finis avant `roundTimeout`.
+    static func concurrentRound(_ round: Int, kokoro: LoadKokoro, dictation: LoadDictation) throws -> MlxRustKokoroPass {
+        let deadline = DispatchTime.now() + roundTimeout
+        let rust = LoadThread("charge-kokoro") { try kokoro.pass(round: round) }
+        let swift = LoadThread("charge-parakeet") { try dictation.pass(round: round) }
+        let rustPass = try XCTUnwrap(rust.result(before: deadline), "tour \(round) : Kokoro bloqué plus de 30 s").get()
+        _ = try XCTUnwrap(swift.result(before: deadline), "tour \(round) : Parakeet bloqué plus de 30 s").get()
+        return rustPass
+    }
+    #endif
 
     static var configuration: String {
         #if DEBUG
@@ -277,7 +342,10 @@ final class LoadDictation: @unchecked Sendable {
     let counter: LoadComputeCounter
 
     init(dir: URL, samples: [Float], counter: LoadComputeCounter) throws {
-        model = try MLXGate.shared.run { try SpeechModels.load(dir) }
+        model = try MLXGate.shared.run {
+            Self.stallIfAsked("init")
+            return try SpeechModels.load(dir)
+        }
         self.samples = samples
         self.counter = counter
     }
@@ -287,6 +355,7 @@ final class LoadDictation: @unchecked Sendable {
         let text = try MLXGate.shared.run {
             counter.enter()
             defer { counter.leave() }
+            if round == 0 { Self.stallIfAsked("tour0") }
             return try model.transcribe(samples, language: "fr")
         }
         if round == 0 { print("MESURE charge texte «\(text)»") }
@@ -296,17 +365,27 @@ final class LoadDictation: @unchecked Sendable {
         return text
     }
 
-    func clearCacheRightAfterAPass(times: Int) throws -> (rightAway: [Int], later: [Int]) {
-        var rightAway: [Int] = [], later: [Int] = []
-        for _ in 0..<times {
-            rightAway.append(try MLXGate.shared.run {
-                _ = try model.transcribe(samples, language: "fr")
-                DictationMLX.clearCache()
-                return DictationMLX.counters().cache
-            })
-            later.append(MLXGate.shared.run { DictationMLX.counters().cache })
+    /// L'essai de l'échéance : `DYSFLOW_CHARGE_BLOCAGE` = `init` ou `tour0`
+    /// fait dormir cette étape `DYSFLOW_CHARGE_BLOCAGE_S` secondes (45),
+    /// verrou du GPU tenu, comme un calcul bloqué. Jamais posé par la porte.
+    static func stallIfAsked(_ step: String) {
+        let env = ProcessInfo.processInfo.environment
+        guard env["DYSFLOW_CHARGE_BLOCAGE"] == step else { return }
+        let seconds = Double(env["DYSFLOW_CHARGE_BLOCAGE_S"] ?? "") ?? 45
+        print("MESURE charge blocage_voulu etape=\(step) s=\(Int(seconds))")
+        Thread.sleep(forTimeInterval: seconds)
+    }
+
+    /// Une transcription, `clearCache` aussitôt, le cache relu aussitôt ;
+    /// puis relu sous un nouveau passage du verrou (le premier a attendu les
+    /// flux). R15.
+    func clearCacheRightAfterAPass() throws -> (rightAway: Int, later: Int) {
+        let rightAway = try MLXGate.shared.run {
+            _ = try model.transcribe(samples, language: "fr")
+            DictationMLX.clearCache()
+            return DictationMLX.counters().cache
         }
-        return (rightAway, later)
+        return (rightAway, MLXGate.shared.run { DictationMLX.counters().cache })
     }
 }
 #endif
