@@ -11,8 +11,9 @@
 # Le binaire cherche ses bibliothèques à côté de lui seulement (build.rs) :
 # $OUT sert comme sur un PC qui n'a pas l'arbre de compilation. Sous Windows,
 # $OUT reçoit aussi le runtime Visual C++, et ses imports sont vérifiés
-# (scripts/windows-imports.py) ; la porte y repasse avec ses modèles sous un
-# chemin non ASCII (le profil d'un utilisateur).
+# (scripts/windows-imports.py). Partout, la porte repasse avec ses modèles
+# sous un chemin non ASCII (« Élodie Martin », « Łukasz Gaweł » ; ailleurs
+# que sous Windows, Élodie aussi en NFD).
 #
 # $OUT.tar.gz en est l'archive, à lancer sur un autre PC :
 #   tar xzf ort-gate.tar.gz && ./ort-gate/ort_single_copy
@@ -125,4 +126,25 @@ if [ -n "$WINDOWS" ]; then
 else
     ( cd / && env -u DYSFLOW_ORT_LIB -u DYSFLOW_KOKORO_DIR -u DYSFLOW_SILERO_VAD "$unit" stt::sherpa )
     ( cd / && env -u DYSFLOW_ORT_LIB -u DYSFLOW_KOKORO_DIR -u DYSFLOW_SILERO_VAD "$gate" )
+    # Les mêmes noms d'utilisateur que sous Windows, dans un dossier de
+    # modèles : « Élodie Martin » composé (NFC) puis décomposé (NFD, ce que
+    # rendent d'anciens volumes HFS+ et des outils qui normalisent), et
+    # « Łukasz Gaweł » (un Ł n'a pas de forme décomposée). Silero VAD reçoit
+    # le chemin en UTF-8, octet pour octet.
+    nfc=$(printf 'Élodie Martin')
+    nfd=$(printf 'E\314\201lodie Martin')
+    # Le dossier précédent part d'abord : sous APFS, qui compare les noms
+    # sans tenir compte de la normalisation, le NFD retrouverait sinon le
+    # dossier NFC.
+    for name in "$nfc" "$nfd" "Łukasz Gaweł"; do
+        rm -rf target/ort-gate-paths
+        models="$PWD/target/ort-gate-paths/$name/dysflow/models"
+        mkdir -p "$models/kokoro"
+        cp "$MODELS/silero_vad.onnx" "$models/"
+        cp "$MODELS/kokoro/model_quantized.onnx" "$MODELS/kokoro/config.json" "$models/kokoro/"
+        echo "Modèles depuis $models :"
+        ( cd / && env -u DYSFLOW_ORT_LIB \
+            DYSFLOW_KOKORO_DIR="$models/kokoro" DYSFLOW_SILERO_VAD="$models/silero_vad.onnx" "$gate" )
+    done
+    rm -rf target/ort-gate-paths
 fi

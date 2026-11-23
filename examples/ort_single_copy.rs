@@ -12,10 +12,12 @@
 //! `DYSFLOW_SILERO_VAD`. Dans l'ordre :
 //!
 //! 1. Kokoro int8 se charge par `OrtBackend` et dit « Bonjour. » ;
-//! 2. Silero VAD, par sherpa-onnx, trouve exactement un segment de parole dans
-//!    3 s d'audio : 1 s de silence, 1 s de la sortie de Kokoro, 1 s de silence ;
+//! 2. Silero VAD, par sherpa-onnx (`SileroDetector`, découpé comme une
+//!    dictée), trouve exactement un énoncé dans 3 s d'audio : 1 s de silence,
+//!    1 s de la sortie de Kokoro, 1 s de silence ;
 //! 3. la version de l'ORT que charge Kokoro, celle que sherpa-onnx utilise, et
-//!    1.31.0 sont égales ;
+//!    1.31.0 sont égales (`sherpa::same_runtime`, la vérification que chaque
+//!    modèle sherpa fait avant de se charger) ;
 //! 4. une seule copie d'ONNX Runtime est chargée dans le processus : une
 //!    seule image (bibliothèque ou binaire) exporte `OrtGetApiBase`.
 //!
@@ -101,20 +103,21 @@ fn run(failures: &mut Vec<String>) -> Result<()> {
     speech.resize(second, 0.0);
     let audio: Vec<f32> = std::iter::repeat_n(0.0, second).chain(speech).chain(std::iter::repeat_n(0.0, second)).collect();
     let segments = sherpa::vad_smoke(&vad_model, &audio)?;
-    println!("2. Silero VAD (sherpa-onnx) : {segments} segment(s) de parole dans 3 s");
+    println!("2. Silero VAD (sherpa-onnx) : {segments} énoncé(s) dans 3 s");
     if segments != 1 {
-        failures.push(format!("Silero VAD trouve {segments} segment(s), 1 attendu"));
+        failures.push(format!("Silero VAD trouve {segments} énoncé(s), 1 attendu"));
     }
 
-    // 3. Les deux côtés ont le même ORT, celui qu'on livre.
+    // 3. Les deux côtés ont le même ORT, celui qu'on livre : la vérification
+    // que les modèles sherpa font avant de se charger, gardée pour le
+    // processus (`sherpa::same_runtime`).
     let library = onnx::library_path();
-    let kokoro_version = onnx::version_of(&library)?;
     let sherpa_version = sherpa::onnxruntime_version()?;
-    println!("3. ONNX Runtime : Kokoro {kokoro_version} ({}), sherpa-onnx {sherpa_version}", library.display());
-    if kokoro_version != EXPECTED || sherpa_version != EXPECTED {
-        failures.push(format!(
-            "versions d'ONNX Runtime différentes : Kokoro {kokoro_version}, sherpa-onnx {sherpa_version}, {EXPECTED} attendue"
-        ));
+    println!("3. ONNX Runtime : Kokoro {} ({}), sherpa-onnx {sherpa_version}", onnx::version_of(&library)?, library.display());
+    match sherpa::same_runtime() {
+        Ok(version) if version == EXPECTED => {}
+        Ok(version) => failures.push(format!("ONNX Runtime {version} partagé, {EXPECTED} attendue")),
+        Err(err) => failures.push(format!("{err:#} ; {EXPECTED} attendue")),
     }
 
     // 4. Une seule copie d'ONNX Runtime chargée.

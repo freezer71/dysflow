@@ -42,6 +42,10 @@ pub enum Runtime {
     KokoroOnnx,
     /// Dictée, dans l'app seulement : calcul MLX côté Swift.
     ParakeetMlx,
+    /// Dictée au terminal : Parakeet par sherpa-onnx et ONNX Runtime
+    /// (feature `stt-sherpa`). Jamais dans l'app, qui n'embarque pas ONNX
+    /// Runtime.
+    ParakeetSherpa,
     /// Dictée, dans l'app seulement : Parakeet en MLX côté Swift, poids de
     /// Phonon (archive `.tar.zst` que l'app lit telle quelle).
     PhononMlx,
@@ -244,6 +248,10 @@ const MAGPIE_FILES: &[Companion] = &[
 
 const PARAKEET_V3_REPO: &str = "animaslabs/parakeet-tdt-0.6b-v3-mlx-8bit";
 const PARAKEET_V3_REVISION: &str = "18498133db8b4c8753bf98b3c5b6639b2a791be3";
+/// Parakeet v3 en int8 pour sherpa-onnx : encodeur, décodeur et joint TDT
+/// exportés du `.nemo` par sherpa-onnx, et leur vocabulaire.
+const PARAKEET_V3_INT8_REPO: &str = "csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8";
+const PARAKEET_V3_INT8_REVISION: &str = "ed5d745623472f97cfc2e6c2916ee248798fc5a8";
 const PARAKEET_V2_REPO: &str = "mlx-community/parakeet-tdt-0.6b-v2";
 const PARAKEET_V2_REVISION: &str = "8ae155301e23d820d82aa60d24817c900e69e487";
 const NEMOTRON_REPO: &str = "mlx-community/nemotron-3.5-asr-streaming-0.6b-8bit";
@@ -365,6 +373,34 @@ pub const CATALOG: &[ModelPackage] = &[
         kind: Kind::Dictation,
         voices_label: Tr::new("", ""),
         licenses: Tr::new("CC-BY-4.0 (weights and code)", "CC-BY-4.0 (poids et code)"),
+    },
+    // Le même modèle pour le terminal (ONNX Runtime), dans le dossier de la
+    // famille : ses fichiers ne portent pas les noms de ceux du MLX.
+    ModelPackage {
+        id: "parakeet_tdt_v3_int8",
+        family: "parakeet_tdt_v3",
+        display_name: Tr::new("Parakeet v3 · int8", "Parakeet v3 · int8"),
+        description: Tr::new("Fast, accurate recognition of twenty-five European languages, on the CPU.", "Reconnaît vite et bien vingt-cinq langues européennes, sur le processeur."),
+        precision: Tr::new("int8", "int8"),
+        languages: &["fr", "en"],
+        repo: PARAKEET_V3_INT8_REPO,
+        revision: PARAKEET_V3_INT8_REVISION,
+        file: "encoder.int8.onnx",
+        languages_label: Tr::new("25 European languages", "25 langues européennes"),
+        bytes: 652_282_294,
+        recommended: true,
+        // Spike du 21 nov. 2026 : 42,6 s lues d'un bloc en 5,4 à 5,9 s ;
+        // découpées aux silences, 7 à 10 fois plus vite que la parole.
+        pace: Tr::new("Seven to ten times faster than speech on an M5 CPU, 4 threads.", "Sept à dix fois plus vite que la parole sur le processeur d'un M5, 4 fils."),
+        companions: &[
+            hf(PARAKEET_V3_INT8_REPO, PARAKEET_V3_INT8_REVISION, "decoder.int8.onnx", 11_845_274),
+            hf(PARAKEET_V3_INT8_REPO, PARAKEET_V3_INT8_REVISION, "joiner.int8.onnx", 6_355_277),
+            hf(PARAKEET_V3_INT8_REPO, PARAKEET_V3_INT8_REVISION, "tokens.txt", 93_939),
+        ],
+        runtime: Runtime::ParakeetSherpa,
+        kind: Kind::Dictation,
+        voices_label: Tr::new("", ""),
+        licenses: Tr::new("CC-BY-4.0 weights (NVIDIA) · sherpa-onnx Apache-2.0 · ONNX Runtime MIT", "Poids CC-BY-4.0 (NVIDIA) · sherpa-onnx Apache-2.0 · ONNX Runtime MIT"),
     },
     ModelPackage {
         id: "phonon_2",
@@ -707,7 +743,7 @@ impl Runtime {
     /// ajouté doit dire le sien.
     pub fn accelerator(self) -> Accelerator {
         match self {
-            Runtime::KokoroOnnx => Accelerator::OrtCpu,
+            Runtime::KokoroOnnx | Runtime::ParakeetSherpa => Accelerator::OrtCpu,
             Runtime::KokoroMlx
             | Runtime::ParakeetMlx
             | Runtime::PhononMlx
@@ -730,6 +766,9 @@ impl Runtime {
             // Porté (tâche 3) ; l'app le calcule encore aussi (Swift).
             Runtime::KokoroMlx => app_mlx || rust_mlx,
             Runtime::KokoroOnnx => cfg!(feature = "kokoro-onnx"),
+            // Le terminal seulement : l'app n'embarque pas ONNX Runtime, même
+            // dans un binaire de test qui a la feature.
+            Runtime::ParakeetSherpa => !app_mlx && cfg!(feature = "stt-sherpa"),
             // Pas encore portés : seule l'app les calcule (Swift).
             Runtime::ParakeetMlx
             | Runtime::PhononMlx
@@ -1718,7 +1757,7 @@ mod tests {
         let ids: Vec<_> = super::available_for(&[Accelerator::Mlx, Accelerator::OrtCpu], |_| true).iter().map(|p| p.id).collect();
         assert!(ids.contains(&"kokoro_82m_mlx") && !ids.contains(&"kokoro_82m_int8"));
         let ids: Vec<_> = super::available_for(&[Accelerator::OrtCpu], |_| true).iter().map(|p| p.id).collect();
-        assert_eq!(ids, vec!["kokoro_82m_int8"]);
+        assert_eq!(ids, vec!["kokoro_82m_int8", "parakeet_tdt_v3_int8"]);
     }
 
     #[test]
@@ -1808,6 +1847,128 @@ mod tests {
         assert_eq!(resolve("kokoro_82m_mlx", &LINUX, |_| true, |_| false), None);
         assert_eq!(resolve("kokoro_82m_mlx", &MAC, mac_terminal, |_| false), None);
         assert_eq!(resolve("n-existe-pas", &MAC, |_| true, |_| true), None);
+    }
+
+    /// Le terminal sous Linux ou Windows, construit avec `stt-sherpa` : ONNX
+    /// Runtime seul.
+    fn sherpa_terminal(runtime: Runtime) -> bool {
+        matches!(runtime, Runtime::KokoroOnnx | Runtime::ParakeetSherpa)
+    }
+
+    /// Le terminal d'un Mac avec `stt-sherpa` : Kokoro des deux côtés, la
+    /// dictée par sherpa-onnx tant que Parakeet MLX n'est pas porté.
+    fn mac_terminal_with_sherpa(runtime: Runtime) -> bool {
+        mac_terminal(runtime) || runtime == Runtime::ParakeetSherpa
+    }
+
+    fn dictation_ids(packages: &[&'static ModelPackage]) -> Vec<&'static str> {
+        packages.iter().filter(|p| p.kind == Kind::Dictation).map(|p| p.id).collect()
+    }
+
+    #[test]
+    fn linux_and_windows_see_parakeet_int8_only() {
+        assert_eq!(Runtime::ParakeetSherpa.accelerator(), crate::compute::Accelerator::OrtCpu);
+        assert_eq!(Runtime::ParakeetSherpa.loadable(false), cfg!(feature = "stt-sherpa"));
+        assert_eq!(dictation_ids(&available_for(&LINUX, sherpa_terminal)), vec!["parakeet_tdt_v3_int8"]);
+        // Même chargeable partout (l'app), aucun paquet MLX n'a d'ONNX
+        // Runtime : seul l'int8 reste.
+        assert_eq!(dictation_ids(&available_for(&LINUX, |_| true)), vec!["parakeet_tdt_v3_int8"]);
+        assert_eq!(dictation_ids(&loadable_for(&LINUX, sherpa_terminal)), vec!["parakeet_tdt_v3_int8"]);
+    }
+
+    #[test]
+    fn the_mac_terminal_sees_parakeet_int8_until_the_mlx_port() {
+        assert!(!Runtime::ParakeetMlx.loadable(false), "Parakeet MLX : pas encore porté");
+        let shown = available_for(&MAC, mac_terminal_with_sherpa);
+        assert_eq!(dictation_ids(&shown), vec!["parakeet_tdt_v3_int8"]);
+        // Le port fait (supposé, v2 compris) : le MLX passe devant, l'int8 ne
+        // se montre plus.
+        let ported = |r: Runtime| mac_terminal_with_sherpa(r) || r == Runtime::ParakeetMlx;
+        assert_eq!(dictation_ids(&available_for(&MAC, ported)), vec!["parakeet_tdt_v3", "parakeet_tdt_v2"]);
+    }
+
+    #[test]
+    fn an_mlx_choice_resolves_to_installed_parakeet_int8() {
+        let int8 = |p: &ModelPackage| p.id == "parakeet_tdt_v3_int8";
+        // Les poids MLX copiés d'un Mac ne se chargent pas, même présents.
+        let both = |p: &ModelPackage| p.family == "parakeet_tdt_v3";
+        assert_eq!(resolve("parakeet_tdt_v3", &LINUX, sherpa_terminal, int8).map(|p| p.id), Some("parakeet_tdt_v3_int8"));
+        assert_eq!(resolve("parakeet_tdt_v3", &LINUX, sherpa_terminal, both).map(|p| p.id), Some("parakeet_tdt_v3_int8"));
+        assert_eq!(resolve("parakeet_tdt_v3", &MAC, mac_terminal_with_sherpa, both).map(|p| p.id), Some("parakeet_tdt_v3_int8"));
+        // R34 : l'int8 enregistré, installé et chargeable, reste le choix.
+        let ported = |r: Runtime| mac_terminal_with_sherpa(r) || r == Runtime::ParakeetMlx;
+        assert_eq!(resolve("parakeet_tdt_v3_int8", &MAC, ported, both).map(|p| p.id), Some("parakeet_tdt_v3_int8"));
+        // Le repli ne télécharge rien.
+        assert_eq!(resolve("parakeet_tdt_v3", &LINUX, sherpa_terminal, |_| false), None);
+    }
+
+    #[test]
+    fn the_app_never_sees_a_sherpa_package() {
+        assert!(!Runtime::ParakeetSherpa.loadable(true), "l'app n'embarque pas ONNX Runtime");
+        let app = |r: Runtime| r.loadable(true);
+        for (name, list) in [
+            ("available_with", available_with(true)),
+            ("loadable_with", loadable_with(true)),
+            ("available_for", available_for(&MAC, app)),
+            ("loadable_for", loadable_for(&MAC, app)),
+        ] {
+            assert!(list.iter().all(|p| p.runtime != Runtime::ParakeetSherpa), "{name} : {:?}", ids(&list));
+        }
+        assert_eq!(ids(&available_with(true)), BEFORE_LOT_2_MAC_IDS);
+        // Un int8 posé par le terminal n'est jamais chargé par l'app.
+        let both = |p: &ModelPackage| p.family == "parakeet_tdt_v3";
+        assert_eq!(resolve("parakeet_tdt_v3_int8", &MAC, app, both).map(|p| p.id), Some("parakeet_tdt_v3"));
+        assert_eq!(resolve("parakeet_tdt_v3_int8", &MAC, app, |p| p.id == "parakeet_tdt_v3_int8"), None);
+    }
+
+    #[test]
+    fn removing_one_parakeet_keeps_the_other_in_the_same_folder() {
+        let root = scratch("partage-parakeet");
+        let (mlx, int8) = (package("parakeet_tdt_v3"), package("parakeet_tdt_v3_int8"));
+        sparse(&root, mlx, true);
+        sparse(&root, int8, true);
+        let folder = root.join("parakeet_tdt_v3");
+        assert_eq!(main_path_in(&root, mlx).parent(), Some(folder.as_path()));
+        assert_eq!(main_path_in(&root, int8).parent(), Some(folder.as_path()));
+        assert!(is_installed_in(&root, mlx) && is_installed_in(&root, int8));
+        remove_in(&root, int8).unwrap();
+        assert!(is_installed_in(&root, mlx), "le MLX garde ses fichiers");
+        assert!(!has_files_in(&root, int8), "plus rien de l'int8");
+        sparse(&root, int8, true);
+        remove_in(&root, mlx).unwrap();
+        assert!(is_installed_in(&root, int8), "l'int8 garde les siens");
+        assert!(!has_files_in(&root, mlx));
+        remove_in(&root, int8).unwrap();
+        assert!(!folder.exists(), "dossier de famille retiré");
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn parakeet_int8_is_pinned_to_the_sherpa_package() {
+        let int8 = package("parakeet_tdt_v3_int8");
+        assert_eq!(int8.family, "parakeet_tdt_v3");
+        assert_eq!(int8.kind, Kind::Dictation);
+        assert_eq!(int8.runtime, Runtime::ParakeetSherpa);
+        assert!(int8.recommended);
+        assert!(int8.licenses.get().contains("CC-BY-4.0"));
+        assert_eq!(int8.repo, "csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8");
+        assert_eq!(int8.revision, "ed5d745623472f97cfc2e6c2916ee248798fc5a8");
+        let files: Vec<(&str, u64)> =
+            std::iter::once((int8.file, int8.bytes)).chain(int8.companions.iter().map(|c| (c.file, c.bytes))).collect();
+        assert_eq!(
+            files,
+            [
+                ("encoder.int8.onnx", 652_282_294),
+                ("decoder.int8.onnx", 11_845_274),
+                ("joiner.int8.onnx", 6_355_277),
+                ("tokens.txt", 93_939),
+            ]
+        );
+        assert!(int8.companions.iter().all(|c| c.dest == c.file));
+        assert_eq!(
+            int8.url(),
+            "https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8/resolve/ed5d745623472f97cfc2e6c2916ee248798fc5a8/encoder.int8.onnx"
+        );
     }
 
     #[test]
@@ -2097,17 +2258,23 @@ mod tests {
     }
 
     #[test]
-    fn dictation_packages_each_have_their_own_folder() {
+    fn dictation_families_each_have_their_own_folder() {
         let dictation: Vec<&ModelPackage> = CATALOG.iter().filter(|p| p.kind == Kind::Dictation).collect();
-        assert_eq!(dictation.len(), 12);
+        assert_eq!(dictation.len(), 13);
         for p in &dictation {
-            assert_eq!(p.family, p.id, "{} : un dossier par paquet", p.id);
+            // Le dossier d'une famille porte le nom de son premier paquet :
+            // un Mac déjà installé garde le sien.
+            assert!(dictation.iter().any(|q| q.id == p.family), "{} : famille {} sans paquet du même nom", p.id, p.family);
         }
+        let shared: Vec<&str> = dictation.iter().filter(|p| p.family != p.id).map(|p| p.id).collect();
+        assert_eq!(shared, ["parakeet_tdt_v3_int8"], "seul l'int8 partage un dossier, celui de Parakeet v3");
     }
 
     #[test]
-    fn dictation_is_only_offered_to_the_app() {
-        assert!(available_with(false).iter().all(|p| p.kind == Kind::Speech));
+    fn dictation_reaches_the_terminal_only_through_sherpa() {
+        let terminal = dictation_ids(&available_with(false));
+        let expected: &[&str] = if cfg!(feature = "stt-sherpa") { &["parakeet_tdt_v3_int8"] } else { &[] };
+        assert_eq!(terminal, expected);
         assert_eq!(available_with(true).iter().filter(|p| p.kind == Kind::Dictation).count(), 12);
     }
 
@@ -2132,7 +2299,11 @@ mod tests {
         for p in CATALOG.iter().filter(|p| p.kind == Kind::Dictation) {
             assert_eq!(p.revision.len(), 40, "{}", p.id);
             assert!(p.companions.iter().all(|c| c.repo == p.repo && c.revision == p.revision), "{}", p.id);
-            let expected = if p.runtime == Runtime::PhononMlx { "phonon-2.bps.tar.zst" } else { "model.safetensors" };
+            let expected = match p.runtime {
+                Runtime::PhononMlx => "phonon-2.bps.tar.zst",
+                Runtime::ParakeetSherpa => "encoder.int8.onnx",
+                _ => "model.safetensors",
+            };
             assert_eq!(p.file, expected, "{}", p.id);
         }
     }
