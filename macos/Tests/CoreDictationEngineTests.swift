@@ -296,6 +296,16 @@ final class CoreDictationRoutingTests: XCTestCase {
     private let folder = URL(fileURLWithPath: "/m/parakeet_tdt_v3")
 
     /// Parakeet reste sur Swift : la bascule est fermée.
+    /// La bascule ne nomme que des modèles que le cœur sait dicter dans ce
+    /// binaire (`stt::recognizer_for`) : sinon chaque dictée de ce modèle
+    /// tomberait sur le repli.
+    func testEveryPortedModelIsOneTheCoreCanDictate() {
+        for id in CoreDictation.ported {
+            XCTAssertTrue(coreDictationSupports(id: id), "\(id) : le cœur ne le dicte pas (build sans mlx ?)")
+        }
+        XCTAssertFalse(coreDictationSupports(id: "inconnu"))
+    }
+
     func testParakeetStaysOnSwiftUntilTheSwitchIsFlipped() {
         XCTAssertTrue(CoreDictation.ported.isEmpty, "à ouvrir après la P5 de la tâche 14")
         let runner = SpeechModelRunner(load: { _ in Echo() }, gate: MLXGate(), clearCache: {})

@@ -402,6 +402,16 @@ final class DictationControllerTests: XCTestCase {
         defaults.removePersistentDomain(forName: "DictationStatsTests")
     }
 
+    /// Le délai montré est celui, de bout en bout, d'un énoncé clos : de la
+    /// fin de la phrase à son texte définitif. Jamais un temps de calcul.
+    func testTheLatencyHelpDescribesTheEndToEndDelayOfASentence() {
+        let help = DictationStats.help(latency: .milliseconds(120), memory: nil)
+        XCTAssertEqual(help, String(localized: "Delay: \("120 ms"), from the end of a sentence to its final text"))
+        for word in ["comput", "calcul"] {
+            XCTAssertFalse(help.lowercased().contains(word), help)
+        }
+    }
+
     func testTheMemoryShowsNextToTheLatency() async {
         XCTAssertNil(DictationStats.text(latency: nil, memory: nil), "rien tant que rien n'est mesuré")
         XCTAssertEqual(DictationStats.text(latency: .milliseconds(120), memory: 506_000_000), "120 ms · 506 Mo")

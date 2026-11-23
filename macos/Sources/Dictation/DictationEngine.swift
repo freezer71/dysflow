@@ -10,9 +10,10 @@ enum DictationEvent: Equatable, Sendable {
     case text(String, isFinal: Bool)
     /// Des tranches du spectre de la voix (voir `SpectrumAnalyzer`).
     case spectrum([[Float]])
-    /// Le délai du dernier texte : de la fin de l'audio qu'il couvre à son
-    /// arrivée (le temps de calcul d'une relecture). Seuls les modèles qui
-    /// relisent l'audio le disent.
+    /// Le délai du dernier texte, de bout en bout : de la fin de l'audio
+    /// qu'il couvre à son arrivée, attente du modèle comprise. Par le cœur,
+    /// celui d'un énoncé clos (`Committed.delay`) ; ce n'est pas un temps
+    /// de calcul. Seuls les modèles qui relisent l'audio le disent.
     case latency(Duration)
     /// La mémoire que MLX occupe (octets actifs : le modèle chargé et ses
     /// calculs, la voix aussi si elle est chargée), relevée après chaque

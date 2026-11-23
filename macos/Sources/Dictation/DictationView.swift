@@ -150,7 +150,8 @@ struct ModelLoadTime: View {
     }
 }
 
-/// Le délai du dernier texte et la mémoire que MLX occupe, discrets, à
+/// Le délai du dernier énoncé clos (de bout en bout : de la fin de la
+/// phrase à son texte définitif, attente comprise) et la mémoire que MLX occupe, discrets, à
 /// droite des barres (« 120 ms · 506 Mo ») : chacun absent tant qu'il n'est
 /// pas connu. Le réglage « Délai et mémoire » (section Dictée) les masque.
 struct DictationStats: View {
@@ -182,7 +183,7 @@ struct DictationStats: View {
     }
 
     static func help(latency: Duration?, memory: Int?) -> String {
-        [latency.map { String(localized: "Delay: \(format($0)), from the end of what was said to the text shown") },
+        [latency.map { String(localized: "Delay: \(format($0)), from the end of a sentence to its final text") },
          memory.map { String(localized: "Memory: \(size($0)), used by the model and its computations") }]
             .compactMap { $0 }.joined(separator: ". ")
     }

@@ -969,12 +969,12 @@
         }
       }
     },
-    "Delay: %@, from the end of what was said to the text shown" : {
+    "Delay: %@, from the end of a sentence to its final text" : {
       "localizations" : {
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Délai : %@, de la fin de ce qui a été dit au texte affiché"
+            "value" : "Délai : %@, de la fin d’une phrase à son texte définitif"
           }
         }
       }

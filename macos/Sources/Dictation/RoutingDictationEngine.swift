@@ -81,6 +81,9 @@ final class RoutingDictationEngine: DictationEngine {
         } catch {
             guard token == mine else { throw await stale(engine) }
             guard !stopped, Self.mayFallBack(after: error) else { throw error }
+            // La raison du refus (le cœur Rust, ou le moteur Swift) reste
+            // au journal : le repli, lui, ne la montre pas.
+            DictationLog.log.error("\(id, privacy: .public) refusé, repli sur la dictée de macOS : \(error.localizedDescription, privacy: .public)")
             // Il n'est plus le moteur actif : le repli ne l'arrête pas une
             // seconde fois (`retire`).
             active = nil

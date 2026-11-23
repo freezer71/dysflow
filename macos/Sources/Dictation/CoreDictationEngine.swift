@@ -30,6 +30,9 @@ struct CoreDictation: Sendable {
     /// (`docs/superpowers/plans/2026-11-22-moteurs-modeles.md`, tâches 14 et
     /// 15) : `["parakeet_tdt_v3", "parakeet_tdt_v2"]`. L'app doit alors être
     /// construite avec la feature `mlx` du moteur.
+    /// An id here must be accepted by `stt::recognizer_for` (la seule liste
+    /// des moteurs du cœur) : `coreDictationSupports(id)`, que
+    /// `testEveryPortedModelIsOneTheCoreCanDictate` vérifie.
     static let ported: Set<String> = []
 
     /// Pour les tests seulement : remplace `ported`.
