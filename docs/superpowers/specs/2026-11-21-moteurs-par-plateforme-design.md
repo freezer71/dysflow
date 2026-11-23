@@ -310,6 +310,42 @@ Code jetable, hors dépôt.
 Whisper small int8 en segments, 4 fils : 0,5–1,2 s par segment, 2,3 %
 d'erreur de mots.
 
+## Canary : les 21 échecs du cache sur le M5 (2026-11-23)
+
+`CanaryDecoderCacheTests` échoue sur le M5 (macOS 27.2) et passe en CI.
+Le cache n'est pas en cause : MLX calcule en TF32 sur ce GPU.
+
+- **Cause** : avec MLX 0.32.2 (celui de mlx-swift 0.32.3, au même commit
+  que celui de `mlx-sys`), un GPU de génération 17 ou plus (le M5 : `applegpu_g17g`), sous
+  macOS 26.2 ou plus, fait ses produits matriciels Float32 de plus d'une
+  ligne sur les accélérateurs neuronaux (NAX), en TF32 (mantisse de 10
+  bits). C'est le défaut (`MLX_ENABLE_TF32=1`). Une seule ligne (M = 1)
+  reste en vrai Float32. Le test compare donc deux précisions : la suite
+  entière, en TF32, et le pas de un jeton, en Float32. L'écart atteint
+  8,8e-4 à 2,2e-3 pour un seuil de 1e-4 (21 assertions d'écart sur 22 ;
+  argmax toujours identique). L'invite passe : les deux côtés y font un
+  produit de 5 lignes.
+- **Preuve** :
+  - avec `MLX_ENABLE_TF32=0`, les deux tests passent ; l'écart tombe à
+    4,8e-7 ;
+  - sur le processeur, l'écart est de 2,7e-7 et 4,8e-7 ;
+  - sur le GPU en TF32, c'est la suite entière qui s'éloigne du Float32 du
+    processeur (2,4e-3), pas le pas à pas (3,6e-4, hérité de l'invite) ;
+  - un seul produit [5, 32]·[32, 50] sur le GPU : 1,1e-2 d'écart sur la
+    ligne 0 en TF32, 0 sans ; la même ligne seule (M = 1) : 2,9e-6.
+- **La CI** n'a pas de NAX : `macos-26-arm64` (image 20261117.0516,
+  macOS 26.7.2), puce M1 virtualisée d'après GitHub (le journal ne la
+  nomme pas), même mlx-swift 0.32.3. Avec le même défaut TF32 et un macOS
+  assez récent, seule la génération du GPU coupe le NAX.
+- **Le texte ne change pas** : Canary 1b-v2 q8, cache contre suite
+  entière, mêmes jetons et même texte sur les trois audios (français,
+  anglais, 12 s), en TF32 comme sans. Écart des logits au plus 0,048 pour
+  des logits de 60 ; marge minimale entre les deux premiers jetons 0,38.
+- **Pour le portage (lot 6)** : la copie Rust de MLX a le même défaut. Un
+  test de parité en Float32 qui compare deux formes de calcul (M = 1
+  contre M > 1) doit tourner sur le processeur, ou fixer le TF32, sinon il
+  échoue sur un M5 et passe en CI.
+
 ## Décisions
 
 **Lot 0 (2026-11-21) : deux copies de MLX côte à côte, cohabitation
