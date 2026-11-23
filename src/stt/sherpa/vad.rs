@@ -139,6 +139,60 @@ mod tests {
         assert!(!detector.is_speech(&[0.0; FRAME]).unwrap(), "du silence");
     }
 
+    /// Un faux `silero_vad.onnx`, de la bonne taille (`stt::SILERO_BYTES`)
+    /// mais d'un autre contenu, donné à sherpa-onnx : ce que fait
+    /// `SileroDetector::new`, mesuré dans un processus fils (un abandon
+    /// d'ONNX Runtime ou de protobuf y est un signal, pas la perte du
+    /// lanceur d'essais). Le fils écrit `ISSUE : …` ; le père l'affiche avec
+    /// le statut de sortie. Lancé par `scripts/ort-gate.sh`.
+    ///
+    /// Mesuré (sherpa-onnx 2.0.2, ORT 1.31.0, macOS) : une erreur lisible,
+    /// sans abandon : « Protobuf parsing failed » sur la sortie d'erreur de
+    /// sherpa-onnx, puis `create` rend une erreur (« sherpa-onnx ne crée pas
+    /// Silero VAD »), statut 0. Le paquet ne va plus jusque-là : son Silero
+    /// est vérifié par empreinte avant (`stt::sherpa_detector`).
+    #[test]
+    #[ignore = "demande la bibliothèque de sherpa-onnx et ONNX Runtime (scripts/ort-gate.sh)"]
+    fn a_garbage_silero_model_of_the_right_size_is_measured_in_a_child() {
+        const CHILD: &str = "DYSFLOW_SILERO_GARBAGE_CHILD";
+        if let Some(model) = std::env::var_os(CHILD) {
+            match SileroDetector::new(Path::new(&model)) {
+                Ok(_) => println!("ISSUE : chargé sans erreur"),
+                Err(err) => println!("ISSUE : erreur : {err:#}"),
+            }
+            return;
+        }
+        let model = crate::paths::test_scratch("silero-faux").join("silero_vad.onnx");
+        let mut state: u32 = 0x2545_f491;
+        let garbage: Vec<u8> = (0..crate::stt::SILERO_BYTES)
+            .map(|_| {
+                state ^= state << 13;
+                state ^= state >> 17;
+                state ^= state << 5;
+                state as u8
+            })
+            .collect();
+        std::fs::write(&model, garbage).unwrap();
+        let name = format!("{}::a_garbage_silero_model_of_the_right_size_is_measured_in_a_child", module_path!());
+        let name = name.strip_prefix("dysflow::").unwrap_or(&name).to_string();
+        let out = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([name.as_str(), "--exact", "--ignored", "--nocapture", "--test-threads=1"])
+            .env(CHILD, &model)
+            .output()
+            .unwrap();
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        // La ligne du fils suit « test … ... » sur la même ligne.
+        let issue = stdout.lines().find_map(|line| line.split_once("ISSUE : ").map(|(_, issue)| issue));
+        println!("Silero faux, {} octets : statut {} ; {issue:?}", crate::stt::SILERO_BYTES, out.status);
+        println!("sortie d'erreur du fils :\n{stderr}");
+        assert!(
+            out.status.success() && issue.is_some_and(|line| line.contains("erreur")),
+            "le faux modèle n'est pas refusé proprement : statut {}, {issue:?}\n{stdout}\n{stderr}",
+            out.status
+        );
+    }
+
     /// Silero chargé et lancé par sherpa-onnx, qui crée son propre
     /// environnement ONNX Runtime, ne laisse aucune trace de la télémétrie
     /// d'ORT (`onnx::assert_no_telemetry_trace`). Mêmes variables que

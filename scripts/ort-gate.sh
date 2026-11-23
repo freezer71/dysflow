@@ -184,7 +184,7 @@ dictation_tests() {
     if [ -n "$WINDOWS" ]; then
         native=$(cygpath -w "$models")
     fi
-    ignored_tests stt::sherpa::vad 2 DYSFLOW_SILERO_VAD="$native/silero_vad.onnx"
+    ignored_tests stt::sherpa::vad 3 DYSFLOW_SILERO_VAD="$native/silero_vad.onnx"
     ignored_tests onnx::tests::kokoro_leaves_no_telemetry_trace 1 DYSFLOW_KOKORO_DIR="$native/kokoro"
     if [ -z "$PARAKEET" ]; then
         echo "Parakeet : DYSFLOW_MODELS non posé, l'échantillon n'est pas lu depuis $models"

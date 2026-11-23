@@ -13,7 +13,7 @@ pub mod wer;
 pub mod sherpa;
 
 use crate::models::ModelPackage;
-use anyhow::Result;
+use anyhow::{Context, Result};
 use dictation::Engine;
 use std::path::{Path, PathBuf};
 
@@ -21,9 +21,13 @@ use std::path::{Path, PathBuf};
 /// (`scripts/package.sh` ; empreinte épinglée dans `scripts/paquet-commun.sh`,
 /// celle de la porte).
 pub const SILERO_FILE: &str = "silero_vad.onnx";
-/// Sa taille : un fichier tronqué ou remplacé est refusé avant d'atteindre
-/// sherpa-onnx.
+/// Sa taille : un fichier tronqué est refusé avant d'atteindre sherpa-onnx,
+/// avec le nombre d'octets trouvés.
 pub const SILERO_BYTES: u64 = 643_854;
+/// Son empreinte SHA-256, celle de `SILERO_SHA256` dans
+/// `scripts/paquet-commun.sh` (un essai le vérifie) : un fichier de la bonne
+/// taille mais d'un autre contenu est refusé aussi, avant sherpa-onnx.
+pub const SILERO_SHA256: &str = "9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6";
 /// Vrai pour le binaire d'un paquet : `scripts/package.sh` le construit avec
 /// `DYSFLOW_PACKAGE_BUILD=1`. Un paquet doit avoir `SILERO_FILE` ; un binaire
 /// de développement (`cargo build`, les essais) peut s'en passer.
@@ -41,23 +45,47 @@ enum Detector {
 /// Le détecteur de parole des moteurs sherpa, choisi ici et seulement ici
 /// (R46) : Silero VAD quand le paquet l'a (`silero` : `SILERO_FILE` à côté du
 /// binaire), sinon le détecteur d'énergie. Un paquet (`packaged`) sans lui,
-/// ou avec un fichier d'une autre taille, est une installation abîmée :
-/// erreur, qui dit de réinstaller le paquet entier.
+/// ou avec un fichier d'une autre taille ou d'une autre empreinte SHA-256,
+/// est une installation abîmée : erreur, qui dit de réinstaller le paquet
+/// entier.
 ///
 /// La porte mesurée de la tâche 10 (D5, au calme) peut encore changer ce
 /// choix : il ne tient qu'à cette fonction.
 #[cfg_attr(not(feature = "stt-sherpa"), allow(dead_code))]
 fn sherpa_detector(silero: Option<&Path>, packaged: bool) -> Result<Detector> {
+    sherpa_detector_pinned(silero, packaged, SILERO_BYTES, SILERO_SHA256)
+}
+
+/// `sherpa_detector`, avec la taille et l'empreinte attendues en argument
+/// (les essais en donnent d'autres que celles du vrai Silero).
+#[cfg_attr(not(feature = "stt-sherpa"), allow(dead_code))]
+fn sherpa_detector_pinned(
+    silero: Option<&Path>,
+    packaged: bool,
+    expected_bytes: u64,
+    expected_sha256: &str,
+) -> Result<Detector> {
     let reinstall = crate::tr!(
         "reinstall the whole Dysflow package",
         "réinstallez le paquet de Dysflow en entier"
     );
     let size = silero.and_then(|path| std::fs::metadata(path).ok().map(|m| (path, m.len())));
     match size {
-        Some((path, SILERO_BYTES)) => Ok(Detector::Silero(path.to_path_buf())),
+        Some((path, bytes)) if bytes == expected_bytes => {
+            let found = sha256_of(path)?;
+            anyhow::ensure!(
+                found == expected_sha256,
+                crate::tr!(
+                    en = "damaged installation: {} has SHA-256 {found} instead of {expected_sha256}; {reinstall}",
+                    fr = "installation abîmée : {} a l'empreinte SHA-256 {found} au lieu de {expected_sha256} ; {reinstall}",
+                    path.display()
+                )
+            );
+            Ok(Detector::Silero(path.to_path_buf()))
+        }
         Some((path, bytes)) => anyhow::bail!(crate::tr!(
-            en = "damaged installation: {} is {bytes} bytes instead of {SILERO_BYTES}; {reinstall}",
-            fr = "installation abîmée : {} fait {bytes} octets au lieu de {SILERO_BYTES} ; {reinstall}",
+            en = "damaged installation: {} is {bytes} bytes instead of {expected_bytes}; {reinstall}",
+            fr = "installation abîmée : {} fait {bytes} octets au lieu de {expected_bytes} ; {reinstall}",
             path.display()
         )),
         None if packaged => anyhow::bail!(crate::tr!(
@@ -67,6 +95,16 @@ fn sherpa_detector(silero: Option<&Path>, packaged: bool) -> Result<Detector> {
         )),
         None => Ok(Detector::Energy),
     }
+}
+
+/// L'empreinte SHA-256 de `path`, en hexadécimal minuscule.
+#[cfg_attr(not(feature = "stt-sherpa"), allow(dead_code))]
+fn sha256_of(path: &Path) -> Result<String> {
+    use sha2::Digest;
+    let bytes = std::fs::read(path).with_context(|| {
+        crate::tr!(en = "cannot read {}", fr = "lecture impossible : {}", path.display())
+    })?;
+    Ok(sha2::Sha256::digest(&bytes).iter().map(|b| format!("{b:02x}")).collect())
 }
 
 /// Le moteur de dictée d'un paquet installé, prêt à passer à
@@ -131,15 +169,24 @@ mod tests {
         path
     }
 
+    /// L'empreinte de `file_of(_, SILERO_BYTES)` : 643 854 octets nuls.
+    const ZEROS_SHA256: &str = "a634a455f2b22a67fefbdb1e442257ddef8a558ce3a512c426fbb02738494517";
+
     #[test]
     fn with_its_silero_model_a_sherpa_engine_detects_speech_with_silero() {
         let model = file_of("silero-present", SILERO_BYTES);
         for packaged in [true, false] {
             assert_eq!(
-                sherpa_detector(Some(&model), packaged).unwrap(),
+                sherpa_detector_pinned(Some(&model), packaged, SILERO_BYTES, ZEROS_SHA256).unwrap(),
                 Detector::Silero(model.clone())
             );
         }
+    }
+
+    #[test]
+    fn the_silero_hash_is_the_one_the_package_pins() {
+        let script = include_str!("../../scripts/paquet-commun.sh");
+        assert!(script.contains(&format!("SILERO_SHA256={SILERO_SHA256}")), "paquet-commun.sh");
     }
 
     #[test]
@@ -166,6 +213,21 @@ mod tests {
             let err = sherpa_detector(Some(&truncated), packaged).unwrap_err().to_string();
             assert!(err.contains(&(SILERO_BYTES / 2).to_string()), "{err}");
             assert!(err.contains(&SILERO_BYTES.to_string()), "{err}");
+        }
+    }
+
+    /// Un faux Silero de la bonne taille, mais d'un autre contenu : refusé
+    /// par son empreinte, avant sherpa-onnx (qui, lui, rendrait « Protobuf
+    /// parsing failed », mesuré par
+    /// `sherpa::vad::tests::a_garbage_silero_model_of_the_right_size_is_measured_in_a_child`).
+    #[test]
+    fn a_silero_model_of_the_right_size_but_another_content_is_refused_by_its_hash() {
+        let garbage = file_of("silero-faux-contenu", SILERO_BYTES);
+        for packaged in [true, false] {
+            let err = sherpa_detector(Some(&garbage), packaged).unwrap_err().to_string();
+            assert!(err.contains(&garbage.display().to_string()), "{err}");
+            assert!(err.contains("SHA-256"), "{err}");
+            assert!(err.contains("réinstallez le paquet") || err.contains("reinstall the whole"), "{err}");
         }
     }
 

@@ -40,6 +40,9 @@ regex = "1.10"
 dirs = "7"
 anyhow = "1.0"
 hound = "3.5"
+# L'empreinte de silero_vad.onnx, vérifiée au chargement. La version déjà
+# verrouillée par pdf-extract (lopdf) : aucune crate de plus.
+sha2 = "0.10.9"
 # ureq 2 et pas 3 : le téléchargement des modèles s'appuie sur un délai par
 # lecture (`timeout_read`), que ureq 3 remplace par une limite sur tout le
 # corps — incompatible avec 342 Mo sur une connexion lente.
