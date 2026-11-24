@@ -1,5 +1,5 @@
 [workspace]
-members = [".", "ffi", "ffi/bindgen"]
+members = [".", "ffi", "ffi/bindgen", "app"]
 
 [package]
 name = "dysflow"
