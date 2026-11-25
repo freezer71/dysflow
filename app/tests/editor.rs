@@ -638,10 +638,38 @@ fn focused_on(cx: &mut VisualTestContext, handle: &gpui::FocusHandle) -> bool {
     cx.update(|window, _| handle.is_focused(window))
 }
 
-/// « Annuler » s'atteint au clavier : Tab quitte le texte pour lui (sans
-/// rien écrire), Entrée le presse ; Tab, Maj+Tab font le tour de la barre.
+/// Choix de l'utilisateur : Tab et Maj+Tab indentent et désindentent dans
+/// le texte, comme avant ; ils ne quittent pas le champ.
 #[gpui::test]
-fn cancel_is_reachable_from_the_keyboard(cx: &mut TestAppContext) {
+fn tab_indents_a_list_line(cx: &mut TestAppContext) {
+    let session = session();
+    open_text(&session, "- un\n- deux");
+    let (main, cx) = window(cx, &session);
+    open_editor(&main, cx);
+    let before = draft(&main, cx);
+    cx.simulate_keystrokes("tab");
+    draw(cx);
+    let indented = draft(&main, cx);
+    assert!(
+        editor_focused(&main, cx),
+        "Tab garde le focus dans le texte"
+    );
+    assert_ne!(indented, before, "Tab indente");
+    assert!(
+        indented.starts_with(char::is_whitespace) && indented.trim_start().starts_with("- un"),
+        "la ligne de liste est indentée : {indented:?}"
+    );
+    cx.simulate_keystrokes("shift-tab");
+    draw(cx);
+    assert_eq!(draft(&main, cx), before, "Maj+Tab désindente");
+    assert!(editor_focused(&main, cx));
+}
+
+/// La barre de l'éditeur s'atteint par F6 : « Annuler », Tab vers
+/// « Terminé », Tab de nouveau vers « Annuler », Entrée le presse. Aucune de
+/// ces touches ne s'écrit dans le texte.
+#[gpui::test]
+fn f6_reaches_the_editor_buttons(cx: &mut TestAppContext) {
     let session = session();
     open_text(&session, "Un. Deux.");
     let (main, cx) = window(cx, &session);
@@ -651,26 +679,29 @@ fn cancel_is_reachable_from_the_keyboard(cx: &mut TestAppContext) {
     let (cancel, done) = editor.read_with(cx, |e, _| {
         (e.cancel_focus().clone(), e.done_focus().clone())
     });
-    cx.simulate_keystrokes("tab");
+    cx.simulate_keystrokes("f6");
     draw(cx);
-    assert!(focused_on(cx, &cancel), "Tab : « Annuler »");
-    assert_eq!(draft(&main, cx), "xUn. Deux.", "Tab ne s'écrit pas");
+    assert!(focused_on(cx, &cancel), "F6 : « Annuler »");
     cx.simulate_keystrokes("tab");
     assert!(focused_on(cx, &done), "Tab : « Terminé »");
-    cx.simulate_keystrokes("tab");
-    assert!(editor_focused(&main, cx), "Tab : retour au texte");
     cx.simulate_keystrokes("shift-tab");
+    assert!(focused_on(cx, &cancel), "Maj+Tab : « Annuler »");
+    cx.simulate_keystrokes("tab");
+    assert!(focused_on(cx, &done));
+    cx.simulate_keystrokes("f6");
     assert!(
         editor_focused(&main, cx),
-        "Maj+Tab dans le texte : le champ le garde"
+        "F6 sur un bouton : retour au texte"
     );
-    cx.simulate_keystrokes("tab");
-    cx.simulate_keystrokes("tab shift-tab");
-    assert!(focused_on(cx, &cancel), "Maj+Tab : retour à « Annuler »");
-    // Les touches du lecteur ne partent pas d'un bouton de l'éditeur.
+    assert_eq!(draft(&main, cx), "xUn. Deux.", "ni F6 ni Tab ne s'écrivent");
+    cx.simulate_keystrokes("f6");
+    // Les touches du lecteur ne partent pas d'un bouton de l'éditeur, et ne
+    // s'écrivent nulle part.
     let before = settle(&session);
-    cx.simulate_keystrokes("right");
+    cx.simulate_keystrokes("right space n");
     assert_eq!(settle(&session).sentence, before.sentence);
+    assert!(!settle(&session).playing);
+    assert!(focused_on(cx, &cancel));
     press_and_release(cx, "enter");
     assert!(
         !editing(&main, cx),
@@ -682,18 +713,58 @@ fn cancel_is_reachable_from_the_keyboard(cx: &mut TestAppContext) {
     assert_eq!(opened_text(&session).as_deref(), Some("Un. Deux."));
 }
 
-/// Échap sur un bouton de la barre de l'éditeur valide, comme dans le texte.
+/// Entrée sur « Terminé » (atteint par F6 puis Tab) valide.
 #[gpui::test]
-fn escape_on_an_editor_button_validates(cx: &mut TestAppContext) {
+fn enter_on_done_validates(cx: &mut TestAppContext) {
     let session = session();
     open_text(&session, "Un. Deux.");
     let (main, cx) = window(cx, &session);
     open_editor(&main, cx);
-    cx.simulate_keystrokes("x tab");
-    cx.simulate_keystrokes("escape");
+    cx.simulate_keystrokes("x f6 tab");
+    press_and_release(cx, "enter");
     assert!(!editing(&main, cx));
     wait_for(&session, "le texte modifié", |s| s.revision == 2);
     settle(&session);
     assert_eq!(opened_text(&session).as_deref(), Some("xUn. Deux."));
+}
+
+/// Échap sur un bouton de la barre revient au texte, sans valider ; Échap
+/// dans le texte valide ensuite, comme avant.
+#[gpui::test]
+fn escape_on_an_editor_button_goes_back_to_the_text(cx: &mut TestAppContext) {
+    let session = session();
+    open_text(&session, "Un. Deux.");
+    let (main, cx) = window(cx, &session);
+    open_editor(&main, cx);
+    cx.simulate_keystrokes("x f6");
+    cx.simulate_keystrokes("escape");
+    draw(cx);
+    assert!(editing(&main, cx), "l'éditeur reste ouvert");
+    assert!(editor_focused(&main, cx), "retour au texte");
+    assert_eq!(draft(&main, cx), "xUn. Deux.");
+    assert_eq!(settle(&session).revision, 1, "rien n'est validé");
+    cx.simulate_keystrokes("escape");
+    assert!(!editing(&main, cx));
+    wait_for(&session, "le texte modifié", |s| s.revision == 2);
     assert_eq!(cx.windows().len(), 1);
+}
+
+/// L'aide et la barre de l'éditeur disent F6, en français et en anglais ;
+/// l'infobulle d'« Annuler » ne parle plus de Tab.
+#[test]
+fn the_help_names_f6_for_the_editor_buttons() {
+    use dysflow::i18n::{with_ui_lang, UiLang};
+    use dysflow_app::help::editor_rows;
+    use dysflow_app::keymap::Modifier;
+    for (lang, word) in [(UiLang::Fr, "Annuler"), (UiLang::En, "Cancel")] {
+        for modifier in [Modifier::Command, Modifier::Control] {
+            let rows = with_ui_lang(lang, || editor_rows(modifier));
+            let f6 = rows
+                .iter()
+                .find(|(keys, _)| keys == "F6")
+                .expect("une ligne F6");
+            assert!(f6.1.contains(word), "{lang:?} : {}", f6.1);
+            assert!(rows.iter().any(|(keys, _)| keys.starts_with("Tab ⇧Tab")));
+        }
+    }
 }

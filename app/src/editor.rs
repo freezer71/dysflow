@@ -9,8 +9,10 @@
 //! puis repart si elle lisait. Un texte inchangé ne recharge rien.
 //! « Annuler » oublie les modifications. Un texte vidé ne ferme rien : le
 //! document est gardé, comme dans l'app Mac, et la barre d'état le dit.
-//! Tab quitte le texte pour « Annuler », puis « Terminé » (Entrée ou Espace
-//! les pressent) ; le retrait d'une ligne reste à ⌘] (Ctrl+] ailleurs).
+//! Tab et Maj+Tab indentent et désindentent dans le texte (⌘] / Ctrl+]
+//! aussi). F6 passe du texte à la barre : « Annuler », puis Tab ou Maj+Tab
+//! vers « Terminé » ; Entrée ou Espace pressent le bouton ; F6 ou Échap
+//! reviennent au texte, sans valider.
 //!
 //! Le texte à modifier vient du fil du lecteur (`editable_markdown`) par
 //! une question posée sur l'exécuteur d'arrière-plan (voir
@@ -28,7 +30,7 @@ use gpui::{
     IntoElement, SharedString, Window,
 };
 use gpui_component::button::{Button, ButtonVariants};
-use gpui_component::input::{Enter, Escape, IndentInline, InputEvent, Textarea, TextareaState};
+use gpui_component::input::{Enter, Escape, InputEvent, Textarea, TextareaState};
 use gpui_component::{Icon, Sizable};
 use gpui_kit_assets::IconName;
 
@@ -271,15 +273,24 @@ impl TextEditor {
             || self.done_focus.is_focused(window)
     }
 
-    /// Tab, Maj+Tab sur un bouton de la barre : texte → Annuler → Terminé →
-    /// texte. `true` si la touche est prise.
-    fn cycle_focus(&mut self, back: bool, window: &mut Window, cx: &mut Context<Self>) -> bool {
-        let on_cancel = self.cancel_focus.is_focused(window);
-        let on_done = self.done_focus.is_focused(window);
-        match (on_cancel, on_done, back) {
-            (true, _, false) => self.done_focus.focus(window, cx),
-            (_, true, true) => self.cancel_focus.focus(window, cx),
-            (true, _, true) | (_, true, false) => self.focus(window, cx),
+    /// Un bouton de la barre a le focus.
+    fn on_bar(&self, window: &Window) -> bool {
+        self.cancel_focus.is_focused(window) || self.done_focus.is_focused(window)
+    }
+
+    /// Les touches de la barre de l'éditeur (F6, puis Tab, Maj+Tab, Échap
+    /// sur ses boutons). `true` si la touche est prise.
+    fn bar_key(&mut self, key: &str, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        let on_bar = self.on_bar(window);
+        match key {
+            // F6 : du texte à « Annuler », d'un bouton au texte.
+            "f6" if on_bar => self.focus(window, cx),
+            "f6" if self.focus_handle(cx).is_focused(window) => self.cancel_focus.focus(window, cx),
+            // Tab, Maj+Tab : d'un bouton à l'autre (ils ne sont que deux).
+            "tab" if self.cancel_focus.is_focused(window) => self.done_focus.focus(window, cx),
+            "tab" if self.done_focus.is_focused(window) => self.cancel_focus.focus(window, cx),
+            // Échap sur un bouton : retour au texte, sans valider.
+            "escape" if on_bar => self.focus(window, cx),
             _ => return false,
         }
         true
@@ -349,32 +360,18 @@ impl Render for TextEditor {
             // non arrêtée, la plateforme la taperait ensuite comme du texte.
             // Entrée seule ne remonte pas : le champ y va à la ligne.
             .on_action(cx.listener(|_, _: &Enter, _, _| {}))
-            // Tab dans le texte : le focus va à « Annuler » (le retrait reste
-            // à ⌘] / Ctrl+]). Pris avant le champ, qui indenterait.
-            .capture_action(cx.listener(|this, _: &IndentInline, window, cx| {
-                if this.focus_handle(cx).is_focused(window) {
-                    this.cancel_focus.focus(window, cx);
-                    cx.stop_propagation();
-                }
-            }))
-            // Sur un bouton de la barre : Tab et Maj+Tab passent au suivant,
-            // Échap valide comme dans le texte. Entrée et Espace pressent le
-            // bouton.
+            // F6 (du texte à la barre et retour), Tab et Maj+Tab entre ses
+            // boutons, Échap sur un bouton (retour au texte). Dans le texte,
+            // Tab et Maj+Tab restent au champ, qui indente. Entrée et Espace
+            // pressent le bouton focalisé (gpui-component, au relâchement).
             .on_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, window, cx| {
-                let k = &event.keystroke;
-                let m = k.modifiers;
-                let plain = !m.control && !m.alt && !m.platform && !m.function;
-                if !plain {
+                let m = event.keystroke.modifiers;
+                if m.control || m.alt || m.platform || m.function {
                     return;
                 }
-                if k.key == "tab" && this.cycle_focus(m.shift, window, cx) {
+                if this.bar_key(&event.keystroke.key, window, cx) {
+                    // Arrêtée : jamais tapée ensuite comme du texte.
                     cx.stop_propagation();
-                } else if k.key == "escape"
-                    && !m.shift
-                    && (this.cancel_focus.is_focused(window) || this.done_focus.is_focused(window))
-                {
-                    cx.stop_propagation();
-                    cx.emit(EditorEvent::Done);
                 }
             }))
             .child(
@@ -431,7 +428,9 @@ impl Render for TextEditor {
                             .items_center()
                             .gap(px(6.0))
                             .child(keycap(tr!("Esc", "Échap")))
-                            .child(tr!("confirms", "valide")),
+                            .child(tr!("confirms", "valide"))
+                            .child(keycap("F6"))
+                            .child(tr!("buttons", "boutons")),
                     )
                     .child(
                         div().debug_selector(|| "editor-cancel".to_string()).child(
@@ -445,7 +444,7 @@ impl Render for TextEditor {
                                 .tooltip(format!(
                                     "{} ({})",
                                     tr!("Forget the changes", "Oublier les modifications"),
-                                    tr!("Tab, then Enter", "Tab, puis Entrée")
+                                    tr!("F6, then Enter", "F6, puis Entrée")
                                 ))
                                 .on_click(cx.listener(|_, _, _, cx| cx.emit(EditorEvent::Cancel))),
                         ),

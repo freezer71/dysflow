@@ -141,28 +141,69 @@ pub fn rows(modifier: Modifier) -> Vec<HelpRow> {
     ]
 }
 
+/// Les touches de l'éditeur du texte (`e`), à part : elles ne passent pas
+/// par `keymap` (le champ et sa barre les prennent).
+pub fn editor_rows(modifier: Modifier) -> Vec<(String, &'static str)> {
+    use dysflow::tr;
+    let cmd = |key: &str| match modifier {
+        Modifier::Command => format!("⌘{key}"),
+        Modifier::Control => format!("Ctrl+{key}"),
+    };
+    vec![
+        (
+            format!("{} {}", tr!("Esc", "Échap"), cmd("↩")),
+            tr!("Apply the changes", "Appliquer les modifications"),
+        ),
+        (
+            format!("Tab ⇧Tab {} {}", cmd("]"), cmd("[")),
+            tr!("Indent / outdent", "Indenter / désindenter"),
+        ),
+        (
+            "F6".into(),
+            tr!(
+                "To the Cancel and Done buttons (Tab between them), and back",
+                "Vers les boutons Annuler et Terminé (Tab de l'un à l'autre), et retour"
+            ),
+        ),
+    ]
+}
+
+/// Une ligne de l'aide : la touche dans sa pastille, puis ce qu'elle fait.
+fn key_line(row: HelpRow, p: &Palette) -> impl IntoElement {
+    div()
+        .flex()
+        .items_center()
+        .gap(px(16.0))
+        .py(px(3.0))
+        .child(
+            div().w(px(104.0)).flex().child(
+                div()
+                    .px(px(7.0))
+                    .py(px(2.0))
+                    .rounded(px(6.0))
+                    .bg(p.keycap())
+                    .text_color(p.text())
+                    .font_weight(gpui::FontWeight::MEDIUM)
+                    .child(SharedString::from(row.keys)),
+            ),
+        )
+        .child(div().text_color(p.chrome()).child(row.label))
+}
+
 /// La carte de l'aide, centrée sur la lecture. Trop haute pour la fenêtre,
-/// elle défile entre son titre et son pied.
+/// elle défile entre son titre et son pied. Les touches de l'éditeur
+/// suivent celles du lecteur, sous leur propre titre.
 pub fn card(modifier: Modifier, p: &Palette) -> impl IntoElement {
-    let keys = rows(modifier).into_iter().map(|row| {
-        div()
-            .flex()
-            .items_center()
-            .gap(px(16.0))
-            .py(px(3.0))
-            .child(
-                div().w(px(104.0)).flex().child(
-                    div()
-                        .px(px(7.0))
-                        .py(px(2.0))
-                        .rounded(px(6.0))
-                        .bg(p.keycap())
-                        .text_color(p.text())
-                        .font_weight(gpui::FontWeight::MEDIUM)
-                        .child(SharedString::from(row.keys)),
-                ),
-            )
-            .child(div().text_color(p.chrome()).child(row.label))
+    let keys = rows(modifier).into_iter().map(|row| key_line(row, p));
+    let editor = editor_rows(modifier).into_iter().map(|(keys, label)| {
+        key_line(
+            HelpRow {
+                keys,
+                label,
+                presses: Vec::new(),
+            },
+            p,
+        )
     });
     div()
         .id("aide")
@@ -193,7 +234,16 @@ pub fn card(modifier: Modifier, p: &Palette) -> impl IntoElement {
                 .flex_shrink(1.0)
                 .min_h(px(0.0))
                 .overflow_y_scroll()
-                .children(keys),
+                .children(keys)
+                .child(
+                    div()
+                        .pt(px(10.0))
+                        .pb(px(2.0))
+                        .font_weight(gpui::FontWeight::SEMIBOLD)
+                        .text_color(p.text())
+                        .child(dysflow::tr!("In the editor (e)", "Dans l'éditeur (e)")),
+                )
+                .children(editor),
         )
         .child(
             div()
