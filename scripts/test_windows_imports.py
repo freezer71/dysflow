@@ -80,9 +80,10 @@ def package(root):
     write(root, "vcruntime140.dll", ["KERNEL32.dll", "api-ms-win-crt-runtime-l1-1-0.dll"])
     write(root, "msvcp140.dll", ["VCRUNTIME140.dll", "KERNEL32.dll"])
     write(root, "dysflow-espeak.exe", ["KERNEL32.dll", "ADVAPI32.dll", "api-ms-win-crt-stdio-l1-1-0.dll"])
-    write(root, "dysflow-app.exe", ["KERNEL32.dll", "USER32.dll", "d3d11.dll", "dxgi.dll", "dcomp.dll", "dwrite.dll",
-                                    "UIAutomationCore.dll", "combase.dll", "RPCRT4.dll", "VCRUNTIME140.dll",
-                                    "onnxruntime.dll", "api-ms-win-crt-heap-l1-1-0.dll"])
+    # ort est en load-dynamic : l'app n'importe pas onnxruntime.dll.
+    write(root, "dysflow-app.exe", ["KERNEL32.dll", "USER32.dll", "d3d11.dll", "dxgi.dll", "dcomp.dll",
+                                    "dwrite.dll", "UIAutomationCore.dll", "combase.dll", "RPCRT4.dll",
+                                    "VCRUNTIME140.dll", "api-ms-win-crt-heap-l1-1-0.dll"])
     (Path(root) / "espeak-ng-data").mkdir()
     (Path(root) / "espeak-ng-data" / "fr_dict").write_bytes(b"pas un binaire")
 

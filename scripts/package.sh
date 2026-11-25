@@ -90,7 +90,9 @@ DYSFLOW_PACKAGE_BUILD=1 cargo build --release --locked --features "$FEATURES" "$
 # L'app de bureau (GPUI), séparée du terminal : ses features sont les
 # siennes, et `test-paths` (dev-dependency du cœur, pour les essais) n'entre
 # jamais dans un paquet : cargo build ne compile pas les dev-dependencies.
-# Sans --config de sherpa-onnx : elle ne lie pas la dictée.
+# Sans "$@" (les --config de sherpa-onnx) : l'app ne lie pas la dictée. Le
+# dossier de cible est le même que pour dysflow : CARGO_BUILD_TARGET, quand il
+# est posé, vaut pour les deux builds, et la copie plus bas le suit.
 APP_FEATURES=""
 if [ -n "$APP" ]; then
     case ",$FEATURES," in *,kokoro-onnx,*) APP_FEATURES="onnx" ;; esac
@@ -112,8 +114,12 @@ fi
 # paquet (README, notes de publication : 2.39, Ubuntu 24.04). GPUI (Vulkan,
 # xkbcommon, Wayland, fontconfig) ne la relève pas en silence : un binaire qui
 # demande plus fait échouer le paquet, et le plancher se décide, il ne se
-# subit pas. GLIBC_MAX pour la changer en connaissance de cause (par exemple
-# sur une machine plus récente, hors publication).
+# subit pas. Sur ubuntu-24.04 (glibc 2.39), le runner de la CI et de la
+# publication, ce contrôle protège surtout d'un changement de runner : la
+# glibc de l'hôte est le plancher de fait, et GPUI se lie aux bibliothèques
+# d'Ubuntu 24.04 sans la relever. GLIBC_MAX sert à
+# construire en local sur une machine plus récente : jamais en CI ni en
+# publication.
 if [ "$(uname -s)" = Linux ]; then
     "$PYTHON" -I scripts/glibc-max.py "${GLIBC_MAX:-2.39}" "$OUT/dysflow" ${APP:+"$OUT/dysflow-app"}
 fi

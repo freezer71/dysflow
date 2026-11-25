@@ -63,9 +63,27 @@ jobs:
           # push de tag, `inputs` est vide : d'où le test de l'événement.
           ref: ${{ github.event_name == 'workflow_dispatch' && !inputs.publier && github.ref || env.TAG }}
       - name: Dépendances système
+        # ALSA pour rodio/cpal ; cmake et clang pour Tesseract (feature ocr)
+        # et espeak-ng (build-espeak.sh) ; et ce que lient les crates de GPUI
+        # (dysflow-app, construit par package.sh, que lance install.sh),
+        # lu dans les sources de gpui-pre-linux 0.3.14 :
+        # - libxkbcommon-dev, libxkbcommon-x11-dev : xkbcommon 0.8 lie
+        #   libxkbcommon et libxkbcommon-x11 (#[link]), claviers Wayland et X11 ;
+        # - libxcb1-dev : x11rb (feature xcb_ffi) lie libxcb ;
+        # - libfontconfig-dev : yeslogic-fontconfig-sys (font-kit) la cherche par
+        #   pkg-config ;
+        # - libfreetype-dev : freetype-sys la prend par pkg-config, sinon
+        #   compile ses propres sources en C++ (long) ;
+        # - Wayland (wayland-backend, feature dlopen), Vulkan (ash) et EGL
+        #   (khronos-egl, feature dynamic) se chargent à l'exécution : aucun
+        #   paquet de développement, et les essais (plateforme de test de GPUI)
+        #   n'ouvrent ni fenêtre ni GPU ; ni xvfb, ni mesa-vulkan.
+        # libxcb-xkb-dev, libxcb-xinput-dev… viennent en dépendances de ces
+        # paquets -dev. Ni libssl ni libzstd : absents du graphe d'app/.
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libasound2-dev pkg-config cmake clang
+          sudo apt-get install -y --no-install-recommends libasound2-dev pkg-config cmake clang \
+            libxkbcommon-dev libxkbcommon-x11-dev libxcb1-dev libfontconfig-dev libfreetype-dev
       - name: Chaîne Rust stable
         run: |
           rustup update stable --no-self-update

@@ -1,7 +1,7 @@
 # Intégration continue : tests et lint Rust sur les plateformes visées
 # (Linux x86_64 et ARM64, macOS Apple Silicon, Windows x86_64), paquet du
-# terminal et app de bureau (dysflow-app, GPUI) sous Linux et Windows, MSRV, licences, scripts, et tests de l'app
-# macOS.
+# terminal et app de bureau (dysflow-app, GPUI) sous Linux et Windows, MSRV,
+# licences, scripts, et tests de l'app macOS.
 name: CI
 
 on:
