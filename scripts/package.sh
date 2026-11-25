@@ -6,13 +6,19 @@
 #
 #   ./scripts/package.sh                          # features de default_features
 #   FEATURES=ocr,kokoro-onnx ./scripts/package.sh # sans la dictée
+#   DYSFLOW_DESKTOP=1 ./scripts/package.sh        # avec l'app de bureau (Linux, Windows)
 #
 # Les features par défaut (default_features, scripts/paquet-commun.sh) :
 # ocr,kokoro-onnx,stt-sherpa, plus mlx sur un Mac Apple Silicon.
 #
-# Sous Linux et Windows, l'app de bureau (dysflow-app, GPUI) est construite avec
-# le terminal et jointe à côté de lui (APP_FEATURES : onnx pour kokoro-onnx,
-# ocr pour ocr, d'après FEATURES). Le Mac livre l'app Swift (package-macos.sh).
+# Sous Linux et Windows, avec DYSFLOW_DESKTOP=1, l'app de bureau (dysflow-app,
+# GPUI) est construite avec le terminal et jointe à côté de lui, avec les
+# licences OFL de ses polices (APP_FEATURES : onnx pour kokoro-onnx, ocr pour
+# ocr, d'après FEATURES). Sans elle, le paquet est le terminal seul (le
+# défaut d'install.sh). Les paquets de la CI et des publications posent
+# DYSFLOW_DESKTOP=1. Sous Linux, l'app demande à la compilation libxkbcommon-dev,
+# libxkbcommon-x11-dev, libxcb1-dev, libfontconfig-dev et libfreetype-dev. Le
+# Mac livre l'app Swift (package-macos.sh) : DYSFLOW_DESKTOP n'y change rien.
 #
 # Sous Windows (bash de Git for Windows ; dysflow.exe et dysflow-app.exe par MSVC,
 # dysflow-espeak.exe par MinGW-w64, voir build-espeak.sh) : dysflow.exe,
@@ -30,11 +36,15 @@ case "$(uname -s)" in
 MINGW* | MSYS* | CYGWIN*) WINDOWS=1 EXE=.exe ;;
 *) WINDOWS="" EXE="" ;;
 esac
-# L'app de bureau : Linux et Windows (le Mac livre l'app Swift).
-case "$(uname -s)" in
-Darwin) APP="" ;;
-*) APP=1 ;;
-esac
+# L'app de bureau : Linux et Windows, seulement avec DYSFLOW_DESKTOP=1 (le Mac
+# livre l'app Swift).
+APP=""
+if [ "${DYSFLOW_DESKTOP:-}" = 1 ]; then
+    case "$(uname -s)" in
+    Darwin) ;;
+    *) APP=1 ;;
+    esac
+fi
 
 # Python 3 : sous Windows, la commande s'appelle souvent python, et python3
 # peut être le raccourci du Microsoft Store, qui ne lance rien.
@@ -164,6 +174,15 @@ case ",$FEATURES," in
 *,ocr,*)
     cp third_party/licences/tesseract-LICENSE third_party/licences/leptonica-LICENSE "$OUT/licences/" ;;
 esac
+# L'app embarque ses polices (Literata, Atkinson Hyperlegible, OpenDyslexic,
+# sous licence SIL OFL 1.1) : leurs licences vont avec elle.
+if [ -n "$APP" ]; then
+    for licence in app/assets/fonts/OFL-*.txt; do
+        [ -f "$licence" ] || { echo "Erreur : aucune licence OFL sous app/assets/fonts" >&2; exit 1; }
+        cp "$licence" "$OUT/licences/"
+    done
+    echo "Joint : les licences OFL des polices de l'app (licences/OFL-*.txt)"
+fi
 echo "Joint : NOTICE, THIRD-PARTY-RUST.txt et licences/"
 
 # La dictée : la bibliothèque C de sherpa-onnx (Apache-2.0), qui charge

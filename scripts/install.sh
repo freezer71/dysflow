@@ -6,12 +6,20 @@
 # ../lib/dysflow/dysflow. Le binaire résout ce lien pour trouver ses voisins.
 # Les modèles et la configuration vivent dans le répertoire de données.
 #
+# Par défaut, le terminal seul. Avec DYSFLOW_DESKTOP=1 (Linux), l'app de bureau
+# (dysflow-app, GPUI) est construite et installée avec lui, et
+# $PREFIX/bin/dysflow-app est un lien vers ../lib/dysflow/dysflow-app. Elle
+# demande à la compilation libxkbcommon-dev, libxkbcommon-x11-dev,
+# libxcb1-dev, libfontconfig-dev et libfreetype-dev (Debian, Ubuntu).
+#
 #   ./scripts/install.sh                          # ~/.local, sans droits
+#   DYSFLOW_DESKTOP=1 ./scripts/install.sh        # avec l'app de bureau
 #   PREFIX=/usr/local sudo -E ./scripts/install.sh
 #   FEATURES=kokoro-onnx ./scripts/install.sh     # sans reconnaissance de texte ni dictée
 #   REMPLACER=1 ./scripts/install.sh              # remplace sans question la commande de l'app
 #
-# Pour désinstaller : rm -r "$PREFIX/lib/dysflow" "$PREFIX/bin/dysflow"
+# Pour désinstaller :
+#   rm -r "$PREFIX/lib/dysflow" "$PREFIX/bin/dysflow"; rm -f "$PREFIX/bin/dysflow-app"
 set -eu
 # Défense en profondeur : aucun ONNX Runtime lancé d'ici (le binaire du
 # paquet : --version, --show-config, --check-kokoro) n'écrit ni n'envoie sa
@@ -27,7 +35,11 @@ PREFIX="${PREFIX:-$HOME/.local}"
 FEATURES="${FEATURES:-$(default_features)}"
 export FEATURES
 BIN="$PREFIX/bin/dysflow"
+APP_BIN="$PREFIX/bin/dysflow-app"
 LIB="$PREFIX/lib/dysflow"
+# Lu par package.sh : 1 joint l'app de bureau au paquet.
+DYSFLOW_DESKTOP="${DYSFLOW_DESKTOP:-}"
+export DYSFLOW_DESKTOP
 
 # bin/dysflow est-il la commande de l'app (install-app-command.sh) ? Elle est
 # remplacée seulement après avertissement : le lecteur au terminal prend sa
@@ -61,6 +73,14 @@ cp -R dist "$LIB.nouveau"
 rm -rf "$LIB"
 mv "$LIB.nouveau" "$LIB"
 ln -sfn ../lib/dysflow/dysflow "$BIN"
+# L'app de bureau, si le paquet la porte (DYSFLOW_DESKTOP=1) : son lien comme
+# celui du terminal. Sinon, un lien laissé par une installation précédente
+# avec l'app ne pointe plus sur rien : il part.
+if [ -x "$LIB/dysflow-app" ]; then
+    ln -sfn ../lib/dysflow/dysflow-app "$APP_BIN"
+elif [ -L "$APP_BIN" ] && [ "$(readlink "$APP_BIN")" = ../lib/dysflow/dysflow-app ]; then
+    rm -f "$APP_BIN"
+fi
 
 # Depuis la racine, sans les variables qui désignent ORT ou espeak ailleurs :
 # le binaire ne dépend que de ce qui est installé. Avec la dictée, qu'il
@@ -78,6 +98,9 @@ case ",$FEATURES," in
 esac
 
 echo "Installé : $BIN → $LIB/dysflow"
+if [ -x "$LIB/dysflow-app" ]; then
+    echo "Installé : $APP_BIN → $LIB/dysflow-app"
+fi
 
 case ":$PATH:" in
     *":$PREFIX/bin:"*) ;;

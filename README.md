@@ -288,6 +288,11 @@ Depuis les sources :
 cargo install --path .          # voix du système seule, build en quelques secondes
 ```
 
+`install.sh` installe le terminal seul ; `DYSFLOW_DESKTOP=1 ./scripts/install.sh`
+ajoute l'app de bureau (`$PREFIX/bin/dysflow-app`), qui demande sous Linux
+`libxkbcommon-dev libxkbcommon-x11-dev libxcb1-dev libfontconfig-dev
+libfreetype-dev`.
+
 `install.sh` assemble le paquet (`package.sh`, ci-dessous) et le copie en
 entier dans `$PREFIX/lib/dysflow` — le binaire, ONNX Runtime, dysflow-espeak et
 ses données, la bibliothèque C de sherpa-onnx et Silero VAD pour la dictée, les
@@ -298,7 +303,8 @@ licences —, puis pose `$PREFIX/bin/dysflow`, un lien vers
 racine, que `dysflow` démarre et que Kokoro se charge (`dysflow --check-kokoro` :
 ONNX Runtime et dysflow-espeak, sans le modèle), et dit s'il manque le `bin/` au
 `PATH`. Modèles et configuration vivent dans le répertoire de données. Pour
-désinstaller, `rm -r $PREFIX/lib/dysflow $PREFIX/bin/dysflow`.
+désinstaller, `rm -r $PREFIX/lib/dysflow $PREFIX/bin/dysflow` (et
+`$PREFIX/bin/dysflow-app` avec l'app).
 
 **Installation abîmée.** Le paquet va d'un seul bloc : le binaire exige les
 fichiers posés à côté de lui. Sans la bibliothèque C de sherpa-onnx, `dysflow`

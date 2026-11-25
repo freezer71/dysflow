@@ -236,14 +236,15 @@ jobs:
         # qui demandent la vraie bibliothèque et le modèle sont ignorés.
         if: runner.os == 'Windows'
         run: cargo test -p dysflow --features kokoro-onnx --lib tts::kokoro::onnx --locked
-      - name: Paquet et installation du terminal (ocr, kokoro-onnx, stt-sherpa)
+      - name: Paquet et installation, terminal et app (ocr, kokoro-onnx, stt-sherpa)
         if: runner.os == 'Linux'
         # install.sh lance package.sh (build --features ocr,kokoro-onnx,
         # stt-sherpa, ONNX Runtime vérifié, dysflow-espeak, bibliothèque C de
         # sherpa-onnx et Silero VAD), installe sous PREFIX, puis vérifie
         # depuis / que le binaire démarre (bibliothèque C chargée) et que
-        # Kokoro se charge.
-        run: PREFIX="$RUNNER_TEMP/prefix" ./scripts/install.sh
+        # Kokoro se charge. DYSFLOW_DESKTOP=1 : avec l'app de bureau, comme le
+        # paquet publié (bin/dysflow-app, licences OFL des polices).
+        run: DYSFLOW_DESKTOP=1 PREFIX="$RUNNER_TEMP/prefix" ./scripts/install.sh
       - name: Mise à jour depuis la dernière publication (Linux x86_64)
         # install.sh de la racine installe la dernière version publiée sur
         # GitHub, puis met à jour vers le paquet de dist/ (servi en local,
@@ -282,7 +283,8 @@ jobs:
         shell: bash
         run: |
           command -v unzip
-          ./scripts/package.sh
+          # Avec l'app de bureau (dysflow-app.exe), qu'exige windows-imports.py.
+          DYSFLOW_DESKTOP=1 ./scripts/package.sh
           tmp=$(cygpath -u "$RUNNER_TEMP")
           for name in "Élodie Martin" "Łukasz Gaweł"; do
             dest="$tmp/$name/dysflow"

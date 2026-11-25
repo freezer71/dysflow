@@ -97,7 +97,9 @@ jobs:
             exit 1
           fi
       - name: Paquet, installation et vérification
-        run: PREFIX="$RUNNER_TEMP/prefix" ./scripts/install.sh
+        # DYSFLOW_DESKTOP=1 : le paquet publié porte l'app de bureau
+        # (install.sh, depuis les sources, reste au terminal seul par défaut).
+        run: DYSFLOW_DESKTOP=1 PREFIX="$RUNNER_TEMP/prefix" ./scripts/install.sh
       - name: Archive
         id: archive
         run: |

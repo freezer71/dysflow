@@ -69,6 +69,9 @@ SYSTEM = {
 APP_ONLY = {"dysflow-app.exe": {
     "d3d11.dll", "dcomp.dll", "dwrite.dll", "uiautomationcore.dll", "combase.dll", "rpcrt4.dll",
 }}
+# Les licences (SIL OFL 1.1) des polices que dysflow-app.exe embarque :
+# package.sh les joint sous licences/ avec l'app (app/assets/fonts/OFL-*.txt).
+FONT_LICENCES = ("OFL-AtkinsonHyperlegible.txt", "OFL-Literata.txt", "OFL-OpenDyslexic.txt")
 # dysflow-espeak.exe : rien d'autre que le noyau et le CRT de Windows.
 STATIC_ONLY = {"dysflow-espeak.exe"}
 STATIC_ALLOWED = {"kernel32.dll", "advapi32.dll", "msvcrt.dll", "ucrtbase.dll"}
@@ -166,6 +169,10 @@ def check(dist, espeak=True):
         errors.append(f"dysflow-espeak.exe absent de {dist}")
     if espeak and not any(p.name.lower() in APP_ONLY for p in found):
         errors.append(f"dysflow-app.exe absent de {dist}")
+    if any(p.name.lower() in APP_ONLY for p in found):
+        for name in FONT_LICENCES:
+            if not (Path(dist) / "licences" / name).is_file():
+                errors.append(f"licences/{name} absent de {dist} (police de dysflow-app.exe)")
     for binary in found:
         beside = {p.name.lower() for p in binary.parent.iterdir() if p.is_file()}
         names = imports(binary)

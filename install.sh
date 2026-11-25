@@ -128,6 +128,8 @@ if [ -n "$DESINSTALLER" ]; then
         rm -rf /Applications/Dysflow.app "$HOME/Applications/Dysflow.app"
     else
         rm -rf "$PREFIX/lib/dysflow"
+        # Le lien de l'app de bureau (paquet Linux qui la porte).
+        rm -f "$PREFIX/bin/dysflow-app"
     fi
     rm -f "$PREFIX/bin/dysflow"
     retirer_anciens
@@ -298,6 +300,13 @@ else
     rm -rf "$PREFIX/lib/dysflow"
     mv "$dossier" "$PREFIX/lib/dysflow"
     ln -sfn ../lib/dysflow/dysflow "$PREFIX/bin/dysflow"
+    # L'app de bureau, quand le paquet la porte : son lien comme celui du
+    # terminal ; sinon, un ancien lien vers elle ne pointerait sur rien.
+    if [ -x "$PREFIX/lib/dysflow/dysflow-app" ]; then
+        ln -sfn ../lib/dysflow/dysflow-app "$PREFIX/bin/dysflow-app"
+    else
+        rm -f "$PREFIX/bin/dysflow-app"
+    fi
     etape "$(t "Installed in $PREFIX/lib/dysflow" "Installé dans $PREFIX/lib/dysflow")"
     "$PREFIX/bin/dysflow" --check-kokoro >/dev/null 2>&1 \
         || etape "$(t "Warning: Kokoro does not load ($PREFIX/bin/dysflow --check-kokoro); the system voice will be used instead" "Attention : Kokoro ne se charge pas ($PREFIX/bin/dysflow --check-kokoro) ; la voix du système lira")"

@@ -86,6 +86,9 @@ def package(root):
                                     "VCRUNTIME140.dll", "api-ms-win-crt-heap-l1-1-0.dll"])
     (Path(root) / "espeak-ng-data").mkdir()
     (Path(root) / "espeak-ng-data" / "fr_dict").write_bytes(b"pas un binaire")
+    (Path(root) / "licences").mkdir()
+    for name in WI.FONT_LICENCES:
+        (Path(root) / "licences" / name).write_text("SIL Open Font License 1.1")
 
 
 def check(root, *options):
@@ -159,6 +162,17 @@ class Check(Base):
         code, _, err = check(self.root)
         self.assertEqual(code, 1)
         self.assertIn("dysflow-app.exe absent", err)
+
+    def test_without_the_font_licences_the_app_fails(self):
+        package(self.root)
+        (self.root / "licences" / "OFL-Literata.txt").unlink()
+        code, _, err = check(self.root)
+        self.assertEqual(code, 1)
+        self.assertIn("licences/OFL-Literata.txt absent", err)
+
+    def test_the_font_licences_are_those_of_the_app(self):
+        fonts = Path(HERE).parent / "app" / "assets" / "fonts"
+        self.assertEqual(sorted(p.name for p in fonts.glob("OFL-*.txt")), sorted(WI.FONT_LICENCES))
 
     def test_the_graphics_dlls_are_for_the_app_only(self):
         package(self.root)
