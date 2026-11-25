@@ -25,7 +25,7 @@ use std::time::Duration;
 
 use dysflow::reader::command::Command;
 use dysflow::reader::handle::Request;
-use dysflow::reader::view::{Snapshot, VoiceState};
+use dysflow::reader::view::Snapshot;
 use gpui::{
     div, prelude::*, px, App, ClipboardItem, Context, Entity, ExternalPaths, FocusHandle,
     FontWeight, IntoElement, KeyDownEvent, MouseButton, SharedString, Task, Window,
@@ -42,8 +42,9 @@ use crate::inputs::{self, command_modifier, key_press, open_path, paste_with, pr
 use crate::keymap::{action, Action, Modifier};
 use crate::reading::ReadingView;
 use crate::search::{SearchBar, SearchEvent};
-use crate::session::Session;
+use crate::session::{Reply, Session};
 use crate::settings::{SettingsEvent, SettingsPage};
+use crate::startup::{first_launch, retry_label, VoiceStatus};
 use crate::theme;
 use crate::transport::{BarEvent, ReaderBar};
 
@@ -53,44 +54,18 @@ const MESSAGE: Duration = Duration::from_secs(3);
 /// Ce que dit la barre d'état, dans l'ordre de ce qui compte : l'erreur de
 /// la dernière ouverture ou du dernier collage (le refus d'`OpenFile` revient
 /// par sa réponse, pas par l'instantané), la voix qui s'installe ou ne va
-/// pas, le message du lecteur, puis l'avis à lire. Vide quand tout va bien.
+/// pas (`startup::VoiceStatus`), le message du lecteur, puis l'avis à lire.
+/// Vide quand tout va bien.
 pub fn status_text(s: &Snapshot, error: Option<&str>) -> String {
-    use dysflow::tr;
+    compose(error, VoiceStatus::current(s, None).map(|v| v.text()), s)
+}
+
+fn compose(error: Option<&str>, voice: Option<String>, s: &Snapshot) -> String {
     let mut parts: Vec<String> = Vec::new();
     if let Some(error) = error {
         parts.push(error.to_string());
     }
-    match &s.download {
-        Some(d) => match &d.failed {
-            Some(why) => parts.push(tr!(
-                en = "The voice could not be installed: {}",
-                fr = "La voix n'a pas pu s'installer : {}",
-                why
-            )),
-            None => parts.push(tr!(
-                en = "Installing the voice: {} of {} — the system voice reads in the meantime",
-                fr = "Installation de la voix : {} sur {} — la voix du système lit en attendant",
-                megabytes(d.received),
-                megabytes(d.total)
-            )),
-        },
-        None => match &s.voice {
-            VoiceState::Unavailable { reason } => parts.push(tr!(
-                en = "Voice unavailable: {}",
-                fr = "Voix indisponible : {}",
-                reason
-            )),
-            VoiceState::Fallback { reason } => parts.push(tr!(
-                en = "System voice as a fallback: {}",
-                fr = "Voix du système en repli : {}",
-                reason
-            )),
-            VoiceState::Loading => {
-                parts.push(tr!("Preparing the voice…", "Préparation de la voix…").to_string())
-            }
-            VoiceState::Resting | VoiceState::Ready => {}
-        },
-    }
+    parts.extend(voice);
     if !s.status.is_empty() {
         parts.push(s.status.clone());
     }
@@ -98,10 +73,6 @@ pub fn status_text(s: &Snapshot, error: Option<&str>) -> String {
         parts.push(notice.clone());
     }
     parts.join(" · ")
-}
-
-fn megabytes(bytes: u64) -> String {
-    dysflow::tr!(en = "{:.0} MB", fr = "{:.0} Mo", bytes as f64 / 1_000_000.0)
 }
 
 /// Les panneaux posés à côté de la lecture. Échap ferme celui qui est
@@ -159,6 +130,11 @@ pub struct MainWindow {
     /// Cette question est en route : un second `e` n'en pose pas d'autre
     /// (il perdrait que la voix lisait).
     edit_pending: bool,
+    /// Le refus de la dernière demande d'installation de la voix
+    /// (`first_launch`), jusqu'au prochain « Réessayer ».
+    voice_setup: Option<String>,
+    /// L'attente de cette réponse, sur l'exécuteur d'arrière-plan.
+    _voice_setup: Task<()>,
 }
 
 impl MainWindow {
@@ -276,6 +252,8 @@ impl MainWindow {
             _appearance: appearance,
             _editing: Task::ready(()),
             edit_pending: false,
+            voice_setup: None,
+            _voice_setup: Task::ready(()),
         };
         let reading = this.reading.clone();
         this.sync(&reading, window, cx);
@@ -423,13 +401,70 @@ impl MainWindow {
         self.clipboard = Arc::new(read);
     }
 
+    /// Attend la réponse de `first_launch` sur l'exécuteur d'arrière-plan,
+    /// jamais sur le fil de l'interface ; un refus reste dans la barre
+    /// d'état, avec « Réessayer ».
+    pub fn watch_voice_setup(&mut self, reply: Reply<Result<(), String>>, cx: &mut Context<Self>) {
+        self._voice_setup = cx.spawn(async move |this, cx| {
+            let answer = cx
+                .background_executor()
+                .spawn(async move { reply.wait_unbounded() })
+                .await;
+            let _ = this.update(cx, |this, cx| {
+                this.voice_setup = match answer {
+                    Some(Ok(())) => None,
+                    Some(Err(why)) => Some(why),
+                    None => Some(
+                        dysflow::tr!("the reader has stopped", "le lecteur s'est arrêté")
+                            .to_string(),
+                    ),
+                };
+                cx.notify();
+            });
+        });
+    }
+
+    /// « Réessayer » : redemande l'installation de la voix au cœur.
+    pub fn retry_voice(&mut self, cx: &mut Context<Self>) {
+        self.voice_setup = None;
+        let reply = first_launch(&self.session);
+        self.watch_voice_setup(reply, cx);
+        cx.notify();
+    }
+
+    /// L'installation de la voix a échoué : la barre d'état offre
+    /// « Réessayer ».
+    pub fn can_retry_voice(&self) -> bool {
+        self.voice_status(&self.session.snapshot())
+            .is_some_and(|v| v.can_retry())
+    }
+
+    fn voice_status(&self, snapshot: &Snapshot) -> Option<VoiceStatus> {
+        VoiceStatus::current(snapshot, self.voice_setup.as_deref())
+    }
+
     /// La ligne de la barre d'état : le message passager, sinon ce qui
-    /// s'ouvre, sinon `status_text`.
+    /// s'ouvre, sinon `status_text` (avec le refus de l'installation de la
+    /// voix).
     pub fn status_line_for(&self, snapshot: &Snapshot) -> String {
+        self.status_line_with(snapshot, |v| v.text())
+    }
+
+    /// `status_line_for`, la voix dite par `voice` (la barre ôte
+    /// « Réessayer », qu'elle montre en bouton).
+    fn status_line_with(
+        &self,
+        snapshot: &Snapshot,
+        voice: impl Fn(&VoiceStatus) -> String,
+    ) -> String {
         if let Some(message) = &self.message {
             return message.to_string();
         }
-        let status = status_text(snapshot, self.error.as_deref());
+        let status = compose(
+            self.error.as_deref(),
+            self.voice_status(snapshot).map(|v| voice(&v)),
+            snapshot,
+        );
         match &self.opening {
             Some(name) if status.is_empty() => name.clone(),
             Some(name) => format!("{name} · {status}"),
@@ -1053,9 +1088,19 @@ impl MainWindow {
             )
     }
 
-    fn status_bar(&self, snapshot: &Snapshot, p: &theme::Palette) -> impl IntoElement {
-        let line = self.status_line_for(snapshot);
-        let failing = self.error.is_some() && self.message.is_none();
+    fn status_bar(
+        &self,
+        snapshot: &Snapshot,
+        p: &theme::Palette,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let voice = self
+            .voice_status(snapshot)
+            .filter(|_| self.message.is_none());
+        let retry = voice.as_ref().is_some_and(|v| v.can_retry());
+        let progress = voice.as_ref().and_then(|v| v.fraction());
+        let line = self.status_line_with(snapshot, |v| v.message());
+        let failing = (self.error.is_some() || retry) && self.message.is_none();
         div()
             .flex()
             .flex_none()
@@ -1072,6 +1117,26 @@ impl MainWindow {
                         .text_color(p.error()),
                 )
             })
+            .when_some(progress, |this, fraction| {
+                // L'avancement de l'installation, comme la jauge de l'app
+                // Mac : une piste au filet, remplie à l'accent.
+                this.child(
+                    div()
+                        .debug_selector(|| "voice-progress".to_string())
+                        .flex_none()
+                        .w(px(80.0))
+                        .h(px(4.0))
+                        .rounded_full()
+                        .bg(p.border())
+                        .child(
+                            div()
+                                .h_full()
+                                .rounded_full()
+                                .bg(p.accent())
+                                .w(px(80.0 * fraction.clamp(0.0, 1.0))),
+                        ),
+                )
+            })
             .child(
                 div()
                     .flex_1()
@@ -1081,6 +1146,17 @@ impl MainWindow {
                     .whitespace_nowrap()
                     .child(line),
             )
+            .when(retry, |this| {
+                this.child(
+                    div().debug_selector(|| "voice-retry".to_string()).child(
+                        Button::new("voice-retry")
+                            .ghost()
+                            .xsmall()
+                            .label(retry_label())
+                            .on_click(cx.listener(|this, _, _, cx| this.retry_voice(cx))),
+                    ),
+                )
+            })
     }
 }
 
@@ -1163,6 +1239,6 @@ impl Render for MainWindow {
                     )
                     .child(self.bar.clone()),
             )
-            .child(self.status_bar(&snapshot, p))
+            .child(self.status_bar(&snapshot, p, cx))
     }
 }

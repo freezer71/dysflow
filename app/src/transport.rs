@@ -80,6 +80,13 @@ pub fn speed(value: f32) -> String {
     format!("{text}×")
 }
 
+/// Lecture possible : dès qu'un document est ouvert, quelle que soit la
+/// voix. Celle de repli (Kokoro pas encore installé, ou en échec) lit tout
+/// de suite : on n'attend pas la fin d'un téléchargement pour lire.
+pub fn can_play(s: &Snapshot) -> bool {
+    s.has_document
+}
+
 /// La phrase sous une part de la frise (0 à 1) ; `None` sans phrase.
 pub fn sentence_at(fraction: f32, sentence_count: usize) -> Option<usize> {
     if sentence_count == 0 || !fraction.is_finite() {
@@ -225,7 +232,7 @@ impl ReaderBar {
                 .rounded_full()
                 .tab_stop(false)
                 .tooltip(format!("{label} ({})", dysflow::tr!("Space", "Espace")))
-                .disabled(!s.has_document)
+                .disabled(!can_play(s))
                 .on_click(cx.listener(|bar, _, _, _| bar.send(Command::TogglePlay))),
         )
     }

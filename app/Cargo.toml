@@ -22,8 +22,13 @@ gpui-component = "=0.11.0"
 gpui-kit-assets = "=0.11.0"
 # Les plateformes réelles (Metal, Windows, Wayland/X11) : gpui-pre n'embarque que la plateforme de test.
 gpui_platform = { package = "gpui-pre-platform", version = "=0.3.14", features = ["font-kit", "wayland", "x11"] }
+# La langue du système quand l'environnement n'en donne pas (app lancée du
+# Finder, Windows) : déjà dans Cargo.lock par gpui.
+sys-locale = "=0.3.2"
 
 [dev-dependencies]
+# Les erreurs des téléchargements factices des essais (`set_download_start`).
+anyhow = "1.0"
 # La plateforme de test de GPUI (TestAppContext), sans fenêtre réelle.
 gpui = { package = "gpui-pre", version = "=0.3.14", features = ["test-support"] }
 # Les essais ne touchent jamais aux fichiers de l'utilisateur (positions,

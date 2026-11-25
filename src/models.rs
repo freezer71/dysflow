@@ -1262,9 +1262,11 @@ impl Download {
         }
     }
 
-    /// Un téléchargement sans réseau ni fil, pour les tests.
-    #[cfg(test)]
-    pub(crate) fn fake(package: &'static ModelPackage, finished: bool) -> Self {
+    /// Un téléchargement sans réseau ni fil, pour les tests (du moteur, ou
+    /// de l'app par la feature `test-paths`) : en cours, ou fini si
+    /// `finished`.
+    #[cfg(any(test, feature = "test-paths"))]
+    pub fn fake(package: &'static ModelPackage, finished: bool) -> Self {
         Self {
             package,
             received: Arc::new(AtomicU64::new(0)),

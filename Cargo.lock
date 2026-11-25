@@ -2161,11 +2161,13 @@ dependencies = [
 name = "dysflow-app"
 version = "0.6.1"
 dependencies = [
+ "anyhow",
  "dysflow",
  "gpui-component",
  "gpui-kit-assets",
  "gpui-pre",
  "gpui-pre-platform",
+ "sys-locale",
 ]
 
 [[package]]

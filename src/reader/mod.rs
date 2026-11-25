@@ -195,6 +195,17 @@ impl Reader {
         }
     }
 
+    /// Remplace le lancement des téléchargements de voix : les essais (du
+    /// moteur, ou de l'app par la feature `test-paths`) n'atteignent jamais
+    /// le réseau. Jamais dans un build livré.
+    #[cfg(any(test, feature = "test-paths"))]
+    pub fn set_download_start(
+        &mut self,
+        start: fn(&'static crate::models::ModelPackage) -> anyhow::Result<crate::models::Download>,
+    ) {
+        self.start_download = start;
+    }
+
     /// L'app fournit le calcul MLX : le paquet Kokoro MLX est proposé.
     pub fn set_mlx_compute(&mut self, available: bool) {
         self.mlx = available;

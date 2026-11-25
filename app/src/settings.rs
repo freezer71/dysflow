@@ -46,12 +46,36 @@ const SPEED_MIN: f32 = 0.5;
 const SPEED_MAX: f32 = 3.0;
 
 /// La langue de l'interface d'un réglage `ui_language` : vide, celle du
-/// système (variables de locale, comme le terminal).
+/// système (voir `ui_lang_choice`), lue dans l'environnement du processus
+/// puis auprès de la plateforme (`sys-locale`).
 pub fn ui_lang_for(code: &str) -> UiLang {
+    ui_lang_choice(code, |k| std::env::var(k).ok(), sys_locale::get_locale)
+}
+
+/// Le choix de la langue de l'interface, sans rien lire lui-même. « fr » et
+/// « en » s'imposent. Sinon (« Système ») : les variables de locale
+/// (`LC_ALL`, `LC_MESSAGES`, `LANG`, comme le terminal) quand l'une est
+/// définie et non vide ; à défaut la langue de la plateforme (`platform`,
+/// lue seulement alors) : une app lancée du Finder ou sous Windows n'a
+/// souvent pas `LANG`, et sortirait en anglais pour un francophone. Ni
+/// l'un ni l'autre : l'anglais.
+pub fn ui_lang_choice(
+    code: &str,
+    env: impl Fn(&str) -> Option<String>,
+    platform: impl FnOnce() -> Option<String>,
+) -> UiLang {
     match code {
-        "fr" => UiLang::Fr,
-        "en" => UiLang::En,
-        _ => UiLang::from_env(),
+        "fr" => return UiLang::Fr,
+        "en" => return UiLang::En,
+        _ => {}
+    }
+    let from_env = ["LC_ALL", "LC_MESSAGES", "LANG"]
+        .iter()
+        .filter_map(|k| env(k))
+        .find(|v| !v.is_empty());
+    match from_env.or_else(platform) {
+        Some(tag) => UiLang::from_locale(&tag),
+        None => UiLang::En,
     }
 }
 

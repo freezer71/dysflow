@@ -714,6 +714,27 @@ mod tests {
         r
     }
 
+    static INJECTED: AtomicUsize = AtomicUsize::new(0);
+
+    /// Les essais de l'app (feature `test-paths`) posent le lancement des
+    /// téléchargements par `set_download_start` : c'est lui, jamais le
+    /// réseau, que l'installation automatique appelle.
+    #[test]
+    fn the_download_start_can_be_injected() {
+        let _guard = models_lock();
+        let mlx = by_id("kokoro_82m_mlx");
+        let _ = models::remove(mlx);
+        let mut r = reader(Config::default());
+        r.set_mlx_compute(true);
+        r.set_download_start(|package| {
+            INJECTED.fetch_add(1, Ordering::SeqCst);
+            Ok(Download::fake(package, false))
+        });
+        r.ensure_default_voice(Instant::now()).unwrap();
+        assert_eq!(INJECTED.load(Ordering::SeqCst), 1);
+        assert_eq!(r.download().map(|d| d.id), Some(mlx.id.to_string()));
+    }
+
     #[test]
     fn without_kokoro_the_recommended_voice_installs_by_itself_once() {
         let _guard = models_lock();
