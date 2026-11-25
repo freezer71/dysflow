@@ -5,7 +5,7 @@
 
 use std::cell::RefCell;
 use std::collections::HashSet;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -160,6 +160,29 @@ fn dropped_file_is_opened(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
+fn dropped_markdown_file_is_opened(cx: &mut TestAppContext) {
+    // Une extension que la fenêtre ne connaît pas : le cœur lit le texte
+    // à ses octets, comme l'app Mac.
+    let dir = Scratch::new("drop-markdown");
+    let path = dir.file(
+        "notes.markdown",
+        b"# Notes\n\nUne phrase en Markdown. Une autre.",
+    );
+    let session = session();
+    let (main, cx) = window(cx, &session, None);
+    let at = point(px(400.0), px(250.0));
+    cx.simulate_event(FileDropEvent::Entered {
+        position: at,
+        paths: ExternalPaths([path].into_iter().collect()),
+    });
+    cx.simulate_event(FileDropEvent::Submit { position: at });
+    cx.run_until_parked();
+    wait_for(&session, "le .markdown déposé", |s| s.revision >= 1);
+    assert_eq!(session.document().sentence_count, 3);
+    main.read_with(cx, |m, _| assert_eq!(m.error(), None));
+}
+
+#[gpui::test]
 fn refused_file_keeps_current_document(cx: &mut TestAppContext) {
     let dir = Scratch::new("refus");
     let session = session();
@@ -167,17 +190,18 @@ fn refused_file_keeps_current_document(cx: &mut TestAppContext) {
     let revision = session.snapshot().revision;
     let (main, cx) = window(cx, &session, None);
 
-    // Une extension hors de la liste : refusée avant le lecteur.
-    let odd = dir.file("donnees.xyz", b"du texte, mais pas un format de lecture");
-    let refused = open_path(&session, &odd).expect_err("un .xyz est refusé");
-    assert!(refused.contains("xyz"), "{refused}");
-    main.update(cx, |m, cx| m.open(odd.clone(), cx));
+    // Un chemin qui n'existe pas : le cœur le refuse, son erreur est dans
+    // la barre.
+    let missing = dir.0.join("absent.md");
+    let refused = open_path(&session, &missing).expect_err("un fichier absent est refusé");
+    assert!(!refused.is_empty());
+    main.update(cx, |m, cx| m.open(missing.clone(), cx));
     cx.run_until_parked();
-    assert!(
-        status(&main, cx).contains(&refused),
-        "{}",
-        status(&main, cx)
-    );
+    let line = main.read_with(cx, |m, cx| {
+        status_text(&m.reading().read(cx).snapshot().clone(), m.error())
+    });
+    assert!(line.contains(&refused), "{line}");
+    assert!(status(&main, cx).contains(&refused));
     assert_eq!(session.snapshot().revision, revision);
 
     // Un PDF illisible : le cœur le refuse, son erreur est dans la barre.
@@ -214,7 +238,6 @@ fn empty_clipboard_keeps_current_document(cx: &mut TestAppContext) {
     assert!(refused.contains("presse-papiers vide"));
     let blank = paste_with(&session, || Ok::<_, String>("  \n ".into())).expect_err("blanc");
     assert!(!blank.is_empty());
-    std::thread::sleep(Duration::from_millis(50));
     assert_eq!(session.snapshot().revision, revision);
 
     // Par la fenêtre et ⌘V, avec le presse-papiers injecté.
@@ -540,16 +563,4 @@ fn punctuation_keys_follow_the_layout() {
         Modifier::Control
     };
     assert_eq!(inputs::command_modifier(), expected);
-}
-
-#[test]
-fn openable_extensions() {
-    for ok in [
-        "a.md", "a.txt", "a.pdf", "a.png", "a.jpg", "a.jpeg", "a.tiff", "a.webp", "A.PDF",
-    ] {
-        assert!(inputs::openable(Path::new(ok)).is_ok(), "{ok}");
-    }
-    for no in ["a.xyz", "a.docx", "a.mp3"] {
-        assert!(inputs::openable(Path::new(no)).is_err(), "{no}");
-    }
 }

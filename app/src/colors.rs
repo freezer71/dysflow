@@ -37,7 +37,7 @@ pub fn ruler() -> Hsla {
 pub fn chrome() -> Hsla {
     rgb(0x4a463f).into()
 }
-/// Le texte secondaire (temps, barre d'état) : 5,6:1 sur le papier.
+/// Le texte secondaire (temps, barre d'état) : 5,44:1 sur le papier.
 pub fn muted() -> Hsla {
     rgb(0x6b655b).into()
 }

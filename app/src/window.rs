@@ -86,7 +86,7 @@ pub fn status_text(s: &Snapshot, error: Option<&str>) -> String {
 }
 
 fn megabytes(bytes: u64) -> String {
-    format!("{:.0} Mo", bytes as f64 / 1_000_000.0)
+    dysflow::tr!(en = "{:.0} MB", fr = "{:.0} Mo", bytes as f64 / 1_000_000.0)
 }
 
 /// Les panneaux à venir. Échap ferme celui qui est ouvert.

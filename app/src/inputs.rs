@@ -15,48 +15,17 @@ use gpui::{Keystroke, PathPromptOptions};
 use crate::keymap::{KeyPress, Modifier};
 use crate::session::Session;
 
-/// Les formats que la boîte d'ouverture propose et que la fenêtre accepte.
-pub const OPENABLE: [&str; 8] = ["md", "txt", "pdf", "png", "jpg", "jpeg", "tiff", "webp"];
-
-/// Vrai si l'extension du chemin est l'un des formats lisibles (sans
-/// égard à la casse). Un dossier ou un fichier sans extension passe : le
-/// lecteur reconnaît alors son contenu à ses premiers octets.
-///
-/// La boîte d'ouverture de GPUI 0.3.14 (`PathPromptOptions`) ne sait pas
-/// filtrer par type : le filtre s'applique ici, à chaque entrée.
-pub fn openable(path: &Path) -> Result<(), String> {
-    let Some(extension) = path.extension() else {
-        return Ok(());
-    };
-    if path.is_dir() {
-        return Ok(());
-    }
-    let extension = extension.to_string_lossy().to_lowercase();
-    if OPENABLE.contains(&extension.as_str()) {
-        return Ok(());
-    }
-    let name = path
-        .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or_default();
-    let formats = OPENABLE.join(", ");
-    Err(dysflow::tr!(
-        en = "“{}”: this format can't be read (.{}). Readable: {}.",
-        fr = "« {} » : ce format ne se lit pas (.{}). Formats lus : {}.",
-        name,
-        extension,
-        formats,
-    ))
-}
-
 /// Ouvre un fichier dans le lecteur par `Request::OpenFile` et attend sa
 /// réponse. BLOQUE jusqu'à ce que le fil du lecteur ait fini d'ouvrir le
 /// fichier, sans limite de temps : un long PDF ou une image à reconnaître
 /// peuvent demander des minutes. Si le fil du lecteur s'arrête entre-temps,
 /// la réponse ne viendra jamais : son canal se ferme et l'attente rend une
 /// erreur. Le document courant ne change que si l'ouverture réussit.
+///
+/// Aucun filtre ici : le chemin part tel quel au cœur, qui reconnaît un
+/// fichier à ses octets, jamais à son nom (`source::kind`), et dont seul le
+/// refus s'affiche.
 pub fn open_path(session: &Session, path: &Path) -> Result<(), String> {
-    openable(path)?;
     let (reply, answer) = reply_channel();
     session.send(Request::OpenFile {
         path: path.to_path_buf(),
@@ -133,7 +102,9 @@ pub fn key_press(keystroke: &Keystroke) -> KeyPress {
     }
 }
 
-/// La boîte d'ouverture du système : un seul fichier.
+/// La boîte d'ouverture du système : un seul fichier. Elle n'est pas
+/// filtrée par type : `PathPromptOptions` de GPUI 0.3.14 ne le permet pas,
+/// et le cœur tranche de toute façon aux octets.
 pub fn prompt_options() -> PathPromptOptions {
     PathPromptOptions {
         files: true,
