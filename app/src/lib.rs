@@ -18,6 +18,7 @@ pub mod window;
 
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::io::Write;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -102,16 +103,29 @@ pub fn run(path: Option<PathBuf>) {
     let session = Arc::new(Session::new(ReaderHandle::spawn(move || {
         app_reader(loaded, dysflow::tts::AppCompute::default())
     })));
+    // GPUI panique quand il ne peut pas démarrer (Windows sans DirectX,
+    // Linux dont le serveur d'affichage est injoignable), avant le rappel
+    // ci-dessous : le crochet le dit dans les deux langues, puis la panique
+    // suit son cours (release : `panic = "abort"`, le processus s'arrête
+    // sur un abort, pas avec le code 1).
+    startup::install_startup_hook(|message| {
+        let _ = writeln!(std::io::stderr(), "{message}");
+    });
     gpui_platform::application()
         .with_assets(Assets)
         .run(move |cx: &mut App| {
+            // GPUI a démarré : les paniques suivantes ne parlent plus de GPU.
+            startup::remove_startup_hook();
             // Linux sans serveur d'affichage : GPUI démarre « sans tête » et
             // ouvrirait une fenêtre invisible, l'app tournerait sans que
             // personne ne la voie.
             #[cfg(any(target_os = "linux", target_os = "freebsd"))]
             if cx.compositor_name() == "headless" {
                 std::process::exit(startup::no_window(
-                    "no display server: WAYLAND_DISPLAY and DISPLAY are unset",
+                    &dysflow::tr!(
+                        "no display server: WAYLAND_DISPLAY and DISPLAY are unset",
+                        "aucun serveur d'affichage : WAYLAND_DISPLAY et DISPLAY sont absents"
+                    ),
                     &mut std::io::stderr(),
                 ));
             }
@@ -138,10 +152,12 @@ pub fn run(path: Option<PathBuf>) {
                 *out.borrow_mut() = Some(main.clone());
                 cx.new(|cx| gpui_component::Root::new(main, window, cx))
             });
-            // L'échec de GPUI est une erreur rendue (Metal : « accessing a
-            // compatible Metal device », DirectX, wgpu…), pas une panique.
-            // `cx.quit()` ne rendrait pas de code 1 (sous macOS,
-            // `terminate:` sort avec 0) : on sort ici.
+            // Ici, l'échec de la fenêtre est une erreur rendue : Metal
+            // (« accessing a compatible Metal device »), wgpu sous Linux,
+            // Windows démarré sans tête (par SSH : « cannot open windows
+            // while headless »). L'absence de DirectX, elle, est une panique
+            // au démarrage (crochet plus haut). `cx.quit()` ne rendrait pas
+            // de code 1 (sous macOS, `terminate:` sort avec 0) : on sort ici.
             if let Err(err) = opened {
                 std::process::exit(startup::no_window(
                     &format!("{err:#}"),

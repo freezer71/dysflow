@@ -25,7 +25,7 @@ use dysflow::tts::silent::SilentEngine;
 use dysflow::tts::TtsEngine;
 use dysflow_app::session::Session;
 use dysflow_app::settings::ui_lang_choice;
-use dysflow_app::startup::{download_label, first_launch, no_gpu_message, no_window};
+use dysflow_app::startup::{download_label, first_launch, no_gpu_message, no_window, panic_reason};
 use dysflow_app::transport::can_play;
 use dysflow_app::window::MainWindow;
 use gpui::{px, size, Entity, TestAppContext, VisualTestContext};
@@ -316,6 +316,18 @@ fn system_language_prefers_environment_then_platform() {
     assert_eq!(ui_lang_choice("", unset, en_platform), UiLang::En);
     // Une variable vide compte comme absente.
     assert_eq!(ui_lang_choice("", empty_env, fr_platform), UiLang::Fr);
+    // « C », « POSIX » (et « C.UTF-8 ») ne disent aucune langue : comme
+    // absentes, la plateforme décide.
+    for tag in ["C", "POSIX", "C.UTF-8"] {
+        let c_env = move |k: &str| (k == "LANG").then(|| tag.to_string());
+        assert_eq!(ui_lang_choice("", c_env, fr_platform), UiLang::Fr, "{tag}");
+    }
+    let c_then_fr = |k: &str| match k {
+        "LC_ALL" => Some("C".to_string()),
+        "LANG" => Some("fr_FR.UTF-8".to_string()),
+        _ => None,
+    };
+    assert_eq!(ui_lang_choice("", c_then_fr, en_platform), UiLang::Fr);
     // Ni l'un ni l'autre : l'anglais.
     assert_eq!(ui_lang_choice("", unset, no_platform), UiLang::En);
     // Une langue choisie ne regarde ni l'un ni l'autre.
@@ -331,4 +343,14 @@ fn the_tests_never_touch_the_user_s_folders() {
     // Garde-fou : la feature `test-paths` est bien active dans ces essais
     // (modèles, positions, cache dans le dossier temporaire du processus).
     assert!(dysflow::paths::scratch_paths());
+}
+
+#[test]
+fn panic_reason_reads_the_panic_text() {
+    let text: Box<dyn std::any::Any + Send> = Box::new("failed to initialize DirectX");
+    assert_eq!(panic_reason(text.as_ref()), "failed to initialize DirectX");
+    let formatted: Box<dyn std::any::Any + Send> = Box::new(String::from("X11: refused"));
+    assert_eq!(panic_reason(formatted.as_ref()), "X11: refused");
+    let other: Box<dyn std::any::Any + Send> = Box::new(42u8);
+    assert!(!panic_reason(other.as_ref()).is_empty());
 }

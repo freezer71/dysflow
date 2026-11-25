@@ -52,10 +52,17 @@ pub fn ui_lang_for(code: &str) -> UiLang {
     ui_lang_choice(code, |k| std::env::var(k).ok(), sys_locale::get_locale)
 }
 
+/// Vide, « C » ou « POSIX » (« C.UTF-8 » compris) : la locale neutre, qui ne
+/// dit aucune langue ; elle compte comme absente.
+fn names_a_language(tag: &str) -> bool {
+    let code = tag.split(['.', '@']).next().unwrap_or("");
+    !(code.is_empty() || code == "C" || code == "POSIX")
+}
+
 /// Le choix de la langue de l'interface, sans rien lire lui-même. « fr » et
 /// « en » s'imposent. Sinon (« Système ») : les variables de locale
-/// (`LC_ALL`, `LC_MESSAGES`, `LANG`, comme le terminal) quand l'une est
-/// définie et non vide ; à défaut la langue de la plateforme (`platform`,
+/// (`LC_ALL`, `LC_MESSAGES`, `LANG`, comme le terminal), la première qui
+/// nomme une langue (ni vide, ni « C », ni « POSIX ») ; à défaut la langue de la plateforme (`platform`,
 /// lue seulement alors) : une app lancée du Finder ou sous Windows n'a
 /// souvent pas `LANG`, et sortirait en anglais pour un francophone. Ni
 /// l'un ni l'autre : l'anglais.
@@ -72,8 +79,8 @@ pub fn ui_lang_choice(
     let from_env = ["LC_ALL", "LC_MESSAGES", "LANG"]
         .iter()
         .filter_map(|k| env(k))
-        .find(|v| !v.is_empty());
-    match from_env.or_else(platform) {
+        .find(|v| names_a_language(v));
+    match from_env.or_else(|| platform().filter(|v| names_a_language(v))) {
         Some(tag) => UiLang::from_locale(&tag),
         None => UiLang::En,
     }

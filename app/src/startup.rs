@@ -184,3 +184,46 @@ pub fn no_window(err: &str, out: &mut impl Write) -> i32 {
     let _ = out.flush();
     1
 }
+
+/// Le texte d'une panique (`&str` ou `String`, ce que `panic!` produit).
+pub fn panic_reason(payload: &(dyn std::any::Any + Send)) -> String {
+    if let Some(text) = payload.downcast_ref::<&str>() {
+        return text.to_string();
+    }
+    if let Some(text) = payload.downcast_ref::<String>() {
+        return text.clone();
+    }
+    tr!("unknown error", "erreur inconnue").to_string()
+}
+
+/// Le crochet de panique du démarrage, posé juste avant la création de la
+/// plateforme de GPUI. GPUI y panique quand il ne peut pas démarrer, avant
+/// le moindre rappel de l'app : Windows sans DirectX
+/// (`WindowsPlatform::connect_initially`, « failed to initialize
+/// DirectX », sans repli WARP), Windows dont la plateforme ne s'initialise
+/// pas (`gpui_platform::current_platform`, `expect`), Linux dont le serveur
+/// d'affichage nommé est injoignable (`LinuxPlatform::connect_initially`).
+/// Le crochet écrit alors `no_gpu_message` par `write` (la sortie d'erreur
+/// dans `run`), puis passe la main au crochet précédent : la panique suit son
+/// cours (avec `panic = "abort"` en release, l'arrêt du processus ; son code
+/// de sortie n'est donc pas 1). Retiré par `remove_startup_hook`.
+///
+/// Seules les paniques du fil qui pose le crochet (le fil principal, celui
+/// de GPUI) en parlent : une panique du fil du lecteur, déjà lancé, n'a rien
+/// à voir avec le GPU.
+pub fn install_startup_hook(write: impl Fn(&str) + Send + Sync + 'static) {
+    let previous = std::panic::take_hook();
+    let main = std::thread::current().id();
+    std::panic::set_hook(Box::new(move |info| {
+        if std::thread::current().id() == main {
+            write(&no_gpu_message(&panic_reason(info.payload())));
+        }
+        previous(info);
+    }));
+}
+
+/// Remet le crochet de panique par défaut : appelé au début du rappel de
+/// `run`, GPUI ayant démarré ; les paniques suivantes ne parlent pas de GPU.
+pub fn remove_startup_hook() {
+    drop(std::panic::take_hook());
+}
