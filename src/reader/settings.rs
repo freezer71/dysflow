@@ -287,7 +287,21 @@ fn system_voice_texts() -> (&'static str, &'static str, &'static str) {
     )
 }
 
-#[cfg(not(target_os = "macos"))]
+/// Windows : `SystemEngine` cherche `espeak-ng` dans le PATH ; rien ne
+/// l'installe (ce n'est pas `dysflow-espeak.exe`, joint pour Kokoro).
+#[cfg(windows)]
+fn system_voice_texts() -> (&'static str, &'static str, &'static str) {
+    (
+        crate::tr!("System voice", "Voix du système"),
+        crate::tr!(
+            "espeak-ng, if it is installed and in the PATH: a robotic voice, without download.",
+            "espeak-ng, s'il est installé et dans le PATH : une voix robotique, sans téléchargement."
+        ),
+        "GPL-3.0 (espeak-ng)",
+    )
+}
+
+#[cfg(all(not(target_os = "macos"), not(windows)))]
 fn system_voice_texts() -> (&'static str, &'static str, &'static str) {
     (
         crate::tr!("System voice", "Voix du système"),
@@ -749,6 +763,13 @@ mod tests {
                     assert!(!all.contains(mac), "{mac} : {all}");
                 }
                 assert!(row.summary.contains("espeak-ng"), "{all}");
+            }
+            // Windows : la vérité, espeak-ng trouvé dans le PATH ; ni
+            // « composant » ni « paquets » du système.
+            #[cfg(windows)]
+            {
+                assert!(row.summary.contains("PATH"), "{all}");
+                assert!(!all.contains("paquets") && !all.contains("packages"), "{all}");
             }
             assert!(row.system && row.installed && row.active);
         }

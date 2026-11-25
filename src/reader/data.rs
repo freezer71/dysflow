@@ -93,7 +93,17 @@ fn system_voice_refusal() -> &'static str {
     )
 }
 
-#[cfg(not(target_os = "macos"))]
+/// Windows : espeak-ng, trouvé dans le PATH s'il est installé ; Dysflow ne
+/// l'installe ni ne le retire.
+#[cfg(windows)]
+fn system_voice_refusal() -> &'static str {
+    crate::tr!(
+        "The system voice is espeak-ng, found in the PATH: Dysflow neither installs nor removes it",
+        "La voix du système est espeak-ng, trouvé dans le PATH : Dysflow ne l'installe ni ne le retire"
+    )
+}
+
+#[cfg(all(not(target_os = "macos"), not(windows)))]
 fn system_voice_refusal() -> &'static str {
     crate::tr!(
         "The system voice (espeak-ng) is installed and removed with the system's packages",
@@ -243,6 +253,8 @@ mod tests {
         assert!(refusal.contains("macOS"), "{refusal}");
         #[cfg(not(target_os = "macos"))]
         assert!(!refusal.contains("macOS") && refusal.contains("espeak-ng"), "{refusal}");
+        #[cfg(windows)]
+        assert!(refusal.contains("PATH") && !refusal.contains("paquets"), "{refusal}");
     }
 
     #[test]
