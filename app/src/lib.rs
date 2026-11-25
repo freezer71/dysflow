@@ -2,6 +2,8 @@
 
 pub mod keymap;
 pub mod layout;
+pub mod reading;
+pub mod session;
 
 use std::path::PathBuf;
 
