@@ -122,14 +122,24 @@ repertoires_du_lecteur() {
     done
 }
 
+# bin/dysflow-app, seulement s'il est notre lien vers ../lib/dysflow/dysflow-app
+# (comme scripts/install.sh) : un fichier ou un lien d'ailleurs reste.
+retirer_lien_app() {
+    lien="$PREFIX/bin/dysflow-app"
+    if [ -L "$lien" ] && [ "$(readlink "$lien")" = ../lib/dysflow/dysflow-app ]; then
+        rm -f "$lien"
+    fi
+}
+
 if [ -n "$DESINSTALLER" ]; then
     if [ "$(uname -s)" = Darwin ]; then
         osascript -e 'quit app "Dysflow"' >/dev/null 2>&1 || true
         rm -rf /Applications/Dysflow.app "$HOME/Applications/Dysflow.app"
     else
         rm -rf "$PREFIX/lib/dysflow"
-        # Le lien de l'app de bureau (paquet Linux qui la porte).
-        rm -f "$PREFIX/bin/dysflow-app"
+        # Le lien de l'app de bureau (paquet Linux qui la porte), seulement
+        # s'il est le nôtre : un autre bin/dysflow-app reste.
+        retirer_lien_app
     fi
     rm -f "$PREFIX/bin/dysflow"
     retirer_anciens
@@ -305,7 +315,7 @@ else
     if [ -x "$PREFIX/lib/dysflow/dysflow-app" ]; then
         ln -sfn ../lib/dysflow/dysflow-app "$PREFIX/bin/dysflow-app"
     else
-        rm -f "$PREFIX/bin/dysflow-app"
+        retirer_lien_app
     fi
     etape "$(t "Installed in $PREFIX/lib/dysflow" "Installé dans $PREFIX/lib/dysflow")"
     "$PREFIX/bin/dysflow" --check-kokoro >/dev/null 2>&1 \
