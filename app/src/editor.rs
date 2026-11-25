@@ -30,8 +30,8 @@ use gpui_component::input::{Enter, Escape, InputEvent, Textarea, TextareaState};
 use gpui_component::{Icon, Sizable};
 use gpui_kit_assets::IconName;
 
-use crate::colors;
 use crate::session::Session;
+use crate::theme;
 
 /// Le texte à modifier et la source sous laquelle il se rouvrira.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -255,6 +255,7 @@ impl TextEditor {
 
 impl Render for TextEditor {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let p = theme::colors(cx);
         use dysflow::tr;
         let font = self.font.clone();
         let keycap = |label: &'static str| {
@@ -262,10 +263,10 @@ impl Render for TextEditor {
                 .px(px(6.0))
                 .py(px(1.0))
                 .rounded(px(5.0))
-                .bg(colors::keycap())
+                .bg(p.keycap())
                 .text_size(px(12.0))
                 .font_weight(FontWeight::MEDIUM)
-                .text_color(colors::chrome())
+                .text_color(p.chrome())
                 .child(label)
         };
         div()
@@ -279,7 +280,7 @@ impl Render for TextEditor {
             .px(px(32.0))
             .pt(px(24.0))
             .pb(px(12.0))
-            .bg(colors::background())
+            .bg(p.background())
             // Échap : le champ le laisse passer, l'éditeur le prend et valide
             // (« la saisie se valide », comme l'app Mac).
             .on_action(cx.listener(|_, _: &Escape, _, cx| cx.emit(EditorEvent::Done)))
@@ -303,11 +304,11 @@ impl Render for TextEditor {
                             .p(px(16.0))
                             .rounded(px(10.0))
                             // En édition, le fond se teinte : on voit qu'on écrit.
-                            .bg(colors::editing())
+                            .bg(p.editing())
                             .font_family(font.family)
                             .text_size(px(font.size))
                             .line_height(px(font.line_height))
-                            .text_color(colors::text())
+                            .text_color(p.text())
                             .aria_label(tr!("Text to edit", "Texte à modifier")),
                     ),
             )
@@ -323,11 +324,11 @@ impl Render for TextEditor {
                     .mx_auto()
                     .h(px(40.0))
                     .text_size(px(13.0))
-                    .text_color(colors::chrome())
+                    .text_color(p.chrome())
                     .child(
                         Icon::new(IconName::Pencil)
                             .with_size(px(14.0))
-                            .text_color(colors::chrome()),
+                            .text_color(p.chrome()),
                     )
                     .child(
                         div()

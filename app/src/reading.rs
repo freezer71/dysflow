@@ -25,9 +25,9 @@ use gpui::{
     Styled, Task, TextAlign, TextRun, Window, WindowTextSystem,
 };
 
-use crate::colors;
 use crate::layout::{lay_out, Layout, Line, Measure, WordBox};
 use crate::session::Session;
+use crate::theme::{self, Palette};
 
 /// Marge autour du texte, en pixels.
 const PAD: f32 = 24.0;
@@ -105,11 +105,7 @@ impl Fonts {
         } else {
             READING_SIZE_DEFAULT
         };
-        let family = match settings.reading_font.as_str() {
-            "atkinson" => "Atkinson Hyperlegible",
-            "openDyslexic" => "OpenDyslexic",
-            _ => "Literata",
-        };
+        let family = crate::fonts::family(&settings.reading_font);
         Fonts {
             family: family.into(),
             size,
@@ -171,11 +167,11 @@ impl Fonts {
         f
     }
 
-    fn run(&self, style: TextStyle, len: usize, word: Option<&WordView>) -> TextRun {
+    fn run(&self, style: TextStyle, len: usize, word: Option<&WordView>, p: &Palette) -> TextRun {
         let color = if word.is_some_and(|w| w.link) {
-            colors::link()
+            p.link()
         } else {
-            colors::text()
+            p.text()
         };
         TextRun {
             len,
@@ -212,7 +208,8 @@ impl Measure for GpuiMeasure<'_> {
         {
             return *w;
         }
-        let run = self.fonts.run(style, text.len(), None);
+        // La couleur ne change pas la largeur.
+        let run = self.fonts.run(style, text.len(), None, &theme::LIGHT);
         let width = self
             .text
             .layout_line(text, px(style.size as f32 / 100.0), &[run], None)
@@ -646,7 +643,13 @@ impl ReadingView {
     }
 
     /// Mise en page, suivi, puis tout ce qu'il faut peindre.
-    fn prepare(&mut self, bounds: Bounds<Pixels>, hitbox: Hitbox, window: &Window) -> Plan {
+    fn prepare(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        hitbox: Hitbox,
+        window: &Window,
+        p: &Palette,
+    ) -> Plan {
         self.bounds = Some(bounds);
         let width = bounds.size.width.as_f32() - 2.0 * PAD;
         self.ensure_layout(width, window);
@@ -689,7 +692,7 @@ impl ReadingView {
                         bounds.size.width.as_f32(),
                         line.height + 4.0,
                     ),
-                    colors::ruler(),
+                    p.ruler(),
                     0.0,
                 ));
             }
@@ -717,12 +720,12 @@ impl ReadingView {
                             width + 2.0 * PILL_PAD.0,
                             pill_height,
                         ),
-                        colors::sentence(),
+                        p.sentence(),
                         PILL_RADIUS,
                     ));
                 }
                 let style = self.fonts.style(None, kind);
-                let run = self.fonts.run(style, shown.len(), None);
+                let run = self.fonts.run(style, shown.len(), None, p);
                 let shaped = text.shape_line(shown.into(), px(size), &[run], None);
                 plan.texts.push(Text {
                     origin: point(px(origin_x), px(line_top)),
@@ -743,9 +746,9 @@ impl ReadingView {
                     continue;
                 };
                 let lit = if self.highlight == Some((b.sentence, b.word)) {
-                    Some(colors::word())
+                    Some(p.word())
                 } else if self.highlight.is_none() && b.sentence == self.snapshot.sentence {
-                    Some(colors::sentence())
+                    Some(p.sentence())
                 } else {
                     None
                 };
@@ -766,7 +769,7 @@ impl ReadingView {
                 // d'avant.
                 let offset = if j == 0 { self.split_offset(i, b) } else { 0.0 };
                 let style = self.fonts.style(Some(word), kind);
-                let run = self.fonts.run(style, word.text.len(), Some(word));
+                let run = self.fonts.run(style, word.text.len(), Some(word), p);
                 let shaped = text.shape_line(word.text.clone().into(), px(size), &[run], None);
                 let clip = (offset > 0.0 || self.is_split(i, b))
                     .then(|| rect(origin_x + b.x, line_top, b.width, line.height));
@@ -834,9 +837,10 @@ fn rect(x: f32, y: f32, width: f32, height: f32) -> Bounds<Pixels> {
 
 impl Render for ReadingView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let p = theme::colors(cx);
         div()
             .size_full()
-            .bg(colors::background())
+            .bg(p.background())
             .child(ReadingElement { view: cx.entity() })
     }
 }
@@ -882,8 +886,10 @@ impl Element for ReadingElement {
         cx: &mut App,
     ) -> Plan {
         let hitbox = window.insert_hitbox(bounds, HitboxBehavior::Normal);
-        self.view
-            .update(cx, |view, _cx| view.prepare(bounds, hitbox, window))
+        self.view.update(cx, |view, cx| {
+            let p = theme::colors(cx);
+            view.prepare(bounds, hitbox, window, p)
+        })
     }
 
     fn paint(

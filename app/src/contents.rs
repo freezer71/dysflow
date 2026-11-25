@@ -19,8 +19,8 @@ use gpui::{
 use gpui_component::list::{List, ListDelegate, ListEvent, ListItem, ListState};
 use gpui_component::IndexPath;
 
-use crate::colors;
 use crate::session::Session;
+use crate::theme;
 
 /// Le retrait par niveau de titre.
 const INDENT: f32 = 14.0;
@@ -86,8 +86,9 @@ impl ListDelegate for ContentsDelegate {
         &mut self,
         ix: IndexPath,
         _window: &mut Window,
-        _cx: &mut Context<ListState<Self>>,
+        cx: &mut Context<ListState<Self>>,
     ) -> Option<Self::Item> {
+        let p = theme::colors(cx);
         let i = ix.row;
         let row = self.rows.get(i)?;
         let enabled = row.enabled();
@@ -101,7 +102,7 @@ impl ListDelegate for ContentsDelegate {
             .h(px(16.0))
             .rounded(px(2.0))
             .when(row.current, |this| {
-                this.bg(colors::accent())
+                this.bg(p.accent())
                     .debug_selector(|| "contents-marker".to_string())
             });
         let title = div()
@@ -116,11 +117,7 @@ impl ListDelegate for ContentsDelegate {
             } else {
                 FontWeight::NORMAL
             })
-            .text_color(if enabled {
-                colors::text()
-            } else {
-                colors::disabled()
-            })
+            .text_color(if enabled { p.text() } else { p.disabled() })
             .child(if row.title.trim().is_empty() {
                 dysflow::tr!("Untitled", "Sans titre").to_string()
             } else {
@@ -148,7 +145,7 @@ impl ListDelegate for ContentsDelegate {
                 // Une ligne désactivée n'a pas de fond choisi : un filet
                 // dit où est la sélection au clavier.
                 .when(!enabled && selected, |this| {
-                    this.border_1().border_color(colors::border_strong())
+                    this.border_1().border_color(p.focus())
                 })
                 .child(
                     div()
@@ -167,13 +164,14 @@ impl ListDelegate for ContentsDelegate {
     fn render_empty(
         &mut self,
         _window: &mut Window,
-        _cx: &mut Context<ListState<Self>>,
+        cx: &mut Context<ListState<Self>>,
     ) -> impl IntoElement {
+        let p = theme::colors(cx);
         div()
             .px(px(16.0))
             .py(px(8.0))
             .text_size(px(13.0))
-            .text_color(colors::muted())
+            .text_color(p.muted())
             .child(dysflow::tr!("No headings", "Aucun titre"))
     }
 
@@ -297,7 +295,8 @@ impl ContentsPanel {
 }
 
 impl Render for ContentsPanel {
-    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let p = theme::colors(cx);
         div()
             .id("contents")
             .flex()
@@ -305,9 +304,9 @@ impl Render for ContentsPanel {
             .flex_none()
             .w(px(256.0))
             .h_full()
-            .bg(colors::surface())
+            .bg(p.surface())
             .border_r_1()
-            .border_color(colors::border())
+            .border_color(p.border())
             .child(
                 div()
                     .flex_none()
@@ -316,7 +315,7 @@ impl Render for ContentsPanel {
                     .pb(px(6.0))
                     .text_size(px(12.0))
                     .font_weight(FontWeight::SEMIBOLD)
-                    .text_color(colors::chrome())
+                    .text_color(p.chrome())
                     .child(dysflow::tr!("Contents", "Sommaire")),
             )
             .child(

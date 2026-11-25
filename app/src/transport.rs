@@ -10,7 +10,7 @@
 //! temps écoulé, la frise cliquable, le temps restant estimé, la vitesse
 //! (un menu des vitesses usuelles) et l'écrou des réglages. Cibles de 32 px
 //! au moins, pictogrammes de 16 px, disque de 36 px (pictogramme de 18 px) ;
-//! chiffres à chasse fixe. Sans document, tout est désactivé (pas caché).
+//! chiffres à chasse fixe (`tnum` d'Atkinson Hyperlegible). Sans document, tout est désactivé (pas caché).
 //!
 //! Aucun contrôle ne garde le focus : un clic laisse les touches à la vue
 //! de lecture (sinon Espace rappuierait le bouton au lieu de lire).
@@ -21,17 +21,17 @@ use dysflow::reader::command::Command;
 use dysflow::reader::handle::Request;
 use dysflow::reader::view::Snapshot;
 use gpui::{
-    div, prelude::*, px, Context, Entity, FocusHandle, FontWeight, IntoElement, SharedString,
-    Subscription, Window,
+    div, prelude::*, px, Context, Entity, EventEmitter, FocusHandle, FontWeight, IntoElement,
+    SharedString, Subscription, Window,
 };
 use gpui_component::button::{Button, ButtonCustomVariant, ButtonVariants};
 use gpui_component::menu::{DropdownMenu, PopupMenuItem};
 use gpui_component::slider::{Slider, SliderEvent, SliderState};
-use gpui_component::{Disableable, Sizable};
+use gpui_component::{Disableable, Selectable, Sizable};
 use gpui_kit_assets::IconName;
 
-use crate::colors;
 use crate::session::Session;
+use crate::theme;
 
 /// Les vitesses du menu, comme l'app Mac.
 pub const SPEEDS: [f32; 5] = [0.75, 1.0, 1.25, 1.5, 2.0];
@@ -89,6 +89,13 @@ pub fn sentence_at(fraction: f32, sentence_count: usize) -> Option<usize> {
     Some(((f * sentence_count as f32) as usize).min(sentence_count - 1))
 }
 
+/// Ce que la barre demande à la fenêtre.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BarEvent {
+    /// L'écrou : ouvrir (ou fermer) les réglages.
+    Settings,
+}
+
 pub struct ReaderBar {
     session: Arc<Session>,
     /// Où rendre le focus après un geste sur la frise ou le menu.
@@ -99,8 +106,12 @@ pub struct ReaderBar {
     /// Vrai pendant qu'on fait glisser la frise : la lecture ne la ramène
     /// pas en arrière.
     scrubbing: bool,
+    /// Les réglages sont ouverts : l'écrou est marqué.
+    settings_open: bool,
     _timeline: Subscription,
 }
+
+impl EventEmitter<BarEvent> for ReaderBar {}
 
 impl ReaderBar {
     pub fn new(
@@ -131,6 +142,7 @@ impl ReaderBar {
             sentence_count: 0,
             timeline,
             scrubbing: false,
+            settings_open: false,
             _timeline: subscription,
         }
     }
@@ -154,6 +166,14 @@ impl ReaderBar {
         self.snapshot = snapshot.clone();
         self.sentence_count = sentence_count;
         cx.notify();
+    }
+
+    /// Marque l'écrou quand les réglages sont ouverts.
+    pub fn set_settings_open(&mut self, open: bool, cx: &mut Context<Self>) {
+        if self.settings_open != open {
+            self.settings_open = open;
+            cx.notify();
+        }
     }
 
     fn send(&self, command: Command) {
@@ -184,6 +204,7 @@ impl ReaderBar {
     }
 
     fn play_button(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let p = theme::colors(cx);
         let s = &self.snapshot;
         let (icon, label) = if s.playing {
             (IconName::Pause, dysflow::tr!("Pause", "Pause"))
@@ -191,10 +212,10 @@ impl ReaderBar {
             (IconName::Play, dysflow::tr!("Play", "Lecture"))
         };
         let disc = ButtonCustomVariant::new(cx)
-            .color(colors::accent())
-            .foreground(colors::on_accent())
-            .hover(colors::accent().opacity(0.85))
-            .active(colors::accent().opacity(0.7));
+            .color(p.accent())
+            .foreground(p.on_accent())
+            .hover(p.accent().opacity(0.85))
+            .active(p.accent().opacity(0.7));
         div().debug_selector(|| "transport-play".to_string()).child(
             Button::new("transport-play")
                 .custom(disc)
@@ -253,16 +274,19 @@ impl ReaderBar {
 
 impl Render for ReaderBar {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let p = theme::colors(cx);
         let s = self.snapshot.clone();
         let enabled = s.has_document;
         let figures = |text: String| {
             div()
                 .flex_none()
                 .min_w(px(40.0))
-                .text_color(colors::muted())
+                .text_color(p.muted())
                 .font_weight(FontWeight::MEDIUM)
-                // Les chiffres ne dansent pas d'une seconde à l'autre.
-                .font_family("Menlo")
+                // Les chiffres ne dansent pas d'une seconde à l'autre : ceux
+                // à chasse fixe de la police de l'interface (embarquée,
+                // partout la même), pas une police du système.
+                .font_features(crate::settings::tabular())
                 .text_size(px(12.0))
                 .child(text)
         };
@@ -290,13 +314,13 @@ impl Render for ReaderBar {
                 .size(px(TARGET))
                 .rounded(px(10.0))
                 .tab_stop(false)
+                .selected(self.settings_open)
                 .tooltip(format!(
                     "{} ({})",
                     dysflow::tr!("Settings", "Réglages"),
                     crate::inputs::command_label(",")
                 ))
-                // Le panneau des réglages arrive avec la tâche 9.
-                .disabled(true),
+                .on_click(cx.listener(|_, _, _, cx| cx.emit(BarEvent::Settings))),
         );
         div()
             .flex()
@@ -305,9 +329,9 @@ impl Render for ReaderBar {
             .px(px(8.0))
             .py(px(6.0))
             .rounded(px(22.0))
-            .bg(colors::surface())
+            .bg(p.surface())
             .text_size(px(13.0))
-            .text_color(colors::chrome())
+            .text_color(p.chrome())
             .child(
                 div()
                     .flex()
@@ -323,8 +347,8 @@ impl Render for ReaderBar {
                     Slider::new(&self.timeline)
                         .tab_stop(false)
                         .disabled(!enabled)
-                        .bg(colors::accent())
-                        .text_color(colors::accent())
+                        .bg(p.accent())
+                        .text_color(p.accent())
                         .accessibility_label(dysflow::tr!("Progress", "Progression")),
                 ),
             )

@@ -1,8 +1,8 @@
 //! Lecteur Dysflow en interface graphique (GPUI).
 
-pub mod colors;
 pub mod contents;
 pub mod editor;
+pub mod fonts;
 pub mod help;
 pub mod inputs;
 pub mod keymap;
@@ -10,6 +10,8 @@ pub mod layout;
 pub mod reading;
 pub mod search;
 pub mod session;
+pub mod settings;
+pub mod theme;
 pub mod transport;
 pub mod window;
 
@@ -17,7 +19,7 @@ use std::borrow::Cow;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use dysflow::config::Config;
+use dysflow::config::{Config, Theme};
 use dysflow::reader::build::app_reader;
 use dysflow::reader::handle::ReaderHandle;
 use gpui::{
@@ -37,7 +39,9 @@ gpui_kit_assets::icon_assets!(
         ClipboardPaste,
         CircleQuestionMark,
         TableOfContents,
-        Pencil
+        Pencil,
+        Monitor,
+        Download
     ]
 );
 
@@ -59,6 +63,14 @@ impl AssetSource for Assets {
     }
 }
 
+/// Ce que l'app pose avant sa première fenêtre : gpui-component, les
+/// polices embarquées (`fonts::register`), puis le thème choisi.
+pub fn init(cx: &mut App, theme: Theme) {
+    gpui_component::init(cx);
+    fonts::register(cx);
+    theme::install(theme, cx);
+}
+
 /// Ouvre l'application et sa fenêtre principale ; `path` (l'argument de la
 /// ligne de commande) s'ouvre aussitôt, sans bloquer l'interface (voir
 /// `MainWindow::new`). La dernière fenêtre fermée quitte l'app.
@@ -66,13 +78,20 @@ pub fn run(path: Option<PathBuf>) {
     // Avant le moindre fil : ONNX Runtime lit cette variable à son premier
     // environnement (voir `tts::kokoro::onnx::NO_TELEMETRY`).
     std::env::set_var("ORT_DISABLE_TELEMETRY", "1");
-    let session = Arc::new(Session::new(ReaderHandle::spawn(|| {
-        app_reader(Config::load(), dysflow::tts::AppCompute::default())
+    // La langue et le thème se lisent avant la fenêtre : elle s'ouvre
+    // directement dans les bons, sans changer sous les yeux. Un petit
+    // fichier lu une fois, avant que l'interface n'existe ; le lecteur
+    // reçoit la même lecture.
+    let loaded = Config::load();
+    dysflow::i18n::set_ui_lang(settings::ui_lang_for(&loaded.0.app.ui_language));
+    let theme = loaded.0.app.theme;
+    let session = Arc::new(Session::new(ReaderHandle::spawn(move || {
+        app_reader(loaded, dysflow::tts::AppCompute::default())
     })));
     gpui_platform::application()
         .with_assets(Assets)
         .run(move |cx: &mut App| {
-            gpui_component::init(cx);
+            init(cx, theme);
             cx.on_window_closed(|cx, _| {
                 if cx.windows().is_empty() {
                     cx.quit();

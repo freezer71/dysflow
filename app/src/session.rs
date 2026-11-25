@@ -48,4 +48,30 @@ impl Session {
     ) -> Option<T> {
         self.handle.ask(f)
     }
+
+    /// Envoie `f` au fil du lecteur sans attendre : la requête part tout de
+    /// suite, dans l'ordre des appels (deux réglages changés de suite
+    /// s'appliquent dans cet ordre). Ne bloque pas : la réponse s'attend par
+    /// `Reply::wait`, sur l'exécuteur d'arrière-plan.
+    pub fn post<T: Send + 'static>(
+        &self,
+        f: impl FnOnce(&mut dysflow::reader::Reader) -> T + Send + 'static,
+    ) -> Reply<T> {
+        let (tx, rx) = std::sync::mpsc::sync_channel(1);
+        self.handle.send(Request::Ask(Box::new(move |reader| {
+            let _ = tx.send(f(reader));
+        })));
+        Reply(rx)
+    }
+}
+
+/// La réponse à une requête de `Session::post`.
+pub struct Reply<T>(std::sync::mpsc::Receiver<T>);
+
+impl<T> Reply<T> {
+    /// BLOQUE jusqu'à la réponse (5 s au plus, puis `None`) : jamais depuis
+    /// le fil de l'interface.
+    pub fn wait(self) -> Option<T> {
+        self.0.recv_timeout(std::time::Duration::from_secs(5)).ok()
+    }
 }

@@ -143,6 +143,20 @@ l'adresse exacte des sources d'espeak-ng
 les sources de dysflow-espeak (dysflow-espeak.c, build-espeak.sh) sont livrés
 dans Contents/Resources/espeak-ng (COPYING, SOURCE.txt).
 
+L'app de bureau en Rust (dossier app/, binaire dysflow-app) lie GPUI
+(crate gpui-pre 0.3.14, Copyright 2022 - 2025 Zed Industries, Inc., licence
+Apache 2.0), gpui-component 0.11.0 (Copyright 2024 - 2026 Longbridge,
+licence Apache 2.0) et gpui-kit-assets 0.11.0 (licence Apache 2.0), qui
+embarque des icônes de Lucide (licence ISC, Copyright (c) 2026 Lucide Icons
+and Contributors, et licence MIT pour la partie issue de Feather, Copyright
+(c) 2013-present Cole Bemis — LICENSE-LUCIDE de la crate) ; ces crates et
+celles qu'elles lient sont dans THIRD-PARTY-RUST.txt. Son binaire embarque
+aussi les trois polices de lecture ci-dessus (Literata, OpenDyslexic,
+Atkinson Hyperlegible), sous SIL Open Font License 1.1, sans modification,
+copiées dans app/assets/fonts avec le texte de leur licence
+(OFL-Literata.txt, OFL-OpenDyslexic.txt, OFL-AtkinsonHyperlegible.txt), à
+joindre à tout paquet de l'app.
+
 Le terminal (dossier produit par scripts/package.sh) contient ce fichier,
 THIRD-PARTY-RUST.txt (les crates Rust liées au binaire, mêmes licences que
 ci-dessus) et, dans licences/ : Sonic (sonic-LICENSE), Tesseract et

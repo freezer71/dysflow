@@ -25,8 +25,8 @@ use gpui_component::input::{Enter, Escape, Input, InputEvent, InputState};
 use gpui_component::{Disableable, Icon, Sizable};
 use gpui_kit_assets::IconName;
 
-use crate::colors;
 use crate::session::Session;
+use crate::theme;
 
 /// Ce que la barre demande à la fenêtre.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -88,6 +88,14 @@ pub struct SearchBar {
 impl EventEmitter<SearchEvent> for SearchBar {}
 
 impl SearchBar {
+    /// La langue de l'interface a changé : le texte d'attente du champ se
+    /// réécrit (le reste de la barre se relit à chaque rendu).
+    pub fn relabel(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.input.update(cx, |input, cx| {
+            input.set_placeholder(dysflow::tr!("Search", "Rechercher"), window, cx)
+        });
+    }
+
     pub fn new(session: Arc<Session>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let input = cx.new(|cx| {
             InputState::new(window, cx).placeholder(dysflow::tr!("Search", "Rechercher"))
@@ -249,6 +257,7 @@ impl SearchBar {
 
 impl Render for SearchBar {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let p = theme::colors(cx);
         let missing = self.search.is_none() && self.result.is_some();
         let previous = self.nav_button(
             "search-previous",
@@ -275,11 +284,11 @@ impl Render for SearchBar {
             .gap(px(4.0))
             .h(px(48.0))
             .px(px(16.0))
-            .bg(colors::surface())
+            .bg(p.surface())
             .border_b_1()
-            .border_color(colors::border())
+            .border_color(p.border())
             .text_size(px(13.0))
-            .text_color(colors::chrome())
+            .text_color(p.chrome())
             // Échap dans le champ : le champ le laisse passer, la barre le
             // prend.
             .on_action(cx.listener(|_, _: &Escape, _, cx| cx.emit(SearchEvent::Cancel)))
@@ -295,7 +304,7 @@ impl Render for SearchBar {
                         .prefix(
                             Icon::new(IconName::Search)
                                 .with_size(px(16.0))
-                                .text_color(colors::muted()),
+                                .text_color(p.muted()),
                         )
                         .aria_label(dysflow::tr!("Search the text", "Rechercher dans le texte")),
                 ),
@@ -309,16 +318,12 @@ impl Render for SearchBar {
                     .items_center()
                     .gap(px(6.0))
                     .font_weight(FontWeight::MEDIUM)
-                    .text_color(if missing {
-                        colors::error()
-                    } else {
-                        colors::chrome()
-                    })
+                    .text_color(if missing { p.error() } else { p.chrome() })
                     .when(missing, |this| {
                         this.child(
                             Icon::new(IconName::CircleAlert)
                                 .with_size(px(14.0))
-                                .text_color(colors::error()),
+                                .text_color(p.error()),
                         )
                     })
                     .children(self.result.clone()),

@@ -1,6 +1,6 @@
 //! La fenêtre principale : l'en-tête, la barre de recherche, le sommaire,
-//! la vue de lecture (ou, à sa place, l'éditeur du texte), la barre de
-//! lecture, la barre d'état et l'aide, avec la place des réglages (tâche 9).
+//! la vue de lecture (ou, à sa place, l'éditeur du texte), les réglages à
+//! droite, la barre de lecture, la barre d'état et l'aide.
 //!
 //! Le focus est d'ordinaire sur la fenêtre (la vue de lecture) : les touches
 //! y arrivent et passent par `keymap::action`. Le champ de recherche, quand
@@ -9,11 +9,15 @@
 //! il a le focus, garde ↑ ↓ Entrée et Échap ; les autres touches du lecteur
 //! y marchent. L'éditeur, quand il a le focus, garde ses touches comme le
 //! champ de recherche (Entrée y va à la ligne) ; Échap y valide. Ouvrir un
-//! fichier ou
-//! lire le presse-papiers attend le lecteur sur l'exécuteur d'arrière-plan
+//! fichier ou lire le presse-papiers attend le lecteur sur l'exécuteur d'arrière-plan
 //! de GPUI, jamais sur le fil de l'interface ; le résultat revient par
 //! `update`, et une erreur reste dans la barre d'état jusqu'à la prochaine
-//! ouverture réussie.
+//! ouverture réussie. Les réglages, quand ils ont le focus, gardent leurs
+//! touches (Espace y presse un bouton) ; Échap les ferme, ⌘, aussi.
+//!
+//! La fenêtre suit l'apparence du système (`observe_window_appearance`) ;
+//! le thème choisi dans les réglages, la langue de l'interface et les
+//! réglages de lecture s'appliquent dès qu'ils sont enregistrés.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -25,12 +29,12 @@ use dysflow::reader::view::{Snapshot, VoiceState};
 use gpui::{
     div, prelude::*, px, App, ClipboardItem, Context, Entity, ExternalPaths, FocusHandle,
     FontWeight, IntoElement, KeyDownEvent, MouseButton, SharedString, Task, Window,
+    WindowAppearance,
 };
 use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::{Disableable, Selectable, Sizable};
 use gpui_kit_assets::IconName;
 
-use crate::colors;
 use crate::contents::{ContentsEvent, ContentsPanel};
 use crate::editor::{ask_draft, EditorEvent, Outcome, TextEditor};
 use crate::help;
@@ -39,7 +43,9 @@ use crate::keymap::{action, Action, Modifier};
 use crate::reading::ReadingView;
 use crate::search::{SearchBar, SearchEvent};
 use crate::session::Session;
-use crate::transport::ReaderBar;
+use crate::settings::{SettingsEvent, SettingsPage};
+use crate::theme;
+use crate::transport::{BarEvent, ReaderBar};
 
 /// Le temps qu'un message passager (« Phrase copiée ») reste affiché.
 const MESSAGE: Duration = Duration::from_secs(3);
@@ -106,7 +112,7 @@ pub enum Panel {
     Contents,
     /// L'édition du texte : l'éditeur prend la place de la lecture.
     Edit,
-    /// Les réglages (tâche 9).
+    /// Les réglages, à droite de la lecture.
     Settings,
 }
 
@@ -120,12 +126,13 @@ pub struct MainWindow {
     search: Entity<SearchBar>,
     contents: Entity<ContentsPanel>,
     editor: Entity<TextEditor>,
+    settings: Entity<SettingsPage>,
     /// La barre de recherche est ouverte.
     searching: bool,
     /// Le presse-papiers lu par ⌘V : celui du système, sauf dans les essais.
     clipboard: Clipboard,
     help: bool,
-    /// Le panneau ouvert : le sommaire ou l'éditeur (réglages : tâche 9).
+    /// Le panneau ouvert : le sommaire, l'éditeur ou les réglages.
     panel: Option<Panel>,
     /// La dernière erreur d'ouverture ou de collage.
     error: Option<String>,
@@ -144,6 +151,9 @@ pub struct MainWindow {
     _search: gpui::Subscription,
     _contents: gpui::Subscription,
     _editor: gpui::Subscription,
+    _settings: gpui::Subscription,
+    _bar: gpui::Subscription,
+    _appearance: gpui::Subscription,
     /// La question au lecteur qui ouvre l'éditeur.
     _editing: Task<()>,
     /// Cette question est en route : un second `e` n'en pose pas d'autre
@@ -175,6 +185,26 @@ impl MainWindow {
         let search = cx.new(|cx| SearchBar::new(Arc::clone(&session), window, cx));
         let contents = cx.new(|cx| ContentsPanel::new(Arc::clone(&session), window, cx));
         let editor = cx.new(|cx| TextEditor::new(Arc::clone(&session), window, cx));
+        let settings = cx.new(|cx| SettingsPage::new(Arc::clone(&session), window, cx));
+        let settings_events =
+            cx.subscribe_in(
+                &settings,
+                window,
+                |this, _, event, window, cx| match event {
+                    SettingsEvent::Saved(values) => this.settings_saved(values, window, cx),
+                    SettingsEvent::Close => this.close_settings(window, cx),
+                },
+            );
+        let bar_events = cx.subscribe_in(&bar, window, |this, _, event, window, cx| match event {
+            BarEvent::Settings => this.toggle_settings(window, cx),
+        });
+        // Le thème : posé au démarrage (`theme::install`), sinon ici ; puis
+        // l'apparence du système, et chacun de ses changements.
+        crate::theme::ensure(cx);
+        crate::theme::set_system_appearance(window.appearance(), cx);
+        let appearance = cx.observe_window_appearance(window, |this, window, cx| {
+            this.system_appearance_changed(window.appearance(), window, cx)
+        });
         let editor_events =
             cx.subscribe_in(&editor, window, |this, _, event, window, cx| match event {
                 EditorEvent::Done => this.finish_editing(true, window, cx),
@@ -224,6 +254,7 @@ impl MainWindow {
             search,
             contents,
             editor,
+            settings,
             searching: false,
             clipboard: Arc::new(|| dysflow::source::clipboard().map_err(|e| format!("{e:#}"))),
             help: false,
@@ -240,6 +271,9 @@ impl MainWindow {
             _search: search_events,
             _contents: contents_events,
             _editor: editor_events,
+            _settings: settings_events,
+            _bar: bar_events,
+            _appearance: appearance,
             _editing: Task::ready(()),
             edit_pending: false,
         };
@@ -295,6 +329,84 @@ impl MainWindow {
 
     pub fn editor(&self) -> &Entity<TextEditor> {
         &self.editor
+    }
+
+    pub fn settings(&self) -> &Entity<SettingsPage> {
+        &self.settings
+    }
+
+    /// L'apparence du système a changé : sous le thème « Système », la
+    /// fenêtre passe en clair ou en sombre (appelée par l'observateur de
+    /// GPUI ; les essais l'appellent eux-mêmes, la plateforme de test ne
+    /// sachant pas simuler ce changement).
+    pub fn system_appearance_changed(
+        &mut self,
+        appearance: WindowAppearance,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        crate::theme::set_system_appearance(appearance, cx);
+        cx.notify();
+    }
+
+    /// ⌘, ou l'écrou : les réglages s'ouvrent à droite de la lecture, avec
+    /// le clavier ; leurs valeurs se lisent sans bloquer.
+    pub fn open_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.editing() {
+            self.finish_editing(true, window, cx);
+        }
+        self.help = false;
+        self.panel = Some(Panel::Settings);
+        let snapshot = self.reading.read(cx).snapshot().clone();
+        self.settings.update(cx, |page, cx| {
+            page.receive(&snapshot, cx);
+            page.load(cx);
+            page.focus(window, cx);
+        });
+        self.bar
+            .update(cx, |bar, cx| bar.set_settings_open(true, cx));
+        cx.notify();
+    }
+
+    /// Les réglages se ferment ; la lecture reprend les touches.
+    pub fn close_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.panel == Some(Panel::Settings) {
+            self.panel = None;
+            self.bar
+                .update(cx, |bar, cx| bar.set_settings_open(false, cx));
+            cx.notify();
+        }
+        self.focus.focus(window, cx);
+    }
+
+    fn toggle_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.panel == Some(Panel::Settings) {
+            self.close_settings(window, cx);
+        } else {
+            self.open_settings(window, cx);
+        }
+    }
+
+    /// Un réglage est enregistré : la vue de lecture relit les siens
+    /// (police, taille, règle…), le thème et la langue de l'interface
+    /// suivent, et toute la fenêtre se redessine.
+    fn settings_saved(
+        &mut self,
+        values: &dysflow::reader::settings::SettingsView,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.reading.update(cx, |r, cx| r.reload_settings(cx));
+        crate::theme::set_choice(values.theme, cx);
+        let lang = crate::settings::ui_lang_for(&values.ui_language);
+        if lang != dysflow::i18n::ui_lang() {
+            dysflow::i18n::set_ui_lang(lang);
+            // Les textes gardés par les composants (le champ de recherche)
+            // se réécrivent ; le reste se relit au prochain rendu.
+            self.search.update(cx, |s, cx| s.relabel(window, cx));
+            cx.refresh_windows();
+        }
+        cx.notify();
     }
 
     /// Nombre de rendus de la fenêtre depuis sa création.
@@ -441,6 +553,8 @@ impl MainWindow {
             cx.notify();
         } else if self.searching {
             self.close_search(window, cx);
+        } else if self.panel == Some(Panel::Settings) {
+            self.close_settings(window, cx);
         } else if self.panel.is_some() {
             self.close_contents(window, cx);
         } else {
@@ -485,6 +599,10 @@ impl MainWindow {
         }
         if !self.reading.read(cx).snapshot().has_document {
             return;
+        }
+        if self.panel == Some(Panel::Settings) {
+            self.bar
+                .update(cx, |bar, cx| bar.set_settings_open(false, cx));
         }
         self.panel = Some(Panel::Contents);
         let reading = self.reading.clone();
@@ -624,8 +742,7 @@ impl MainWindow {
             Action::OpenSearch => self.open_search(window, cx),
             Action::ToggleContents => self.toggle_contents(window, cx),
             Action::Edit => self.begin_editing(window, cx),
-            // Les réglages arrivent avec la tâche 9.
-            Action::OpenSettings => {}
+            Action::OpenSettings => self.toggle_settings(window, cx),
         }
     }
 
@@ -635,14 +752,28 @@ impl MainWindow {
         let in_contents = self.panel == Some(Panel::Contents)
             && self.contents.read(cx).focus_handle(cx).is_focused(window);
         let in_editor = self.editing() && self.editor.read(cx).focus_handle(cx).is_focused(window);
+        // Les réglages gardent leurs touches (Espace presse un bouton, ← →
+        // déplacent un curseur), comme un champ ; Échap y est pris par la
+        // page.
+        let in_settings = self.panel == Some(Panel::Settings)
+            && self
+                .settings
+                .read(cx)
+                .focus_handle()
+                .contains_focused(window, cx);
         // Un menu ouvert (vitesse) garde ses touches.
-        if !in_search && !in_contents && !in_editor && focused.is_some_and(|f| f != self.focus) {
+        if !in_search
+            && !in_contents
+            && !in_editor
+            && !in_settings
+            && focused.is_some_and(|f| f != self.focus)
+        {
             return;
         }
         let Some(found) = action(&key_press(&event.keystroke), command_modifier()) else {
             return;
         };
-        if in_search || in_editor {
+        if in_search || in_editor || in_settings {
             // Le champ garde ses lettres, ses signes (/ ? + -), Espace, ses
             // flèches, ⌘C, ⌘V ; Échap y est pris par la barre (ou par
             // l'éditeur, qui valide), Entrée va à la ligne. Seules les
@@ -689,6 +820,10 @@ impl MainWindow {
         self.bar
             .update(cx, |bar, cx| bar.receive(&snapshot, count, window, cx));
         self.search.update(cx, |s, cx| s.receive(&snapshot, cx));
+        if self.panel == Some(Panel::Settings) {
+            self.settings
+                .update(cx, |page, cx| page.receive(&snapshot, cx));
+        }
         if self.editing() && self.editor.read(cx).revision() != snapshot.revision {
             // Un autre document est arrivé : le texte modifié ne vaut plus,
             // il s'oublie (rien ne part au lecteur).
@@ -718,6 +853,7 @@ impl MainWindow {
     }
 
     fn header(&self, has_document: bool, cx: &mut Context<Self>) -> impl IntoElement {
+        let p = theme::colors(cx);
         let title = if has_document && !self.title.is_empty() {
             self.title.clone()
         } else {
@@ -742,9 +878,9 @@ impl MainWindow {
             .h(px(48.0))
             .px(px(16.0))
             .border_b_1()
-            .border_color(colors::border())
+            .border_color(p.border())
             .text_size(px(13.0))
-            .text_color(colors::chrome())
+            .text_color(p.chrome())
             .child(
                 div()
                     .flex_1()
@@ -754,7 +890,7 @@ impl MainWindow {
                     .whitespace_nowrap()
                     .text_size(px(14.0))
                     .font_weight(FontWeight::SEMIBOLD)
-                    .text_color(colors::text())
+                    .text_color(p.text())
                     .child(title),
             )
             .child(
@@ -867,6 +1003,7 @@ impl MainWindow {
 
     /// Sans document : l'invitation, comme le lecteur vide de l'app Mac.
     fn invitation(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let p = theme::colors(cx);
         div()
             .debug_selector(|| "invitation".to_string())
             .absolute()
@@ -880,13 +1017,13 @@ impl MainWindow {
                 div()
                     .text_size(px(20.0))
                     .font_weight(FontWeight::SEMIBOLD)
-                    .text_color(colors::text())
+                    .text_color(p.text())
                     .child(dysflow::tr!("Nothing to read", "Rien à lire")),
             )
             .child(
                 div()
                     .text_size(px(14.0))
-                    .text_color(colors::muted())
+                    .text_color(p.muted())
                     .child(dysflow::tr!(
                         en = "Paste some text ({}) or drop in a file",
                         fr = "Colle un texte ({}) ou dépose un fichier",
@@ -916,7 +1053,7 @@ impl MainWindow {
             )
     }
 
-    fn status_bar(&self, snapshot: &Snapshot) -> impl IntoElement {
+    fn status_bar(&self, snapshot: &Snapshot, p: &theme::Palette) -> impl IntoElement {
         let line = self.status_line_for(snapshot);
         let failing = self.error.is_some() && self.message.is_none();
         div()
@@ -927,16 +1064,12 @@ impl MainWindow {
             .h(px(28.0))
             .px(px(16.0))
             .text_size(px(12.0))
-            .text_color(if failing {
-                colors::error()
-            } else {
-                colors::muted()
-            })
+            .text_color(if failing { p.error() } else { p.muted() })
             .when(failing, |this| {
                 this.child(
                     gpui_component::Icon::new(IconName::TriangleAlert)
                         .with_size(px(14.0))
-                        .text_color(colors::error()),
+                        .text_color(p.error()),
                 )
             })
             .child(
@@ -953,6 +1086,7 @@ impl MainWindow {
 
 impl Render for MainWindow {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let p = theme::colors(cx);
         self.renders += 1;
         let snapshot = self.reading.read(cx).snapshot().clone();
         let has_document = snapshot.has_document;
@@ -979,8 +1113,8 @@ impl Render for MainWindow {
                         .items_center()
                         .justify_center()
                         .p(px(16.0))
-                        .bg(colors::overlay())
-                        .child(help::card(command_modifier())),
+                        .bg(p.overlay())
+                        .child(help::card(command_modifier(), p)),
                 )
             });
         div()
@@ -994,12 +1128,12 @@ impl Render for MainWindow {
                     this.open(path.clone(), cx);
                 }
             }))
-            .drag_over::<ExternalPaths>(|style, _, _, _| style.bg(colors::drop_target()))
+            .drag_over::<ExternalPaths>(|style, _, _, _| style.bg(p.drop_target()))
             .size_full()
             .flex()
             .flex_col()
-            .bg(colors::background())
-            .text_color(colors::text())
+            .bg(p.background())
+            .text_color(p.text())
             .child(self.header(has_document, cx))
             .when(self.searching, |this| this.child(self.search.clone()))
             .child(
@@ -1011,7 +1145,10 @@ impl Render for MainWindow {
                         this.child(self.contents.clone())
                     })
                     .when(self.editing(), |this| this.child(self.editor.clone()))
-                    .when(!self.editing(), |this| this.child(reading)),
+                    .when(!self.editing(), |this| this.child(reading))
+                    .when(self.panel == Some(Panel::Settings), |this| {
+                        this.child(self.settings.clone())
+                    }),
             )
             .child(
                 div()
@@ -1026,6 +1163,6 @@ impl Render for MainWindow {
                     )
                     .child(self.bar.clone()),
             )
-            .child(self.status_bar(&snapshot))
+            .child(self.status_bar(&snapshot, p))
     }
 }

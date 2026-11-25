@@ -7,8 +7,8 @@
 
 use gpui::{div, prelude::*, px, IntoElement, SharedString};
 
-use crate::colors;
 use crate::keymap::{KeyPress, Modifier};
+use crate::theme::Palette;
 
 pub struct HelpRow {
     /// Les touches telles qu'elles s'écrivent (« ← → », « ⌘O »).
@@ -143,7 +143,7 @@ pub fn rows(modifier: Modifier) -> Vec<HelpRow> {
 
 /// La carte de l'aide, centrée sur la lecture. Trop haute pour la fenêtre,
 /// elle défile entre son titre et son pied.
-pub fn card(modifier: Modifier) -> impl IntoElement {
+pub fn card(modifier: Modifier, p: &Palette) -> impl IntoElement {
     let keys = rows(modifier).into_iter().map(|row| {
         div()
             .flex()
@@ -156,13 +156,13 @@ pub fn card(modifier: Modifier) -> impl IntoElement {
                         .px(px(7.0))
                         .py(px(2.0))
                         .rounded(px(6.0))
-                        .bg(colors::keycap())
-                        .text_color(colors::text())
+                        .bg(p.keycap())
+                        .text_color(p.text())
                         .font_weight(gpui::FontWeight::MEDIUM)
                         .child(SharedString::from(row.keys)),
                 ),
             )
-            .child(div().text_color(colors::chrome()).child(row.label))
+            .child(div().text_color(p.chrome()).child(row.label))
     });
     div()
         .id("aide")
@@ -173,16 +173,16 @@ pub fn card(modifier: Modifier) -> impl IntoElement {
         .w(px(460.0))
         .p(px(20.0))
         .rounded(px(16.0))
-        .bg(colors::background())
+        .bg(p.background())
         .border_1()
-        .border_color(colors::border())
+        .border_color(p.border())
         .shadow_lg()
         .text_size(px(13.0))
         .child(
             div()
                 .text_size(px(15.0))
                 .font_weight(gpui::FontWeight::SEMIBOLD)
-                .text_color(colors::text())
+                .text_color(p.text())
                 .child(dysflow::tr!("Shortcuts", "Raccourcis")),
         )
         .child(
@@ -198,7 +198,7 @@ pub fn card(modifier: Modifier) -> impl IntoElement {
         .child(
             div()
                 .text_size(px(12.0))
-                .text_color(colors::muted())
+                .text_color(p.muted())
                 .child(dysflow::tr!("? or Esc to close", "? ou Échap pour fermer")),
         )
 }
