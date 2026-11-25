@@ -321,6 +321,19 @@ Damaged installation
 LISEZMOI
 fi
 
+# Le paquet porte l'app : les licences OFL de ses polices doivent y être
+# (sous Windows, windows-imports.py le vérifie aussi). Le contrôle porte
+# sur le dossier fini, pas sur la copie plus haut.
+if [ -e "$OUT/dysflow-app$EXE" ]; then
+    for licence in app/assets/fonts/OFL-*.txt; do
+        name=$(basename "$licence")
+        if [ ! -f "$OUT/licences/$name" ]; then
+            echo "Erreur : $OUT/dysflow-app$EXE est joint sans licences/$name (licence de ses polices)" >&2
+            exit 1
+        fi
+    done
+fi
+
 echo "Vérification hors de l'arbre de compilation…"
 ( cd "$OUT" && "./dysflow$EXE" --show-config >/dev/null )
 
