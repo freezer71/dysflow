@@ -384,10 +384,11 @@ fn escape_validates_like_the_mac(cx: &mut TestAppContext) {
     wait_for(&session, "le texte modifié", |s| s.revision == 2);
     settle(&session);
     assert_eq!(opened_text(&session).as_deref(), Some("xUn. Deux."));
-    // Échap depuis la lecture, ensuite : la fenêtre se ferme, comme avant.
+    // Échap depuis la lecture, ensuite : rien d'ouvert, il ne fait rien
+    // (seul ⌘W ferme la fenêtre).
     cx.simulate_keystrokes("escape");
     cx.run_until_parked();
-    assert!(cx.windows().is_empty());
+    assert_eq!(cx.windows().len(), 1);
 }
 
 /// `testEscapeValidatesAndKeepsThePanel`.

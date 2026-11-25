@@ -579,7 +579,8 @@ impl MainWindow {
     }
 
     /// Échap : la saisie se valide, sinon l'aide, la recherche, le panneau
-    /// ouvert, puis la fenêtre (l'ordre de l'app Mac).
+    /// ouvert (l'ordre de l'app Mac). Rien d'ouvert : Échap ne fait rien ;
+    /// seul ⌘W (Ctrl+W ailleurs) ferme la fenêtre.
     fn escape(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.editing() {
             self.finish_editing(true, window, cx);
@@ -592,8 +593,6 @@ impl MainWindow {
             self.close_settings(window, cx);
         } else if self.panel.is_some() {
             self.close_contents(window, cx);
-        } else {
-            self.close(window);
         }
     }
 

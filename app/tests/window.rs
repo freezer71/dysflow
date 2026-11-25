@@ -426,13 +426,35 @@ fn close_key_pauses_and_closes_the_window(cx: &mut TestAppContext) {
     assert!(cx.windows().is_empty(), "⌘W ferme la fenêtre");
 }
 
+/// Décision de l'utilisateur : Échap en dernier recours ne fait rien. Rien
+/// d'ouvert (ni aide, ni recherche, ni sommaire, ni réglages, ni éditeur) :
+/// la fenêtre reste ouverte, la lecture continue ; seul ⌘W ferme.
 #[gpui::test]
-fn escape_closes_the_window_when_nothing_is_open(cx: &mut TestAppContext) {
+fn escape_does_nothing_when_nothing_is_open(cx: &mut TestAppContext) {
     let session = session();
-    let (_main, cx) = window(cx, &session, None);
+    open_text(&session, "Un deux trois. Quatre cinq six.");
+    let (main, cx) = window(cx, &session, None);
+    cx.simulate_keystrokes("space");
+    wait_for(&session, "la lecture", |s| s.playing);
     cx.simulate_keystrokes("escape");
     cx.run_until_parked();
-    assert!(cx.windows().is_empty(), "Échap sans rien d'ouvert ferme");
+    assert_eq!(
+        cx.windows().len(),
+        1,
+        "Échap sans rien d'ouvert ne ferme pas"
+    );
+    main.read_with(cx, |m, _| {
+        assert_eq!(m.panel(), None);
+        assert!(!m.help_visible());
+        assert!(!m.search_visible());
+    });
+    let s = session
+        .ask(|r| dysflow::reader::view::snapshot(r))
+        .expect("le lecteur répond");
+    assert!(s.playing, "Échap n'arrête pas la lecture");
+    cx.simulate_keystrokes(&command("w"));
+    cx.run_until_parked();
+    assert!(cx.windows().is_empty(), "⌘W ferme");
 }
 
 #[gpui::test]

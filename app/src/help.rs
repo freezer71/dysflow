@@ -131,8 +131,8 @@ pub fn rows(modifier: Modifier) -> Vec<HelpRow> {
         row(
             tr!("Esc", "Échap").into(),
             tr!(
-                "Close help, search or contents, otherwise close",
-                "Fermer l'aide, la recherche ou le sommaire, sinon fermer"
+                "Close help, search, contents or settings",
+                "Fermer l'aide, la recherche, le sommaire ou les réglages"
             ),
             vec![press("escape")],
         ),
