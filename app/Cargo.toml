@@ -2,7 +2,7 @@
 name = "dysflow-app"
 version = "0.6.1"
 edition = "2021"
-rust-version = "1.91"
+rust-version = "1.100"
 description = "Lecteur Dysflow en interface graphique (GPUI)"
 license = "MIT"
 
