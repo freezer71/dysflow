@@ -32,10 +32,7 @@ impl Reader {
 
     pub fn remove_model(&mut self, id: &str) -> Result<()> {
         if id == "system" {
-            bail!(crate::tr!(
-                "macOS voices are managed in System Settings",
-                "Les voix de macOS se gèrent dans Réglages Système"
-            ));
+            bail!(system_voice_refusal());
         }
         let package = self.package(id)?;
         self.remove_package_at(package, std::time::Instant::now())
@@ -83,6 +80,25 @@ impl Reader {
         crate::source::cache::clear()
     }
 
+}
+
+/// Le refus de supprimer la voix du système : elle n'est pas un fichier de
+/// Dysflow. Sur Mac, la voix de macOS (texte inchangé pour l'app Swift) ;
+/// ailleurs, espeak-ng, installé par le système.
+#[cfg(target_os = "macos")]
+fn system_voice_refusal() -> &'static str {
+    crate::tr!(
+        "macOS voices are managed in System Settings",
+        "Les voix de macOS se gèrent dans Réglages Système"
+    )
+}
+
+#[cfg(not(target_os = "macos"))]
+fn system_voice_refusal() -> &'static str {
+    crate::tr!(
+        "The system voice (espeak-ng) is installed and removed with the system's packages",
+        "La voix du système (espeak-ng) s'installe et se retire avec les paquets du système"
+    )
 }
 
 #[cfg(test)]
@@ -221,7 +237,12 @@ mod tests {
     #[test]
     fn the_system_row_cannot_be_removed() {
         let mut r = reader_with(quiet());
-        assert!(r.remove_model("system").unwrap_err().to_string().contains("macOS"));
+        let refusal = r.remove_model("system").unwrap_err().to_string();
+        // Sur Mac, la voix de macOS ; ailleurs, jamais un texte du Mac.
+        #[cfg(target_os = "macos")]
+        assert!(refusal.contains("macOS"), "{refusal}");
+        #[cfg(not(target_os = "macos"))]
+        assert!(!refusal.contains("macOS") && refusal.contains("espeak-ng"), "{refusal}");
     }
 
     #[test]

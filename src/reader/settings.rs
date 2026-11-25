@@ -272,27 +272,51 @@ pub struct ModelCapabilities {
     pub honoured: Vec<String>,
 }
 
-/// La ligne de la voix de macOS : toujours là, jamais téléchargée.
+/// Les textes de la ligne de la voix du système : sur Mac, la voix de macOS
+/// (`say`), que l'app Swift montre telle quelle ; ailleurs, espeak-ng
+/// (`tts::system`), qui lit s'il est installé.
+#[cfg(target_os = "macos")]
+fn system_voice_texts() -> (&'static str, &'static str, &'static str) {
+    (
+        crate::tr!("macOS voice", "Voix de macOS"),
+        crate::tr!(
+            "The voices installed on this Mac (System Settings › Accessibility › Spoken Content).",
+            "Les voix installées sur ce Mac (Réglages Système › Accessibilité › Contenu énoncé)."
+        ),
+        "Apple",
+    )
+}
+
+#[cfg(not(target_os = "macos"))]
+fn system_voice_texts() -> (&'static str, &'static str, &'static str) {
+    (
+        crate::tr!("System voice", "Voix du système"),
+        crate::tr!(
+            "The system's speech synthesis (espeak-ng), when it is installed: a robotic voice, without download.",
+            "La synthèse vocale du système (espeak-ng), quand elle est installée : une voix robotique, sans téléchargement."
+        ),
+        "GPL-3.0 (espeak-ng)",
+    )
+}
+
+/// La ligne de la voix du système : toujours là, jamais téléchargée.
 fn system_voice_row(active: bool) -> VoiceModel {
+    let (name, summary, licenses) = system_voice_texts();
     VoiceModel {
         id: "system".into(),
-        name: crate::tr!("macOS voice", "Voix de macOS").into(),
+        name: name.into(),
         bytes: 0,
         installed: true,
         active,
         recommended: false,
-        summary: crate::tr!(
-            "The voices installed on this Mac (System Settings › Accessibility › Spoken Content).",
-            "Les voix installées sur ce Mac (Réglages Système › Accessibilité › Contenu énoncé)."
-        )
-        .into(),
+        summary: summary.into(),
         family: "system".into(),
         precision: String::new(),
         languages_label: crate::tr!("Depends on the installed voices", "Selon les voix installées").into(),
         languages: vec!["fr".into(), "en".into()],
         pace: crate::tr!("Instant", "Immédiate").into(),
         voices_label: String::new(),
-        licenses: "Apple".into(),
+        licenses: licenses.into(),
         kind: "speech".into(),
         disk_bytes: 0,
         system: true,
@@ -704,6 +728,42 @@ impl Place {
 
 #[cfg(test)]
 mod tests {
+    /// La ligne de la voix du système dit ce qu'elle est : sur Mac, la voix
+    /// de macOS, textes inchangés (l'app Swift les montre) ; ailleurs,
+    /// espeak-ng, jamais « ce Mac » ni « Réglages Système ».
+    #[test]
+    fn the_system_voice_row_names_the_platform_voice() {
+        use crate::i18n::{with_ui_lang, UiLang};
+        for lang in [UiLang::Fr, UiLang::En] {
+            let row = with_ui_lang(lang, || system_voice_row(true));
+            let all = format!("{} {} {}", row.name, row.summary, row.licenses);
+            #[cfg(target_os = "macos")]
+            {
+                assert!(row.name.contains("macOS"), "{all}");
+                assert_eq!(row.licenses, "Apple");
+                assert!(row.summary.contains("Mac"), "{all}");
+            }
+            #[cfg(not(target_os = "macos"))]
+            {
+                for mac in ["macOS", "Mac", "Apple", "Réglages Système", "System Settings"] {
+                    assert!(!all.contains(mac), "{mac} : {all}");
+                }
+                assert!(row.summary.contains("espeak-ng"), "{all}");
+            }
+            assert!(row.system && row.installed && row.active);
+        }
+        assert_eq!(with_ui_lang(UiLang::Fr, || system_voice_row(false)).name, {
+            #[cfg(target_os = "macos")]
+            {
+                "Voix de macOS"
+            }
+            #[cfg(not(target_os = "macos"))]
+            {
+                "Voix du système"
+            }
+        });
+    }
+
     #[test]
     fn switching_to_kokoro_gives_both_languages_one_voice() {
         let mut r = reader_on("");
