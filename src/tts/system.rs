@@ -308,12 +308,42 @@ fn decode_wav(path: &Path) -> Result<PcmBuffer> {
     Ok(PcmBuffer::new(samples, spec.sample_rate, spec.channels))
 }
 
+/// Le programme est-il dans le PATH ? Cherché directement, sans lancer
+/// `which` : il n'existe pas sur un Windows ordinaire, où la voix du système
+/// n'était alors jamais trouvée.
 fn which(program: &str) -> bool {
-    super::without_console(&mut Command::new("which"))
-        .arg(program)
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
+    let Some(path) = std::env::var_os("PATH") else {
+        return false;
+    };
+    let extensions = if cfg!(windows) {
+        let pathext = std::env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".into());
+        pathext.split(';').filter(|e| !e.is_empty()).map(str::to_owned).collect()
+    } else {
+        Vec::new()
+    };
+    find_in_path(program, &path, &extensions).is_some()
+}
+
+/// Premier fichier exécutable nommé `program` dans les dossiers de `path`.
+/// Sous Windows, `extensions` (tirées de PATHEXT) sont essayées après le nom
+/// nu ; ailleurs, la liste est vide et le bit d'exécution est exigé.
+fn find_in_path(program: &str, path: &std::ffi::OsStr, extensions: &[String]) -> Option<PathBuf> {
+    std::env::split_paths(path).filter(|dir| !dir.as_os_str().is_empty()).find_map(|dir| {
+        std::iter::once(dir.join(program))
+            .chain(extensions.iter().map(|ext| dir.join(format!("{program}{ext}"))))
+            .find(|candidate| is_executable(candidate))
+    })
+}
+
+#[cfg(unix)]
+fn is_executable(path: &Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::metadata(path).map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0).unwrap_or(false)
+}
+
+#[cfg(not(unix))]
+fn is_executable(path: &Path) -> bool {
+    path.is_file()
 }
 
 #[cfg(test)]
@@ -321,6 +351,72 @@ mod tests {
     use super::*;
     #[cfg(unix)]
     use std::time::Instant;
+
+    /// Un dossier vide et unique, retiré à la fin.
+    struct TempDir(PathBuf);
+
+    impl TempDir {
+        fn new() -> Self {
+            let id = COUNTER.fetch_add(1, Ordering::Relaxed);
+            let dir = std::env::temp_dir().join(format!("dysflow-path-{}-{}", std::process::id(), id));
+            std::fs::create_dir_all(&dir).unwrap();
+            TempDir(dir)
+        }
+    }
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn make_file(path: &Path, executable: bool) {
+        std::fs::write(path, b"").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = if executable { 0o755 } else { 0o644 };
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode)).unwrap();
+        }
+        #[cfg(not(unix))]
+        let _ = executable;
+    }
+
+    #[test]
+    fn a_program_is_found_in_a_later_path_folder() {
+        let (empty, bin) = (TempDir::new(), TempDir::new());
+        make_file(&bin.0.join("espeak-ng"), true);
+        let path = std::env::join_paths([&empty.0, &bin.0]).unwrap();
+        assert_eq!(find_in_path("espeak-ng", &path, &[]), Some(bin.0.join("espeak-ng")));
+        assert_eq!(find_in_path("absent", &path, &[]), None);
+    }
+
+    #[test]
+    fn windows_extensions_are_tried_after_the_bare_name() {
+        let bin = TempDir::new();
+        make_file(&bin.0.join("espeak-ng.EXE"), true);
+        let path = std::env::join_paths([&bin.0]).unwrap();
+        let extensions = vec![".COM".to_string(), ".EXE".to_string()];
+        assert_eq!(find_in_path("espeak-ng", &path, &extensions), Some(bin.0.join("espeak-ng.EXE")));
+        assert_eq!(find_in_path("espeak-ng", &path, &[]), None);
+    }
+
+    #[test]
+    fn a_folder_or_an_empty_path_entry_is_not_a_program() {
+        let bin = TempDir::new();
+        std::fs::create_dir_all(bin.0.join("espeak-ng")).unwrap();
+        let path = std::env::join_paths([PathBuf::new(), bin.0.clone()]).unwrap();
+        assert_eq!(find_in_path("espeak-ng", &path, &[]), None);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_file_without_the_execute_bit_is_not_a_program() {
+        let bin = TempDir::new();
+        make_file(&bin.0.join("espeak-ng"), false);
+        let path = std::env::join_paths([&bin.0]).unwrap();
+        assert_eq!(find_in_path("espeak-ng", &path, &[]), None);
+    }
 
     #[test]
     fn temp_files_are_unique_and_removed() {
