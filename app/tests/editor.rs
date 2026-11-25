@@ -342,28 +342,46 @@ fn validating_reopens_and_resumes_at_clamped_sentence(cx: &mut TestAppContext) {
     assert!(reading_focused(&main, cx), "le focus revient à la lecture");
 }
 
-/// Un texte vidé (ou seulement des espaces) : rien à lire, sans panique ni
-/// saut hors du texte.
+/// Décision de l'utilisateur, comme l'app Mac : un texte vidé (ou seulement
+/// des espaces) garde le document, sans panique ni saut hors du texte ; la
+/// barre d'état le dit, et la voix repart si elle lisait.
 #[gpui::test]
-fn validating_empty_text_shows_nothing_to_read(cx: &mut TestAppContext) {
+fn an_empty_text_keeps_the_document(cx: &mut TestAppContext) {
     let session = session();
-    open_text(&session, "Un. Deux. Trois.");
+    open_text(&session, "Un deux trois. Quatre cinq six. Sept huit neuf.");
     let (main, cx) = window(cx, &session);
-    seek(&session, 2);
+    seek(&session, 1);
     tick(cx);
+    cx.simulate_keystrokes("space");
+    wait_for(&session, "la lecture", |s| s.playing);
     open_editor(&main, cx);
+    wait_for(&session, "la pause", |s| !s.playing);
     set_draft(&main, cx, "  \n\n  ");
     cx.simulate_keystrokes("escape");
     cx.run_until_parked();
-    wait_for(&session, "le document fermé", |s| !s.has_document);
+    wait_for(&session, "la reprise", |s| s.playing);
     let s = settle(&session);
-    assert!(!s.has_document);
-    assert!(!s.playing);
-    assert_eq!(opened_text(&session), None);
+    assert!(s.has_document);
+    assert_eq!(s.revision, 1, "rien ne s'est rechargé");
+    assert_eq!(
+        opened_text(&session).as_deref(),
+        Some("Un deux trois. Quatre cinq six. Sept huit neuf.")
+    );
     tick(cx);
     assert!(!editing(&main, cx));
-    assert!(cx.debug_bounds("invitation").is_some(), "« Rien à lire »");
+    assert!(
+        cx.debug_bounds("invitation").is_none(),
+        "pas « Rien à lire »"
+    );
     assert!(reading_focused(&main, cx));
+    let line = main.read_with(cx, |m, _| m.status_line());
+    assert_eq!(
+        line,
+        dysflow::tr!(
+            "Empty text: the document is kept",
+            "Texte vide : le document est gardé"
+        )
+    );
 }
 
 /// `ReaderAction.escape` : « la saisie se valide ». Échap ferme l'éditeur,

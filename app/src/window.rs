@@ -713,8 +713,16 @@ impl MainWindow {
             .editor
             .update(cx, |e, cx| e.finish(sentence, resume, cx));
         self.panel = None;
-        if outcome == Outcome::Reopened {
-            self.say(dysflow::tr!("Text edited", "Texte modifié"), cx);
+        match outcome {
+            Outcome::Reopened => self.say(dysflow::tr!("Text edited", "Texte modifié"), cx),
+            Outcome::KeptEmpty => self.say(
+                dysflow::tr!(
+                    "Empty text: the document is kept",
+                    "Texte vide : le document est gardé"
+                ),
+                cx,
+            ),
+            Outcome::Unchanged => {}
         }
         self.reading.update(cx, |r, cx| r.follow(cx));
         self.focus.focus(window, cx);

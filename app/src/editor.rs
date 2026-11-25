@@ -7,8 +7,8 @@
 //! valident : le texte modifié remplace le document, sous la même source,
 //! et la voix reprend à la même phrase (la dernière si le texte a raccourci),
 //! puis repart si elle lisait. Un texte inchangé ne recharge rien.
-//! « Annuler » oublie les modifications. Écart voulu : un texte vidé ferme
-//! le document (« Rien à lire ») au lieu d'être ignoré.
+//! « Annuler » oublie les modifications. Un texte vidé ne ferme rien : le
+//! document est gardé, comme dans l'app Mac, et la barre d'état le dit.
 //!
 //! Le texte à modifier vient du fil du lecteur (`editable_markdown`) par
 //! une question posée sur l'exécuteur d'arrière-plan (voir
@@ -58,8 +58,8 @@ pub fn ask_draft(session: &Session) -> Option<Draft> {
 pub enum Outcome {
     /// Rien n'a changé : rien ne se recharge.
     Unchanged,
-    /// Le texte vidé : plus rien à lire.
-    Cleared,
+    /// Le texte vidé : le document est gardé, rien ne se recharge.
+    KeptEmpty,
     /// Le texte modifié remplace le document.
     Reopened,
 }
@@ -77,15 +77,16 @@ pub fn apply(
     previous: usize,
     play: bool,
 ) -> Outcome {
-    if draft == origin {
+    let empty = draft.trim().is_empty();
+    if draft == origin || empty {
         if play {
             session.send(Request::Command(Command::TogglePlay));
         }
-        return Outcome::Unchanged;
-    }
-    if draft.trim().is_empty() {
-        session.send(Request::Clear);
-        return Outcome::Cleared;
+        return if draft == origin {
+            Outcome::Unchanged
+        } else {
+            Outcome::KeptEmpty
+        };
     }
     session.send(Request::OpenText {
         markdown: draft.to_string(),
