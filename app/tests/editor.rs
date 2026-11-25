@@ -623,3 +623,77 @@ fn editing_from_the_settings_resets_the_gear(cx: &mut TestAppContext) {
     draw(cx);
     assert!(!gear(&main, cx), "l'écrou n'est plus marqué");
 }
+
+/// Une touche pressée puis relâchée : les boutons de gpui-component se
+/// pressent au relâchement d'Entrée ou d'Espace.
+fn press_and_release(cx: &mut VisualTestContext, key: &'static str) {
+    cx.simulate_keystrokes(key);
+    cx.simulate_event(gpui::KeyUpEvent {
+        keystroke: gpui::Keystroke::parse(key).expect("une touche"),
+    });
+    cx.run_until_parked();
+}
+
+fn focused_on(cx: &mut VisualTestContext, handle: &gpui::FocusHandle) -> bool {
+    cx.update(|window, _| handle.is_focused(window))
+}
+
+/// « Annuler » s'atteint au clavier : Tab quitte le texte pour lui (sans
+/// rien écrire), Entrée le presse ; Tab, Maj+Tab font le tour de la barre.
+#[gpui::test]
+fn cancel_is_reachable_from_the_keyboard(cx: &mut TestAppContext) {
+    let session = session();
+    open_text(&session, "Un. Deux.");
+    let (main, cx) = window(cx, &session);
+    open_editor(&main, cx);
+    cx.simulate_keystrokes("x");
+    let editor = main.read_with(cx, |m, _| m.editor().clone());
+    let (cancel, done) = editor.read_with(cx, |e, _| {
+        (e.cancel_focus().clone(), e.done_focus().clone())
+    });
+    cx.simulate_keystrokes("tab");
+    draw(cx);
+    assert!(focused_on(cx, &cancel), "Tab : « Annuler »");
+    assert_eq!(draft(&main, cx), "xUn. Deux.", "Tab ne s'écrit pas");
+    cx.simulate_keystrokes("tab");
+    assert!(focused_on(cx, &done), "Tab : « Terminé »");
+    cx.simulate_keystrokes("tab");
+    assert!(editor_focused(&main, cx), "Tab : retour au texte");
+    cx.simulate_keystrokes("shift-tab");
+    assert!(
+        editor_focused(&main, cx),
+        "Maj+Tab dans le texte : le champ le garde"
+    );
+    cx.simulate_keystrokes("tab");
+    cx.simulate_keystrokes("tab shift-tab");
+    assert!(focused_on(cx, &cancel), "Maj+Tab : retour à « Annuler »");
+    // Les touches du lecteur ne partent pas d'un bouton de l'éditeur.
+    let before = settle(&session);
+    cx.simulate_keystrokes("right");
+    assert_eq!(settle(&session).sentence, before.sentence);
+    press_and_release(cx, "enter");
+    assert!(
+        !editing(&main, cx),
+        "Entrée sur « Annuler » ferme l'éditeur"
+    );
+    assert!(reading_focused(&main, cx));
+    let s = settle(&session);
+    assert_eq!(s.revision, 1, "la modification est oubliée");
+    assert_eq!(opened_text(&session).as_deref(), Some("Un. Deux."));
+}
+
+/// Échap sur un bouton de la barre de l'éditeur valide, comme dans le texte.
+#[gpui::test]
+fn escape_on_an_editor_button_validates(cx: &mut TestAppContext) {
+    let session = session();
+    open_text(&session, "Un. Deux.");
+    let (main, cx) = window(cx, &session);
+    open_editor(&main, cx);
+    cx.simulate_keystrokes("x tab");
+    cx.simulate_keystrokes("escape");
+    assert!(!editing(&main, cx));
+    wait_for(&session, "le texte modifié", |s| s.revision == 2);
+    settle(&session);
+    assert_eq!(opened_text(&session).as_deref(), Some("xUn. Deux."));
+    assert_eq!(cx.windows().len(), 1);
+}

@@ -138,6 +138,9 @@ pub struct MainWindow {
     voice_setup: Option<String>,
     /// L'attente de cette réponse, sur l'exécuteur d'arrière-plan.
     _voice_setup: Task<()>,
+    /// Le focus du bouton « Réessayer » : Entrée et Espace le pressent, les
+    /// autres touches restent au lecteur.
+    retry_focus: FocusHandle,
 }
 
 impl MainWindow {
@@ -258,6 +261,7 @@ impl MainWindow {
             edit_resume: false,
             voice_setup: None,
             _voice_setup: Task::ready(()),
+            retry_focus: cx.focus_handle(),
         };
         let reading = this.reading.clone();
         this.sync(&reading, window, cx);
@@ -451,6 +455,11 @@ impl MainWindow {
     pub fn can_retry_voice(&self) -> bool {
         self.voice_status(&self.session.snapshot())
             .is_some_and(|v| v.can_retry())
+    }
+
+    /// Le focus du bouton « Réessayer » de la barre d'état.
+    pub fn retry_focus(&self) -> &FocusHandle {
+        &self.retry_focus
     }
 
     fn voice_status(&self, snapshot: &Snapshot) -> Option<VoiceStatus> {
@@ -835,7 +844,8 @@ impl MainWindow {
         let in_search = self.searching && self.search.read(cx).focus_handle(cx).is_focused(window);
         let in_contents = self.panel == Some(Panel::Contents)
             && self.contents.read(cx).focus_handle(cx).is_focused(window);
-        let in_editor = self.editing() && self.editor.read(cx).focus_handle(cx).is_focused(window);
+        // Le texte, ou un bouton de la barre de l'éditeur (Annuler, Terminé).
+        let in_editor = self.editing() && self.editor.read(cx).contains_focus(window, cx);
         // Les réglages gardent leurs touches (Espace presse un bouton, ← →
         // déplacent un curseur), comme un champ ; Échap y est pris par la
         // page.
@@ -845,12 +855,22 @@ impl MainWindow {
                 .read(cx)
                 .focus_handle()
                 .contains_focused(window, cx);
+        // « Réessayer » focalisé ne rend pas les touches du lecteur muettes :
+        // il ne garde qu'Entrée et Espace, qui le pressent.
+        let on_retry = self.retry_focus.is_focused(window);
         // Un menu ouvert (vitesse) garde ses touches.
         if !in_search
             && !in_contents
             && !in_editor
             && !in_settings
+            && !on_retry
             && focused.is_some_and(|f| f != self.focus)
+        {
+            return;
+        }
+        if on_retry
+            && matches!(event.keystroke.key.as_str(), "enter" | "space")
+            && !event.keystroke.modifiers.modified()
         {
             return;
         }
@@ -1204,7 +1224,13 @@ impl MainWindow {
                             .ghost()
                             .xsmall()
                             .label(retry_label())
-                            .on_click(cx.listener(|this, _, _, cx| this.retry_voice(cx))),
+                            .track_focus(&self.retry_focus)
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.retry_voice(cx);
+                                // Le bouton disparaît : les touches reviennent
+                                // à la lecture.
+                                this.focus.focus(window, cx);
+                            })),
                     ),
                 )
             })

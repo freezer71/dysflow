@@ -354,3 +354,55 @@ fn panic_reason_reads_the_panic_text() {
     let other: Box<dyn std::any::Any + Send> = Box::new(42u8);
     assert!(!panic_reason(other.as_ref()).is_empty());
 }
+
+static REFUSED_FOCUS: AtomicUsize = AtomicUsize::new(0);
+
+/// « Réessayer » focalisé ne rend pas les touches du lecteur muettes : ←
+/// → y marchent toujours ; Entrée (pressée puis relâchée) presse le
+/// bouton, sans rien lancer dans le lecteur.
+#[gpui::test]
+fn reader_keys_work_while_retry_has_focus(cx: &mut TestAppContext) {
+    let scratch = Scratch::new("refused-focus");
+    let config = scratch.0.join("config.toml");
+    let session = Arc::new(Session::new(ReaderHandle::spawn(move || {
+        installing_reader(config, |_| {
+            REFUSED_FOCUS.fetch_add(1, Ordering::SeqCst);
+            Err(anyhow::anyhow!("serveur injoignable"))
+        })
+    })));
+    session.send(Request::OpenText {
+        markdown: "Un deux. Trois quatre. Cinq six.".into(),
+        source: "test".into(),
+    });
+    wait_for(&session, "le texte", |s| s.has_document);
+    let (main, cx) = window(cx, &session);
+    let reply = first_launch(&session);
+    main.update(cx, |m, cx| m.watch_voice_setup(reply, cx));
+    cx.run_until_parked();
+    draw(cx);
+    assert!(main.read_with(cx, |m, _| m.can_retry_voice()));
+    assert!(cx.debug_bounds("voice-retry").is_some(), "le bouton est là");
+    assert_eq!(REFUSED_FOCUS.load(Ordering::SeqCst), 1);
+    let retry = main.read_with(cx, |m, _| m.retry_focus().clone());
+    cx.update(|window, cx| retry.focus(window, cx));
+    draw(cx);
+
+    cx.simulate_keystrokes("right");
+    wait_for(&session, "la phrase suivante", |s| s.sentence == 1);
+
+    cx.simulate_keystrokes("enter");
+    cx.simulate_event(gpui::KeyUpEvent {
+        keystroke: gpui::Keystroke::parse("enter").expect("Entrée"),
+    });
+    cx.run_until_parked();
+    assert_eq!(
+        REFUSED_FOCUS.load(Ordering::SeqCst),
+        2,
+        "Entrée a pressé « Réessayer »"
+    );
+    let s = session
+        .ask(|r| dysflow::reader::view::snapshot(r))
+        .expect("le lecteur répond");
+    assert!(!s.playing, "Entrée n'a rien lancé");
+    assert_eq!(s.sentence, 1);
+}

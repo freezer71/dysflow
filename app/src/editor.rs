@@ -9,6 +9,8 @@
 //! puis repart si elle lisait. Un texte inchangé ne recharge rien.
 //! « Annuler » oublie les modifications. Un texte vidé ne ferme rien : le
 //! document est gardé, comme dans l'app Mac, et la barre d'état le dit.
+//! Tab quitte le texte pour « Annuler », puis « Terminé » (Entrée ou Espace
+//! les pressent) ; le retrait d'une ligne reste à ⌘] (Ctrl+] ailleurs).
 //!
 //! Le texte à modifier vient du fil du lecteur (`editable_markdown`) par
 //! une question posée sur l'exécuteur d'arrière-plan (voir
@@ -26,7 +28,7 @@ use gpui::{
     IntoElement, SharedString, Window,
 };
 use gpui_component::button::{Button, ButtonVariants};
-use gpui_component::input::{Enter, Escape, InputEvent, Textarea, TextareaState};
+use gpui_component::input::{Enter, Escape, IndentInline, InputEvent, Textarea, TextareaState};
 use gpui_component::{Icon, Sizable};
 use gpui_kit_assets::IconName;
 
@@ -161,6 +163,10 @@ pub struct TextEditor {
     /// La voix lisait à l'ouverture de l'éditeur : elle repartira.
     resume: bool,
     font: EditorFont,
+    /// Les boutons « Annuler » et « Terminé », atteints au clavier : Tab
+    /// quitte le texte pour « Annuler », puis « Terminé », puis revient.
+    cancel_focus: FocusHandle,
+    done_focus: FocusHandle,
     _input: gpui::Subscription,
 }
 
@@ -191,6 +197,8 @@ impl TextEditor {
                 size: 20.0,
                 line_height: 32.0,
             },
+            cancel_focus: cx.focus_handle(),
+            done_focus: cx.focus_handle(),
             _input: subscription,
         }
     }
@@ -244,6 +252,37 @@ impl TextEditor {
 
     pub fn focus_handle(&self, cx: &App) -> FocusHandle {
         self.input.read(cx).focus_handle(cx)
+    }
+
+    /// Le focus du bouton « Annuler ».
+    pub fn cancel_focus(&self) -> &FocusHandle {
+        &self.cancel_focus
+    }
+
+    /// Le focus du bouton « Terminé ».
+    pub fn done_focus(&self) -> &FocusHandle {
+        &self.done_focus
+    }
+
+    /// Le focus est dans l'éditeur : le texte ou un bouton de sa barre.
+    pub fn contains_focus(&self, window: &Window, cx: &App) -> bool {
+        self.focus_handle(cx).is_focused(window)
+            || self.cancel_focus.is_focused(window)
+            || self.done_focus.is_focused(window)
+    }
+
+    /// Tab, Maj+Tab sur un bouton de la barre : texte → Annuler → Terminé →
+    /// texte. `true` si la touche est prise.
+    fn cycle_focus(&mut self, back: bool, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        let on_cancel = self.cancel_focus.is_focused(window);
+        let on_done = self.done_focus.is_focused(window);
+        match (on_cancel, on_done, back) {
+            (true, _, false) => self.done_focus.focus(window, cx),
+            (_, true, true) => self.cancel_focus.focus(window, cx),
+            (true, _, true) | (_, true, false) => self.focus(window, cx),
+            _ => return false,
+        }
+        true
     }
 
     pub fn focus(&self, window: &mut Window, cx: &mut Context<Self>) {
@@ -310,6 +349,34 @@ impl Render for TextEditor {
             // non arrêtée, la plateforme la taperait ensuite comme du texte.
             // Entrée seule ne remonte pas : le champ y va à la ligne.
             .on_action(cx.listener(|_, _: &Enter, _, _| {}))
+            // Tab dans le texte : le focus va à « Annuler » (le retrait reste
+            // à ⌘] / Ctrl+]). Pris avant le champ, qui indenterait.
+            .capture_action(cx.listener(|this, _: &IndentInline, window, cx| {
+                if this.focus_handle(cx).is_focused(window) {
+                    this.cancel_focus.focus(window, cx);
+                    cx.stop_propagation();
+                }
+            }))
+            // Sur un bouton de la barre : Tab et Maj+Tab passent au suivant,
+            // Échap valide comme dans le texte. Entrée et Espace pressent le
+            // bouton.
+            .on_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, window, cx| {
+                let k = &event.keystroke;
+                let m = k.modifiers;
+                let plain = !m.control && !m.alt && !m.platform && !m.function;
+                if !plain {
+                    return;
+                }
+                if k.key == "tab" && this.cycle_focus(m.shift, window, cx) {
+                    cx.stop_propagation();
+                } else if k.key == "escape"
+                    && !m.shift
+                    && (this.cancel_focus.is_focused(window) || this.done_focus.is_focused(window))
+                {
+                    cx.stop_propagation();
+                    cx.emit(EditorEvent::Done);
+                }
+            }))
             .child(
                 div()
                     .debug_selector(|| "editor-text".to_string())
@@ -374,7 +441,12 @@ impl Render for TextEditor {
                                 .with_size(gpui_component::Size::Medium)
                                 .h(px(32.0))
                                 .rounded(px(10.0))
-                                .tab_stop(false)
+                                .track_focus(&self.cancel_focus)
+                                .tooltip(format!(
+                                    "{} ({})",
+                                    tr!("Forget the changes", "Oublier les modifications"),
+                                    tr!("Tab, then Enter", "Tab, puis Entrée")
+                                ))
                                 .on_click(cx.listener(|_, _, _, cx| cx.emit(EditorEvent::Cancel))),
                         ),
                     )
@@ -386,7 +458,7 @@ impl Render for TextEditor {
                                 .with_size(gpui_component::Size::Medium)
                                 .h(px(32.0))
                                 .rounded(px(10.0))
-                                .tab_stop(false)
+                                .track_focus(&self.done_focus)
                                 .tooltip(format!(
                                     "{} ({} {} {})",
                                     tr!("Apply the changes", "Appliquer les modifications"),
