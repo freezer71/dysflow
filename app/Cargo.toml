@@ -18,12 +18,17 @@ path = "src/main.rs"
 dysflow = { path = "..", default-features = false, features = ["clipboard"] }
 gpui = { package = "gpui-pre", version = "=0.3.14" }
 gpui-component = "=0.11.0"
+# Les icônes Lucide de gpui-component (lecture, pause, phrase précédente…).
+gpui-kit-assets = "=0.11.0"
 # Les plateformes réelles (Metal, Windows, Wayland/X11) : gpui-pre n'embarque que la plateforme de test.
 gpui_platform = { package = "gpui-pre-platform", version = "=0.3.14", features = ["font-kit", "wayland", "x11"] }
 
 [dev-dependencies]
 # La plateforme de test de GPUI (TestAppContext), sans fenêtre réelle.
 gpui = { package = "gpui-pre", version = "=0.3.14", features = ["test-support"] }
+# Les essais ne touchent jamais aux fichiers de l'utilisateur (positions,
+# réglages, cache) : les répertoires du lecteur sont ceux des essais.
+dysflow = { path = "..", default-features = false, features = ["clipboard", "test-paths"] }
 
 [features]
 # Les tests construisent sans moteur ; les paquets choisissent leurs features.

@@ -2163,6 +2163,7 @@ version = "0.6.1"
 dependencies = [
  "dysflow",
  "gpui-component",
+ "gpui-kit-assets",
  "gpui-pre",
  "gpui-pre-platform",
 ]

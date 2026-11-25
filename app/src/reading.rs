@@ -25,35 +25,9 @@ use gpui::{
     Styled, Task, TextAlign, TextRun, Window, WindowTextSystem,
 };
 
+use crate::colors;
 use crate::layout::{lay_out, Layout, Line, Measure, WordBox};
 use crate::session::Session;
-
-/// Couleurs provisoires, en un seul endroit : le thème arrive plus tard.
-mod colors {
-    use gpui::{rgb, rgba, Hsla};
-
-    pub fn background() -> Hsla {
-        rgb(0xfbf8f1).into()
-    }
-    pub fn text() -> Hsla {
-        rgb(0x1f1d1a).into()
-    }
-    pub fn link() -> Hsla {
-        rgb(0x1d4f91).into()
-    }
-    /// Le fond arrondi sous le mot lu.
-    pub fn word() -> Hsla {
-        rgba(0xf2c94c99).into()
-    }
-    /// La phrase lue quand aucun mot ne l'est.
-    pub fn sentence() -> Hsla {
-        rgba(0xf2c94c40).into()
-    }
-    /// La règle sous la ligne lue.
-    pub fn ruler() -> Hsla {
-        rgba(0x8ab4f833).into()
-    }
-}
 
 /// Marge autour du texte, en pixels.
 const PAD: f32 = 24.0;
@@ -405,6 +379,16 @@ impl ReadingView {
     /// aucun mot ne l'est.
     pub fn highlighted(&self) -> Option<(usize, usize)> {
         self.highlight
+    }
+
+    /// Le dernier instantané pris.
+    pub fn snapshot(&self) -> &Snapshot {
+        &self.snapshot
+    }
+
+    /// Le document de la révision affichée.
+    pub fn document(&self) -> &Arc<DocView> {
+        &self.document
     }
 
     /// La phrase lue.
