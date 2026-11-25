@@ -33,11 +33,16 @@ use gpui_kit_assets::IconName;
 use crate::session::Session;
 use crate::theme;
 
-/// Le texte à modifier et la source sous laquelle il se rouvrira.
+/// Le texte à modifier, la source sous laquelle il se rouvrira, et la
+/// révision du document dont il vient.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Draft {
     pub markdown: String,
     pub source: String,
+    /// `Reader::revision()` au moment où le texte a été pris : celle du
+    /// document modifié, même si l'instantané de l'interface est en retard
+    /// (un collage juste avant `e`).
+    pub revision: u64,
 }
 
 /// Demande au fil du lecteur le texte à modifier. BLOQUE jusqu'à sa réponse
@@ -48,7 +53,11 @@ pub fn ask_draft(session: &Session) -> Option<Draft> {
         .ask(|reader| {
             let markdown = editable_markdown(reader)?;
             let source = editable_source(reader).unwrap_or_else(|| "edit".to_string());
-            Some(Draft { markdown, source })
+            Some(Draft {
+                markdown,
+                source,
+                revision: reader.revision(),
+            })
         })
         .flatten()
 }
@@ -187,10 +196,10 @@ impl TextEditor {
     }
 
     /// Prépare l'éditeur sur `draft` et lui donne le focus, curseur au début.
+    /// La révision suivie est celle du texte (`Draft::revision`).
     pub fn begin(
         &mut self,
         draft: Draft,
-        revision: u64,
         resume: bool,
         font: EditorFont,
         window: &mut Window,
@@ -198,7 +207,7 @@ impl TextEditor {
     ) {
         self.origin = draft.markdown;
         self.source = draft.source;
-        self.revision = revision;
+        self.revision = draft.revision;
         self.resume = resume;
         self.font = font;
         let text = self.origin.clone();

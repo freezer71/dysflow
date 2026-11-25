@@ -531,3 +531,95 @@ fn closing_the_editor_never_stops_a_voice_restarted_meanwhile(cx: &mut TestAppCo
         wait_for(&session, "la pause", |s| !s.playing);
     }
 }
+
+/// `e` puis Échap avant la réponse du lecteur : la demande s'annule (rien
+/// ne s'ouvre ensuite), la voix reprend, la fenêtre reste ouverte.
+#[gpui::test]
+fn escape_while_the_text_is_asked_cancels_the_edit(cx: &mut TestAppContext) {
+    let session = session();
+    open_text(&session, "Un deux trois. Quatre cinq six. Sept huit neuf.");
+    let (main, cx) = window(cx, &session);
+    cx.simulate_keystrokes("space");
+    wait_for(&session, "la lecture", |s| s.playing);
+    // Les deux touches de suite, sans laisser tourner l'exécuteur entre
+    // elles : la réponse de `ask_draft` n'est pas encore arrivée.
+    cx.simulate_keystrokes("e escape");
+    main.read_with(cx, |m, _| {
+        assert!(!m.edit_pending(), "la demande est oubliée")
+    });
+    // Le temps que la réponse serait arrivée.
+    let deadline = Instant::now() + Duration::from_millis(300);
+    while Instant::now() < deadline {
+        cx.run_until_parked();
+        std::thread::yield_now();
+    }
+    tick(cx);
+    assert!(!editing(&main, cx), "l'éditeur ne s'ouvre pas après Échap");
+    assert_eq!(cx.windows().len(), 1, "Échap ne ferme pas la fenêtre");
+    wait_for(&session, "la reprise", |s| s.playing);
+    assert_eq!(settle(&session).revision, 1);
+    // Un nouveau `e` ouvre l'éditeur.
+    open_editor(&main, cx);
+    assert!(editing(&main, cx));
+}
+
+/// La révision suivie par l'éditeur est celle que le lecteur donne avec le
+/// texte : `e` juste après un collage (l'instantané de la vue encore sur
+/// l'ancien document) ouvre l'éditeur sur le texte collé, et il reste
+/// ouvert quand la vue rattrape le lecteur.
+#[gpui::test]
+fn e_right_after_a_paste_opens_and_keeps_the_editor(cx: &mut TestAppContext) {
+    let session = session();
+    open_text(&session, "Un. Deux.");
+    let (main, cx) = window(cx, &session);
+    main.update(cx, |m, _| {
+        m.set_clipboard(|| Ok("Collé un. Collé deux.".to_string()))
+    });
+    let view_revision = |main: &Entity<MainWindow>, cx: &mut VisualTestContext| {
+        main.read_with(cx, |m, cx| m.reading().read(cx).snapshot().revision)
+    };
+    cx.simulate_keystrokes(&command("v"));
+    assert_eq!(
+        view_revision(&main, cx),
+        1,
+        "la vue n'a pas encore vu le collage"
+    );
+    open_editor(&main, cx);
+    assert_eq!(draft(&main, cx), "Collé un. Collé deux.");
+    assert_eq!(
+        main.read_with(cx, |m, cx| m.editor().read(cx).revision()),
+        2,
+        "la révision du texte collé"
+    );
+    for _ in 0..4 {
+        tick(cx);
+    }
+    assert_eq!(view_revision(&main, cx), 2, "la vue a rattrapé le lecteur");
+    assert!(editing(&main, cx), "l'éditeur reste ouvert");
+}
+
+/// L'éditeur ouvert depuis les réglages prend leur place : l'écrou de la
+/// barre ne les montre plus ouverts.
+#[gpui::test]
+fn editing_from_the_settings_resets_the_gear(cx: &mut TestAppContext) {
+    let session = session();
+    open_text(&session, "Un. Deux.");
+    let (main, cx) = window(cx, &session);
+    cx.simulate_keystrokes(&command(","));
+    tick(cx);
+    assert_eq!(panel(&main, cx), Some(Panel::Settings));
+    let gear = |main: &Entity<MainWindow>, cx: &mut VisualTestContext| {
+        main.read_with(cx, |m, cx| m.bar().read(cx).settings_open())
+    };
+    assert!(gear(&main, cx));
+    let edit = cx.debug_bounds("header-edit").expect("le bouton Modifier");
+    cx.simulate_click(edit.center(), Modifiers::none());
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while !editing(&main, cx) {
+        assert!(Instant::now() < deadline, "l'éditeur ne s'ouvre pas");
+        cx.run_until_parked();
+        std::thread::yield_now();
+    }
+    draw(cx);
+    assert!(!gear(&main, cx), "l'écrou n'est plus marqué");
+}

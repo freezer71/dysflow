@@ -175,6 +175,11 @@ impl ReaderBar {
         cx.notify();
     }
 
+    /// L'écrou montre les réglages ouverts.
+    pub fn settings_open(&self) -> bool {
+        self.settings_open
+    }
+
     /// Marque l'écrou quand les réglages sont ouverts.
     pub fn set_settings_open(&mut self, open: bool, cx: &mut Context<Self>) {
         if self.settings_open != open {

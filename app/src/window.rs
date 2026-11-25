@@ -130,6 +130,9 @@ pub struct MainWindow {
     /// Cette question est en route : un second `e` n'en pose pas d'autre
     /// (il perdrait que la voix lisait).
     edit_pending: bool,
+    /// La voix lisait quand `e` a posé cette question : Échap, qui l'annule,
+    /// la remet en route.
+    edit_resume: bool,
     /// Le refus de la dernière demande d'installation de la voix
     /// (`first_launch`), jusqu'au prochain « Réessayer ».
     voice_setup: Option<String>,
@@ -252,6 +255,7 @@ impl MainWindow {
             _appearance: appearance,
             _editing: Task::ready(()),
             edit_pending: false,
+            edit_resume: false,
             voice_setup: None,
             _voice_setup: Task::ready(()),
         };
@@ -311,6 +315,16 @@ impl MainWindow {
 
     pub fn settings(&self) -> &Entity<SettingsPage> {
         &self.settings
+    }
+
+    /// La barre de lecture.
+    pub fn bar(&self) -> &Entity<ReaderBar> {
+        &self.bar
+    }
+
+    /// `e` a demandé le texte au lecteur ; sa réponse n'est pas arrivée.
+    pub fn edit_pending(&self) -> bool {
+        self.edit_pending
     }
 
     /// L'apparence du système a changé : sous le thème « Système », la
@@ -582,6 +596,12 @@ impl MainWindow {
     /// ouvert (l'ordre de l'app Mac). Rien d'ouvert : Échap ne fait rien ;
     /// seul ⌘W (Ctrl+W ailleurs) ferme la fenêtre.
     fn escape(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.edit_pending {
+            // `e` puis Échap avant la réponse : la demande s'annule, la voix
+            // reprend comme avant ; rien d'autre ne se ferme.
+            self.cancel_pending_edit(cx);
+            return;
+        }
         if self.editing() {
             self.finish_editing(true, window, cx);
         } else if self.help {
@@ -673,8 +693,8 @@ impl MainWindow {
         self.help = false;
         let font = self.reading.read(cx).editor_font();
         let session = Arc::clone(&self.session);
-        let revision = snapshot.revision;
         self.edit_pending = true;
+        self.edit_resume = resume;
         self._editing = cx.spawn_in(window, async move |this, cx| {
             let draft = cx
                 .background_executor()
@@ -682,22 +702,44 @@ impl MainWindow {
                 .await;
             let _ = this.update_in(cx, |this, window, cx| {
                 this.edit_pending = false;
-                let current = this.reading.read(cx).snapshot().clone();
-                // Sans texte, ou un autre document arrivé entre-temps : rien
-                // ne s'ouvre ; la voix reprend si elle lisait.
-                let Some(draft) = draft.filter(|_| current.revision == revision) else {
+                // La révision est celle que le lecteur a donnée avec le
+                // texte, pas celle d'un instantané (en retard juste après un
+                // collage). Sans texte, ou un document plus récent déjà
+                // publié : rien ne s'ouvre ; la voix reprend si elle lisait.
+                let published = this.session.snapshot().revision;
+                let Some(draft) = draft.filter(|d| d.revision >= published) else {
                     if resume {
                         play_if_paused(&this.session);
                     }
                     return;
                 };
+                if this.panel == Some(Panel::Settings) {
+                    // L'éditeur prend la place des réglages : l'écrou de la
+                    // barre ne les montre plus ouverts (comme `toggle_contents`).
+                    this.bar
+                        .update(cx, |bar, cx| bar.set_settings_open(false, cx));
+                }
                 this.panel = Some(Panel::Edit);
-                this.editor.update(cx, |e, cx| {
-                    e.begin(draft, revision, resume, font, window, cx)
-                });
+                this.editor
+                    .update(cx, |e, cx| e.begin(draft, resume, font, window, cx));
                 cx.notify();
             });
         });
+        cx.notify();
+    }
+
+    /// Échap avant la réponse de `ask_draft` : la question est oubliée (sa
+    /// tâche abandonnée, l'éditeur ne s'ouvrira pas) et la voix reprend si
+    /// elle lisait.
+    fn cancel_pending_edit(&mut self, cx: &mut Context<Self>) {
+        if !self.edit_pending {
+            return;
+        }
+        self.edit_pending = false;
+        self._editing = Task::ready(());
+        if std::mem::take(&mut self.edit_resume) {
+            play_if_paused(&self.session);
+        }
         cx.notify();
     }
 
@@ -866,7 +908,9 @@ impl MainWindow {
             self.settings
                 .update(cx, |page, cx| page.receive(&snapshot, cx));
         }
-        if self.editing() && self.editor.read(cx).revision() != snapshot.revision {
+        // Plus récent seulement : l'instantané de la vue peut être en retard
+        // sur la révision du texte modifié (un collage juste avant `e`).
+        if self.editing() && snapshot.revision > self.editor.read(cx).revision() {
             // Un autre document est arrivé : le texte modifié ne vaut plus,
             // il s'oublie (rien ne part au lecteur).
             self.panel = None;
