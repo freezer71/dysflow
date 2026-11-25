@@ -662,3 +662,30 @@ fn open_search_and_contents_stay_quiet_at_rest(cx: &mut TestAppContext) {
     tick(cx);
     assert!(notified.get() > 0, "la mesure voit les changements");
 }
+
+#[gpui::test]
+fn enter_again_on_a_query_without_match_keeps_saying_so(cx: &mut TestAppContext) {
+    let session = session();
+    open_text(&session, TEXT);
+    let (main, cx) = window(cx, &session);
+    let none = Some(dysflow::tr!("No match", "Aucun résultat").to_string());
+    search_for(cx, "zzz");
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while result(&main, cx) != none {
+        assert!(Instant::now() < deadline, "aucun résultat : jamais affiché");
+        tick(cx);
+    }
+    // Entrée de nouveau sur la même requête : elle repart (comme l'app Mac),
+    // et le lecteur répond le même message.
+    cx.simulate_keystrokes("/");
+    draw(cx);
+    cx.simulate_keystrokes("enter");
+    // Barrière : une question au lecteur, posée après Entrée ; sa réponse
+    // arrivée, la requête a été traitée. Elle ne change pas le message du
+    // lecteur (une commande comme le volume en écrirait un).
+    assert!(session.settings().is_some(), "le lecteur répond");
+    tick(cx);
+    tick(cx);
+    assert_eq!(session.snapshot().search, None);
+    assert_eq!(result(&main, cx), none, "« Aucun résultat » reste affiché");
+}

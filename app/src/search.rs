@@ -149,10 +149,18 @@ impl SearchBar {
         } else {
             self.session
                 .send(Request::Command(Command::Search(query.clone())));
+            // La même requête, déjà répondue sans résultat sur ce document
+            // (`sent` est oublié quand la révision change) : le lecteur
+            // répondra le même message, qu'on ne verrait pas changer. La
+            // réponse connue reste valable.
+            let answered = self
+                .sent
+                .as_ref()
+                .is_some_and(|s| s.query == query && s.answered);
             self.sent = Some(Sent {
                 query,
                 status: self.status.clone(),
-                answered: false,
+                answered,
             });
             self.refresh(cx);
         }
