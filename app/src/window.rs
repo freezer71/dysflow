@@ -32,7 +32,7 @@ use crate::colors;
 use crate::contents::{ContentsEvent, ContentsPanel};
 use crate::help;
 use crate::inputs::{self, command_modifier, key_press, open_path, paste_with, prompt_options};
-use crate::keymap::{action, Action};
+use crate::keymap::{action, Action, Modifier};
 use crate::reading::ReadingView;
 use crate::search::{SearchBar, SearchEvent};
 use crate::session::Session;
@@ -169,6 +169,7 @@ impl MainWindow {
                     this.reading.update(cx, |r, cx| r.follow(cx));
                     this.focus.focus(window, cx);
                 }
+                SearchEvent::Moved => this.reading.update(cx, |r, cx| r.follow(cx)),
                 SearchEvent::Cancel => this.close_search(window, cx),
             }
         });
@@ -502,13 +503,21 @@ impl MainWindow {
             return;
         };
         if in_search {
-            // Le champ garde ses lettres, Espace, ses flèches, ⌘C, ⌘V ;
-            // Échap y est pris par la barre. Seules les commandes de la
-            // fenêtre passent.
-            if !matches!(
-                found,
-                Action::Close | Action::OpenFile | Action::OpenSearch | Action::OpenSettings
-            ) {
+            // Le champ garde ses lettres, ses signes (/ ? + -), Espace, ses
+            // flèches, ⌘C, ⌘V ; Échap y est pris par la barre. Seules les
+            // commandes de la fenêtre passent, et seulement avec la touche
+            // de commande (/ sans elle s'écrit : « et/ou »).
+            let m = event.keystroke.modifiers;
+            let with_command = match command_modifier() {
+                Modifier::Command => m.platform,
+                Modifier::Control => m.control,
+            };
+            if !with_command
+                || !matches!(
+                    found,
+                    Action::Close | Action::OpenFile | Action::OpenSearch | Action::OpenSettings
+                )
+            {
                 return;
             }
         } else if in_contents && matches!(found, Action::Escape | Action::Line(_)) {

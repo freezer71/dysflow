@@ -248,19 +248,175 @@ fn letters_typed_in_the_field_stay_in_the_field(cx: &mut TestAppContext) {
     cx.simulate_keystrokes("/");
     draw(cx);
     // n (section suivante), p, t (sommaire), e (édition), f (suivre), Espace
-    // (lecture), Maj+N (résultat suivant) : tout s'écrit dans la requête.
-    cx.simulate_keystrokes("n p t e f space shift-n");
+    // (lecture), Maj+N (résultat suivant), / (recherche), ? (aide), + et -
+    // (vitesse) : tout s'écrit dans la requête.
+    cx.simulate_keystrokes("n p t e f space shift-n / shift-/->? shift-=->+ -");
     tick(cx);
-    assert_eq!(query(&main, cx), "nptef N");
+    assert_eq!(query(&main, cx), "nptef N/?+-");
+    // Barrière : une sonde envoyée après les touches ; une fois traitée, tout
+    // ce que les touches auraient envoyé avant l'a été aussi.
+    session.send(Request::Command(Command::SetVolume(0.37)));
+    wait_for(&session, "la sonde", |s| (s.volume - 0.37).abs() < 0.001);
     let after = session.snapshot();
+    assert_eq!(
+        after.speed, before.speed,
+        "+ et - ne changent pas la vitesse"
+    );
     assert_eq!(after.section, before.section, "n ne change pas de section");
     assert_eq!(after.sentence, before.sentence);
     assert!(!after.playing, "Espace ne lance pas la lecture");
     assert_eq!(after.search, None, "rien n'est cherché avant Entrée");
     main.read_with(cx, |m, _| {
         assert_eq!(m.panel(), None, "t n'ouvre pas le sommaire");
+        assert!(!m.help_visible(), "? n'ouvre pas l'aide");
         assert!(m.search_visible());
     });
+}
+
+/// La touche de commande du système, pour `simulate_keystrokes`.
+fn command(key: &str) -> String {
+    if cfg!(target_os = "macos") {
+        format!("cmd-{key}")
+    } else {
+        format!("ctrl-{key}")
+    }
+}
+
+#[gpui::test]
+fn enter_with_the_query_selected_advances(cx: &mut TestAppContext) {
+    let session = session();
+    open_text(&session, TEXT);
+    let (main, cx) = window(cx, &session);
+    search_for(cx, "deux");
+    wait_for(&session, "la recherche", |s| {
+        s.search.as_ref().is_some_and(|q| q.position == 1)
+    });
+    tick(cx);
+    // La requête toute sélectionnée (⌘A), puis Entrée : on avance.
+    cx.simulate_keystrokes("/");
+    draw(cx);
+    cx.simulate_keystrokes(&command("a"));
+    draw(cx);
+    cx.simulate_keystrokes("enter");
+    wait_for(
+        &session,
+        "Entrée sur la sélection : le résultat 2",
+        |s| s.search.as_ref().is_some_and(|q| q.position == 2),
+    );
+    tick(cx);
+    assert_eq!(query(&main, cx), "deux");
+    assert!(reading_focused(&main, cx));
+}
+
+#[gpui::test]
+fn a_new_document_forgets_the_answer(cx: &mut TestAppContext) {
+    let session = session();
+    open_text(&session, TEXT);
+    let (main, cx) = window(cx, &session);
+    search_for(cx, "deux");
+    wait_for(&session, "la recherche", |s| s.search.is_some());
+    tick(cx);
+    assert_eq!(result(&main, cx), Some(of(1, 3)));
+
+    // Le même texte rouvert : le lecteur n'a plus de recherche. La barre ne
+    // dit pas « Aucun résultat » (le mot est là), elle ne dit plus rien.
+    let revision = session.snapshot().revision;
+    session.send(Request::OpenText {
+        markdown: TEXT.into(),
+        source: "test".into(),
+    });
+    wait_for(&session, "le nouveau document", |s| s.revision > revision);
+    assert_eq!(session.snapshot().search, None);
+    tick(cx);
+    tick(cx);
+    assert_eq!(result(&main, cx), None);
+    // Entrée sur la même requête la relance.
+    cx.simulate_keystrokes("/");
+    draw(cx);
+    cx.simulate_keystrokes("enter");
+    wait_for(&session, "la recherche relancée", |s| {
+        s.search
+            .as_ref()
+            .is_some_and(|q| q.query == "deux" && q.count == 3)
+    });
+    tick(cx);
+    assert_eq!(result(&main, cx), Some(of(1, 3)));
+
+    // Sans résultat, puis un nouveau document : « Aucun résultat » ne vaut
+    // plus, et Entrée relance la requête.
+    search_for(cx, "zzz");
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while result(&main, cx).as_deref() != Some(dysflow::tr!("No match", "Aucun résultat")) {
+        assert!(Instant::now() < deadline, "aucun résultat : jamais affiché");
+        tick(cx);
+    }
+    let revision = session.snapshot().revision;
+    session.send(Request::OpenText {
+        markdown: "Un texte avec zzz dedans.".into(),
+        source: "test".into(),
+    });
+    wait_for(&session, "le document avec zzz", |s| s.revision > revision);
+    tick(cx);
+    tick(cx);
+    assert_eq!(result(&main, cx), None);
+    cx.simulate_keystrokes("/");
+    draw(cx);
+    cx.simulate_keystrokes("enter");
+    wait_for(&session, "zzz trouvé", |s| {
+        s.search
+            .as_ref()
+            .is_some_and(|q| q.query == "zzz" && q.count == 1)
+    });
+    tick(cx);
+    assert_eq!(result(&main, cx), Some(of(1, 1)));
+}
+
+#[gpui::test]
+fn a_resting_reader_forgets_the_answer(cx: &mut TestAppContext) {
+    let session = session();
+    open_text(&session, TEXT);
+    let (main, cx) = window(cx, &session);
+    search_for(cx, "deux");
+    wait_for(&session, "la recherche", |s| s.search.is_some());
+    tick(cx);
+    assert_eq!(result(&main, cx), Some(of(1, 3)));
+
+    // Le lecteur au repos (après dix minutes sans lecture) publie un
+    // instantané sans recherche : pas de « Aucun résultat » à tort.
+    session.send(Request::Rest);
+    wait_for(&session, "le repos", |s| s.search.is_none());
+    tick(cx);
+    tick(cx);
+    assert_eq!(result(&main, cx), None);
+    cx.simulate_keystrokes("/");
+    draw(cx);
+    cx.simulate_keystrokes("enter");
+    wait_for(&session, "la recherche relancée", |s| {
+        s.search.as_ref().is_some_and(|q| q.query == "deux")
+    });
+    tick(cx);
+    let position = session.snapshot().search.expect("la recherche").position;
+    assert_eq!(result(&main, cx), Some(of(position, 3)));
+}
+
+#[gpui::test]
+fn chevrons_advance_and_the_reading_follows(cx: &mut TestAppContext) {
+    let session = session();
+    open_text(&session, TEXT);
+    let (main, cx) = window(cx, &session);
+    search_for(cx, "deux");
+    wait_for(&session, "la recherche", |s| s.search.is_some());
+    tick(cx);
+    // La vue figée ailleurs (↓), puis le chevron suivant : la vue suit.
+    cx.simulate_keystrokes("down");
+    tick(cx);
+    let next = cx.debug_bounds("search-next").expect("le chevron suivant");
+    cx.simulate_click(next.center(), Modifiers::none());
+    wait_for(&session, "chevron : le résultat 2", |s| {
+        s.search.as_ref().is_some_and(|q| q.position == 2)
+    });
+    tick(cx);
+    main.read_with(cx, |m, cx| assert!(m.reading().read(cx).following()));
 }
 
 const SECTIONS: &str = "# Premier\n\nUne phrase. Deux phrases.\n\n## Sous-partie\n\nTrois.\n\n# Second\n\nQuatre. Cinq.";

@@ -21,7 +21,7 @@ use gpui::{
     IntoElement, Window,
 };
 use gpui_component::button::{Button, ButtonVariants};
-use gpui_component::input::{Escape, Input, InputEvent, InputState};
+use gpui_component::input::{Enter, Escape, Input, InputEvent, InputState};
 use gpui_component::{Disableable, Icon, Sizable};
 use gpui_kit_assets::IconName;
 
@@ -33,6 +33,8 @@ use crate::session::Session;
 pub enum SearchEvent {
     /// La requête est partie : le focus retourne à la lecture.
     Submitted,
+    /// Un chevron : la lecture suit le résultat, le focus ne bouge pas.
+    Moved,
     /// Échap dans le champ : la recherche s'annule, la barre se ferme.
     Cancel,
 }
@@ -74,6 +76,9 @@ pub struct SearchBar {
     /// La recherche publiée par le lecteur.
     search: Option<SearchState>,
     status: String,
+    /// La révision du document publié : un nouveau document perd la
+    /// recherche, et ce qu'on savait de la requête envoyée.
+    revision: u64,
     sent: Option<Sent>,
     /// Le rang affiché, gardé pour ne redessiner que s'il change.
     result: Option<String>,
@@ -98,6 +103,7 @@ impl SearchBar {
             input,
             search: snapshot.search,
             status: snapshot.status,
+            revision: snapshot.revision,
             sent: None,
             result: None,
             _input: subscription,
@@ -118,17 +124,19 @@ impl SearchBar {
         self.input.read(cx).focus_handle(cx)
     }
 
-    /// Donne le focus au champ, le curseur après la requête gardée.
-    ///
-    /// Pas de « tout sélectionner » : avec une sélection, Entrée n'arrive
-    /// pas jusqu'à `PressEnter` sur la plateforme de test (vu avec
-    /// gpui-component 0.11.0), et l'app Mac ne le fait pas non plus.
+    /// Donne le focus au champ, sa requête sélectionnée : une frappe la
+    /// remplace, Entrée la relance.
     pub fn focus(&self, window: &mut Window, cx: &mut Context<Self>) {
-        self.input.update(cx, |input, cx| input.focus(window, cx));
+        self.input.update(cx, |input, cx| {
+            input.focus(window, cx);
+            input.select_all(window, cx);
+        });
     }
 
-    /// Entrée : la requête part ; déjà cherchée, on passe au résultat
-    /// suivant (au précédent avec Maj).
+    /// Entrée : la requête part ; déjà cherchée (le lecteur a une
+    /// recherche en cours pour elle), on passe au résultat suivant (au
+    /// précédent avec Maj). Sinon elle repart toujours, comme dans l'app
+    /// Mac : le lecteur a pu perdre sa recherche (nouveau document, repos).
     fn submit(&mut self, back: bool, cx: &mut Context<Self>) {
         let query = self.query(cx).trim().to_string();
         if query.is_empty() {
@@ -138,12 +146,6 @@ impl SearchBar {
         if self.search.as_ref().is_some_and(|s| s.query == query) {
             self.session
                 .send(Request::Command(Command::SearchAdvance(delta)));
-        } else if self
-            .sent
-            .as_ref()
-            .is_some_and(|s| s.query == query && s.answered)
-        {
-            // Déjà cherchée, sans résultat : rien de neuf à demander.
         } else {
             self.session
                 .send(Request::Command(Command::Search(query.clone())));
@@ -168,13 +170,25 @@ impl SearchBar {
         self.refresh(cx);
     }
 
-    fn advance(&mut self, delta: isize) {
+    fn advance(&mut self, delta: isize, cx: &mut Context<Self>) {
         self.session
             .send(Request::Command(Command::SearchAdvance(delta)));
+        cx.emit(SearchEvent::Moved);
     }
 
     /// Le nouvel instantané publié ; ne redessine que si le rang change.
     pub fn receive(&mut self, snapshot: &Snapshot, cx: &mut Context<Self>) {
+        // Le lecteur a perdu la recherche sans qu'on l'annule (nouveau
+        // document, mise au repos) : la réponse à la requête envoyée ne vaut
+        // plus, sauf si c'est une autre requête qui l'a remplacée.
+        let lost = match (&self.search, &snapshot.search, &self.sent) {
+            (Some(old), None, Some(sent)) => old.query == sent.query,
+            _ => false,
+        };
+        if snapshot.revision != self.revision || lost {
+            self.sent = None;
+        }
+        self.revision = snapshot.revision;
         if let Some(sent) = self.sent.as_mut() {
             let found = snapshot
                 .search
@@ -184,12 +198,10 @@ impl SearchBar {
                 sent.answered = true;
             }
         }
-        let changed = self.search != snapshot.search;
         self.search = snapshot.search.clone();
         self.status = snapshot.status.clone();
-        if changed || self.sent.is_some() {
-            self.refresh(cx);
-        }
+        // Ne prévient que si le rang affiché change.
+        self.refresh(cx);
     }
 
     fn refresh(&mut self, cx: &mut Context<Self>) {
@@ -222,7 +234,7 @@ impl SearchBar {
                 .tab_stop(false)
                 .tooltip(tooltip)
                 .disabled(self.search.is_none())
-                .on_click(cx.listener(move |this, _, _, _| this.advance(delta))),
+                .on_click(cx.listener(move |this, _, _, cx| this.advance(delta, cx))),
         )
     }
 }
@@ -263,6 +275,11 @@ impl Render for SearchBar {
             // Échap dans le champ : le champ le laisse passer, la barre le
             // prend.
             .on_action(cx.listener(|_, _: &Escape, _, cx| cx.emit(SearchEvent::Cancel)))
+            // Entrée : le champ émet `PressEnter` puis laisse passer la
+            // touche. Non arrêtée, la plateforme la tape ensuite comme du
+            // texte (« \n », filtré en une ligne) : une requête sélectionnée
+            // était remplacée par rien. La barre l'arrête ici.
+            .on_action(cx.listener(|_, _: &Enter, _, _| {}))
             .child(
                 div().w(px(320.0)).flex_none().child(
                     Input::new(&self.input)
@@ -311,8 +328,9 @@ impl Render for SearchBar {
                         .rounded(px(10.0))
                         .tab_stop(false)
                         .tooltip(format!(
-                            "{} (Esc)",
-                            dysflow::tr!("Close the search", "Fermer la recherche")
+                            "{} ({})",
+                            dysflow::tr!("Close the search", "Fermer la recherche"),
+                            dysflow::tr!("Esc", "Échap")
                         ))
                         .on_click(cx.listener(|_, _, _, cx| cx.emit(SearchEvent::Cancel))),
                 ),
