@@ -1,5 +1,7 @@
 //! Lecteur Dysflow en interface graphique (GPUI).
 
+pub mod keymap;
+
 use std::path::PathBuf;
 
 use gpui::{div, App, AppContext, Context, IntoElement, ParentElement, Render, Styled, Window};
