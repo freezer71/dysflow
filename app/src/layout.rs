@@ -4,12 +4,17 @@
 
 use dysflow::reader::view::{BlockKindView, DocView, WordView};
 
-/// Une boîte de mot sur une ligne. Un mot plus large que la ligne donne
+/// Une boîte de mot sur une ligne ; `(sentence, word)` est le couple que
+/// `SeekToWord` attend. Un mot plus large que la ligne donne
 /// plusieurs boîtes de même `(sentence, word)`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct WordBox {
+    /// `SentenceView.id`, l'identifiant global de la phrase.
     pub sentence: usize,
+    /// Position du mot dans sa phrase.
     pub word: usize,
+    /// `WordView.index`, l'index global du mot.
+    pub index: usize,
     pub x: f32,
     pub width: f32,
 }
@@ -86,7 +91,7 @@ pub fn lay_out(doc: &DocView, width: f32, spacing: usize, measure: &dyn Measure)
 
         let mut current: Vec<WordBox> = Vec::new();
         let mut x = 0.0f32;
-        for (si, sentence) in block.sentences.iter().enumerate() {
+        for sentence in &block.sentences {
             for (wi, word) in sentence.words.iter().enumerate() {
                 let gap = if current.is_empty() {
                     0.0
@@ -98,7 +103,8 @@ pub fn lay_out(doc: &DocView, width: f32, spacing: usize, measure: &dyn Measure)
                     if w <= width {
                         let at = x + gap;
                         current.push(WordBox {
-                            sentence: si,
+                            sentence: sentence.id,
+                            index: word.index,
                             word: wi,
                             x: at,
                             width: w,
@@ -111,7 +117,8 @@ pub fn lay_out(doc: &DocView, width: f32, spacing: usize, measure: &dyn Measure)
                     x = 0.0;
                     if w <= width {
                         current.push(WordBox {
-                            sentence: si,
+                            sentence: sentence.id,
+                            index: word.index,
                             word: wi,
                             x: 0.0,
                             width: w,
@@ -143,7 +150,8 @@ pub fn lay_out(doc: &DocView, width: f32, spacing: usize, measure: &dyn Measure)
                         end += 1;
                     }
                     let b = WordBox {
-                        sentence: si,
+                        sentence: sentence.id,
+                        index: word.index,
                         word: wi,
                         x: 0.0,
                         width: piece_w,
@@ -250,7 +258,20 @@ mod tests {
         }
     }
 
-    fn doc(blocks: Vec<BlockView>) -> DocView {
+    /// Numérote comme un vrai document : ids de phrase et index de mot
+    /// globaux et croissants d'un bloc à l'autre.
+    fn doc(mut blocks: Vec<BlockView>) -> DocView {
+        let (mut sid, mut widx) = (0, 0);
+        for block in &mut blocks {
+            for sentence in &mut block.sentences {
+                sentence.id = sid;
+                sid += 1;
+                for word in &mut sentence.words {
+                    word.index = widx;
+                    widx += 1;
+                }
+            }
+        }
         DocView {
             blocks,
             ..Default::default()
@@ -262,9 +283,10 @@ mod tests {
             .words
             .iter()
             .map(|b| {
-                d.blocks[layout.lines[line].block].sentences[b.sentence].words[b.word]
-                    .text
-                    .clone()
+                let block = &d.blocks[layout.lines[line].block];
+                let sentence = block.sentences.iter().find(|s| s.id == b.sentence).unwrap();
+                assert_eq!(sentence.words[b.word].index, b.index);
+                sentence.words[b.word].text.clone()
             })
             .collect()
     }
@@ -346,10 +368,13 @@ mod tests {
         let d = doc(vec![para(&["un deux"]), para(&["trois quatre"])]);
         let l = lay_out(&d, 200.0, 0, &Mono);
         assert_eq!(l.lines.len(), 2);
-        // Les index de phrase sont locaux au bloc dans ce test : le premier
-        // mot du bloc suivant est (0, 0).
+        // Ids globaux : la phrase du 2e bloc est la phrase 1, pas la 0.
         assert_eq!(l.lines[1].block, 1);
-        assert_eq!(l.neighbour(0, 1, 1), Some((0, 0)));
+        assert_eq!(l.line_of(1, 0), Some(1));
+        assert_eq!(l.line_of(0, 0), Some(0));
+        assert_eq!(l.neighbour(0, 1, 1), Some((1, 0)));
+        assert_eq!(l.neighbour(1, 1, -1), Some((0, 0)));
+        assert_eq!(l.lines[1].words[1].index, 3);
     }
 
     #[test]
@@ -362,7 +387,7 @@ mod tests {
         let d = doc(vec![para(&["a", "un"]), code, para(&["deux"])]);
         let l = lay_out(&d, 200.0, 0, &Mono);
         assert_eq!(l.lines.len(), 4);
-        assert_eq!(l.neighbour(1, 0, 1), Some((0, 0)));
+        assert_eq!(l.neighbour(1, 0, 1), Some((2, 0)));
         assert_eq!(l.lines[2].words.len(), 0);
         let long = doc(vec![para(&[&"a".repeat(25), "zzzzzzzz"])]);
         let l = lay_out(&long, 100.0, 0, &Mono);
