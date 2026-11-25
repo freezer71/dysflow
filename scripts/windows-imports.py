@@ -18,9 +18,11 @@ cherche avant System32), soit une DLL de Windows de la liste blanche
 SYSTEM (ou un jeu d'API api-ms-win-*, ext-ms-win-*). Rien d'autre : une DLL
 inconnue est une erreur, même présente dans le System32 de la machine qui
 vérifie (elle peut manquer sur un autre PC). Aucune ne vient d'un
-redistribuable (Visual C++, MinGW). dysflow-espeak.exe doit être là (sauf
---sans-espeak : la porte d'ONNX Runtime n'en a pas) ; lié statiquement, il
-n'importe que KERNEL32, ADVAPI32, msvcrt, ucrtbase et api-ms-win-crt-*. Les
+redistribuable (Visual C++, MinGW). dysflow-espeak.exe et dysflow-app.exe
+doivent être là (sauf --sans-espeak : la porte d'ONNX Runtime n'a ni l'un ni
+l'autre) ; dysflow-espeak.exe, lié statiquement, n'importe que KERNEL32,
+ADVAPI32, msvcrt, ucrtbase et api-ms-win-crt-* ; dysflow-app.exe (GPUI) peut
+en plus importer les DLL graphiques de APP_ONLY, et elles seulement. Les
 imports de chaque binaire sont affichés.
 """
 
@@ -47,6 +49,26 @@ SYSTEM = {
     "propsys.dll", "shlwapi.dll", "comctl32.dll", "uxtheme.dll", "dwmapi.dll", "imm32.dll",
     "version.dll", "powrprof.dll", "iphlpapi.dll", "ncrypt.dll", "mmdevapi.dll",
 }
+# Les DLL de Windows que seule l'app graphique (dysflow-app.exe, GPUI) importe :
+# un autre binaire du paquet qui les importerait reste une erreur. Elles
+# viennent des crates de gpui-pre-windows 0.3.14 (features de `windows`
+# 0.62 : Direct3D11, DirectComposition, DirectWrite, Dxgi) et de
+# accesskit_windows 0.34 (UI Automation, pour les lecteurs d'écran), lues dans
+# leurs sources (windows-0.62.2 : link!("<dll>" ...)) ; à confirmer sur le .exe
+# construit (`windows-imports.py list`), sans outil de plus.
+#   d3d11.dll            D3D11CreateDevice (directx_renderer.rs)
+#   dcomp.dll            DCompositionCreateDevice (composition de la fenêtre)
+#   dwrite.dll           DWriteCreateFactory (texte)
+#   uiautomationcore.dll UiaReturnRawElementProvider… (accesskit_windows)
+#   combase.dll          WinRT (UISettings : thème clair/sombre) et COM, par
+#                        windows-core
+#   rpcrt4.dll           windows-core (imp/marshaler)
+# dxgi.dll, user32, gdi32, dwmapi, shell32, ole32… sont déjà dans SYSTEM ;
+# d3dcompiler_47.dll n'est lié que dans les builds de débogage (cfg
+# debug_assertions de directx_renderer.rs) : elle n'est pas ici.
+APP_ONLY = {"dysflow-app.exe": {
+    "d3d11.dll", "dcomp.dll", "dwrite.dll", "uiautomationcore.dll", "combase.dll", "rpcrt4.dll",
+}}
 # dysflow-espeak.exe : rien d'autre que le noyau et le CRT de Windows.
 STATIC_ONLY = {"dysflow-espeak.exe"}
 STATIC_ALLOWED = {"kernel32.dll", "advapi32.dll", "msvcrt.dll", "ucrtbase.dll"}
@@ -110,12 +132,13 @@ def binaries(directory):
                   if p.is_file() and p.suffix.lower() in (".exe", ".dll"))
 
 
-def is_system(name):
+def is_system(name, binary=""):
     """Une DLL de Windows de la liste blanche, ou un jeu d'API de Windows."""
     lower = name.lower()
     if REDISTRIBUTABLE.match(lower):
         return False
-    return lower.startswith(("api-ms-win-", "ext-ms-win-")) or lower in SYSTEM
+    return (lower.startswith(("api-ms-win-", "ext-ms-win-")) or lower in SYSTEM
+            or lower in APP_ONLY.get(binary.lower(), ()))
 
 
 def deploy_crt(crt, dist):
@@ -141,6 +164,8 @@ def check(dist, espeak=True):
     found = binaries(dist)
     if espeak and not any(p.name.lower() in STATIC_ONLY for p in found):
         errors.append(f"dysflow-espeak.exe absent de {dist}")
+    if espeak and not any(p.name.lower() in APP_ONLY for p in found):
+        errors.append(f"dysflow-app.exe absent de {dist}")
     for binary in found:
         beside = {p.name.lower() for p in binary.parent.iterdir() if p.is_file()}
         names = imports(binary)
@@ -151,7 +176,7 @@ def check(dist, espeak=True):
             if binary.name.lower() in STATIC_ONLY:
                 if not (lower in STATIC_ALLOWED or lower.startswith("api-ms-win-crt-")):
                     errors.append(f"{shown} importe {name} (il doit être lié statiquement)")
-            elif lower not in beside and not is_system(name):
+            elif lower not in beside and not is_system(name, binary.name):
                 errors.append(f"{shown} importe {name}, ni à côté de lui ni DLL de Windows de la liste blanche")
     if errors:
         sys.stdout.flush()

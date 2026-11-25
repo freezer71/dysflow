@@ -1,6 +1,7 @@
 """Tests de scripts/windows-imports.py sur des binaires Windows fabriqués
 (PE32+ minimaux, avec leurs tables d'import directe et différée) : la liste
-blanche stricte, les sous-dossiers, dysflow-espeak.exe exigé, le runtime
+blanche stricte, les sous-dossiers, dysflow-espeak.exe et dysflow-app.exe exigés (les DLL graphiques de GPUI
+pour la seule app), le runtime
 Visual C++ joint à côté de chaque binaire. Aucun outil, aucun Windows :
 
     python3 -I scripts/test_windows_imports.py
@@ -79,6 +80,9 @@ def package(root):
     write(root, "vcruntime140.dll", ["KERNEL32.dll", "api-ms-win-crt-runtime-l1-1-0.dll"])
     write(root, "msvcp140.dll", ["VCRUNTIME140.dll", "KERNEL32.dll"])
     write(root, "dysflow-espeak.exe", ["KERNEL32.dll", "ADVAPI32.dll", "api-ms-win-crt-stdio-l1-1-0.dll"])
+    write(root, "dysflow-app.exe", ["KERNEL32.dll", "USER32.dll", "d3d11.dll", "dxgi.dll", "dcomp.dll", "dwrite.dll",
+                                    "UIAutomationCore.dll", "combase.dll", "RPCRT4.dll", "VCRUNTIME140.dll",
+                                    "onnxruntime.dll", "api-ms-win-crt-heap-l1-1-0.dll"])
     (Path(root) / "espeak-ng-data").mkdir()
     (Path(root) / "espeak-ng-data" / "fr_dict").write_bytes(b"pas un binaire")
 
@@ -148,9 +152,34 @@ class Check(Base):
         self.assertEqual(code, 1)
         self.assertIn("dysflow-espeak.exe absent", err)
 
+    def test_without_dysflow_app_the_package_fails(self):
+        package(self.root)
+        (self.root / "dysflow-app.exe").unlink()
+        code, _, err = check(self.root)
+        self.assertEqual(code, 1)
+        self.assertIn("dysflow-app.exe absent", err)
+
+    def test_the_graphics_dlls_are_for_the_app_only(self):
+        package(self.root)
+        write(self.root, "dysflow.exe", ["KERNEL32.dll", "d3d11.dll"])
+        code, _, err = check(self.root)
+        self.assertEqual(code, 1)
+        self.assertIn("dysflow.exe importe d3d11.dll", err)
+
+    def test_the_app_still_has_no_redistributable_or_unknown_dll(self):
+        for dll in ["d3d12.dll", "libwinpthread-1.dll", "d3dcompiler_47.dll"]:
+            root = self.root / dll
+            root.mkdir()
+            package(root)
+            write(root, "dysflow-app.exe", ["KERNEL32.dll", dll])
+            code, _, err = check(root)
+            self.assertEqual(code, 1, dll)
+            self.assertIn(f"dysflow-app.exe importe {dll}", err)
+
     def test_the_gate_has_no_dysflow_espeak_and_says_so(self):
         package(self.root)
         (self.root / "dysflow-espeak.exe").unlink()
+        (self.root / "dysflow-app.exe").unlink()
         code, _, err = check(self.root, "--sans-espeak")
         self.assertEqual(code, 0, err)
 

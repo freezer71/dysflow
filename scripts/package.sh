@@ -10,9 +10,13 @@
 # Les features par défaut (default_features, scripts/paquet-commun.sh) :
 # ocr,kokoro-onnx,stt-sherpa, plus mlx sur un Mac Apple Silicon.
 #
-# Sous Windows (bash de Git for Windows ; dysflow.exe par MSVC,
+# Sous Linux et Windows, l'app de bureau (dysflow-app, GPUI) est construite avec
+# le terminal et jointe à côté de lui (APP_FEATURES : onnx pour kokoro-onnx,
+# ocr pour ocr, d'après FEATURES). Le Mac livre l'app Swift (package-macos.sh).
+#
+# Sous Windows (bash de Git for Windows ; dysflow.exe et dysflow-app.exe par MSVC,
 # dysflow-espeak.exe par MinGW-w64, voir build-espeak.sh) : dysflow.exe,
-# dysflow-espeak.exe, onnxruntime.dll et sherpa-onnx-c-api.dll, et en plus du
+# dysflow-app.exe, dysflow-espeak.exe, onnxruntime.dll et sherpa-onnx-c-api.dll, et en plus du
 # dossier une archive $OUT/dysflow-windows-x86_64.zip de son contenu, à
 # décompresser n'importe où.
 set -eu
@@ -25,6 +29,11 @@ cd "$(dirname "$0")/.."
 case "$(uname -s)" in
 MINGW* | MSYS* | CYGWIN*) WINDOWS=1 EXE=.exe ;;
 *) WINDOWS="" EXE="" ;;
+esac
+# L'app de bureau : Linux et Windows (le Mac livre l'app Swift).
+case "$(uname -s)" in
+Darwin) APP="" ;;
+*) APP=1 ;;
 esac
 
 # Python 3 : sous Windows, la commande s'appelle souvent python, et python3
@@ -78,10 +87,36 @@ echo "Compilation (features : $FEATURES)…"
 # dicter si Silero VAD manque à côté de lui (stt::engine_for).
 DYSFLOW_PACKAGE_BUILD=1 cargo build --release --locked --features "$FEATURES" "$@"
 
+# L'app de bureau (GPUI), séparée du terminal : ses features sont les
+# siennes, et `test-paths` (dev-dependency du cœur, pour les essais) n'entre
+# jamais dans un paquet : cargo build ne compile pas les dev-dependencies.
+# Sans --config de sherpa-onnx : elle ne lie pas la dictée.
+APP_FEATURES=""
+if [ -n "$APP" ]; then
+    case ",$FEATURES," in *,kokoro-onnx,*) APP_FEATURES="onnx" ;; esac
+    case ",$FEATURES," in *,ocr,*) APP_FEATURES="${APP_FEATURES:+$APP_FEATURES,}ocr" ;; esac
+    echo "Compilation de dysflow-app (features : ${APP_FEATURES:-aucune})…"
+    DYSFLOW_PACKAGE_BUILD=1 cargo build --release --locked -p dysflow-app --features "$APP_FEATURES"
+fi
+
 rm -rf "$OUT"
 mkdir -p "$OUT"
 # CARGO_BUILD_TARGET (posé par la CI macOS) range le binaire sous sa cible.
 cp "target/${CARGO_BUILD_TARGET:+$CARGO_BUILD_TARGET/}release/dysflow$EXE" "$OUT/"
+if [ -n "$APP" ]; then
+    cp "target/${CARGO_BUILD_TARGET:+$CARGO_BUILD_TARGET/}release/dysflow-app$EXE" "$OUT/"
+    echo "Joint : dysflow-app$EXE"
+fi
+
+# Linux : la version de glibc qu'ils demandent ne dépasse pas le plancher du
+# paquet (README, notes de publication : 2.39, Ubuntu 24.04). GPUI (Vulkan,
+# xkbcommon, Wayland, fontconfig) ne la relève pas en silence : un binaire qui
+# demande plus fait échouer le paquet, et le plancher se décide, il ne se
+# subit pas. GLIBC_MAX pour la changer en connaissance de cause (par exemple
+# sur une machine plus récente, hors publication).
+if [ "$(uname -s)" = Linux ]; then
+    "$PYTHON" -I scripts/glibc-max.py "${GLIBC_MAX:-2.39}" "$OUT/dysflow" ${APP:+"$OUT/dysflow-app"}
+fi
 
 # Kokoro au terminal : ONNX Runtime 1.31 à côté du binaire, et la
 # phonétisation dysflow-espeak (GPL-3.0, programme séparé que Dysflow lance) avec
@@ -193,6 +228,7 @@ Dysflow pour Windows — lecteur et dictée au terminal
 
 Contenu
   dysflow.exe            le lecteur (lancez-le depuis PowerShell ou cmd)
+  dysflow-app.exe        le lecteur en fenêtre (double-clic)
   dysflow-espeak.exe     la phonétisation de la voix Kokoro (espeak-ng, GPL-3.0),
   espeak-ng-data\        ses données ; sources dans dysflow-espeak-source\
   onnxruntime.dll        ONNX Runtime de Microsoft, le calcul de la voix Kokoro
@@ -228,6 +264,7 @@ Dysflow for Windows — terminal reader and dictation
 
 Contents
   dysflow.exe            the reader (run it from PowerShell or cmd)
+  dysflow-app.exe        the reader in a window (double-click)
   dysflow-espeak.exe     phonemization for the Kokoro voice (espeak-ng, GPL-3.0),
   espeak-ng-data\        its data; sources in dysflow-espeak-source\
   onnxruntime.dll        Microsoft ONNX Runtime, which computes the Kokoro voice

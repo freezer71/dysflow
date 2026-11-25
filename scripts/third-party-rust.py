@@ -5,14 +5,17 @@ statiquement dans ce que Dysflow distribue.
     python3 scripts/third-party-rust.py            # écrit THIRD-PARTY-RUST.txt
     python3 scripts/third-party-rust.py --check    # échoue si le fichier n'est pas à jour
 
-Deux livrables :
+Trois livrables :
   (a) la bibliothèque de l'app macOS : dysflow-ffi, avec les features de
       build-ffi.sh (ocr), pour aarch64-apple-darwin ;
   (b) le binaire du terminal : dysflow, avec les features de package.sh
       (default_features de scripts/paquet-commun.sh : ocr,kokoro-onnx,
       stt-sherpa, plus mlx sur Mac, dont les crates ne visent que
       aarch64-apple-darwin), pour Linux x86_64 et ARM64, macOS et Windows
-      x86_64.
+      x86_64 ;
+  (c) l'app de bureau : dysflow-app (GPUI), avec les features de package.sh
+      (onnx,ocr), pour Linux x86_64 et ARM64 et Windows x86_64 (le Mac livre
+      l'app Swift).
 
 Le graphe vient de `cargo tree -e normal,no-proc-macro` (dépendances liées
 seulement : ni build, ni dev, ni macros procédurales, avec la résolution
@@ -54,6 +57,14 @@ DELIVERABLES = [
             "x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu", "aarch64-apple-darwin",
             "x86_64-pc-windows-msvc",
         ],
+    },
+    {
+        "key": "bureau",
+        "title": "app de bureau (dysflow-app, features onnx,ocr)",
+        "package": "dysflow-app",
+        "features": "onnx,ocr",
+        "metadata_features": "dysflow-app/onnx,dysflow-app/ocr",
+        "targets": ["x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu", "x86_64-pc-windows-msvc"],
     },
 ]
 

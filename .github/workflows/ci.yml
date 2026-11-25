@@ -1,6 +1,6 @@
 # Intégration continue : tests et lint Rust sur les plateformes visées
 # (Linux x86_64 et ARM64, macOS Apple Silicon, Windows x86_64), paquet du
-# terminal sous Linux et Windows, MSRV, licences, scripts, et tests de l'app
+# terminal et app de bureau (dysflow-app, GPUI) sous Linux et Windows, MSRV, licences, scripts, et tests de l'app
 # macOS.
 name: CI
 
@@ -63,6 +63,7 @@ jobs:
               scripts/package.sh | scripts/install.sh | scripts/paquet-commun.sh | \
               scripts/sherpa-onnx.sh | scripts/build-espeak.sh | scripts/dysflow-espeak.c | \
               scripts/elf-version-ref.py | scripts/windows-imports.py | \
+              scripts/glibc-max.py | app/* | \
               scripts/paquet-bout-en-bout.sh | scripts/test-mise-a-jour.sh | \
               scripts/modeles-epingles.sh | scripts/modeles-epingles.txt | \
               src/stt/* | src/tts/kokoro/*)
@@ -76,15 +77,35 @@ jobs:
       - name: Dépendances système (Linux)
         if: runner.os == 'Linux'
         # ALSA pour rodio/cpal ; cmake et clang pour Tesseract (feature ocr)
-        # et espeak-ng (build-espeak.sh).
+        # et espeak-ng (build-espeak.sh) ; et ce que lient les crates de GPUI
+        # (dysflow-app, dans l'espace de travail : essais, Clippy et paquet),
+        # lu dans les sources de gpui-pre-linux 0.3.14 :
+        # - libxkbcommon-dev, libxkbcommon-x11-dev : xkbcommon 0.8 lie
+        #   libxkbcommon et libxkbcommon-x11 (#[link]), claviers Wayland et X11 ;
+        # - libxcb1-dev : x11rb (feature xcb_ffi) lie libxcb ;
+        # - libfontconfig-dev : yeslogic-fontconfig-sys (font-kit) la cherche par
+        #   pkg-config ;
+        # - libfreetype-dev : freetype-sys la prend par pkg-config, sinon
+        #   compile ses propres sources en C++ (long) ;
+        # - Wayland (wayland-backend, feature dlopen), Vulkan (ash) et EGL
+        #   (khronos-egl, feature dynamic) se chargent à l'exécution : aucun
+        #   paquet de développement, et les essais (plateforme de test de GPUI)
+        #   n'ouvrent ni fenêtre ni GPU ; ni xvfb, ni mesa-vulkan.
+        # libxcb-xkb-dev, libxcb-xinput-dev… viennent en dépendances de ces
+        # paquets -dev. Ni libssl ni libzstd : absents du graphe d'app/.
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libasound2-dev pkg-config cmake clang
+          sudo apt-get install -y --no-install-recommends libasound2-dev pkg-config cmake clang \
+            libxkbcommon-dev libxkbcommon-x11-dev libxcb1-dev libfontconfig-dev libfreetype-dev
       - name: Chaîne Rust stable
+        # dysflow-app demande Rust 1.100 (rust-version d'app/Cargo.toml, GPUI) :
+        # la stable, que cette étape met à jour, le satisfait ; un runner qui
+        # aurait une stable plus ancienne ferait échouer cargo en le disant.
         run: |
           rustup update stable --no-self-update
           rustup default stable
           rustup component add clippy
+          rustc --version
       - name: Metal Toolchain et cible explicite (MLX de mlx-rs)
         # Sur Mac, Tests et Clippy activent la feature mlx de ffi/ (hors de
         # l'app livrée jusqu'au lot 3) : MLX compilé par CMake, dont les
@@ -191,6 +212,9 @@ jobs:
         run: ./scripts/modeles-epingles.sh "$MODELS" silero_vad.onnx kokoro/
       - name: Tests
         # Sur Mac, avec MLX en Rust (compute::mlx) ; sans effet ailleurs.
+        # --workspace comprend dysflow-app : ses essais passent par la
+        # plateforme de test de GPUI (TestAppContext), sans GPU ni serveur
+        # graphique, sur les quatre systèmes.
         run: cargo test --workspace --locked ${{ runner.os == 'macOS' && '--features dysflow-ffi/mlx' || '' }}
       - name: Clippy
         run: cargo clippy --workspace --all-targets --locked ${{ runner.os == 'macOS' && '--features dysflow-ffi/mlx' || '' }} -- -D warnings
@@ -357,11 +381,13 @@ jobs:
       - name: Dépendances système
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libasound2-dev pkg-config cmake clang
+          sudo apt-get install -y --no-install-recommends libasound2-dev pkg-config cmake clang \
+            libxkbcommon-dev libxkbcommon-x11-dev libxcb1-dev libfontconfig-dev libfreetype-dev
       - name: Chaînes Rust du MSRV
         # 1.88 : rust-version de dysflow (Cargo.toml). 1.91 : le moteur de
-        # l'app (ffi/, cargo-platform 0.3.3 par uniffi).
-        run: rustup toolchain install 1.88 1.91 --profile minimal --no-self-update
+        # l'app (ffi/, cargo-platform 0.3.3 par uniffi). 1.100 : l'app de
+        # bureau (app/, GPUI), qui a son propre plancher.
+        run: rustup toolchain install 1.88 1.91 1.100 --profile minimal --no-self-update
       - uses: Swatinem/rust-cache@v2
       - name: Clé des archives épinglées (ONNX Runtime, sherpa-onnx)
         id: archives
@@ -391,7 +417,14 @@ jobs:
           cargo +1.88 check -p dysflow --all-features --all-targets --locked \
             --config "$SHERPA_CONFIG_SEARCH" --config "$SHERPA_CONFIG_LIB"
       - name: Espace de travail en 1.91
-        run: cargo +1.91 check --workspace --all-targets --locked
+        # Sans dysflow-app : il demande 1.100 (GPUI) ; la MSRV du cœur (1.88)
+        # et celle de ffi/ (1.91) ne changent pas.
+        run: cargo +1.91 check --workspace --exclude dysflow-app --all-targets --locked
+      - name: App de bureau en 1.100
+        # Son rust-version est une promesse : la CI la tient. Un échec donne
+        # la version qu'une dépendance demande ; elle ne se relève pas ici
+        # sans décision.
+        run: cargo +1.100 check -p dysflow-app --all-targets --features onnx,ocr --locked
 
   lint:
     name: Licences et scripts
@@ -406,6 +439,10 @@ jobs:
         # La liste blanche de scripts/windows-imports.py, sur des PE32+
         # fabriqués : sous-dossiers, dysflow-espeak.exe exigé, DLL inconnue.
         run: python3 -I scripts/test_windows_imports.py
+      - name: Plancher de glibc (ELF fabriqués)
+        # scripts/glibc-max.py, que package.sh lance sur dysflow et
+        # dysflow-app sous Linux : refuse un binaire qui demande plus que 2.39.
+        run: python3 -I scripts/test_glibc_max.py
       - name: langue de install.sh
         run: sh scripts/test-install-lang.sh
 
