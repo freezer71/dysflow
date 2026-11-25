@@ -352,6 +352,16 @@ impl ReadingView {
         self.fonts.size
     }
 
+    /// La police de lecture, que l'éditeur du texte reprend.
+    pub fn editor_font(&self) -> crate::editor::EditorFont {
+        let kind = BlockKindView::Paragraph;
+        crate::editor::EditorFont {
+            family: self.fonts.family.clone(),
+            size: self.fonts.size_of(&kind),
+            line_height: self.fonts.line_height(&kind),
+        }
+    }
+
     /// Vrai si la règle sous la ligne lue est montrée.
     pub fn ruler(&self) -> bool {
         self.ruler

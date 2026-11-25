@@ -83,3 +83,8 @@ pub fn border_strong() -> Hsla {
 pub fn disabled() -> Hsla {
     rgb(0x9a9387).into()
 }
+/// Le fond du texte en cours de modification : la page teintée de l'encre,
+/// on voit qu'on écrit.
+pub fn editing() -> Hsla {
+    rgba(0x1f1d1a0d).into()
+}

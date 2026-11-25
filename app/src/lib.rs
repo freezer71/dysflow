@@ -2,6 +2,7 @@
 
 pub mod colors;
 pub mod contents;
+pub mod editor;
 pub mod help;
 pub mod inputs;
 pub mod keymap;
@@ -35,7 +36,8 @@ gpui_kit_assets::icon_assets!(
         SkipForward,
         ClipboardPaste,
         CircleQuestionMark,
-        TableOfContents
+        TableOfContents,
+        Pencil
     ]
 );
 

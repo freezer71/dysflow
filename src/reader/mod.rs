@@ -18,6 +18,7 @@ use crate::tts::{Synthesizer, TtsEngine};
 pub mod build;
 pub mod command;
 pub mod data;
+pub mod editable;
 pub mod handle;
 pub mod language;
 pub mod library;
@@ -35,6 +36,9 @@ pub type PlayerFactory = Box<dyn Fn(&str) -> Player>;
 struct Text {
     markdown: String,
     source: String,
+    /// La source telle qu'elle a été donnée, sans empreinte : le texte
+    /// modifié se rouvre sous elle (`editable::editable_source`).
+    origin: String,
     /// Un fichier : sa position se retient d'une ouverture à l'autre.
     identity: bool,
 }
@@ -324,11 +328,12 @@ impl Reader {
     /// texte : deux sélections ne partagent pas leur position, et le même texte,
     /// recapturé, retrouve la sienne.
     pub fn open_text(&mut self, markdown: &str, source: &str, now: Instant) {
+        let origin = source.to_string();
         let source = format!(
             "{source}:{:016x}",
             crate::source::cache::stable_hash(markdown.as_bytes())
         );
-        self.open(Text { markdown: markdown.to_string(), source, identity: false }, now);
+        self.open(Text { markdown: markdown.to_string(), source, origin, identity: false }, now);
         self.revision += 1;
     }
 
@@ -350,7 +355,7 @@ impl Reader {
                 let _ = self.save_choices();
             }
         }
-        self.open(Text { markdown, source, identity: true }, now);
+        self.open(Text { markdown, origin: source.clone(), source, identity: true }, now);
         if let Some(app) = self.session.as_mut() {
             if let Some(name) = path.file_name() {
                 app.adopt_former_identity(&name.to_string_lossy());

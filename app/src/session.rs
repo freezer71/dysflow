@@ -38,4 +38,14 @@ impl Session {
     pub fn settings(&self) -> Option<SettingsView> {
         self.handle.ask(|reader| reader.settings())
     }
+
+    /// Exécute `f` sur le fil du lecteur et rend son résultat. BLOQUE comme
+    /// `settings` (5 s au plus, puis `None`) : jamais depuis le fil de
+    /// l'interface.
+    pub fn ask<T: Send + 'static>(
+        &self,
+        f: impl FnOnce(&mut dysflow::reader::Reader) -> T + Send + 'static,
+    ) -> Option<T> {
+        self.handle.ask(f)
+    }
 }

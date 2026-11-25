@@ -1,13 +1,15 @@
 //! La fenêtre principale : l'en-tête, la barre de recherche, le sommaire,
-//! la vue de lecture, la barre de lecture, la barre d'état et l'aide, avec
-//! la place des panneaux à venir (édition, réglages : tâches 8 et 9).
+//! la vue de lecture (ou, à sa place, l'éditeur du texte), la barre de
+//! lecture, la barre d'état et l'aide, avec la place des réglages (tâche 9).
 //!
 //! Le focus est d'ordinaire sur la fenêtre (la vue de lecture) : les touches
 //! y arrivent et passent par `keymap::action`. Le champ de recherche, quand
 //! il a le focus, garde ses lettres (`n`, `t`, Espace s'y écrivent) ; seules
 //! les commandes de la fenêtre (⌘W, ⌘O, ⌘F, ⌘,) passent. Le sommaire, quand
 //! il a le focus, garde ↑ ↓ Entrée et Échap ; les autres touches du lecteur
-//! y marchent. Ouvrir un fichier ou
+//! y marchent. L'éditeur, quand il a le focus, garde ses touches comme le
+//! champ de recherche (Entrée y va à la ligne) ; Échap y valide. Ouvrir un
+//! fichier ou
 //! lire le presse-papiers attend le lecteur sur l'exécuteur d'arrière-plan
 //! de GPUI, jamais sur le fil de l'interface ; le résultat revient par
 //! `update`, et une erreur reste dans la barre d'état jusqu'à la prochaine
@@ -30,6 +32,7 @@ use gpui_kit_assets::IconName;
 
 use crate::colors;
 use crate::contents::{ContentsEvent, ContentsPanel};
+use crate::editor::{ask_draft, EditorEvent, Outcome, TextEditor};
 use crate::help;
 use crate::inputs::{self, command_modifier, key_press, open_path, paste_with, prompt_options};
 use crate::keymap::{action, Action, Modifier};
@@ -101,7 +104,7 @@ fn megabytes(bytes: u64) -> String {
 pub enum Panel {
     /// Le sommaire.
     Contents,
-    /// L'édition du texte (tâche 8).
+    /// L'édition du texte : l'éditeur prend la place de la lecture.
     Edit,
     /// Les réglages (tâche 9).
     Settings,
@@ -116,12 +119,13 @@ pub struct MainWindow {
     bar: Entity<ReaderBar>,
     search: Entity<SearchBar>,
     contents: Entity<ContentsPanel>,
+    editor: Entity<TextEditor>,
     /// La barre de recherche est ouverte.
     searching: bool,
     /// Le presse-papiers lu par ⌘V : celui du système, sauf dans les essais.
     clipboard: Clipboard,
     help: bool,
-    /// Le panneau ouvert : le sommaire (édition et réglages : tâches 8, 9).
+    /// Le panneau ouvert : le sommaire ou l'éditeur (réglages : tâche 9).
     panel: Option<Panel>,
     /// La dernière erreur d'ouverture ou de collage.
     error: Option<String>,
@@ -130,12 +134,21 @@ pub struct MainWindow {
     /// Un message passager : « Phrase copiée ».
     message: Option<SharedString>,
     title: String,
+    /// La lecture reprend le focus au prochain passage (l'éditeur fermé
+    /// sans fenêtre à portée).
+    refocus: bool,
     renders: usize,
     _opening: Task<()>,
     _message: Task<()>,
     _observe: gpui::Subscription,
     _search: gpui::Subscription,
     _contents: gpui::Subscription,
+    _editor: gpui::Subscription,
+    /// La question au lecteur qui ouvre l'éditeur.
+    _editing: Task<()>,
+    /// Cette question est en route : un second `e` n'en pose pas d'autre
+    /// (il perdrait que la voix lisait).
+    edit_pending: bool,
 }
 
 impl MainWindow {
@@ -161,6 +174,12 @@ impl MainWindow {
         let bar = cx.new(|cx| ReaderBar::new(Arc::clone(&session), focus.clone(), window, cx));
         let search = cx.new(|cx| SearchBar::new(Arc::clone(&session), window, cx));
         let contents = cx.new(|cx| ContentsPanel::new(Arc::clone(&session), window, cx));
+        let editor = cx.new(|cx| TextEditor::new(Arc::clone(&session), window, cx));
+        let editor_events =
+            cx.subscribe_in(&editor, window, |this, _, event, window, cx| match event {
+                EditorEvent::Done => this.finish_editing(true, window, cx),
+                EditorEvent::Cancel => this.cancel_editing(window, cx),
+            });
         let search_events = cx.subscribe_in(&search, window, |this, _, event, window, cx| {
             match event {
                 SearchEvent::Submitted => {
@@ -204,6 +223,7 @@ impl MainWindow {
             bar,
             search,
             contents,
+            editor,
             searching: false,
             clipboard: Arc::new(|| dysflow::source::clipboard().map_err(|e| format!("{e:#}"))),
             help: false,
@@ -212,12 +232,16 @@ impl MainWindow {
             opening: None,
             message: None,
             title: String::new(),
+            refocus: false,
             renders: 0,
             _opening: Task::ready(()),
             _message: Task::ready(()),
             _observe: observe,
             _search: search_events,
             _contents: contents_events,
+            _editor: editor_events,
+            _editing: Task::ready(()),
+            edit_pending: false,
         };
         let reading = this.reading.clone();
         this.sync(&reading, window, cx);
@@ -251,6 +275,11 @@ impl MainWindow {
         self.panel
     }
 
+    /// L'éditeur du texte est ouvert.
+    pub fn editing(&self) -> bool {
+        self.panel == Some(Panel::Edit)
+    }
+
     /// La barre de recherche est ouverte.
     pub fn search_visible(&self) -> bool {
         self.searching
@@ -262,6 +291,10 @@ impl MainWindow {
 
     pub fn contents(&self) -> &Entity<ContentsPanel> {
         &self.contents
+    }
+
+    pub fn editor(&self) -> &Entity<TextEditor> {
+        &self.editor
     }
 
     /// Nombre de rendus de la fenêtre depuis sa création.
@@ -300,6 +333,9 @@ impl MainWindow {
     /// Ouvre un fichier (argument, boîte d'ouverture, dépose) sur
     /// l'exécuteur d'arrière-plan ; une ouverture en cours est remplacée.
     pub fn open(&mut self, path: PathBuf, cx: &mut Context<Self>) {
+        // Une modification en cours s'applique d'abord : la file du lecteur
+        // l'ouvre avant le fichier.
+        self.apply_editing(cx);
         let name = path
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
@@ -322,6 +358,7 @@ impl MainWindow {
 
     /// Lit le presse-papiers et l'ouvre, sur l'exécuteur d'arrière-plan.
     pub fn paste(&mut self, cx: &mut Context<Self>) {
+        self.apply_editing(cx);
         let session = Arc::clone(&self.session);
         let read = Arc::clone(&self.clipboard);
         self.opening =
@@ -394,10 +431,12 @@ impl MainWindow {
         }
     }
 
-    /// Échap : l'aide, sinon la recherche, sinon le panneau ouvert, sinon
-    /// la fenêtre (l'ordre de l'app Mac).
+    /// Échap : la saisie se valide, sinon l'aide, la recherche, le panneau
+    /// ouvert, puis la fenêtre (l'ordre de l'app Mac).
     fn escape(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.help {
+        if self.editing() {
+            self.finish_editing(true, window, cx);
+        } else if self.help {
             self.help = false;
             cx.notify();
         } else if self.searching {
@@ -412,6 +451,9 @@ impl MainWindow {
     /// / ou ⌘F : la barre s'ouvre (ou se retrouve) et le champ prend le
     /// focus, avec la requête déjà cherchée.
     fn open_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.editing() {
+            self.finish_editing(true, window, cx);
+        }
         if !self.reading.read(cx).snapshot().has_document {
             return;
         }
@@ -434,6 +476,9 @@ impl MainWindow {
     /// t : le sommaire s'ouvre, la liste prend le focus sur la section lue ;
     /// ouvert, il se ferme.
     fn toggle_contents(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.editing() {
+            self.finish_editing(true, window, cx);
+        }
         if self.panel == Some(Panel::Contents) {
             self.close_contents(window, cx);
             return;
@@ -454,6 +499,99 @@ impl MainWindow {
             cx.notify();
         }
         self.focus.focus(window, cx);
+    }
+
+    /// e ou le bouton « Modifier » : la lecture se met en pause, le texte
+    /// ouvert est demandé au lecteur (sur l'exécuteur d'arrière-plan), puis
+    /// l'éditeur s'ouvre dessus avec le focus. La recherche et l'aide se
+    /// ferment, comme dans l'app Mac.
+    pub fn begin_editing(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let snapshot = self.reading.read(cx).snapshot().clone();
+        if self.editing() || self.edit_pending || !snapshot.has_document {
+            return;
+        }
+        // L'instantané publié, plus frais que celui de la vue (sondée moins
+        // souvent à l'arrêt). La pause part toujours : le lecteur l'ignore
+        // sans lecture en cours.
+        let resume = self.session.snapshot().playing;
+        self.session.send(Request::Command(Command::Pause));
+        if self.searching {
+            self.close_search(window, cx);
+        }
+        self.help = false;
+        let font = self.reading.read(cx).editor_font();
+        let session = Arc::clone(&self.session);
+        let revision = snapshot.revision;
+        self.edit_pending = true;
+        self._editing = cx.spawn_in(window, async move |this, cx| {
+            let draft = cx
+                .background_executor()
+                .spawn(async move { ask_draft(&session) })
+                .await;
+            let _ = this.update_in(cx, |this, window, cx| {
+                this.edit_pending = false;
+                let current = this.reading.read(cx).snapshot().clone();
+                // Sans texte, ou un autre document arrivé entre-temps : rien
+                // ne s'ouvre ; la voix reprend si elle lisait.
+                let Some(draft) = draft.filter(|_| current.revision == revision) else {
+                    if resume {
+                        this.session.send(Request::Command(Command::TogglePlay));
+                    }
+                    return;
+                };
+                this.panel = Some(Panel::Edit);
+                this.editor.update(cx, |e, cx| {
+                    e.begin(draft, revision, resume, font, window, cx)
+                });
+                cx.notify();
+            });
+        });
+        cx.notify();
+    }
+
+    /// Échap, ⌘↩, « Terminé » : la modification s'applique, l'éditeur se
+    /// ferme, la lecture reprend les touches. `resume` faux : la voix reste
+    /// en pause.
+    fn finish_editing(&mut self, resume: bool, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.editing() {
+            return;
+        }
+        let sentence = self.session.snapshot().sentence;
+        let outcome = self
+            .editor
+            .update(cx, |e, cx| e.finish(sentence, resume, cx));
+        self.panel = None;
+        if outcome == Outcome::Reopened {
+            self.say(dysflow::tr!("Text edited", "Texte modifié"), cx);
+        }
+        self.reading.update(cx, |r, cx| r.follow(cx));
+        self.focus.focus(window, cx);
+        cx.notify();
+    }
+
+    /// La modification s'applique sans fenêtre à portée (ouverture d'un
+    /// fichier, collage) ; le focus revient à la lecture au prochain rendu.
+    fn apply_editing(&mut self, cx: &mut Context<Self>) {
+        if !self.editing() {
+            return;
+        }
+        let sentence = self.session.snapshot().sentence;
+        self.editor
+            .update(cx, |e, cx| e.finish(sentence, false, cx));
+        self.panel = None;
+        self.refocus = true;
+        cx.notify();
+    }
+
+    /// « Annuler » : la modification s'oublie, la voix repart si elle lisait.
+    fn cancel_editing(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.editing() {
+            return;
+        }
+        self.editor.update(cx, |e, _| e.cancel());
+        self.panel = None;
+        self.focus.focus(window, cx);
+        cx.notify();
     }
 
     /// ⌘W : la lecture s'arrête, la fenêtre se ferme.
@@ -485,8 +623,9 @@ impl MainWindow {
             }
             Action::OpenSearch => self.open_search(window, cx),
             Action::ToggleContents => self.toggle_contents(window, cx),
-            // L'édition et les réglages arrivent avec les tâches 8 et 9.
-            Action::Edit | Action::OpenSettings => {}
+            Action::Edit => self.begin_editing(window, cx),
+            // Les réglages arrivent avec la tâche 9.
+            Action::OpenSettings => {}
         }
     }
 
@@ -495,16 +634,18 @@ impl MainWindow {
         let in_search = self.searching && self.search.read(cx).focus_handle(cx).is_focused(window);
         let in_contents = self.panel == Some(Panel::Contents)
             && self.contents.read(cx).focus_handle(cx).is_focused(window);
+        let in_editor = self.editing() && self.editor.read(cx).focus_handle(cx).is_focused(window);
         // Un menu ouvert (vitesse) garde ses touches.
-        if !in_search && !in_contents && focused.is_some_and(|f| f != self.focus) {
+        if !in_search && !in_contents && !in_editor && focused.is_some_and(|f| f != self.focus) {
             return;
         }
         let Some(found) = action(&key_press(&event.keystroke), command_modifier()) else {
             return;
         };
-        if in_search {
+        if in_search || in_editor {
             // Le champ garde ses lettres, ses signes (/ ? + -), Espace, ses
-            // flèches, ⌘C, ⌘V ; Échap y est pris par la barre. Seules les
+            // flèches, ⌘C, ⌘V ; Échap y est pris par la barre (ou par
+            // l'éditeur, qui valide), Entrée va à la ligne. Seules les
             // commandes de la fenêtre passent, et seulement avec la touche
             // de commande (/ sans elle s'écrit : « et/ou »).
             let m = event.keystroke.modifiers;
@@ -548,6 +689,16 @@ impl MainWindow {
         self.bar
             .update(cx, |bar, cx| bar.receive(&snapshot, count, window, cx));
         self.search.update(cx, |s, cx| s.receive(&snapshot, cx));
+        if self.editing() && self.editor.read(cx).revision() != snapshot.revision {
+            // Un autre document est arrivé : le texte modifié ne vaut plus,
+            // il s'oublie (rien ne part au lecteur).
+            self.panel = None;
+            self.focus.focus(window, cx);
+        }
+        if self.refocus && !self.editing() {
+            self.refocus = false;
+            self.focus.focus(window, cx);
+        }
         if self.panel == Some(Panel::Contents) {
             let document = Arc::clone(reading.read(cx).document());
             self.contents.update(cx, |c, cx| {
@@ -674,6 +825,30 @@ impl MainWindow {
                 ),
             )
             .child(
+                div().debug_selector(|| "header-edit".to_string()).child(
+                    Button::new("header-edit")
+                        .ghost()
+                        .icon(IconName::Pencil)
+                        .with_size(px(16.0))
+                        .size(px(32.0))
+                        .rounded(px(10.0))
+                        .tab_stop(false)
+                        .selected(self.editing())
+                        .disabled(!has_document)
+                        .tooltip(format!(
+                            "{} (e)",
+                            dysflow::tr!("Edit the text", "Modifier le texte")
+                        ))
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            if this.editing() {
+                                this.finish_editing(true, window, cx);
+                            } else {
+                                this.begin_editing(window, cx);
+                            }
+                        })),
+                ),
+            )
+            .child(
                 Button::new("help")
                     .ghost()
                     .icon(IconName::CircleQuestionMark)
@@ -693,6 +868,7 @@ impl MainWindow {
     /// Sans document : l'invitation, comme le lecteur vide de l'app Mac.
     fn invitation(&self, cx: &mut Context<Self>) -> impl IntoElement {
         div()
+            .debug_selector(|| "invitation".to_string())
             .absolute()
             .inset_0()
             .flex()
@@ -834,7 +1010,8 @@ impl Render for MainWindow {
                     .when(self.panel == Some(Panel::Contents), |this| {
                         this.child(self.contents.clone())
                     })
-                    .child(reading),
+                    .when(self.editing(), |this| this.child(self.editor.clone()))
+                    .when(!self.editing(), |this| this.child(reading)),
             )
             .child(
                 div()
