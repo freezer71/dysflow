@@ -451,6 +451,9 @@ impl EspeakProcess {
         match &self.launcher {
             Launcher::Program { program, data } => {
                 let mut command = Command::new(program);
+                // Vivant pendant toute la lecture Kokoro : jamais de console
+                // sous Windows (l'app de bureau n'en a pas).
+                crate::tts::without_console(&mut command);
                 if let Some(data) = data {
                     command.arg(data);
                 }

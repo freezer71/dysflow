@@ -222,6 +222,8 @@ fn say_command(text: &str, params: &TtsParams, out: &Path) -> Command {
 /// un fil le lit jusqu'au bout et le rend ; le fil appelant dort jusque-là,
 /// ou jusqu'à l'échéance.
 fn run_with_deadline(mut cmd: Command, deadline: Duration) -> Result<Option<String>> {
+    // `espeak-ng` à chaque phrase : jamais de console sous Windows.
+    super::without_console(&mut cmd);
     cmd.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::piped());
     let program = cmd.get_program().to_string_lossy().into_owned();
     let mut child = cmd
@@ -307,7 +309,7 @@ fn decode_wav(path: &Path) -> Result<PcmBuffer> {
 }
 
 fn which(program: &str) -> bool {
-    Command::new("which")
+    super::without_console(&mut Command::new("which"))
         .arg(program)
         .output()
         .map(|o| o.status.success())

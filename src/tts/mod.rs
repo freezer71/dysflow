@@ -28,6 +28,22 @@ pub struct Synthesis {
 use anyhow::Result;
 use std::sync::Arc;
 
+/// Les programmes console que lance le lecteur pendant l'usage
+/// (`dysflow-espeak`, `espeak-ng`, `which`) : sous Windows, lancés depuis
+/// l'app de bureau, qui n'a pas de console (`windows_subsystem`), chacun
+/// ouvrirait la sienne. `CREATE_NO_WINDOW` l'empêche ; les tubes (stdin,
+/// stdout, stderr) marchent comme avant. Ailleurs, rien ne change.
+pub(crate) fn without_console(command: &mut std::process::Command) -> &mut std::process::Command {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        /// `CREATE_NO_WINDOW` (winbase.h).
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+    command
+}
+
 /// Paramètres d'une requête de synthèse.
 ///
 /// D'un côté le conditionnement de style (`StyleCondition`), de l'autre les
@@ -520,6 +536,17 @@ pub struct EngineSettings {
 
 #[cfg(test)]
 mod tests {
+    /// `without_console` garde le programme et ses arguments (sous Windows,
+    /// il n'ajoute que `CREATE_NO_WINDOW`, que `Command` ne relit pas).
+    #[test]
+    fn without_console_keeps_the_command() {
+        let mut command = std::process::Command::new("dysflow-espeak");
+        command.arg("donnees");
+        super::without_console(&mut command).arg("fr");
+        assert_eq!(command.get_program(), "dysflow-espeak");
+        assert_eq!(command.get_args().collect::<Vec<_>>(), ["donnees", "fr"]);
+    }
+
     use super::*;
     use std::time::Duration;
 
