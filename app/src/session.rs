@@ -49,6 +49,14 @@ impl Session {
         self.handle.ask(f)
     }
 
+    /// Écrit la position de lecture (`Reader::close` : `remember_position`
+    /// du document ouvert), sans attendre : à la fermeture de la fenêtre et
+    /// à la sortie de l'app. La réponse dit que c'est écrit ; elle s'attend
+    /// par `Reply::wait`, jamais sur le fil de l'interface.
+    pub fn remember_position(&self) -> Reply<()> {
+        self.post(|reader| reader.close())
+    }
+
     /// Envoie `f` au fil du lecteur sans attendre : la requête part tout de
     /// suite, dans l'ordre des appels (deux réglages changés de suite
     /// s'appliquent dans cet ordre). Ne bloque pas : la réponse s'attend par

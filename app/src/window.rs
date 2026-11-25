@@ -223,8 +223,11 @@ impl MainWindow {
         });
         let session_for_close = Arc::clone(&session);
         window.on_window_should_close(cx, move |_, _| {
-            // Fermer la fenêtre arrête la lecture.
+            // Fermer la fenêtre arrête la lecture, et la position s'écrit
+            // (sans l'attendre : la sortie de l'app l'attend, voir
+            // `remember_position_on_quit`).
             session_for_close.send(Request::Command(Command::Pause));
+            let _ = session_for_close.remember_position();
             true
         });
         focus.focus(window, cx);
@@ -805,9 +808,12 @@ impl MainWindow {
         cx.notify();
     }
 
-    /// ⌘W : la lecture s'arrête, la fenêtre se ferme.
+    /// ⌘W : la lecture s'arrête, la position s'écrit (la requête part ;
+    /// la sortie de l'app l'attend, voir `remember_position_on_quit`), la
+    /// fenêtre se ferme.
     fn close(&mut self, window: &mut Window) {
         self.session.send(Request::Command(Command::Pause));
+        let _ = self.session.remember_position();
         window.remove_window();
     }
 

@@ -76,6 +76,23 @@ pub fn init(cx: &mut App, theme: Theme) {
     theme::install(theme, cx);
 }
 
+/// À la sortie de l'app, la position de lecture s'écrit explicitement
+/// (`Session::remember_position`, donc `Reader::close`) : le fil du lecteur
+/// ne s'arrête pas de lui-même avant que le processus ne sorte. La requête
+/// part aussitôt ; sa réponse s'attend sur l'exécuteur d'arrière-plan, et
+/// GPUI n'attend ce futur que `gpui::SHUTDOWN_TIMEOUT` (200 ms) au plus :
+/// le fil de l'interface n'est jamais bloqué plus longtemps.
+pub fn remember_position_on_quit(session: Arc<Session>, cx: &mut App) {
+    cx.on_app_quit(move |cx| {
+        let reply = session.remember_position();
+        let written = cx.background_executor().spawn(async move {
+            let _ = reply.wait();
+        });
+        async move { written.await }
+    })
+    .detach();
+}
+
 /// Ouvre l'application et sa fenêtre principale ; `path` (l'argument de la
 /// ligne de commande) s'ouvre aussitôt, sans bloquer l'interface (voir
 /// `MainWindow::new`). La fenêtre ouverte, l'installation de la voix est
@@ -130,6 +147,7 @@ pub fn run(path: Option<PathBuf>) {
                 ));
             }
             init(cx, theme);
+            remember_position_on_quit(Arc::clone(&session), cx);
             cx.on_window_closed(|cx, _| {
                 if cx.windows().is_empty() {
                     cx.quit();
