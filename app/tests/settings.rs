@@ -602,3 +602,75 @@ fn fonts_are_embedded() {
     assert_eq!(fonts::EMBEDDED.len(), 10);
     cx.quit();
 }
+
+/// Deux changements de suite, Sombre puis Clair : leurs réponses reviennent
+/// par deux tâches d'arrière-plan, sans ordre garanti. Si celle de Clair
+/// arrive d'abord, celle de Sombre ne doit rien réappliquer à la fenêtre.
+#[gpui::test]
+fn an_older_answer_never_overrides_a_newer_setting(cx: &mut TestAppContext) {
+    let _serial = serial();
+    let scratch = Scratch::new("out-of-order");
+    let path = scratch.0.join("config.toml");
+    let session = saving_session(path.clone());
+    let (main, cx) = window(cx, &session);
+    let page = open_settings(&main, cx);
+    // Le lecteur est occupé : les vraies réponses attendent.
+    session.send(Request::Ask(Box::new(|_| {
+        std::thread::sleep(Duration::from_millis(300))
+    })));
+    page.update(cx, |p, cx| p.set_theme(Theme::Dark, cx));
+    let dark = page.read_with(cx, |p, _| p.last_sent());
+    page.update(cx, |p, cx| p.set_theme(Theme::Light, cx));
+    let light = page.read_with(cx, |p, _| p.last_sent());
+    let base = page.read_with(cx, |p, _| p.values().cloned().unwrap());
+    let mut light_view = base.clone();
+    light_view.theme = Theme::Light;
+    let mut dark_view = base;
+    dark_view.theme = Theme::Dark;
+
+    // Dans le désordre : la plus récente d'abord.
+    page.update(cx, |p, cx| p.deliver_saved(light, light_view, cx));
+    page.update(cx, |p, cx| p.deliver_saved(dark, dark_view, cx));
+    assert_eq!(cx.update(|_, cx| theme::appearance(cx)), Appearance::Light);
+    assert_eq!(
+        page.read_with(cx, |p, _| p.values().unwrap().theme),
+        Theme::Light
+    );
+
+    // Puis les vraies réponses, dans l'ordre du lecteur : rien ne bouge.
+    settle(cx);
+    assert_eq!(cx.update(|_, cx| theme::appearance(cx)), Appearance::Light);
+    assert_eq!(Config::read_from(&path).unwrap().app.theme, Theme::Light);
+}
+
+/// Le fil du lecteur occupé plus de 5 s (une ouverture longue, l'OCR, le
+/// chargement d'une voix) : le réglage attend, « Enregistrement… », puis
+/// s'applique à la fenêtre quand la réponse arrive.
+#[gpui::test]
+fn a_slow_reader_still_applies_the_setting_to_the_window(cx: &mut TestAppContext) {
+    let _serial = serial();
+    let scratch = Scratch::new("slow-reader");
+    let path = scratch.0.join("config.toml");
+    let session = saving_session(path.clone());
+    let (main, cx) = window(cx, &session);
+    let page = open_settings(&main, cx);
+    assert_eq!(cx.update(|_, cx| theme::appearance(cx)), Appearance::Light);
+    session.send(Request::Ask(Box::new(|_| {
+        std::thread::sleep(Duration::from_millis(5_500))
+    })));
+    page.update(cx, |p, cx| p.set_theme(Theme::Dark, cx));
+    assert!(page.read_with(cx, |p, _| p.saving()), "« Enregistrement… »");
+    draw(cx);
+    assert!(
+        cx.debug_bounds("settings-saving").is_some(),
+        "l'attente se voit"
+    );
+
+    settle(cx);
+    page.read_with(cx, |p, _| {
+        assert!(!p.saving());
+        assert_eq!(p.error(), None);
+    });
+    assert_eq!(cx.update(|_, cx| theme::appearance(cx)), Appearance::Dark);
+    assert_eq!(Config::read_from(&path).unwrap().app.theme, Theme::Dark);
+}

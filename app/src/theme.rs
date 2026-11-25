@@ -466,7 +466,12 @@ fn apply(cx: &mut App) {
 
 /// Toutes les couleurs de gpui-component, tirées de la palette.
 pub fn component_colors(p: &Palette) -> ThemeColor {
-    let mut c = ThemeColor::default();
+    paint_over(ThemeColor::default(), p)
+}
+
+/// Repeint chaque champ de `c` : aucun ne doit garder la valeur de départ
+/// (`every_component_color_is_assigned`).
+fn paint_over(mut c: ThemeColor, p: &Palette) -> ThemeColor {
     let transparent = Tint {
         color: p.background,
         alpha: 0.0,
@@ -673,27 +678,33 @@ mod tests {
     }
 
     #[test]
-    fn no_default_component_color_remains() {
-        let defaults = [
-            fields(&format!("{:?}", *ThemeColor::light())),
-            fields(&format!("{:?}", *ThemeColor::dark())),
+    fn every_component_color_is_assigned() {
+        // Trois départs différents : un champ oublié garderait la valeur de
+        // son départ, et les trois résultats différeraient sur ce champ.
+        let bases = [
+            ThemeColor::default(),
+            *ThemeColor::light(),
+            *ThemeColor::dark(),
         ];
+        let starts: Vec<_> = bases.iter().map(|b| fields(&format!("{b:?}"))).collect();
+        assert!(starts[0].len() > 100, "toutes les couleurs sont lues");
         for p in [&LIGHT, &DARK] {
-            let ours = fields(&format!("{:?}", component_colors(p)));
-            assert!(ours.len() > 100, "toutes les couleurs sont lues");
-            for (field, value) in &ours {
-                // Rien n'y est peint : transparent dans tout thème.
-                if value.ends_with("a: 0.0 }") {
-                    continue;
-                }
-                for default in &defaults {
-                    assert_ne!(
-                        default.get(field),
-                        Some(value),
-                        "{} : {field} garde la couleur par défaut",
-                        p.name
-                    );
-                }
+            let painted: Vec<_> = bases
+                .iter()
+                .map(|b| fields(&format!("{:?}", paint_over(*b, p))))
+                .collect();
+            for field in starts[0].keys() {
+                let same_result = painted[1][field] == painted[0][field]
+                    && painted[2][field] == painted[0][field];
+                // Un champ égal dans les trois départs (transparent partout,
+                // comme `tab`) : il doit au moins avoir changé.
+                let blind =
+                    starts[1][field] == starts[0][field] && starts[2][field] == starts[0][field];
+                assert!(
+                    same_result && (!blind || painted[0][field] != starts[0][field]),
+                    "{} : {field} n'est pas repeint",
+                    p.name
+                );
             }
         }
     }

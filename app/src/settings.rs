@@ -545,15 +545,36 @@ impl SettingsPage {
                     Err(e) => (reader.settings(), Some(format!("{e:#}"))),
                 },
             );
+        // Sans délai : un réglage envoyé s'applique toujours, même quand le
+        // lecteur est occupé longtemps ; la page dit « Enregistrement… »
+        // en attendant.
         cx.spawn(async move |this, cx| {
             let answer = cx
                 .background_executor()
-                .spawn(async move { reply.wait() })
+                .spawn(async move { reply.wait_unbounded() })
                 .await;
             let _ = this.update(cx, |page, cx| page.saved(sent, answer, cx));
         })
         .detach();
         cx.notify();
+    }
+
+    /// Un changement attend encore la réponse du lecteur.
+    pub fn saving(&self) -> bool {
+        self.applied < self.sent
+    }
+
+    /// Le numéro du dernier changement envoyé.
+    pub fn last_sent(&self) -> u64 {
+        self.sent
+    }
+
+    /// Fait arriver la réponse du changement n° `sent`, comme le lecteur la
+    /// rendrait. Pour les essais : l'ordre des réponses n'y est pas garanti
+    /// (une tâche d'arrière-plan par changement), il faut pouvoir le forcer.
+    #[doc(hidden)]
+    pub fn deliver_saved(&mut self, sent: u64, applied: SettingsView, cx: &mut Context<Self>) {
+        self.saved(sent, Some((applied, None)), cx);
     }
 
     fn saved(
@@ -562,8 +583,21 @@ impl SettingsPage {
         answer: Option<(SettingsView, Option<String>)>,
         cx: &mut Context<Self>,
     ) {
+        // Une réponse plus ancienne que la dernière prise ne change rien :
+        // ni la page, ni la fenêtre (thème, langue, lecture).
+        let newest = sent >= self.applied;
         let Some((applied, failure)) = answer else {
-            self.error = Some(no_answer());
+            // Le canal s'est fermé : le lecteur s'est arrêté.
+            self.error = Some(
+                tr!(
+                    "The reader has stopped: this setting was not applied",
+                    "Le lecteur s'est arrêté : ce réglage n'est pas appliqué"
+                )
+                .to_string(),
+            );
+            if newest {
+                self.applied = sent;
+            }
             cx.notify();
             return;
         };
@@ -576,17 +610,17 @@ impl SettingsPage {
                     why
                 ))
             }
-            None if sent >= self.applied => self.error = None,
+            None if newest => self.error = None,
             None => {}
         }
-        if sent >= self.applied {
+        if newest {
             self.applied = sent;
             if let Some(loaded) = self.loaded.as_mut() {
                 loaded.values = applied.clone();
             }
             self.sync_sliders = true;
+            cx.emit(SettingsEvent::Saved(Box::new(applied)));
         }
-        cx.emit(SettingsEvent::Saved(Box::new(applied)));
         cx.notify();
     }
 
@@ -785,6 +819,17 @@ impl SettingsPage {
                     .text_color(p.text())
                     .child(self.title()),
             )
+            // Discret : le lecteur n'a pas encore répondu (il peut être
+            // occupé longtemps) ; le réglage s'appliquera dès sa réponse.
+            .when(self.saving(), |this| {
+                this.child(
+                    div()
+                        .debug_selector(|| "settings-saving".to_string())
+                        .text_size(px(12.0))
+                        .text_color(p.muted())
+                        .child(tr!("Saving…", "Enregistrement…")),
+                )
+            })
             .child(
                 div().debug_selector(|| "settings-close".to_string()).child(
                     Button::new("settings-close")
@@ -831,7 +876,6 @@ impl SettingsPage {
                 .custom(listen_fill)
                 .icon(Icon::new(IconName::Play).with_size(px(14.0)))
                 .label(tr!("Listen", "Écouter"))
-                .loading(self.snapshot.preview.pending)
                 .tooltip(tr!(
                     "Hear a sample sentence with this voice",
                     "Entendre une phrase d'exemple avec cette voix"

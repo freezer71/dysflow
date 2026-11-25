@@ -74,4 +74,12 @@ impl<T> Reply<T> {
     pub fn wait(self) -> Option<T> {
         self.0.recv_timeout(std::time::Duration::from_secs(5)).ok()
     }
+
+    /// Attend la réponse aussi longtemps qu'il faut : la requête est dans la
+    /// file du lecteur et s'appliquera, même s'il est occupé longtemps.
+    /// `None` seulement si le lecteur s'est arrêté. BLOQUE : jamais depuis le
+    /// fil de l'interface.
+    pub fn wait_unbounded(self) -> Option<T> {
+        self.0.recv().ok()
+    }
 }

@@ -90,6 +90,10 @@ struct TextStyle {
 #[derive(Debug, Clone, PartialEq)]
 struct Fonts {
     family: SharedString,
+    /// La police à chasse fixe du code : celle du thème de gpui-component,
+    /// qui ne garde la police du système que si elle est installée (sinon
+    /// une autre, puis `.SystemUIFont`). Aucune n'est écrite en dur ici.
+    mono: SharedString,
     size: f32,
     /// Hauteur de ligne en multiple de la taille, comme l'app Swift :
     /// 1,35 plus 0,25 par cran d'interligne.
@@ -97,7 +101,7 @@ struct Fonts {
 }
 
 impl Fonts {
-    fn of(settings: &SettingsView) -> Self {
+    fn of(settings: &SettingsView, cx: &App) -> Self {
         let size = if settings.reading_size.is_finite() && settings.reading_size > 0.0 {
             settings
                 .reading_size
@@ -106,20 +110,15 @@ impl Fonts {
             READING_SIZE_DEFAULT
         };
         let family = crate::fonts::family(&settings.reading_font);
+        let mono = cx
+            .try_global::<gpui_component::Theme>()
+            .map(|theme| theme.mono_font_family.clone())
+            .unwrap_or_else(|| ".SystemUIFont".into());
         Fonts {
             family: family.into(),
+            mono,
             size,
             line_multiple: 1.35 + 0.25 * settings.line_spacing.min(3) as f32,
-        }
-    }
-
-    fn mono_family() -> &'static str {
-        if cfg!(target_os = "macos") {
-            "Menlo"
-        } else if cfg!(target_os = "windows") {
-            "Consolas"
-        } else {
-            "DejaVu Sans Mono"
         }
     }
 
@@ -153,7 +152,7 @@ impl Fonts {
 
     fn font(&self, style: TextStyle) -> Font {
         let family: SharedString = if style.mono {
-            Self::mono_family().into()
+            self.mono.clone()
         } else {
             self.family.clone()
         };
@@ -296,7 +295,7 @@ impl ReadingView {
             session,
             snapshot,
             document,
-            fonts: Fonts::of(&settings),
+            fonts: Fonts::of(&settings, cx),
             ruler: settings.reading_ruler,
             widths: RefCell::default(),
             layout: Layout::default(),
@@ -339,7 +338,7 @@ impl ReadingView {
 
     /// Nouveaux réglages : police, taille, interligne, règle.
     pub fn set_settings(&mut self, settings: &SettingsView, cx: &mut Context<Self>) {
-        self.fonts = Fonts::of(settings);
+        self.fonts = Fonts::of(settings, cx);
         self.ruler = settings.reading_ruler;
         cx.notify();
     }
