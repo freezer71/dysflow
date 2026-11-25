@@ -238,27 +238,46 @@ pub fn wide_nul(message: &str) -> Vec<u16> {
         .collect()
 }
 
-/// Sous Windows, l'app n'a pas de console (`windows_subsystem = "windows"`,
-/// `main.rs`) : ce qu'elle écrit sur la sortie d'erreur ne se voit pas.
-/// `message` (`no_gpu_message`) s'affiche donc aussi dans une boîte du
-/// système, « si elle peut s'ouvrir » : `MessageBoxW` sans fenêtre parente,
-/// qui attend qu'on la ferme (il n'y a plus d'interface à bloquer). Ailleurs,
-/// rien : la sortie d'erreur suffit. Jamais appelée par les essais.
+/// Sous Windows, l'app n'a pas de console en release (`windows_subsystem =
+/// "windows"`, `main.rs`) : ce qu'elle écrit sur la sortie d'erreur ne se
+/// voit pas. `message` (`no_gpu_message`) s'affiche donc aussi dans une
+/// boîte du système, « si elle peut s'ouvrir » : `MessageBoxW` sans fenêtre
+/// parente, qui attend qu'on la ferme.
+///
+/// La boîte tourne sur un fil à part, que l'appelant attend (`join`) :
+/// sa boucle modale, sur le fil principal de GPUI, y livrerait les messages
+/// de GPUI (`WM_GPUI_TASK_DISPATCHED_ON_MAIN_THREAD`), dont des tâches qui
+/// réemprunteraient l'`App` déjà empruntée par l'appelant
+/// (`exit_without_window`, dans le rappel de `run`). Un fil sans fenêtre n'a
+/// que les messages de sa boîte. Ailleurs, rien : la sortie d'erreur
+/// suffit. Jamais appelée par les essais.
 pub fn system_alert(message: &str) {
     #[cfg(windows)]
     {
-        use windows_sys::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONERROR, MB_OK};
         let text = wide_nul(message);
-        let title = wide_nul("Dysflow");
-        // SAFETY : deux chaînes UTF-16 terminées par zéro, vivantes pendant
-        // l'appel ; aucune fenêtre parente (pointeur nul, permis).
-        unsafe {
-            MessageBoxW(
-                std::ptr::null_mut(),
-                text.as_ptr(),
-                title.as_ptr(),
-                MB_OK | MB_ICONERROR,
-            );
+        let shown = std::thread::Builder::new()
+            .name("dysflow-alerte".into())
+            .spawn(move || {
+                use windows_sys::Win32::UI::WindowsAndMessaging::{
+                    MessageBoxW, MB_ICONERROR, MB_OK,
+                };
+                let title = wide_nul("Dysflow");
+                // SAFETY : deux chaînes UTF-16 terminées par zéro, vivantes
+                // pendant l'appel ; aucune fenêtre parente (pointeur nul,
+                // permis).
+                unsafe {
+                    MessageBoxW(
+                        std::ptr::null_mut(),
+                        text.as_ptr(),
+                        title.as_ptr(),
+                        MB_OK | MB_ICONERROR,
+                    );
+                }
+            });
+        // Sans fil (plus de ressources), pas de boîte : la sortie d'erreur
+        // a déjà le message.
+        if let Ok(shown) = shown {
+            let _ = shown.join();
         }
     }
     #[cfg(not(windows))]
