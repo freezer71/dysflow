@@ -1,11 +1,13 @@
 //! Lecteur Dysflow en interface graphique (GPUI).
 
 pub mod colors;
+pub mod contents;
 pub mod help;
 pub mod inputs;
 pub mod keymap;
 pub mod layout;
 pub mod reading;
+pub mod search;
 pub mod session;
 pub mod transport;
 pub mod window;
@@ -28,7 +30,13 @@ use crate::window::MainWindow;
 // gpui-component.
 gpui_kit_assets::icon_assets!(
     ExtraIcons,
-    [SkipBack, SkipForward, ClipboardPaste, CircleQuestionMark]
+    [
+        SkipBack,
+        SkipForward,
+        ClipboardPaste,
+        CircleQuestionMark,
+        TableOfContents
+    ]
 );
 
 /// Les icônes de l'app : celles de gpui-component, plus celles de la barre.

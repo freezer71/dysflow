@@ -1,9 +1,13 @@
-//! La fenêtre principale : l'en-tête, la vue de lecture, la barre de
-//! lecture, la barre d'état et l'aide, avec la place des panneaux à venir
-//! (recherche, sommaire, édition, réglages : tâches 7 à 9).
+//! La fenêtre principale : l'en-tête, la barre de recherche, le sommaire,
+//! la vue de lecture, la barre de lecture, la barre d'état et l'aide, avec
+//! la place des panneaux à venir (édition, réglages : tâches 8 et 9).
 //!
-//! Le focus reste sur la fenêtre (la vue de lecture) : les touches y
-//! arrivent toutes et passent par `keymap::action`. Ouvrir un fichier ou
+//! Le focus est d'ordinaire sur la fenêtre (la vue de lecture) : les touches
+//! y arrivent et passent par `keymap::action`. Le champ de recherche, quand
+//! il a le focus, garde ses lettres (`n`, `t`, Espace s'y écrivent) ; seules
+//! les commandes de la fenêtre (⌘W, ⌘O, ⌘F, ⌘,) passent. Le sommaire, quand
+//! il a le focus, garde ↑ ↓ Entrée et Échap ; les autres touches du lecteur
+//! y marchent. Ouvrir un fichier ou
 //! lire le presse-papiers attend le lecteur sur l'exécuteur d'arrière-plan
 //! de GPUI, jamais sur le fil de l'interface ; le résultat revient par
 //! `update`, et une erreur reste dans la barre d'état jusqu'à la prochaine
@@ -21,14 +25,16 @@ use gpui::{
     FontWeight, IntoElement, KeyDownEvent, MouseButton, SharedString, Task, Window,
 };
 use gpui_component::button::{Button, ButtonVariants};
-use gpui_component::{Selectable, Sizable};
+use gpui_component::{Disableable, Selectable, Sizable};
 use gpui_kit_assets::IconName;
 
 use crate::colors;
+use crate::contents::{ContentsEvent, ContentsPanel};
 use crate::help;
 use crate::inputs::{self, command_modifier, key_press, open_path, paste_with, prompt_options};
 use crate::keymap::{action, Action};
 use crate::reading::ReadingView;
+use crate::search::{SearchBar, SearchEvent};
 use crate::session::Session;
 use crate::transport::ReaderBar;
 
@@ -89,12 +95,11 @@ fn megabytes(bytes: u64) -> String {
     dysflow::tr!(en = "{:.0} MB", fr = "{:.0} Mo", bytes as f64 / 1_000_000.0)
 }
 
-/// Les panneaux à venir. Échap ferme celui qui est ouvert.
+/// Les panneaux posés à côté de la lecture. Échap ferme celui qui est
+/// ouvert. La recherche n'en est pas un : sa barre s'ouvre en plus.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Panel {
-    /// La recherche (tâche 8).
-    Search,
-    /// Le sommaire (tâche 7).
+    /// Le sommaire.
     Contents,
     /// L'édition du texte (tâche 8).
     Edit,
@@ -109,10 +114,14 @@ pub struct MainWindow {
     focus: FocusHandle,
     reading: Entity<ReadingView>,
     bar: Entity<ReaderBar>,
+    search: Entity<SearchBar>,
+    contents: Entity<ContentsPanel>,
+    /// La barre de recherche est ouverte.
+    searching: bool,
     /// Le presse-papiers lu par ⌘V : celui du système, sauf dans les essais.
     clipboard: Clipboard,
     help: bool,
-    /// Le panneau ouvert ; aucun n'existe encore (tâches 7 à 9).
+    /// Le panneau ouvert : le sommaire (édition et réglages : tâches 8, 9).
     panel: Option<Panel>,
     /// La dernière erreur d'ouverture ou de collage.
     error: Option<String>,
@@ -125,6 +134,8 @@ pub struct MainWindow {
     _opening: Task<()>,
     _message: Task<()>,
     _observe: gpui::Subscription,
+    _search: gpui::Subscription,
+    _contents: gpui::Subscription,
 }
 
 impl MainWindow {
@@ -148,6 +159,31 @@ impl MainWindow {
         let focus = cx.focus_handle();
         let reading = cx.new(|cx| ReadingView::new(Arc::clone(&session), cx));
         let bar = cx.new(|cx| ReaderBar::new(Arc::clone(&session), focus.clone(), window, cx));
+        let search = cx.new(|cx| SearchBar::new(Arc::clone(&session), window, cx));
+        let contents = cx.new(|cx| ContentsPanel::new(Arc::clone(&session), window, cx));
+        let search_events = cx.subscribe_in(&search, window, |this, _, event, window, cx| {
+            match event {
+                SearchEvent::Submitted => {
+                    // La lecture suit le résultat, les touches reviennent à
+                    // la lecture (N, P, Espace).
+                    this.reading.update(cx, |r, cx| r.follow(cx));
+                    this.focus.focus(window, cx);
+                }
+                SearchEvent::Cancel => this.close_search(window, cx),
+            }
+        });
+        let contents_events =
+            cx.subscribe_in(
+                &contents,
+                window,
+                |this, _, event, window, cx| match event {
+                    ContentsEvent::Chosen(_) => {
+                        this.reading.update(cx, |r, cx| r.follow(cx));
+                        this.focus.focus(window, cx);
+                    }
+                    ContentsEvent::Close => this.close_contents(window, cx),
+                },
+            );
         // La vue de lecture ne prévient que si l'instantané a changé : la
         // fenêtre suit, sans boucle à elle.
         let observe = cx.observe_in(&reading, window, |this: &mut Self, reading, window, cx| {
@@ -165,6 +201,9 @@ impl MainWindow {
             focus,
             reading,
             bar,
+            search,
+            contents,
+            searching: false,
             clipboard: Arc::new(|| dysflow::source::clipboard().map_err(|e| format!("{e:#}"))),
             help: false,
             panel: None,
@@ -176,6 +215,8 @@ impl MainWindow {
             _opening: Task::ready(()),
             _message: Task::ready(()),
             _observe: observe,
+            _search: search_events,
+            _contents: contents_events,
         };
         let reading = this.reading.clone();
         this.sync(&reading, window, cx);
@@ -204,9 +245,22 @@ impl MainWindow {
         self.help
     }
 
-    /// Le panneau ouvert (aucun tant que les tâches 7 à 9 ne sont pas là).
+    /// Le panneau ouvert à côté de la lecture.
     pub fn panel(&self) -> Option<Panel> {
         self.panel
+    }
+
+    /// La barre de recherche est ouverte.
+    pub fn search_visible(&self) -> bool {
+        self.searching
+    }
+
+    pub fn search(&self) -> &Entity<SearchBar> {
+        &self.search
+    }
+
+    pub fn contents(&self) -> &Entity<ContentsPanel> {
+        &self.contents
     }
 
     /// Nombre de rendus de la fenêtre depuis sa création.
@@ -339,17 +393,66 @@ impl MainWindow {
         }
     }
 
-    /// Échap : l'aide, sinon le panneau ouvert, sinon la fenêtre.
+    /// Échap : l'aide, sinon la recherche, sinon le panneau ouvert, sinon
+    /// la fenêtre (l'ordre de l'app Mac).
     fn escape(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.help {
             self.help = false;
             cx.notify();
+        } else if self.searching {
+            self.close_search(window, cx);
         } else if self.panel.is_some() {
-            self.panel = None;
-            cx.notify();
+            self.close_contents(window, cx);
         } else {
             self.close(window);
         }
+    }
+
+    /// / ou ⌘F : la barre s'ouvre (ou se retrouve) et le champ prend le
+    /// focus, avec la requête déjà cherchée.
+    fn open_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.reading.read(cx).snapshot().has_document {
+            return;
+        }
+        self.searching = true;
+        self.search.update(cx, |s, cx| s.focus(window, cx));
+        cx.notify();
+    }
+
+    /// La recherche s'annule, la barre se ferme, la lecture reprend les
+    /// touches.
+    fn close_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.searching {
+            self.search.update(cx, |s, cx| s.cancel(window, cx));
+            self.searching = false;
+            cx.notify();
+        }
+        self.focus.focus(window, cx);
+    }
+
+    /// t : le sommaire s'ouvre, la liste prend le focus sur la section lue ;
+    /// ouvert, il se ferme.
+    fn toggle_contents(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.panel == Some(Panel::Contents) {
+            self.close_contents(window, cx);
+            return;
+        }
+        if !self.reading.read(cx).snapshot().has_document {
+            return;
+        }
+        self.panel = Some(Panel::Contents);
+        let reading = self.reading.clone();
+        self.sync(&reading, window, cx);
+        self.contents.update(cx, |c, cx| c.focus(window, cx));
+        cx.notify();
+    }
+
+    fn close_contents(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.panel == Some(Panel::Contents) {
+            self.panel = None;
+            cx.notify();
+        }
+        self.focus.focus(window, cx);
     }
 
     /// ⌘W : la lecture s'arrête, la fenêtre se ferme.
@@ -379,20 +482,39 @@ impl MainWindow {
                 self.help = !self.help;
                 cx.notify();
             }
-            // Les panneaux arrivent avec les tâches 7 (sommaire), 8
-            // (recherche, édition) et 9 (réglages).
-            Action::OpenSearch | Action::ToggleContents | Action::Edit | Action::OpenSettings => {}
+            Action::OpenSearch => self.open_search(window, cx),
+            Action::ToggleContents => self.toggle_contents(window, cx),
+            // L'édition et les réglages arrivent avec les tâches 8 et 9.
+            Action::Edit | Action::OpenSettings => {}
         }
     }
 
     fn key_down(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        let focused = window.focused(cx);
+        let in_search = self.searching && self.search.read(cx).focus_handle(cx).is_focused(window);
+        let in_contents = self.panel == Some(Panel::Contents)
+            && self.contents.read(cx).focus_handle(cx).is_focused(window);
         // Un menu ouvert (vitesse) garde ses touches.
-        if window.focused(cx).is_some_and(|f| f != self.focus) {
+        if !in_search && !in_contents && focused.is_some_and(|f| f != self.focus) {
             return;
         }
         let Some(found) = action(&key_press(&event.keystroke), command_modifier()) else {
             return;
         };
+        if in_search {
+            // Le champ garde ses lettres, Espace, ses flèches, ⌘C, ⌘V ;
+            // Échap y est pris par la barre. Seules les commandes de la
+            // fenêtre passent.
+            if !matches!(
+                found,
+                Action::Close | Action::OpenFile | Action::OpenSearch | Action::OpenSettings
+            ) {
+                return;
+            }
+        } else if in_contents && matches!(found, Action::Escape | Action::Line(_)) {
+            // La liste a déjà pris Échap (elle ferme le sommaire) et ↑ ↓.
+            return;
+        }
         // Une touche tenue répète la navigation, pas l'ouverture ni la
         // fermeture.
         let repeats = matches!(found, Action::Reader(_) | Action::Line(_));
@@ -416,6 +538,13 @@ impl MainWindow {
         };
         self.bar
             .update(cx, |bar, cx| bar.receive(&snapshot, count, window, cx));
+        self.search.update(cx, |s, cx| s.receive(&snapshot, cx));
+        if self.panel == Some(Panel::Contents) {
+            let document = Arc::clone(reading.read(cx).document());
+            self.contents.update(cx, |c, cx| {
+                c.receive(&document, snapshot.section, window, cx)
+            });
+        }
         if title != self.title {
             let shown = if title.is_empty() {
                 "Dysflow".to_string()
@@ -493,6 +622,47 @@ impl MainWindow {
                     ),
                 )
                 .on_click(cx.listener(|this, _, _, cx| this.paste(cx))),
+            )
+            .child(
+                div()
+                    .debug_selector(|| "header-contents".to_string())
+                    .child(
+                        Button::new("header-contents")
+                            .ghost()
+                            .icon(IconName::TableOfContents)
+                            .label(dysflow::tr!("Contents", "Sommaire"))
+                            .with_size(gpui_component::Size::Medium)
+                            .h(px(32.0))
+                            .rounded(px(10.0))
+                            .tab_stop(false)
+                            .selected(self.panel == Some(Panel::Contents))
+                            .disabled(!has_document)
+                            .tooltip(format!("{} (t)", dysflow::tr!("Contents", "Sommaire")))
+                            .on_click(
+                                cx.listener(|this, _, window, cx| this.toggle_contents(window, cx)),
+                            ),
+                    ),
+            )
+            .child(
+                div().debug_selector(|| "header-search".to_string()).child(
+                    Button::new("header-search")
+                        .ghost()
+                        .icon(IconName::Search)
+                        .label(dysflow::tr!("Search", "Rechercher"))
+                        .with_size(gpui_component::Size::Medium)
+                        .h(px(32.0))
+                        .rounded(px(10.0))
+                        .tab_stop(false)
+                        .selected(self.searching)
+                        .disabled(!has_document)
+                        .tooltip(format!(
+                            "{} (/ {} {})",
+                            dysflow::tr!("Search", "Rechercher"),
+                            dysflow::tr!("or", "ou"),
+                            inputs::command_label("f")
+                        ))
+                        .on_click(cx.listener(|this, _, window, cx| this.open_search(window, cx))),
+                ),
             )
             .child(
                 Button::new("help")
@@ -604,7 +774,13 @@ impl Render for MainWindow {
         let reading = div()
             .relative()
             .flex_1()
+            .min_w(px(0.0))
             .min_h(px(0.0))
+            // Un clic dans la page rend les touches à la lecture.
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|this, _, window, cx| this.focus.focus(window, cx)),
+            )
             .child(self.reading.clone())
             .when(!has_document && self.opening.is_none(), |this| {
                 this.child(self.invitation(cx))
@@ -627,11 +803,6 @@ impl Render for MainWindow {
             .track_focus(&self.focus)
             .key_context("Dysflow")
             .on_key_down(cx.listener(Self::key_down))
-            // Un clic dans la page rend les touches à la lecture.
-            .on_mouse_down(
-                MouseButton::Left,
-                cx.listener(|this, _, window, cx| this.focus.focus(window, cx)),
-            )
             .on_drop(cx.listener(|this, paths: &ExternalPaths, _, cx| {
                 // Un seul document à la fois : le premier fichier déposé.
                 if let Some(path) = paths.paths().first() {
@@ -645,12 +816,28 @@ impl Render for MainWindow {
             .bg(colors::background())
             .text_color(colors::text())
             .child(self.header(has_document, cx))
-            .child(reading)
+            .when(self.searching, |this| this.child(self.search.clone()))
+            .child(
+                div()
+                    .flex()
+                    .flex_1()
+                    .min_h(px(0.0))
+                    .when(self.panel == Some(Panel::Contents), |this| {
+                        this.child(self.contents.clone())
+                    })
+                    .child(reading),
+            )
             .child(
                 div()
                     .flex_none()
                     .px(px(16.0))
                     .pt(px(8.0))
+                    // Un clic à côté des boutons rend aussi les touches à la
+                    // lecture.
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(|this, _, window, cx| this.focus.focus(window, cx)),
+                    )
                     .child(self.bar.clone()),
             )
             .child(self.status_bar(&snapshot))

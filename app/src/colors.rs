@@ -73,3 +73,13 @@ pub fn overlay() -> Hsla {
 pub fn keycap() -> Hsla {
     rgba(0x1f1d1a12).into()
 }
+/// Un filet plus marqué : la sélection au clavier sur une ligne désactivée
+/// du sommaire.
+pub fn border_strong() -> Hsla {
+    rgb(0xb9b09f).into()
+}
+/// Un libellé désactivé (titre sans phrase au sommaire) : lisible, mais
+/// nettement en retrait du texte actif.
+pub fn disabled() -> Hsla {
+    rgb(0x9a9387).into()
+}
