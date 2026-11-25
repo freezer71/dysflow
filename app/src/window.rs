@@ -36,7 +36,7 @@ use gpui_component::{Disableable, Selectable, Sizable};
 use gpui_kit_assets::IconName;
 
 use crate::contents::{ContentsEvent, ContentsPanel};
-use crate::editor::{ask_draft, EditorEvent, Outcome, TextEditor};
+use crate::editor::{ask_draft, play_if_paused, EditorEvent, Outcome, TextEditor};
 use crate::help;
 use crate::inputs::{self, command_modifier, key_press, open_path, paste_with, prompt_options};
 use crate::keymap::{action, Action, Modifier};
@@ -687,7 +687,7 @@ impl MainWindow {
                 // ne s'ouvre ; la voix reprend si elle lisait.
                 let Some(draft) = draft.filter(|_| current.revision == revision) else {
                     if resume {
-                        this.session.send(Request::Command(Command::TogglePlay));
+                        play_if_paused(&this.session);
                     }
                     return;
                 };

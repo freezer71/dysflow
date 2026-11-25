@@ -497,3 +497,37 @@ fn an_open_editor_stays_quiet_at_rest(cx: &mut TestAppContext) {
     tick(cx);
     assert!(notified.get() > 0, "la mesure voit les changements");
 }
+
+/// La reprise après l'éditeur est « jouer si à l'arrêt », jamais un
+/// `TogglePlay` à l'aveugle : la voix relancée pendant la modification (le
+/// bouton de la barre) n'est pas arrêtée par « Annuler », ni par Échap sur
+/// un texte inchangé.
+#[gpui::test]
+fn closing_the_editor_never_stops_a_voice_restarted_meanwhile(cx: &mut TestAppContext) {
+    let session = session();
+    open_text(&session, "Un deux trois. Quatre cinq six. Sept huit neuf.");
+    let (main, cx) = window(cx, &session);
+    for close in ["cancel", "escape"] {
+        cx.simulate_keystrokes("space");
+        wait_for(&session, "la lecture", |s| s.playing);
+        open_editor(&main, cx);
+        wait_for(&session, "la pause", |s| !s.playing);
+        // La voix relancée pendant que l'éditeur est ouvert.
+        session.send(Request::Command(Command::TogglePlay));
+        wait_for(&session, "la relance", |s| s.playing);
+        if close == "cancel" {
+            let cancel = cx.debug_bounds("editor-cancel").expect("le bouton Annuler");
+            cx.simulate_click(cancel.center(), Modifiers::none());
+        } else {
+            cx.simulate_keystrokes("escape");
+        }
+        cx.run_until_parked();
+        assert!(!editing(&main, cx));
+        let s = settle(&session);
+        assert!(s.playing, "{close} : la voix lit toujours");
+        assert_eq!(s.revision, 1, "{close} : rien ne s'est rechargé");
+        // Pour le tour suivant : à l'arrêt.
+        session.send(Request::Command(Command::Pause));
+        wait_for(&session, "la pause", |s| !s.playing);
+    }
+}

@@ -53,6 +53,18 @@ pub fn ask_draft(session: &Session) -> Option<Draft> {
         .flatten()
 }
 
+/// Remet la voix en route si elle est à l'arrêt (la requête « jouer si à
+/// l'arrêt » de la reprise après modification), jamais un `TogglePlay` à
+/// l'aveugle : relancée entre-temps (le bouton de la barre), la voix
+/// s'arrêterait au lieu de reprendre. Ne bloque pas.
+pub fn play_if_paused(session: &Session) {
+    session.send(Request::Ask(Box::new(|reader| {
+        if !dysflow::reader::view::snapshot(reader).playing {
+            reader.apply(Command::TogglePlay, Instant::now());
+        }
+    })));
+}
+
 /// Ce qu'a fait la validation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Outcome {
@@ -80,7 +92,7 @@ pub fn apply(
     let empty = draft.trim().is_empty();
     if draft == origin || empty {
         if play {
-            session.send(Request::Command(Command::TogglePlay));
+            play_if_paused(session);
         }
         return if draft == origin {
             Outcome::Unchanged
@@ -248,7 +260,7 @@ impl TextEditor {
     /// Annule : rien ne change, la voix repart si elle lisait.
     pub fn cancel(&mut self) {
         if self.resume {
-            self.session.send(Request::Command(Command::TogglePlay));
+            play_if_paused(&self.session);
         }
         self.resume = false;
     }
