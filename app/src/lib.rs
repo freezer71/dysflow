@@ -88,7 +88,7 @@ pub fn remember_position_on_quit(session: Arc<Session>, cx: &mut App) {
         let written = cx.background_executor().spawn(async move {
             let _ = reply.wait();
         });
-        async move { written.await }
+        written
     })
     .detach();
 }
