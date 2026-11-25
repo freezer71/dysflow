@@ -227,3 +227,40 @@ pub fn install_startup_hook(write: impl Fn(&str) + Send + Sync + 'static) {
 pub fn remove_startup_hook() {
     drop(std::panic::take_hook());
 }
+
+/// Le texte de `message` pour l'API Windows : UTF-16, terminé par un zéro.
+/// Un zéro dans le texte le couperait : il est remplacé par une espace.
+pub fn wide_nul(message: &str) -> Vec<u16> {
+    message
+        .encode_utf16()
+        .map(|unit| if unit == 0 { u16::from(b' ') } else { unit })
+        .chain(std::iter::once(0))
+        .collect()
+}
+
+/// Sous Windows, l'app n'a pas de console (`windows_subsystem = "windows"`,
+/// `main.rs`) : ce qu'elle écrit sur la sortie d'erreur ne se voit pas.
+/// `message` (`no_gpu_message`) s'affiche donc aussi dans une boîte du
+/// système, « si elle peut s'ouvrir » : `MessageBoxW` sans fenêtre parente,
+/// qui attend qu'on la ferme (il n'y a plus d'interface à bloquer). Ailleurs,
+/// rien : la sortie d'erreur suffit. Jamais appelée par les essais.
+pub fn system_alert(message: &str) {
+    #[cfg(windows)]
+    {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONERROR, MB_OK};
+        let text = wide_nul(message);
+        let title = wide_nul("Dysflow");
+        // SAFETY : deux chaînes UTF-16 terminées par zéro, vivantes pendant
+        // l'appel ; aucune fenêtre parente (pointeur nul, permis).
+        unsafe {
+            MessageBoxW(
+                std::ptr::null_mut(),
+                text.as_ptr(),
+                title.as_ptr(),
+                MB_OK | MB_ICONERROR,
+            );
+        }
+    }
+    #[cfg(not(windows))]
+    let _ = message;
+}

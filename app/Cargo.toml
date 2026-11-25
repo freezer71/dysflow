@@ -26,6 +26,11 @@ gpui_platform = { package = "gpui-pre-platform", version = "=0.3.14", features =
 # Finder, Windows) : déjà dans Cargo.lock par gpui.
 sys-locale = "=0.3.2"
 
+# La boîte du système quand la fenêtre ne s'ouvre pas (`startup::system_alert`) :
+# l'app Windows n'a pas de console. Déjà dans Cargo.lock (clap, arboard…).
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "=0.61.2", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
+
 [dev-dependencies]
 # Les erreurs des téléchargements factices des essais (`set_download_start`).
 anyhow = "1.0"

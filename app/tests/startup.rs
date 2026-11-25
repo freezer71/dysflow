@@ -406,3 +406,22 @@ fn reader_keys_work_while_retry_has_focus(cx: &mut TestAppContext) {
     assert!(!s.playing, "Entrée n'a rien lancé");
     assert_eq!(s.sentence, 1);
 }
+
+/// Le texte de la boîte du système (Windows) : UTF-16 terminé par un zéro,
+/// accents compris ; un zéro dans le message ne le coupe pas.
+#[test]
+fn the_system_alert_text_is_nul_terminated_utf16() {
+    use dysflow_app::startup::wide_nul;
+    let message = no_gpu_message("échec «DirectX»");
+    let wide = wide_nul(&message);
+    assert_eq!(wide.last(), Some(&0));
+    assert_eq!(wide.iter().filter(|&&u| u == 0).count(), 1);
+    assert_eq!(
+        String::from_utf16(&wide[..wide.len() - 1]).unwrap(),
+        message
+    );
+    assert_eq!(
+        wide_nul("a\0b"),
+        vec![u16::from(b'a'), u16::from(b' '), u16::from(b'b'), 0]
+    );
+}

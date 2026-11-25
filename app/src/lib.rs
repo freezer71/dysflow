@@ -93,13 +93,23 @@ pub fn remember_position_on_quit(session: Arc<Session>, cx: &mut App) {
     .detach();
 }
 
+/// Aucune fenêtre ne s'ouvre : `startup::no_window` (le message sur la
+/// sortie d'erreur), la boîte du système sous Windows
+/// (`startup::system_alert`), puis la sortie avec le code 1.
+fn exit_without_window(err: &str) -> ! {
+    let code = startup::no_window(err, &mut std::io::stderr());
+    startup::system_alert(&startup::no_gpu_message(err));
+    std::process::exit(code)
+}
+
 /// Ouvre l'application et sa fenêtre principale ; `path` (l'argument de la
 /// ligne de commande) s'ouvre aussitôt, sans bloquer l'interface (voir
 /// `MainWindow::new`). La fenêtre ouverte, l'installation de la voix est
 /// demandée au cœur (`startup::first_launch`) : la voix de repli lit en
 /// attendant. La dernière fenêtre fermée quitte l'app. Sans fenêtre
 /// possible (pas de GPU, pas d'écran) : `startup::no_gpu_message` sur la
-/// sortie d'erreur, et le code de sortie 1.
+/// sortie d'erreur (et, sous Windows, sans console, dans une boîte du
+/// système), et le code de sortie 1.
 pub fn run(path: Option<PathBuf>) {
     // Avant tout, avant le moindre fil : ONNX Runtime lit cette variable à
     // son premier environnement (voir `tts::kokoro::onnx::NO_TELEMETRY`).
@@ -127,6 +137,7 @@ pub fn run(path: Option<PathBuf>) {
     // sur un abort, pas avec le code 1).
     startup::install_startup_hook(|message| {
         let _ = writeln!(std::io::stderr(), "{message}");
+        startup::system_alert(message);
     });
     gpui_platform::application()
         .with_assets(Assets)
@@ -138,12 +149,9 @@ pub fn run(path: Option<PathBuf>) {
             // personne ne la voie.
             #[cfg(any(target_os = "linux", target_os = "freebsd"))]
             if cx.compositor_name() == "headless" {
-                std::process::exit(startup::no_window(
-                    &dysflow::tr!(
-                        "no display server: WAYLAND_DISPLAY and DISPLAY are unset",
-                        "aucun serveur d'affichage : WAYLAND_DISPLAY et DISPLAY sont absents"
-                    ),
-                    &mut std::io::stderr(),
+                exit_without_window(dysflow::tr!(
+                    "no display server: WAYLAND_DISPLAY and DISPLAY are unset",
+                    "aucun serveur d'affichage : WAYLAND_DISPLAY et DISPLAY sont absents"
                 ));
             }
             init(cx, theme);
@@ -177,10 +185,7 @@ pub fn run(path: Option<PathBuf>) {
             // au démarrage (crochet plus haut). `cx.quit()` ne rendrait pas
             // de code 1 (sous macOS, `terminate:` sort avec 0) : on sort ici.
             if let Err(err) = opened {
-                std::process::exit(startup::no_window(
-                    &format!("{err:#}"),
-                    &mut std::io::stderr(),
-                ));
+                exit_without_window(&format!("{err:#}"));
             }
             // Seulement une fois la fenêtre là : sans elle, télécharger un
             // modèle de voix ne servirait à rien.
