@@ -11,7 +11,7 @@ use std::collections::BTreeMap;
 use std::time::Instant;
 
 use crate::config::Effect;
-use crate::config::Config;
+use crate::config::{Config, Theme};
 use crate::doc::{BlockKind, Document};
 use crate::models::{self, Progress};
 
@@ -51,6 +51,10 @@ pub struct SettingsView {
     pub reading_font: String,
     /// La taille du texte, en points (14 à 40).
     pub reading_size: f32,
+    // [app], pour l'app GPUI
+    pub theme: Theme,
+    /// Vide : la langue du système.
+    pub ui_language: String,
 }
 
 impl SettingsView {
@@ -78,6 +82,8 @@ impl SettingsView {
             voices_by_language: c.voice.per_language.clone(),
             reading_font: c.reading.font.clone(),
             reading_size: c.reading.size,
+            theme: c.app.theme,
+            ui_language: c.app.ui_language.clone(),
         }
     }
 }
@@ -111,6 +117,8 @@ pub struct SettingsPatch {
     pub family_voice: Option<String>,
     pub reading_font: Option<String>,
     pub reading_size: Option<f32>,
+    pub theme: Option<Theme>,
+    pub ui_language: Option<String>,
 }
 
 fn set<T: Clone>(slot: &mut T, value: &Option<T>) {
@@ -141,6 +149,8 @@ impl SettingsPatch {
         set(&mut c.app.output_device, &self.output_device);
         set(&mut c.reading.font, &self.reading_font);
         set(&mut c.reading.size, &self.reading_size);
+        set(&mut c.app.theme, &self.theme);
+        set(&mut c.app.ui_language, &self.ui_language);
         if let Some((language, voice)) = &self.voice_for_language {
             c.voice.per_language.insert(language.clone(), voice.clone());
         }
@@ -905,6 +915,8 @@ mod tests {
             family_voice: None,
             reading_font: Some("atkinson".into()),
             reading_size: Some(30.0),
+            theme: None,
+            ui_language: None,
         };
         let expected = SettingsView {
             voice: "F2".into(),
@@ -929,6 +941,8 @@ mod tests {
             voices_by_language: BTreeMap::from([("en".to_string(), "am_fenrir".to_string())]),
             reading_font: "atkinson".into(),
             reading_size: 30.0,
+            theme: Theme::System,
+            ui_language: String::new(),
         };
         assert_eq!(r.apply_patch(&patch, Instant::now()), expected);
         assert_eq!(r.settings(), expected);
@@ -1352,5 +1366,23 @@ mod tests {
         assert_eq!(applied.reading_size, 18.0);
         assert_eq!(written.reading.font, "openDyslexic");
         assert_eq!(written.reading.size, 18.0);
+    }
+
+    #[test]
+    fn patch_writes_theme_and_ui_language() {
+        let mut r = reader();
+        let applied = r.apply_patch(
+            &SettingsPatch {
+                theme: Some(Theme::Dark),
+                ui_language: Some("en".into()),
+                ..Default::default()
+            },
+            Instant::now(),
+        );
+        assert_eq!(applied.theme, Theme::Dark);
+        assert_eq!(applied.ui_language, "en");
+        assert_eq!(r.settings(), applied);
+        let unknown = r.apply_patch(&SettingsPatch { ui_language: Some("de".into()), ..Default::default() }, Instant::now());
+        assert_eq!(unknown.ui_language, "");
     }
 }

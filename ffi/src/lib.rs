@@ -7,13 +7,12 @@
 use std::sync::Arc;
 use std::time::Instant;
 
-use dysflow::audio::Player;
 use dysflow::config::Config;
 use dysflow::reader::command::Command;
 use dysflow::reader::handle::{ReaderHandle, Request};
-use dysflow::reader::{preview, settings, view, Reader};
+use dysflow::reader::{build, preview, settings, view};
 use dysflow::tts::kokoro::{self, KokoroBackend, KokoroRaw};
-use dysflow::tts::{self, silent::SilentEngine, TtsEngine};
+use dysflow::tts;
 
 uniffi::setup_scaffolding!();
 
@@ -243,26 +242,6 @@ pub fn kokoro_bridge_check(compute: Arc<dyn KokoroCompute>, model_dir: String) -
     let raw = raw?;
     kokoro::check(&raw, 3).map_err(failed)?;
     Ok(raw.samples.len() as u64)
-}
-
-/// Le lecteur de l'app sur la configuration lue (`Config::load`). Un
-/// `config.toml` illisible est retenu : la migration ne l'écrasera pas.
-/// `compute` : les calculs MLX de l'app ; Kokoro y est enveloppé **une
-/// fois** — chaque moteur reçoit ce même `Arc` (voir `SharedCompute`).
-fn app_reader(loaded: (Config, Option<String>), compute: tts::AppCompute) -> Reader {
-    let (config, unreadable) = loaded;
-    let available = compute.kokoro.is_some() || compute.text.is_some();
-    let mut reader = Reader::new(
-        config,
-        Box::new(move |config: &Config| {
-            tts::build_engine_with(config.engine_preference(), &config.engine_settings(), &compute).0
-        }),
-        Box::new(Player::with_output),
-        Instant::now(),
-    );
-    reader.set_mlx_compute(available);
-    reader.set_config_unreadable(unreadable.is_some());
-    reader
 }
 
 #[derive(uniffi::Enum)]
@@ -610,7 +589,7 @@ impl DysflowReader {
     /// Le lecteur réel : configuration de l'utilisateur, voix Kokoro.
     #[uniffi::constructor]
     pub fn new() -> Arc<Self> {
-        Arc::new(Self { handle: ReaderHandle::spawn(|| app_reader(Config::load(), tts::AppCompute::default())) })
+        Arc::new(Self { handle: ReaderHandle::spawn(|| build::app_reader(Config::load(), tts::AppCompute::default())) })
     }
 
     /// Le lecteur réel avec les calculs MLX de l'app : Kokoro (enveloppé une
@@ -621,27 +600,14 @@ impl DysflowReader {
             kokoro: Some(Arc::new(kokoro::SharedCompute::new(Arc::new(ForeignKokoro(kokoro))))),
             text: Some(Arc::new(ForeignText(text))),
         };
-        Arc::new(Self { handle: ReaderHandle::spawn(move || app_reader(Config::load(), compute)) })
+        Arc::new(Self { handle: ReaderHandle::spawn(move || build::app_reader(Config::load(), compute)) })
     }
 
     /// Lecteur muet, sans modèle ni carte son : tests et mode de test.
     #[uniffi::constructor]
     pub fn silent() -> Arc<Self> {
         Arc::new(Self {
-            handle: ReaderHandle::spawn(|| {
-                let mut config = Config::default();
-                config.reading.autoplay = false;
-                config.app.keep_voice_minutes = -1;
-                let mut reader = Reader::new(
-                    config,
-                    Box::new(|_| Arc::new(SilentEngine) as Arc<dyn TtsEngine>),
-                    Box::new(|_: &str| Player::silent()),
-                    Instant::now(),
-                );
-                // L'app de test ne touche pas au disque de l'utilisateur.
-                reader.set_persistent(false);
-                reader
-            }),
+            handle: ReaderHandle::spawn(build::silent_reader),
         })
     }
 
@@ -1167,6 +1133,8 @@ fn patch_from(p: SettingsPatch) -> settings::SettingsPatch {
         family_voice: p.family_voice,
         reading_font: p.reading_font,
         reading_size: p.reading_size,
+        theme: None,
+        ui_language: None,
     }
 }
 
@@ -1289,6 +1257,7 @@ fn doc_of(d: &view::DocView) -> DocView {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use dysflow::tts::{silent::SilentEngine, TtsEngine};
     use std::time::{Duration, Instant};
 
     /// La langue de l'interface est globale, et le lecteur répond sur son
@@ -1674,9 +1643,9 @@ mod tests {
     /// disque touché : le lecteur est seulement construit.
     #[test]
     fn an_unreadable_config_reaches_the_reader() {
-        let damaged = app_reader((Config::default(), Some("configuration ignorée".into())), tts::AppCompute::default());
+        let damaged = build::app_reader((Config::default(), Some("configuration ignorée".into())), tts::AppCompute::default());
         assert!(damaged.config_unreadable());
-        let fine = app_reader((Config::default(), None), tts::AppCompute::default());
+        let fine = build::app_reader((Config::default(), None), tts::AppCompute::default());
         assert!(!fine.config_unreadable());
     }
 

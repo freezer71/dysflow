@@ -15,6 +15,7 @@ use crate::config::Config;
 use crate::doc::DocumentBuilder;
 use crate::tts::{Synthesizer, TtsEngine};
 
+pub mod build;
 pub mod command;
 pub mod data;
 pub mod handle;

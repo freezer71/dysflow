@@ -37,13 +37,49 @@ pub struct AppConfig {
     /// macOS. Choisie, le son n'en sort jamais : retirée, la lecture se met
     /// en pause au lieu de passer aux haut-parleurs.
     pub output_device: String,
+    /// L'apparence de l'app GPUI ; l'app Mac suit le système et l'ignore.
+    pub theme: Theme,
+    /// La langue de l'interface : vide, celle du système ; sinon `fr` ou `en`.
+    pub ui_language: String,
 }
 
 impl Default for AppConfig {
     fn default() -> Self {
-        Self { keep_voice_minutes: 10, voice_migration: 0, single_voice: false, output_device: String::new() }
+        Self {
+            keep_voice_minutes: 10,
+            voice_migration: 0,
+            single_voice: false,
+            output_device: String::new(),
+            theme: Theme::System,
+            ui_language: String::new(),
+        }
     }
 }
+
+/// L'apparence de l'interface. Une valeur inconnue (écrite à la main, version
+/// plus récente) se lit comme `System`, sans erreur.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Theme {
+    #[default]
+    System,
+    Light,
+    Dark,
+}
+
+impl<'de> Deserialize<'de> for Theme {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let text = String::deserialize(deserializer)?;
+        Ok(match text.trim().to_ascii_lowercase().as_str() {
+            "light" => Theme::Light,
+            "dark" => Theme::Dark,
+            _ => Theme::System,
+        })
+    }
+}
+
+/// Les langues d'interface connues (la valeur de `[app] ui_language`).
+pub const UI_LANGUAGES: [&str; 2] = ["fr", "en"];
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
@@ -278,6 +314,9 @@ impl Config {
             .iter()
             .find(|known| known.eq_ignore_ascii_case(&font))
             .map_or_else(|| defaults.reading.font.clone(), |known| known.to_string());
+        // Une langue d'interface inconnue suit le système.
+        let ui = self.app.ui_language.trim().to_ascii_lowercase();
+        self.app.ui_language = if UI_LANGUAGES.contains(&ui.as_str()) { ui } else { String::new() };
         self.reading.size = finite(self.reading.size, defaults.reading.size)
             .clamp(READING_SIZE_MIN, READING_SIZE_MAX);
         self
@@ -581,5 +620,33 @@ mod tests {
         assert_eq!(read("literata", "99.0").reading.size, 40.0);
         assert_eq!(read("literata", "nan").reading.size, 22.0, "NaN redevient le défaut");
         assert_eq!(read("atkinson", "18.0").reading.size, 18.0, "une valeur sage ne bouge pas");
+    }
+
+    #[test]
+    fn theme_round_trips_through_toml() {
+        let parsed: Config = toml::from_str("[app]\ntheme = \"dark\"\n").unwrap();
+        assert_eq!(parsed.app.theme, Theme::Dark);
+        let saved = toml::to_string(&parsed).unwrap();
+        assert!(saved.contains("theme = \"dark\""), "{saved}");
+        let again: Config = toml::from_str(&saved).unwrap();
+        assert_eq!(again.app.theme, Theme::Dark);
+        assert_eq!(Config::default().app.theme, Theme::System);
+    }
+
+    #[test]
+    fn unknown_theme_falls_back_to_system() {
+        let parsed = toml::from_str::<Config>("[app]\ntheme = \"violet\"\n").expect("pas d'erreur de lecture");
+        assert_eq!(parsed.normalised().app.theme, Theme::System);
+    }
+
+    #[test]
+    fn unknown_ui_language_falls_back_to_system() {
+        let read = |lang: &str| {
+            toml::from_str::<Config>(&format!("[app]\nui_language = \"{lang}\"\n")).unwrap().normalised().app.ui_language
+        };
+        assert_eq!(read("de"), "");
+        assert_eq!(read("fr"), "fr");
+        assert_eq!(read(" EN "), "en");
+        assert_eq!(Config::default().app.ui_language, "");
     }
 }
