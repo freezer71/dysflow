@@ -301,14 +301,17 @@ pub struct ReadingView {
     /// Le cadre de la vue à la dernière image.
     bounds: Option<Bounds<Pixels>>,
     policy: FollowPolicy,
-    /// Le haut de la ligne tenue en place la dernière fois.
-    anchor_y: Option<f32>,
+    /// Le haut de la ligne tenue et la hauteur de la vue, la dernière fois.
+    anchor_y: Option<(f32, f32)>,
     _refresh: Task<()>,
+    _settings: Task<()>,
 }
 
 impl ReadingView {
     pub fn new(session: Arc<Session>, cx: &mut Context<Self>) -> Self {
-        let settings = session.settings().unwrap_or_default();
+        // Les réglages arrivent par `reload_settings`, sans bloquer : en
+        // attendant, ceux par défaut.
+        let settings = SettingsView::default();
         let snapshot = session.snapshot();
         let document = session.document();
         let refresh = cx.spawn(async move |this, cx| loop {
@@ -335,8 +338,10 @@ impl ReadingView {
             policy: FollowPolicy::default(),
             anchor_y: None,
             _refresh: refresh,
+            _settings: Task::ready(()),
         };
         view.highlight = view.locate();
+        view.reload_settings(cx);
         view
     }
 
@@ -366,6 +371,34 @@ impl ReadingView {
         self.fonts = Fonts::of(settings);
         self.ruler = settings.reading_ruler;
         cx.notify();
+    }
+
+    /// La taille du texte courant, en pixels.
+    pub fn font_size(&self) -> f32 {
+        self.fonts.size
+    }
+
+    /// Vrai si la règle sous la ligne lue est montrée.
+    pub fn ruler(&self) -> bool {
+        self.ruler
+    }
+
+    /// Relit les réglages du lecteur sans bloquer l'interface : la demande
+    /// attend le fil du lecteur sur l'exécuteur d'arrière-plan, puis le
+    /// résultat s'applique par `set_settings`. Sans réponse (fil occupé plus
+    /// de 5 s, ou arrêté), les réglages courants restent. À appeler après un
+    /// changement de réglages ; une demande en cours est remplacée.
+    pub fn reload_settings(&mut self, cx: &mut Context<Self>) {
+        let session = Arc::clone(&self.session);
+        self._settings = cx.spawn(async move |this, cx| {
+            let asked = cx
+                .background_executor()
+                .spawn(async move { session.settings() })
+                .await;
+            if let Some(settings) = asked {
+                let _ = this.update(cx, |view, cx| view.set_settings(&settings, cx));
+            }
+        });
     }
 
     /// Le mot lu, en (id de phrase, position dans la phrase) ; `None` quand
@@ -560,7 +593,7 @@ impl ReadingView {
     }
 
     /// Tient la ligne lue à 35 % de la hauteur, si l'on suit la lecture et
-    /// que cette ligne a changé (ou si `force`).
+    /// que cette ligne ou la hauteur de la vue a changé (ou si `force`).
     fn place(&mut self, force: bool) {
         if self.policy.suspended || self.layout_key.is_none() {
             return;
@@ -570,11 +603,13 @@ impl ReadingView {
             return;
         };
         let (y, height) = (line.y, line.height);
-        if !force && self.anchor_y == Some(y) {
+        let viewport = bounds.size.height.as_f32();
+        // Une autre ligne, ou une vue d'une autre hauteur : on recentre.
+        if !force && self.anchor_y == Some((y, viewport)) {
             return;
         }
-        self.anchor_y = Some(y);
-        let wanted = PAD + y + height / 2.0 - bounds.size.height.as_f32() * ANCHOR;
+        self.anchor_y = Some((y, viewport));
+        let wanted = PAD + y + height / 2.0 - viewport * ANCHOR;
         self.scroll = wanted.clamp(0.0, self.max_scroll());
     }
 

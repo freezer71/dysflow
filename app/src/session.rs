@@ -31,9 +31,10 @@ impl Session {
         self.handle.document()
     }
 
-    /// Les réglages du lecteur. Attend la réponse du fil du lecteur (5 s au
-    /// plus) : à demander à l'ouverture ou après un changement, pas à chaque
-    /// image. `None` si le fil ne répond pas.
+    /// Les réglages du lecteur. BLOQUE jusqu'à la réponse du fil du lecteur
+    /// (5 s au plus) : jamais depuis le fil de l'interface, mais sur
+    /// l'exécuteur d'arrière-plan (voir `ReadingView::reload_settings`).
+    /// `None` si le fil ne répond pas.
     pub fn settings(&self) -> Option<SettingsView> {
         self.handle.ask(|reader| reader.settings())
     }

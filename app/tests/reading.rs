@@ -8,6 +8,7 @@ use std::time::{Duration, Instant};
 use dysflow::reader::build::silent_reader;
 use dysflow::reader::command::Command;
 use dysflow::reader::handle::{ReaderHandle, Request};
+use dysflow::reader::settings::SettingsPatch;
 use dysflow::reader::view::{BlockView, DocView, SentenceView, Snapshot, WordView};
 use dysflow_app::reading::ReadingView;
 use dysflow_app::session::Session;
@@ -266,6 +267,10 @@ fn growing_document_keeps_word_and_scroll(cx: &mut TestAppContext) {
     let followed = view.read_with(cx, |v, _| v.scroll_offset());
     assert!(followed > 0.0);
 
+    // Piège : le document prolongé est donné à la main, sans passer par le
+    // lecteur. Un `tick` ici ferait relire l'instantané réel (révision plus
+    // ancienne, document d'origine) et défaire la révision injectée : les
+    // assertions suivent donc `receive` sans faire tourner la boucle.
     // En suivant la lecture : la suite du document ne déplace rien.
     let snapshot = session.snapshot();
     let doc = session.document();
@@ -308,5 +313,97 @@ fn growing_document_keeps_word_and_scroll(cx: &mut TestAppContext) {
         assert_eq!(v.highlighted(), Some((20, 1)));
         assert_eq!(v.scroll_offset(), detached);
         assert!(!v.following());
+    });
+}
+
+/// Change les réglages dans le cœur (lecteur hors disque : rien ne s'écrit).
+fn patch(session: &Session, patch: SettingsPatch) {
+    session.send(Request::Ask(Box::new(move |reader| {
+        let _ = reader.update_settings(&patch, Instant::now());
+    })));
+}
+
+/// Occupe le fil du lecteur `busy` (borné), comme une ouverture de fichier.
+fn occupy(session: &Session, busy: Duration) {
+    session.send(Request::Ask(Box::new(move |_| std::thread::sleep(busy))));
+}
+
+#[gpui::test]
+fn creating_the_view_never_waits_for_the_reader(cx: &mut TestAppContext) {
+    let session = Arc::new(Session::new(ReaderHandle::spawn(silent_reader)));
+    session.send(Request::OpenText {
+        markdown: "Un deux trois.".into(),
+        source: "test".into(),
+    });
+    patch(
+        &session,
+        SettingsPatch {
+            reading_size: Some(30.0),
+            reading_ruler: Some(true),
+            ..Default::default()
+        },
+    );
+    wait_for(&session, "le document", |s| s.has_document);
+    occupy(&session, Duration::from_millis(800));
+
+    // La construction seule est chronométrée : `add_window_view` fait
+    // ensuite tourner l'exécuteur de test, qui exécute sur ce fil-ci la
+    // tâche d'arrière-plan (sur un vrai exécuteur, elle tourne ailleurs).
+    let shared = Arc::clone(&session);
+    let built = Arc::new(std::sync::Mutex::new(None));
+    let seen = Arc::clone(&built);
+    let (view, cx) = cx.add_window_view(move |_window, cx| {
+        let started = Instant::now();
+        let view = ReadingView::new(shared, cx);
+        *seen.lock().unwrap() = Some((started.elapsed(), view.font_size(), view.ruler()));
+        view
+    });
+    let (took, size, ruler) = built.lock().unwrap().take().expect("vue construite");
+    assert!(
+        took < Duration::from_millis(200),
+        "la vue se crée sans attendre le fil du lecteur ({took:?})"
+    );
+    // En attendant, les valeurs par défaut.
+    assert_eq!(size, 22.0);
+    assert!(!ruler);
+
+    // Les réglages arrivent ensuite (la tâche d'arrière-plan attend le fil
+    // du lecteur, au plus 5 s) et sont appliqués.
+    cx.run_until_parked();
+    draw(cx);
+    view.read_with(cx, |v, _| {
+        assert_eq!(v.font_size(), 30.0);
+        assert!(v.ruler());
+    });
+}
+
+#[gpui::test]
+fn reload_settings_applies_a_new_size_and_lays_out_again(cx: &mut TestAppContext) {
+    let (session, view, cx) = open(cx, &paragraphs(5));
+    cx.run_until_parked();
+    draw(cx);
+    let (size, passes, height) = view.read_with(cx, |v, _| {
+        (v.font_size(), v.layout_passes(), v.layout().height)
+    });
+    assert_eq!(size, 22.0);
+
+    patch(
+        &session,
+        SettingsPatch {
+            reading_size: Some(16.0),
+            ..Default::default()
+        },
+    );
+    view.update(cx, |v, cx| v.reload_settings(cx));
+    cx.run_until_parked();
+    draw(cx);
+    view.read_with(cx, |v, _| {
+        assert_eq!(v.font_size(), 16.0);
+        assert_eq!(
+            v.layout_passes(),
+            passes + 1,
+            "la nouvelle taille refait la mise en page"
+        );
+        assert!(v.layout().height < height);
     });
 }
