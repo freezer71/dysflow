@@ -1,6 +1,7 @@
 //! Lecteur Dysflow en interface graphique (GPUI).
 
 pub mod keymap;
+pub mod layout;
 
 use std::path::PathBuf;
 
