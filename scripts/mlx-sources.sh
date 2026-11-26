@@ -168,9 +168,12 @@ mlx_noyaux_justes() {
 # mlx_build_prouve BUILD : ce build de mlx-sys a fini, et son cache porte la
 # preuve qu'écrit mlx-sources.cmake (cette chaîne d'outils, ces épingles, ce
 # dossier de noyaux), la cible de ce dossier, et les noyaux y sont justes.
+# « Fini » : la sortie du script de build est écrite, `output` dans l'ancienne
+# disposition de cargo (build/mlx-sys-HASH), `run/stdout` dans celle de cargo
+# 1.100 (build/mlx-sys/HASH).
 mlx_build_prouve() {
     mlx_cache=$1/out/build/CMakeCache.txt
-    [ -f "$1/output" ] && [ -r "$mlx_cache" ] || return 1
+    { [ -f "$1/output" ] || [ -f "$1/run/stdout" ]; } && [ -r "$mlx_cache" ] || return 1
     mlx_sortie=$(sed -n "s/^DYSFLOW_MLX_PREUVE:INTERNAL=$mlx_empreinte //p" "$mlx_cache") || return 1
     case "$mlx_sortie" in
     "$mlx_racine" | "$mlx_racine"/macos-*) ;;
@@ -189,7 +192,10 @@ mlx_build_prouve() {
 mlx_metallib_garde() {
     mlx_racine=$PWD/target/mlx-metallib
     mlx_empreinte="$(shasum -a 256 < scripts/mlx-sources.sh | cut -c1-64) $(shasum -a 256 < scripts/mlx-sources.cmake | cut -c1-64)"
-    mlx_builds=$(find target -maxdepth 5 -type d -path '*/build/mlx-sys-*' -prune -print) || return 1
+    # Les deux dispositions de cargo : build/mlx-sys-HASH (jusqu'à 1.99) et
+    # build/mlx-sys/HASH (1.100). Sans la seconde, la garde ne voyait plus aucun
+    # build et passait sans rien vérifier.
+    mlx_builds=$(find target -maxdepth 5 -type d \( -path '*/build/mlx-sys-*' -o -path '*/build/mlx-sys/*' \) -prune -print) || return 1
     mlx_noyaux=$(find "$mlx_racine" -maxdepth 2 -name mlx.metallib) || return 1
 
     mlx_doute=
@@ -197,6 +203,14 @@ mlx_metallib_garde() {
         [ -n "$mlx_un" ] || continue
         # Le script de build compilé, qui n'a encore rien bâti.
         if [ -f "$mlx_un/build-script-build" ] && [ ! -e "$mlx_un/out" ]; then continue; fi
+        # Disposition de cargo 1.100 : le script compilé et la bibliothèque
+        # ont chacun leur dossier ; seul celui qui exécute le script (run/)
+        # bâtit MLX. Les deux autres n'ont ni run/ ni out/build.
+        case "$mlx_un" in
+        */build/mlx-sys/*)
+            if [ ! -d "$mlx_un/run" ] && [ ! -d "$mlx_un/out/build" ]; then continue; fi
+            ;;
+        esac
         mlx_build_prouve "$mlx_un" || mlx_doute=$mlx_un
     done <<EOF
 $mlx_builds

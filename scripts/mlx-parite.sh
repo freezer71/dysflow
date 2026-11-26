@@ -73,7 +73,8 @@ fi
 #
 # Le target de cargo est à 3 niveaux sous target/ : la garde de mlx-sources.sh
 # (mlx_metallib_garde) cherche les builds de mlx-sys jusqu'à
-# target/*/*/build/mlx-sys-* (`find target -maxdepth 5`), et un build dont les
+# target/*/*/build/mlx-sys-* et target/*/*/build/mlx-sys/* (`find target
+# -maxdepth 5`, les deux dispositions de cargo), et un build dont les
 # noyaux ne sont pas sous target/mlx-metallib lui paraîtrait non prouvé : elle
 # retirerait alors TOUS les builds de mlx-sys de target/ et leurs noyaux, à
 # refaire (~3 min) au prochain `. scripts/mlx-sources.sh`. Hors de sa portée,
@@ -99,7 +100,7 @@ else
 
     FEATURES=mlx,mlx-rs/metal-jit
     cargo test --release --locked -p dysflow --features "$FEATURES" --lib --no-run -j "${CARGO_BUILD_JOBS:-4}"
-    if find target -maxdepth 5 -type d -path '*/build/mlx-sys-*' | grep -q '^target/mlx-parite/'; then
+    if find target -maxdepth 5 -type d \( -path '*/build/mlx-sys-*' -o -path '*/build/mlx-sys/*' \) | grep -q '^target/mlx-parite/'; then
         echo "Erreur : un build de mlx-sys sous target/mlx-parite est à portée de la garde de mlx-sources.sh" >&2
         exit 1
     fi

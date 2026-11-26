@@ -148,7 +148,8 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           mkdir -p target/mlx-metallib
-          for copie in target/aarch64-apple-darwin/*/build/mlx-sys-*/out/build/lib/mlx.metallib; do
+          # build/mlx-sys-HASH jusqu'à cargo 1.99, build/mlx-sys/HASH depuis 1.100.
+          for copie in target/aarch64-apple-darwin/*/build/mlx-sys-*/out/build/lib/mlx.metallib target/aarch64-apple-darwin/*/build/mlx-sys/*/out/build/lib/mlx.metallib; do
             if [ "$copie" -nt target/mlx-metallib/mlx.metallib ]; then cp -p "$copie" target/mlx-metallib/; fi
           done
           . scripts/mlx-sources.sh
@@ -494,30 +495,12 @@ jobs:
         # DYSFLOW_MLX_RUST, ce test serait sauté : la CI le refuse.
         # Les noyaux du build en cache : comme dans le job Rust.
         run: |
-          # Diagnostic (temporaire) : la cible écrite dans chaque mlx.metallib
-          # (octets 12-14 de l'en-tête), sa taille, sa date, et la configuration
-          # de chaque build de mlx-sys. Pour expliquer un échec « ne vise pas
-          # macOS 14.0 » vu avec le cache de target/.
-          noyaux() {
-            echo "== metallib : $1"
-            find target -name mlx.metallib -not -path '*/mlx-sources/*' 2>/dev/null | while IFS= read -r f; do
-              v=$(od -An -tu1 -j12 -N3 "$f" | awk 'NF == 3 { printf "%d.%d", $1 + 256 * $2, $3 }')
-              echo "   $f : cible $v, $(wc -c < "$f" | tr -d ' ') octets, $(stat -f '%Sm' -t '%Y-%m-%dT%H:%M:%S' "$f")"
-            done
-            for b in target/app/build/mlx-sys-*; do
-              [ -d "$b" ] || continue
-              echo "   $b : output=$([ -f "$b/output" ] && echo oui || echo non)"
-              grep -E '^(CMAKE_OSX_DEPLOYMENT_TARGET|DYSFLOW_MLX_PREUVE|MLX_METAL_PATH)' "$b/out/build/CMakeCache.txt" 2>/dev/null | sed 's/^/      /'
-            done
-          }
-          noyaux "avant la copie"
           mkdir -p target/mlx-metallib/macos-14.0
-          for copie in target/app/build/mlx-sys-*/out/build/lib/mlx.metallib; do
+          # build/mlx-sys-HASH jusqu'à cargo 1.99, build/mlx-sys/HASH depuis 1.100.
+          for copie in target/app/build/mlx-sys-*/out/build/lib/mlx.metallib target/app/build/mlx-sys/*/out/build/lib/mlx.metallib; do
             if [ "$copie" -nt target/mlx-metallib/macos-14.0/mlx.metallib ]; then cp -p "$copie" target/mlx-metallib/macos-14.0/; fi
           done
-          noyaux "après la copie"
-          FEATURES=ocr,mlx ./scripts/build-ffi.sh || { noyaux "après build-ffi.sh, en échec"; exit 1; }
-          noyaux "après build-ffi.sh"
+          FEATURES=ocr,mlx ./scripts/build-ffi.sh
           grep -qx 'DYSFLOW_FFI_CONDITIONS = DYSFLOW_MLX_RUST' macos/Generated/Link.xcconfig
       - name: Tests de l'app
         # Les tests d'interface (DysflowUITests) pilotent l'app à l'écran et
