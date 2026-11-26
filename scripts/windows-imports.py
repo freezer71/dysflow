@@ -68,6 +68,10 @@ SYSTEM = {
 # debug_assertions de directx_renderer.rs) : elle n'est pas ici.
 APP_ONLY = {"dysflow-app.exe": {
     "d3d11.dll", "dcomp.dll", "dwrite.dll", "uiautomationcore.dll", "combase.dll", "rpcrt4.dll",
+    # Vues sur le vrai .exe en CI : l'ICU de Windows (System32 depuis Windows 10
+    # 1703), pour `u_strlen` de gpui-pre-windows (destination_list.rs), et
+    # GDI+, pour le menu natif de gpui-component (Win32_Graphics_GdiPlus).
+    "icuuc.dll", "gdiplus.dll",
 }}
 # Les licences (SIL OFL 1.1) des polices que dysflow-app.exe embarque :
 # package.sh les joint sous licences/ avec l'app (app/assets/fonts/OFL-*.txt).
