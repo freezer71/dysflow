@@ -1449,8 +1449,14 @@ mod tests {
         assert_eq!(ui_lang(), UiLang::Fr);
         let french = reader.voices();
         let system = |v: &[VoiceModel]| v.iter().find(|m| m.system).map(|m| m.name.clone());
-        assert_eq!(system(&english).as_deref(), Some("macOS voice"));
-        assert_eq!(system(&french).as_deref(), Some("Voix de macOS"));
+        // Hors du Mac, la ligne ne parle plus de macOS (le cœur l'adapte).
+        let (en, fr) = if cfg!(target_os = "macos") {
+            ("macOS voice", "Voix de macOS")
+        } else {
+            ("System voice", "Voix du système")
+        };
+        assert_eq!(system(&english).as_deref(), Some(en));
+        assert_eq!(system(&french).as_deref(), Some(fr));
         // Les paquets du catalogue passent par `voice_model`, comme la ligne de
         // macOS : le lecteur muet n'a pas MLX, certains manquent donc ici.
         for (en, fr) in english.iter().zip(&french).filter(|(m, _)| !m.system) {
