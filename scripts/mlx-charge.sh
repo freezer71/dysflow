@@ -185,7 +185,7 @@ mkdir -p "$SORTIE"
 MAISON=$(mktemp -d -t dysflow-charge-home)
 
 # Le moteur par défaut remis, et le HOME temporaire retiré, à toute sortie.
-# shellcheck disable=SC2329 # appelée par trap
+# shellcheck disable=SC2317,SC2329 # appelée par trap (SC2317 pour les shellcheck plus anciens)
 remettre() {
     rm -rf "$MAISON"
     echo "Moteur par défaut remis (./scripts/build-ffi.sh)…"

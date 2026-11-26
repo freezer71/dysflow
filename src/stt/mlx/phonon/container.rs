@@ -175,10 +175,8 @@ fn mlx_shape(shape: &[usize]) -> Vec<i32> {
 
 /// Des float16 petit-boutistes.
 fn halves(bytes: &[u8]) -> Vec<f16> {
-    bytes
-        .chunks_exact(2)
-        .map(|b| f16::from_le_bytes([b[0], b[1]]))
-        .collect()
+    let (pairs, _) = bytes.as_chunks::<2>();
+    pairs.iter().map(|&b| f16::from_le_bytes(b)).collect()
 }
 
 /// Range un tableau dense sous son nom du graphe, à la disposition de MLX

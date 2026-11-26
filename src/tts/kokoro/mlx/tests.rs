@@ -57,8 +57,10 @@ fn base64(text: &str) -> Vec<u8> {
 /// L'audio de la fixture, comme le test Swift le lit : PCM 16 bits / 32767.
 fn expected_audio(reference: &Reference) -> Vec<f32> {
     base64(&reference.audio_i16_base64)
-        .chunks_exact(2)
-        .map(|pair| i16::from_le_bytes([pair[0], pair[1]]) as f32 / 32767.0)
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|&pair| i16::from_le_bytes(pair) as f32 / 32767.0)
         .collect()
 }
 

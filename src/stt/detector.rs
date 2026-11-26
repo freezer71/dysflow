@@ -169,9 +169,9 @@ mod tests {
         let mut det = EnergyDetector::new();
         let audio = noise(dbfs(-45.0), 60 * 16_000, 1);
         let speech = audio
-            .chunks_exact(FRAME)
+            .as_chunks::<FRAME>().0.iter()
             .skip(10)
-            .filter(|f| det.is_speech(f).unwrap())
+            .filter(|f| det.is_speech(f.as_slice()).unwrap())
             .count();
         assert_eq!(speech, 0);
     }
@@ -179,8 +179,8 @@ mod tests {
     /// Compte les trames entendues comme parole.
     fn heard(det: &mut EnergyDetector, audio: &[f32]) -> usize {
         audio
-            .chunks_exact(FRAME)
-            .filter(|f| det.is_speech(f).unwrap())
+            .as_chunks::<FRAME>().0.iter()
+            .filter(|f| det.is_speech(f.as_slice()).unwrap())
             .count()
     }
 
@@ -199,9 +199,9 @@ mod tests {
             "toute la parole est entendue"
         );
         let leftover = after
-            .chunks_exact(FRAME)
+            .as_chunks::<FRAME>().0.iter()
             .skip(5)
-            .filter(|f| det.is_speech(f).unwrap())
+            .filter(|f| det.is_speech(f.as_slice()).unwrap())
             .count();
         assert_eq!(leftover, 0, "le bruit qui suit n'en est pas");
     }
@@ -222,7 +222,7 @@ mod tests {
                         .copy_from_slice(&dips[k * FRAME..(k + 1) * FRAME]);
                 }
                 let loud: Vec<bool> = audio
-                    .chunks_exact(FRAME)
+                    .as_chunks::<FRAME>().0.iter()
                     .enumerate()
                     .map(|(i, f)| (det.is_speech(f).unwrap(), i % every != 0))
                     .filter(|(_, loud)| *loud)
@@ -274,7 +274,7 @@ mod tests {
         heard(&mut det, &noise(dbfs(-45.0), 2 * 16_000, 2));
         let loud = noise(dbfs(-35.0), 40 * 16_000, 3);
         let verdicts: Vec<bool> = loud
-            .chunks_exact(FRAME)
+            .as_chunks::<FRAME>().0.iter()
             .map(|f| det.is_speech(f).unwrap())
             .collect();
         assert!(verdicts[0], "le saut est d'abord entendu");
@@ -290,7 +290,7 @@ mod tests {
             let mut det = EnergyDetector::new();
             let audio = noise(dbfs(level), 30 * 16_000, 5);
             let verdicts: Vec<bool> = audio
-                .chunks_exact(FRAME)
+                .as_chunks::<FRAME>().0.iter()
                 .map(|f| det.is_speech(f).unwrap())
                 .collect();
             let count = verdicts.iter().filter(|h| **h).count();
@@ -362,7 +362,7 @@ mod tests {
     fn nan_samples_are_silence_and_do_not_poison_the_floor() {
         let mut det = EnergyDetector::new();
         let background = noise(dbfs(-45.0), 16_000, 5);
-        for f in background.chunks_exact(FRAME) {
+        for f in background.as_chunks::<FRAME>().0.iter() {
             det.is_speech(f).unwrap();
         }
         assert!(!det.is_speech(&[f32::NAN; FRAME]).unwrap());
