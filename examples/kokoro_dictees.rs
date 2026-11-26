@@ -24,6 +24,10 @@
 //! dit le nombre d'échantillons et le SHA-256 de leurs `f32` en petit
 //! boutiste : l'empreinte des fixtures.
 
+/// MLX n'existe que sur les Mac Apple Silicon : ailleurs (le contrôle de
+/// MSRV en toutes features, sous Linux), l'exemple se compile vide.
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+mod dictees {
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -173,7 +177,7 @@ fn sha(path: &Path) -> Result<()> {
     Ok(())
 }
 
-fn main() -> Result<()> {
+pub fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.iter().map(String::as_str).collect::<Vec<_>>().as_slice() {
         ["render", dir, language, voice, text, out] => {
@@ -184,4 +188,15 @@ fn main() -> Result<()> {
             "usage : kokoro_dictees render <dossier de Kokoro> <langue> <voix> <texte> <sortie.wav>\n        kokoro_dictees sha <dictée 16 kHz.wav>"
         ),
     }
+}
+}
+
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+fn main() -> anyhow::Result<()> {
+    dictees::main()
+}
+
+#[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
+fn main() {
+    eprintln!("kokoro_dictees : Mac Apple Silicon seulement");
 }

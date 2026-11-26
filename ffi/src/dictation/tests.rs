@@ -250,6 +250,12 @@ fn push_never_waits_for_the_model_to_load() {
         slowest < Duration::from_millis(50),
         "push a attendu {slowest:?}"
     );
+    // `Loading` part du fil de la dictée, pas de `push` : on l'attend (borné),
+    // puis rien d'autre ne doit être venu tant que le modèle reste bloqué.
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while notes.updates().is_empty() && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(5));
+    }
     assert_eq!(
         notes.updates(),
         vec![DictationUpdate::Loading],

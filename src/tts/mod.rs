@@ -759,7 +759,11 @@ mod tests {
             tried.push(settings.model_path.clone());
             Err(format!("échec {}", tried.len()))
         });
-        let names: Vec<_> = tried.iter().map(|p| p.rsplit('/').next().unwrap().to_string()).collect();
+        // Le nom du fichier par `Path` : sous Windows, le séparateur est `\`.
+        let names: Vec<_> = tried
+            .iter()
+            .map(|p| std::path::Path::new(p).file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
         assert_eq!(names, vec!["kokoro-v1_0.safetensors", "model_quantized.onnx"], "un seul essai par paquet");
         let note = note.unwrap();
         assert!(note.contains("échec 1"), "la raison du choix : {note}");
